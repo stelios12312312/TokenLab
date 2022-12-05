@@ -25,7 +25,7 @@ class TransactionManagement(Controller):
     
     def __init__(self):
         super(TransactionManagement,self).__init__()
-        self.dependencies={UserGrowth:None}
+        self.dependencies={AgentPool:None,TokenEconomy:None}
         self.transactions_value=None
         #keeps a record of transactions across all iterations
         self._transactions_value_store=[]
@@ -59,9 +59,20 @@ class TransactionManagement_Constant(TransactionManagement):
         self.average_transaction_value=average_transaction_value
         
         
-    def execute(self)->float:
+    def execute(self,dependency="AgentPool")->float:
+        """
+        dependency: Available options are either AgentPool or TokenEconomy
+        """
         
-        num_users=self.dependencies[UserGrowth].get_num_users()
+        if dependency=="AgentPool":
+            dependency=AgentPool
+        elif dependency=="TokenEconomy":
+            dependency=TokenEconomy
+        else:
+            raise Exception('You must use either AgentPool or TokenEconomy')
+            
+        
+        num_users=self.dependencies[dependency]['num_users']
         self.total_users=num_users
         
         self.transactions_value=num_users*self.average_transaction_value
@@ -90,7 +101,7 @@ class TransactionManagement_Trend(TransactionManagement):
                  space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]=np.linspace,name:str=None,
                  noise_addon:AddOn=None):
         
-        self.dependencies={UserGrowth:None}
+        self.dependencies={AgentPool:None}
 
         
         self.num_steps=num_steps
@@ -227,7 +238,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
         self.total_users=0
         self._transactions_value_store=[]
         
-        self.dependencies={UserGrowth:None}
+        self.dependencies={AgentPool:None}
         
         self.activity_probabilities=activity_probs
         
@@ -274,7 +285,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
     
     
     def execute(self)->float:
-        num_users=self.dependencies[UserGrowth].get_num_users()
+        num_users=self.dependencies[AgentPool].get_num_users()
         self.total_users=num_users
         
         #because activitiy_probabilities can be either an int or a list, we have to take into account both scenarios

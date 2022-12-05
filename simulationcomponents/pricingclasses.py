@@ -91,7 +91,7 @@ class HoldingTime_Adaptive(HoldingTimeController):
     def execute(self)->float:
         tokeneconomy=self.dependencies[TokenEconomy]
         
-        holding_time=tokeneconomy.price*tokeneconomy.transactions_volume_in_tokens/tokeneconomy.transactions_value_in_fiat
+        holding_time=tokeneconomy.price*tokeneconomy.transactions_volume_in_tokens/(tokeneconomy.transactions_value_in_fiat++0.000000001)
         
         if self._noise_addon!=None:
             dummy=self._noise_addon.apply(**{'value':price_new})

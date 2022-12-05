@@ -116,6 +116,8 @@ class TokenEconomy_Basic(TokenEconomy):
         if supply_pools!=None:
             self.add_supply_pools(supply_pools)
             
+        self.initialised=False
+            
         
         return None
     
@@ -133,6 +135,7 @@ class TokenEconomy_Basic(TokenEconomy):
         if agent_pool.currency in self.tokens:
             self.supply_exists=True
             
+        agent_pool.link(TokenEconomy,self)
         self._agent_pools.append(agent_pool)
         
         return True
@@ -183,8 +186,17 @@ class TokenEconomy_Basic(TokenEconomy):
             
         return True
     
+    def initialise(self)->None:
+        for agent in self._agent_pools:
+            if isinstance(agent,Initialisable):
+                agent.initialise()
+        self.initialised=True
+    
     def execute(self)->bool:
-              
+                    
+        if not self.initialised:
+            self.initialise()
+        
         if not self.test_integrity():
             raise Exception('Integrity of pools not correct. Please make sure all agent pools have the correct dependencies.')
             
@@ -220,7 +232,6 @@ class TokenEconomy_Basic(TokenEconomy):
             else:
                 raise Exception('Agent pool found that does not function in neither fiat nor the token! Please specify correct currency!')
             self.num_users+=agent.get_num_users()
-            
         
         self._holding_time_store.append(self.holding_time)
         self._num_users_store.append(self.num_users)
@@ -232,7 +243,8 @@ class TokenEconomy_Basic(TokenEconomy):
         
         #this is the holding time if we were simply feeding back the equation of exchange on the current
         #transaction volume in fiat and tokens
-        self._effective_holding_time=self.price*self.supply/self.transactions_value_in_fiat
+        #We add a small number to prevent division by 0
+        self._effective_holding_time=self.price*self.supply/(self.transactions_value_in_fiat+0.000000001)
         self._holding_time_controller.execute()
 
         

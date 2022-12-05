@@ -82,12 +82,14 @@ class Condition():
         Condition(ap_fiat,['transactions'],lambda x:x>1000)
     """
 
-    def __init__(self,simulation_component:Union[TokenEconomy,Controller],variables:List[str],condition:Callable):
+    def __init__(self,variables:List[str],condition:Callable,sim_component:Union[TokenEconomy,Controller]=None):
         
         self.sim_component=sim_component
         self.condition=condition
         self.variables=variables
         self.result=None
+        
+        return None
         
     
     def execute(self):
@@ -96,8 +98,9 @@ class Condition():
         for vari in self.variables:
             var_list.append(self.sim_component[vari])
             
-        res=condition(vari)
-        self.result=result
+        res=self.condition(var_list)
+
+        self.result=res
         
         return res
     

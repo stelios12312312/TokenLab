@@ -24,6 +24,16 @@ class AddOn():
     def apply(self)->float:
         
         pass
+    
+class Initialisable():
+    
+    def __init__(self):
+        self.initialised=False
+    
+    def initialise(self):
+        
+        self.iitialised=True
+    
 
 class Controller():
     
@@ -58,11 +68,13 @@ class Controller():
         
         The type of the link object is already checked in the link function.
         """
-        
+        nones=0
         if len(self.dependencies.keys())>0:
             for k in self.dependencies.keys():
                 if self.dependencies[k] is None:
-                    return False
+                    nones+=1
+        if nones==len(self.dependencies.keys()):
+            return False
         
         return True
     
@@ -80,6 +92,47 @@ class Controller():
     
     def __getitem__(self,item):
         return getattr(self,item)
+    
+    
+class AgentPool(Controller):
+    
+    def __init__(self):
+        
+        self.num_users=0
+        self.transactions=0
+        self.iteration=0
+        self.currency=None
+        self.name=None
+        self.dependencies={TokenEconomy:None}
+        
+        
+
+    def __print__(self)->str:
+        users=self.num_users
+        trans=self.transactions_controller.transactions_value
+        
+        return str(users)+'\n'+str(trans)
+    
+    def report(self)->Dict:
+        """
+        Returns user and transaction data from the current iteration
+        """
+        rep={'users':self.num_users,'transactions':self.transactions_controller.transactions_value}
+        
+        
+        return rep
+    
+    def get_transactions(self)->float:
+        
+        return self.transactions
+    
+    def get_num_users(self)->int:
+        
+        return self.num_users
+    
+    def reset(self)->None:
+        
+        self.iteration=0
         
 
 class TokenEconomy():

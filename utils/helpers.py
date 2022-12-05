@@ -15,8 +15,8 @@ def log_saturated_space(start:int,stop:int,num:int):
     
     spaces=np.log(np.linspace(start=start,stop=stop,num=num))
     spaces_weights=spaces/max(spaces)
-    final=spaces_weights*stop
-    final[0]=start
+    final=spaces_weights*(stop+start)
+    #final[0]=start
     
     return final
 

@@ -19,6 +19,10 @@ class UserGrowth(Controller):
     def __init__(self):
         super(UserGrowth,self).__init__()
         self.num_users=0
+        
+        #conditional dependence, it is used only in conditions
+        self.dependencies={AgentPool:None,TokenEconomy:None}
+        
         return None
     
     
@@ -58,7 +62,22 @@ class UserGrowth_Spaced(UserGrowth):
     
     def __init__(self,initial_users:int,max_users:int,num_steps:int,
                  space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space],name:str=None,
-                 noise_addon:AddOn=None)->None:
+                 noise_addon:AddOn=None,use_difference:bool=False)->None:
+        """
+        use_difference: If True, it will calculate and return the difference between time steps. Essentially, the user 
+        base will grow according to the difference between the steps in the sequence.
+        
+        Otherwise, it returns the actual value.
+        
+        For example:
+            initial_users=100
+            growth=[100,120,150,200]
+            final=[100,120,150,200]
+            
+            with difference:
+                final=[100,0,20,30,50]
+            
+        """
         super(UserGrowth_Spaced,self).__init__()
 
                 
@@ -70,9 +89,8 @@ class UserGrowth_Spaced(UserGrowth):
         
         self.name=name
         
-        self._num_users_store_original=np.round(self.space_function(start=self._initial_users,stop=self.max_users,num=num_steps)).astype(int)
-        self._num_users_store=copy.deepcopy(self._num_users_store_original)
-        
+        self._num_users_store_original=np.round(self.space_function(start=self._initial_users,
+                                                                    stop=self.max_users,num=num_steps)).astype(int)
         #applies the noise addon. If a value is below 0, then it is kept at 0.
         if self._noise_component!=None:
             dummy=[]
@@ -84,7 +102,13 @@ class UserGrowth_Spaced(UserGrowth):
                     dummy.append(self._num_users_store_original[i])
         
             self._num_users_store=dummy
-        self.num_users=self._initial_users
+        #self.num_users=self._initial_users
+        
+        if use_difference:
+            self._num_users_store_original=[self._initial_users]+np.diff(self._num_users_store_original).tolist()
+        
+        self._num_users_store=copy.deepcopy(self._num_users_store_original)
+
         
         self.max_iterations=num_steps
     

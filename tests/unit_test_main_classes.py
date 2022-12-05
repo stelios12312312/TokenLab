@@ -6,6 +6,8 @@ Created on Tue Nov 15 15:33:02 2022
 @author: stylianoskampakis
 """
 
+import sys
+sys.path.insert(0,'..')
 import unittest
 from simulationcomponents import *
 from simulationcomponents.usergrowthclasses import *
@@ -14,7 +16,9 @@ from simulationcomponents.tokeneconomyclasses import *
 from simulationcomponents.transactionclasses import *
 from simulationcomponents.agentpoolclasses import *
 from simulationcomponents.pricingclasses import *
+from simulationcomponents.addons import *
 from utils.helpers import *
+
 
 class TestMainClasses(unittest.TestCase):
     
@@ -93,6 +97,42 @@ class TestMainClasses(unittest.TestCase):
         
         self.assertTrue(0<time<3)
         
+        
+    def test_condition2(self):
+        
+        usm_fiat=UserGrowth_Spaced(100,54000,100,log_saturated_space)
+        ap_fiat=AgentPool_Basic(users_controller=usm_fiat,transactions_controller=100,currency='$')
+        ap_fiat.execute()
+
+        
+        result=Condition(sim_component=ap_fiat,variables=['transactions'],condition=lambda x:x[0]>1000).execute()
+        self.assertTrue(result)
+        
+        
+            
+    def test_condition2(self):
+        
+        usm_fiat=UserGrowth_Spaced(100,54000,100,log_saturated_space)
+        ap_fiat=AgentPool_Basic(users_controller=usm_fiat,transactions_controller=100,currency='$')
+        ap_fiat.execute()
+        
+        result=Condition(sim_component=ap_fiat,variables=['transactions'],condition=lambda x:x[0]< -100).execute()
+        self.assertFalse(result)
+        
+    
+    def test_condition3(self):
+        
+        usm_fiat=UserGrowth_Spaced(100,54000,100,log_saturated_space)
+        ap_fiat=AgentPool_Basic(users_controller=usm_fiat,transactions_controller=100,currency='$')
+        for i in range(15):
+            ap_fiat.execute()
+        
+        result=Condition(sim_component=ap_fiat,variables=['transactions','num_users'],condition=lambda x:x[0]>10000 and x[1]>20000).execute()
+        self.assertTrue(result)
+        
+        
+        
+        
     def test_full_meta_simulation(self):
         ITERATIONS=72
         HOLDING_TIME=1
@@ -159,22 +199,17 @@ class TestMainClasses(unittest.TestCase):
 
 
         te=TokenEconomy_Basic(holding_time=HOLDING_TIME,supply=SUPPLY,initial_price=0.1)
-        #te.add_agent_pools([ap_luxury])
         te.add_agent_pools([ap_luxury,ap_luxury_sec,ap_fine,ap_fine_sec,ap_own])
         prices=[]
-        # for i in range(ITERATIONS-1):
-        #     #te.execute()
-        #     prices.append(te.price)
-            
-            
+
             
         meta=TokenMetaSimulator(te)
-        meta.execute(iterations=ITERATIONS,repetitions=100)
+        meta.execute(iterations=ITERATIONS,repetitions=10)
         reps=meta.get_data()
 
-        plot,data=meta.get_timeseries('price')
+        plot,data=meta.get_timeseries('token_price')
         print(reps.shape)
-        self.assertTrue(reps.shape[0]==7200)
+        self.assertTrue(reps.shape[0]==720)
         
     
 
