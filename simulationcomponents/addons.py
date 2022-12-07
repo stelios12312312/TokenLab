@@ -70,20 +70,26 @@ class AddOn_RandomNoiseProportional(AddOn_Noise):
 
 class Condition():
     """
-    The variables must be in a list.
-    
-    condition:  A lambda expression or function that accepts a list of variables and returns a Boolean
+
     
     Example usage:
         
         usm_fiat=UserGrowth_Spaced(100,54000,ITERATIONS,log_saturated_space)
         ap_fiat=AgentPool_Basic(users_controller=usm_fiat,transactions_controller=100,currency='$')
         
-        Condition(ap_fiat,['transactions'],lambda x:x>1000)
+        Condition(ap_fiat,['transactions'],lambda x:x[0]>1000)
     """
 
     def __init__(self,variables:List[str],condition:Callable,sim_component:Union[TokenEconomy,Controller]=None):
+        """
+        variables: The variables must be in a list of the variables that the condition must access. 
         
+        condition:  A lambda expression or function that accepts a list of variables and returns a Boolean. 
+        The condition must use brackets [] to access the variables. e.g. Condition(ap_fiat,['transactions'],lambda x:x[0]>1000)
+        
+        sim_component: the module where the variables will be read from
+        
+        """
         self.sim_component=sim_component
         self.condition=condition
         self.variables=variables
