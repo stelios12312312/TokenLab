@@ -5,8 +5,9 @@ Created on Fri Nov 18 12:18:42 2022
 
 @author: stylianoskampakis
 """
+
 from typing import List, Dict,Union
-from .baseclasses import *
+from baseclasses import *
 from utils.helpers import log_saturated_space
 import copy
 

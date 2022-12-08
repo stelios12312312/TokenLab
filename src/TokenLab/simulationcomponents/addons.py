@@ -6,7 +6,7 @@ Created on Wed Nov 30 10:34:43 2022
 @author: stylianoskampakis
 """
 import numpy as np
-from simulationcomponents.baseclasses import *
+from baseclasses import *
 import scipy
 from scipy.stats import binom,norm
 import time

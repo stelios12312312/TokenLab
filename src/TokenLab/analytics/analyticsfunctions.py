@@ -6,7 +6,6 @@ Created on Mon Dec  5 19:52:42 2022
 @author: stylianoskampakis
 """
 
-from sklearn.datasets import load_boston
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
@@ -19,6 +18,7 @@ def stepwise_selection(X, y,
                        verbose=True):
     """ Perform a forward-backward feature selection 
     based on p-value from statsmodels.api.OLS
+    
     Arguments:
         X - pandas.DataFrame with candidate features
         y - list-like with the target
@@ -26,8 +26,13 @@ def stepwise_selection(X, y,
         threshold_in - include a feature if its p-value < threshold_in
         threshold_out - exclude a feature if its p-value > threshold_out
         verbose - whether to print the sequence of inclusions and exclusions
+        
     Returns: list of selected features 
+    
+    
     Always set threshold_in < threshold_out to avoid infinite looping.
+    
+    
     See https://en.wikipedia.org/wiki/Stepwise_regression for the details
     """
     included = list(initial_list)

@@ -6,12 +6,12 @@ Created on Fri Nov 18 12:20:03 2022
 @author: stylianoskampakis
 """
 from typing import List, Dict,Union
-from .baseclasses import *
-from .usergrowthclasses import UserGrowth,UserGrowth_Constant
-from .transactionclasses import TransactionManagement, TransactionManagement_Constant
+from baseclasses import *
+from usergrowthclasses import UserGrowth,UserGrowth_Constant
+from transactionclasses import TransactionManagement, TransactionManagement_Constant
 import copy
 from typing import TypedDict
-from .addons import Condition
+from addons import Condition
 
 
 

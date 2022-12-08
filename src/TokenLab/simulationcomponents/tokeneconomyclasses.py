@@ -11,18 +11,18 @@ import scipy
 from scipy.stats import binom,norm
 from typing import Union,TypeVar,Callable
 from typing import List, Dict,Union,Tuple
-from .baseclasses import Controller,TokenEconomy
-from .agentpoolclasses import AgentPool
+from baseclasses import Controller,TokenEconomy
+from agentpoolclasses import AgentPool
 from collections import OrderedDict
 import pandas as pd
 import copy
 #import seaborn as sns
 from tqdm import tqdm
 from matplotlib import pyplot as plt
-from .pricingclasses import *
+from pricingclasses import *
 import matplotlib
 import random
-from .supplyclasses import *
+from supplyclasses import *
 import warnings
 
 

@@ -5,9 +5,9 @@ Created on Fri Nov 18 12:19:09 2022
 
 @author: stylianoskampakis
 """
-from .baseclasses import *
+from baseclasses import *
 from typing import List, Dict,Union
-from .usergrowthclasses import UserGrowth
+from usergrowthclasses import UserGrowth
 import scipy
 from scipy.stats import binom,norm,poisson
 import numpy as np
