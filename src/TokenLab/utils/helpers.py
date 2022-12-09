@@ -21,18 +21,24 @@ def log_saturated_space(start:int,stop:int,num:int):
     return final
 
 
-def equation_of_exchange(price:float,supply_in_tokens:float,transaction_volume_in_fiat:float,holding_time:float):
+# def equation_of_exchange(price:float,supply_in_tokens:float,transaction_volume_in_fiat:float,holding_time:float):
     
-    price=holding_time*transaction_volume_in_finat/supply_in_tokens
+#     price=holding_time*transaction_volume_in_finat/supply_in_tokens
     
-    return price
+#     return price
 
 
-def generate_distribution_param_from_sequence(param_name:str,function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space],start:int,stop:int,num:int)->List[Dict]:
+def generate_distribution_param_from_sequence(param_name:str,
+                                              function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space],
+                                              start:int,stop:int,num:int)->List[Dict]:
     """
     Generates a list of dictionaries, by using a sequence function.
     
     This is used to feed parameters into distributions, when the parameters themselves are shifting.
+    
+    Example usage:
+        p1=generate_distribution_param_from_sequence('loc',np.linspace,500,750,72)
+        p2=harmonize_param_sequence(p1,'scale',100)
     """
     
     parameters_list_final=[]
@@ -48,6 +54,10 @@ def harmonize_param_sequence(param_list,param_name,value)->List[Dict]:
     """
     Sets a constant value to a parameter sequence. Useful when one parameter changes, but the other one does not.
     You first need to create a sequence by using generate_distribution_param_from_sequence()
+    
+    Example usage:
+        p1=generate_distribution_param_from_sequence('loc',np.linspace,500,750,72)
+        p2=harmonize_param_sequence(p1,'scale',100)
     """
     for i in range(len(param_list)):
         param_list[i][param_name]=value
@@ -59,6 +69,12 @@ def merge_param_dists(dist1,dist2):
     Merges two parameter dists. Useful when you have two parameters changing values over time.
     In this case you create each one individually using generate_distribution_param_from_sequence
     and then you merge them using this function.
+    
+    example usage:
+        p1=generate_distribution_param_from_sequence('loc',np.linspace,500,750,72)
+        list2=generate_distribution_param_from_sequence('scale',np.linspace,500/7,750/7,72)
+        list3=merge_param_dists(p1,list2)
+        
     """
     for i in range(len(dist1)):
         for k in dist2[i].keys():

@@ -20,6 +20,9 @@ from addons import AddOn_RandomNoise, AddOn_RandomNoiseProportional
 
 
 class HoldingTimeController(Controller):
+    """
+    Abstract class from which all HoldingTime controllers should inherit.
+    """
     
     def __init__(self):
         super(HoldingTimeController,self).__init__()
@@ -35,9 +38,29 @@ class HoldingTimeController(Controller):
     
     
 class HoldingTime_Constant(HoldingTimeController):
+    """
+    Constant holding time
+    """
     
-    
-    def __init__(self,holding_time):
+    def __init__(self,holding_time:float):
+        """
+        
+
+        Parameters
+        ----------
+        holding_time : float
+            The holding time. Needs to be positive.
+
+        Raises
+        ------
+        Exception
+            If holding_time<0 then raise Exception.
+
+        Returns
+        -------
+        None.
+
+        """
         super(HoldingTime_Constant,self).__init__()
 
         if holding_time<=0:
@@ -51,6 +74,23 @@ class HoldingTime_Stochastic(HoldingTimeController):
     
     def __init__(self,holding_time_dist:scipy.stats=scipy.stats.halfnorm,holding_time_params:Dict={'loc':0,'scale':1},
                  minimum:float=0.1):
+        """
+        
+
+        Parameters
+        ----------
+        holding_time_dist : scipy.stats, optional
+           A scipy distribution to sample the holding time from. The default is scipy.stats.halfnorm.
+        holding_time_params : Dict, optional
+            The parameters of the distribution. The default is {'loc':0,'scale':1}.
+        minimum : float, optional
+            The minimum possible holding time. If the sampled holding time is <1, then it reverts to minimum. The default is 0.1.
+
+        Returns
+        -------
+        None.
+
+        """
         self.distribution=holding_time_dist
         self.dist_params=holding_time_params
         self.minimum=minimum
@@ -58,6 +98,15 @@ class HoldingTime_Stochastic(HoldingTimeController):
         
         
     def execute(self)->float:
+        """
+        
+
+        Returns
+        -------
+        float
+            The holding time.
+
+        """
         seed=int(int(time.time())*np.random.rand())
 
         self.holding_time=self.distribution.rvs(size=1,**self.dist_params,random_state=seed)[0]
@@ -107,6 +156,10 @@ class HoldingTime_Adaptive(HoldingTimeController):
         
         
 class PriceFunctionController(Controller):
+    """
+    Abstract class for price controllers.
+    
+    """
         
     
     def __init__(self):
@@ -135,7 +188,15 @@ class PriceFunction_EOE(PriceFunctionController):
     
     def __init__(self,noise_addon:AddOn=None,smoothing_param:float=1):
         """
-        smoothing_param: If set below 1, then this applied a weighted average between the new price
+        
+        Parameters
+        ----------
+        
+        noise_AddOn: Optional, if this is used, then the noise is added to the price.
+        If the price is negative, then the noise add-on is ignored, and the returned price
+        is the price without the noise.
+        
+        smoothing_param: Float. If set below 1, then this applied a weighted average between the new price
         and the old price. This causes an anchoring effect, since in practice the new price would 
         be anchored to some extent to the previous one. A smoothing_param of 0.9, for exaple
         calculates the final price as 0.9*newprice+0.1*old_price
@@ -183,70 +244,3 @@ class PriceFunction_EOE(PriceFunctionController):
             self.price=price_new_2
         
         self.iteration+=1
-        
-#
-        
-
-# class PriceFunction_EOE_Noise(PriceFunctionController):
-#     """
-#     Implementation of the equation of exchange, plus a noise component.
-    
-#     If the noise drives the price below 0, then the price remains unchanged.
-#     """
-    
-#     def __init__(self,noise_dist:scipy.stats=scipy.stats.norm,
-#                  dist_params:Dict={'loc':0,'scale':1}):
-#         super(PriceFunction_EOE_Noise,self).__init__()
-#         self.noise_dist=noise_dist
-#         self.dist_params=dist_params
-    
-#     def execute(self)->float:  
-#         tokeneconomy=self.dependencies[TokenEconomy]
-        
-#         #price=tokeneconomy.price
-#         transaction_volume_in_fiat=tokeneconomy.transactions_value_in_fiat
-#         holding_time=tokeneconomy.holding_time
-#         supply_of_tokens=tokeneconomy.supply
-                
-#         seed=int(int(time.time())*np.random.rand())
-#         noise=self.noise_dist.rvs(size=1,**self.dist_params,random_state=seed)[0]
-#         new_price=holding_time*transaction_volume_in_fiat/supply_of_tokens+noise
-#         if new_price<0:
-#             new_price=holding_time*transaction_volume_in_fiat/supply_of_tokens
-#         self.price=new_price
-#         self.iteration+=1
-        
-# class PriceFunction_EOE_AdaptiveNoise(PriceFunctionController):
-#     """
-#     Implementation of the equation of exchange, plus an adaptive noise component.
-    
-#     Uses normal error, but the variance changes dependi ng on the price level.
-    
-#     More specifically, the noise is defined as Normal(mean_param,price/std_param).
-    
-#     If the new price is below 0, then we simply remove the noise component for that iteration.
-#     """
-    
-#     def __init__(self,noise_dist:scipy.stats=scipy.stats.norm,
-#                  mean_param=0,std_divider=3):
-#         super(PriceFunction_EOE_AdaptiveNoise,self).__init__()
-#         self.mean_param=mean_param
-#         self.std_divider=std_divider
-#         self.noise_dist=noise_dist
-    
-#     def execute(self)->float:  
-#         tokeneconomy=self.dependencies[TokenEconomy]
-        
-#         previous_price=tokeneconomy.price
-#         transaction_volume_in_fiat=tokeneconomy.transactions_value_in_fiat
-#         holding_time=tokeneconomy.holding_time
-#         supply_of_tokens=tokeneconomy.supply
-                
-#         seed=int(int(time.time())*np.random.rand())
-#         noise=self.noise_dist.rvs(size=1,loc=self.mean_param,scale=previous_price/self.std_divider,random_state=seed)[0]
-        
-#         new_price=holding_time*transaction_volume_in_fiat/supply_of_tokens+noise
-#         if new_price<0:
-#             new_price=holding_time*transaction_volume_in_fiat/supply_of_tokens
-#         self.price=new_price
-#         self.iteration+=1
