@@ -27,4 +27,4 @@ If you have any requests or comments, please reach out to Dr Kampakis https://th
 
 ![Algem https://www.algem.io/](https://thedatascientist.com/wp-content/uploads/2022/12/algem.png)
 
-![Tesseract Academy https://tesseract.academy] (https://thedatascientist.com/wp-content/uploads/2022/02/logo-centered.png)
+![Tesseract Academy https://tesseract.academy](https://thedatascientist.com/wp-content/uploads/2022/02/logo-centered.png)
