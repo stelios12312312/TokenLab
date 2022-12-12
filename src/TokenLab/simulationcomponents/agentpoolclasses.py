@@ -176,7 +176,7 @@ class AgentPool_Conditional(Initialisable,AgentPool):
         self.transactions=0
         
         
-    def add_condition(self,condition:Condition,controller:Union[UserGrowth,TransactionManagement])->Bool:
+    def add_condition(self,condition:Condition,controller:Union[UserGrowth,TransactionManagement])->bool:
         """
         Adds a Condition, which when True, triggers a controller object.
 

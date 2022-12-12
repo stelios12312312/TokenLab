@@ -143,6 +143,16 @@ class UserGrowth_Spaced(UserGrowth):
         self.num_users=self._initial_users
         
         
+    def get_users_store(self)->List:
+        """
+        Returns the list that contains the pre-calculated number of users. This is a
+        private variable.
+
+        """
+        
+        return self._num_users_store
+        
+        
     
     
       

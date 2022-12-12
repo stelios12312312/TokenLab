@@ -139,7 +139,7 @@ class Condition():
         return None
         
     
-    def execute(self)->Bool:
+    def execute(self)->bool:
         """
         
 
@@ -159,7 +159,7 @@ class Condition():
         
         return res
     
-    def get_result(self)->Bool:
+    def get_result(self)->bool:
         """
         
 
