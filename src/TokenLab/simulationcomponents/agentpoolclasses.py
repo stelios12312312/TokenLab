@@ -300,6 +300,11 @@ class AgentPool_Conditional(Initialisable,AgentPool):
         
         
     def reset(self)->None:
+        """
+        Sets the iteration meter to 0 and resets
+        all controllers, including the ones inside conditions.
+
+        """
         self.iteration=0
         for con in self.conditions_map:
             con[1].reset()

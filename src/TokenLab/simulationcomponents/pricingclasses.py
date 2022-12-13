@@ -217,15 +217,6 @@ class PriceFunction_EOE(PriceFunctionController):
         #supply_of_tokens=tokeneconomy.transactions_value_in_tokens
         supply_of_tokens=tokeneconomy.supply
         
-        # if token==None:
-        # #price=tokeneconomy.price
-        #     transaction_volume_in_fiat=tokeneconomy.transactions_value_in_fiat
-        #     holding_time=tokeneconomy.holding_time
-        #     supply_of_tokens=tokeneconomy.supply
-        # else:
-        #     transaction_volume_in_fiat=tokeneconomy.transactions_value_in_fiat[token]
-        #     holding_time=tokeneconomy.holding_time
-        #     supply_of_tokens=tokeneconomy.supply[token]
                 
 
         #noise adjustment

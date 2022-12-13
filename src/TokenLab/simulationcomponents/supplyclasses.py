@@ -16,6 +16,9 @@ import time
 import copy
 
 class SupplyController(Controller):
+    """
+    Base class for other supply controllers.
+    """
 
     
     def __init__(self):
@@ -31,7 +34,24 @@ class SupplyController(Controller):
         pass
     
 class SupplyController_Constant(SupplyController):
+    """
+    Most basic type of supply controller. Supply is simply constant 
+    and doesn't change.
+    """
     def __init__(self,supply:float):
+        """
+        
+
+        Parameters
+        ----------
+        supply : float
+            The total supply.
+
+        Returns
+        -------
+        None.
+
+        """
         super(SupplyController_Constant,self).__init__()
         self.supply=supply
         
@@ -41,12 +61,44 @@ class SupplyController_AdaptiveStochastic(SupplyController):
     """
     More advanced supply class for simulations. It assumes that at every iteration, some of tokens purchased
     are removed from circulation, and then a random % of them returns in the next iteration.
+    
+    Therefore, this class simulates total supply, but also circulating supply.
+    
+    This supply controller attaches itself to a TokenEconomy and reads from there directly
+    the transaction volume, the price and the holding time.
     """
     
-    def __init__(self,supply:float,
+    def __init__(self,
                  removal_distribution:scipy.stats=uniform,removal_dist_parameters={'loc':0,'scale':0.1},
-                 addition_distribution:scipy.stats=uniform,addition_dist_parameters={'loc':0,'scale':0.05}
+                 addition_distribution:scipy.stats=uniform,addition_dist_parameters={'loc':0,'scale':0.05},
+                 return_negative=True
                  ):
+        """
+        
+
+        Parameters
+        ----------
+        removal_distribution : scipy.stats, optional
+             A scipy.stats distribution that determines how much % of the supply is removed and held off the market
+             at each iteration. The distribution must return numbers only in the range [0,1] or a subset of this range. 
+             This is used to simulate holders who are removing liquidity from the market. The default distribution is uniform.
+        removal_dist_parameters : Parameters for the removal distribution, optional
+            DESCRIPTION. The default is {'loc':0,'scale':0.1}.
+        addition_distribution : This performs the inverse function of the removal distribution. It simply takes
+        some of the assets removed, and gets them back in ciruculation.. scipy.stats, optional
+            . The default is uniform.
+        addition_dist_parameters : TYPE, optional
+            Parameters for the addition distribution. The default is {'loc':0,'scale':0.05}.
+        return_negative: If True, then the execute() function can return a negative number. This is interpreted 
+        as removing from the supply.
+
+        Returns
+        -------
+        None.
+
+        """
+    
+
         self.dependencies={TokenEconomy:None}
         self.inactive_tokens=0
         
@@ -55,13 +107,25 @@ class SupplyController_AdaptiveStochastic(SupplyController):
         
         self._addition_distribution=addition_distribution
         self._addition_dist_parameters=addition_dist_parameters
-        
-        self.supply=supply
+                
+        self.return_negative=return_negative
+        self.supply=0
         
         
     def execute(self)->None:
+        """
+        
+        The function works as follows
+        
+        1. Read from the token economy the total purchases of tokens
+        2. Calculate the tokens that need to be removed
+        3. Calculate the tokens that need to be added.
+        4. If the the total supply ends up being less than 
+        
+
+        """
         tokeneconomy=self.dependencies[TokenEconomy]
-        purchases_in_tokens=tokeneconomy.transactions_volume_in_tokens*tokeneconomy.holding_time
+        purchases_in_tokens=tokeneconomy.transactions_volume_in_tokens*tokeneconomy.holding_time/tokeneconomy.price
         
         seed=int(int(time.time())*np.random.rand())
         percentage_removal=self._removal_distribution.rvs(size=1,**self._removal_dist_parameters,random_state=seed)[0]
@@ -74,7 +138,7 @@ class SupplyController_AdaptiveStochastic(SupplyController):
         tokens_coming_back=self.inactive_tokens*percentage_addition
         new_supply = self.supply + tokens_coming_back - token_removal
         
-        if new_supply<=0:
+        if new_supply<=0 and not self.return_negative:
             new_supply=self.supply + tokens_coming_back
         self.supply=new_supply
         
@@ -88,6 +152,30 @@ class SupplyController_InvestorDumperSpaced(SupplyController):
     def __init__(self,dumping_initial:float,dumping_final:float,num_steps:int,
                  space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]=np.linspace,name:str=None,
                  noise_addon:AddOn=None):
+        """
+        
+
+        Parameters
+        ----------
+        dumping_initial : float
+            The initial number of tokens to be dumped.
+        dumping_final : float
+            DESCRIPTION.
+        num_steps : int
+            The number of iterations the simulation will go for.
+        space_function : Union[np.linspace,np.logspace,np.geomspace,log_saturated_space], optional
+            A function that will generate the sequence of supply points. The default is np.linspace.
+        name : str, optional
+            The name of this controller. The default is None.
+        noise_addon : AddOn, optional
+            Noise AddOn from the AddOns module. The default is None.
+
+        Returns
+        -------
+        None.
+
+        """
+        
         super(SupplyController_InvestorDumperSpaced,self).__init__()
 
         self.num_steps=num_steps
@@ -117,6 +205,15 @@ class SupplyController_InvestorDumperSpaced(SupplyController):
         
             
     def execute(self)->float:
+        """
+        Simply executes the controller and updates the supply.
+
+        Returns
+        -------
+        float
+            The supply of tokens dumped.
+
+        """
         
         self.dumping_number=self._dumping_store[self.iteration]
         
@@ -127,6 +224,10 @@ class SupplyController_InvestorDumperSpaced(SupplyController):
         self.iteration+=1
         return self.dumping_number  
         
+    def get_dumped_store(self):
+        
+        
+        return self._dumping_store
     
         
         

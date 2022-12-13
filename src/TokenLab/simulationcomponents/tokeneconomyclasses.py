@@ -54,15 +54,21 @@ class TokenEconomy_Basic(TokenEconomy):
 
     Properties:
         
-        transactions_value_in_fiat: 
+        The TokenEconomy class has many properties, including some hidden ones. It's suggested
+        that you use the function get_data() to get access to those properties.
+        
+        transactions_value_in_fiat: the effective total transaction volume in the fiat currenc.
         
         transactions_volume_in_tokens: the effective total volume of transactions. It's 
         the user's choice as to whether this is taken into account for the holding time calculation
-        or ignored. This takes place via the holding_time controller
+        or ignored. This takes place via the holding_time controller.
         
-        holding_time: 
-     
+        holding_time: the holding time used in the simulation.
         
+        effective_holding_time: The holding time value that we would get if we would use equation of exchange
+        with holding time as an unknown.
+        
+        num_users: The current number of users.
     """
     
     def __init__(self,
@@ -70,15 +76,44 @@ class TokenEconomy_Basic(TokenEconomy):
                  fiat:str='$',token:str='token',price_function:PriceFunctionController=PriceFunction_EOE,
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
                  unit_of_time:str='month',agent_pools:List[AgentPool]=None)->None:
-        
-        """
-        
-        supply: the core supply, or a supply controller that determines the release schedule
-        supply_pools: Additional pools that might add or subtract from the supply, e.g. investors that are dumping tokens as they are vested
-        or a random burning mechanism
+
         
 
         """
+
+        Parameters
+        ----------
+        holding_time : Union[float,HoldingTimeController]
+            DA controller determining how the holding time is being calculated..
+        supply : Union[float,SupplyController]
+            the core supply, or a supply controller that determines the release schedule.
+        initial_price : float
+            The starting price.
+        fiat : str, optional
+            The fiat currency. The default is '$'.
+        token : str, optional
+            The name of the token. The default is 'token'. This is also use in some checks, e.g. agent pools
+            must either be in fiat or the token.
+        price_function : PriceFunctionController, optional
+            A controller that determines the price of the token. The default is PriceFunction_EOE.
+        price_function_parameters : Dict, optional
+            the parameters for the pricing controller. The default is {}.
+        supply_pools : List[SupplyController], optional
+            Additional pools that might add or subtract from the supply, e.g. investors that are dumping tokens as they are vested
+            or a random burning mechanism. The default is [].
+        unit_of_time : str, optional
+            The unit of time The default is 'month'. This doesn't have any real effect on the simulations for now.
+        agent_pools : List[AgentPool], optional
+            The list of agent pools. The default is None.
+
+        Returns
+        -------
+        None
+
+        """        
+        
+        
+       
         
         super(TokenEconomy_Basic,self).__init__(holding_time=holding_time,supply=supply,fiat=fiat,token=token,
                                                 price_function=price_function, 
@@ -124,6 +159,25 @@ class TokenEconomy_Basic(TokenEconomy):
     
     
     def add_agent_pool(self,agent_pool:AgentPool)->bool:
+        """
+        
+
+        Parameters
+        ----------
+        agent_pool : AgentPool
+            The agent pool to be added. Appropriate tests are done.
+
+        Raises
+        ------
+        Exception
+            Raises an exception if the pool does not have the appropriate token name or is not using fiat (either/or).
+
+        Returns
+        -------
+        bool
+            True if the pool has been added successfully.
+
+        """
         
         if agent_pool.currency!=self.fiat:
             if np.logical_not(agent_pool.currency in self.tokens):
@@ -140,28 +194,55 @@ class TokenEconomy_Basic(TokenEconomy):
         
         return True
     
-    def add_supply_pool(self,supply_pool:SupplyController)->bool:
-  
-      
-        self._supply_pools.append(supply_pool)
-        
-        return True
-        
-    def add_supply_pools(self,supply_pools_list:List)->bool:
-        
-        for sup in supply_pools_list:
-            self.add_supply_pool(sup)
-            
-        return True
-        
-    
     def add_agent_pools(self,agent_pools_list:List)->bool:
+        """
+        Convenience function for adding multiple agent pools in one go.
+
+        Parameters
+        ----------
+        agent_pools_list : List
+
+        Returns
+        -------
+        bool
+            True if the pools were successfuly adeded.
+
+        """
         
         for ag in agent_pools_list:
             self.add_agent_pool(ag)
         
         return True
     
+    def add_supply_pool(self,supply_pool:SupplyController)->bool:
+        """
+        Adds a supply pool. By default, it's assumed that the supply pool is supplying the token of the 
+        token economy.
+        """
+        supply_pool.link(TokenEconomy,self)
+        self._supply_pools.append(supply_pool)
+        
+        return True
+        
+    def add_supply_pools(self,supply_pools_list:List)->bool:
+        """
+        Convenience function for adding multiple supply pools in one go.
+
+        Parameters
+        ----------
+        supply_pools_list : List
+
+        Returns
+        -------
+        bool
+            True if the pools were successfuly added.
+
+        """
+        
+        for sup in supply_pools_list:
+            self.add_supply_pool(sup)
+            
+        return True
     
     
     def test_integrity(self)->bool:
@@ -187,23 +268,60 @@ class TokenEconomy_Basic(TokenEconomy):
         return True
     
     def initialise(self)->None:
+        """
+        Initialises any agent pools that need to be initialised. These are pools that inherit from the Initialisable
+        class, and require initialisation in order to sort out their dependencies.
+        """
         for agent in self._agent_pools:
             if isinstance(agent,Initialisable):
                 agent.initialise()
         self.initialised=True
     
     def execute(self)->bool:
+        """
+        The main function which is used to simulate one round of the token economy.
+        
+        The order of operations is as follows:
+        
+        
+        1. Initialise and test integrity.
+        
+        2. Run the core supply controller.
+        
+        3. Run the rest of the supply pools. Supply pools add to the total supply. This means
+        that if a pool returns a negative value, then this can have the effect of reducing the total supply
+        
+        4. Run the holding time controller.
+        
+        5. Execute all agent pools. Calculate an effective transaction volume in fiat and tokens at each iteration.
+        Agent pools can also exevute with negative transaction volumes, lowering the price.
+        
+        6. Get the new number of users that each agent pool produces. Each agent pool can add users
+        to the total.
+        
+        7. Calculate the new price and the new holding time
+        
+        8. Store all the values generated in relevant store variables.
+        
+        Return True if executed successfully.
+        """
                     
+        
+        #First, we need to initialise any pools that have not been initialised, and then
+        #test the integrity of the token economy
         if not self.initialised:
             self.initialise()
         
         if not self.test_integrity():
             raise Exception('Integrity of pools not correct. Please make sure all agent pools have the correct dependencies.')
             
+        #These are the parameters which will be updated after this run of execute()
+        self.transactions_value_in_fiat=0
+        self.transactions_volume_in_tokens=0
         
+        #Run the core supply
         self._supply.execute()
         self.supply=self._supply.get_supply()
-        self.holding_time=self._holding_time_controller.get_holding_time()
 
         for supplypool in self._supply_pools:
             supplypool.execute()
@@ -214,9 +332,12 @@ class TokenEconomy_Basic(TokenEconomy):
             warnings.warn('Warning! Supply reached 0! Iteration number :'+str(self.iteration))
             return False
         
-        self.transactions_value_in_fiat=0
-        self.transactions_volume_in_tokens=0
+        
+        #Get the holding time
+        self.holding_time=self._holding_time_controller.get_holding_time()
+        
 
+        #Execute agent pools
         for agent in self._agent_pools:
             agent.execute()
             if agent.currency==self.token:
@@ -233,24 +354,25 @@ class TokenEconomy_Basic(TokenEconomy):
                 raise Exception('Agent pool found that does not function in neither fiat nor the token! Please specify correct currency!')
             self.num_users+=agent.get_num_users()
         
+        #Calculate price and the new holding time
+        self._price_function.execute()
+        self._holding_time_controller.execute()        
+        
+        #Store the parameters
+        self.price=self._price_function.get_price()
+
         self._holding_time_store.append(self.holding_time)
         self._num_users_store.append(self.num_users)
         self._supply_store.append(self.supply)
-
-        
-        self._price_function.execute()
-        self.price=self._price_function.get_price()
         
         #this is the holding time if we were simply feeding back the equation of exchange on the current
         #transaction volume in fiat and tokens
         #We add a small number to prevent division by 0
         self._effective_holding_time=self.price*self.supply/(self.transactions_value_in_fiat+0.000000001)
-        self._holding_time_controller.execute()
-
+             
         
         self._transactions_value_store_in_fiat.append(self.transactions_value_in_fiat)
         self._prices_store.append(self.price)
-        
         self._transactions_value_store_in_tokens.append(self.transactions_volume_in_tokens)
         
         self.iteration+=1
@@ -259,6 +381,9 @@ class TokenEconomy_Basic(TokenEconomy):
     
     
     def reset(self)->bool:
+        """
+        Resets all agent pools and sets the iteration counter to 0.
+        """
         
         for agent in self._agent_pools:
             agent.reset()
@@ -268,6 +393,11 @@ class TokenEconomy_Basic(TokenEconomy):
         return True
     
     def get_data(self)->pd.DataFrame:
+        """
+        Returns a data frame with all the important variables for each iteration.
+
+        """
+        
         
         df=pd.DataFrame({self.token+'_price':self._prices_store,'transactions_'+self.fiat:self._transactions_value_store_in_fiat,
                         'num_users':self._num_users_store,'iteration':np.arange(1,self.iteration+1),'holding_time':self._holding_time_store,
@@ -277,99 +407,15 @@ class TokenEconomy_Basic(TokenEconomy):
         df['transactions_'+self.token]=self._transactions_value_store_in_tokens
         return df
     
-    
-# class TokenEconomy_MultipleTokens(TokenEconomy_Basic):
-    
-#     """
-#     Basic token economy class. It is using the following assumptions
-    
-        
-#         1) There can be multiple agent pools whose transactions are denominated in fiat. They are independent.
-#         2) There can be multiple pools whose transactions are denominated in the token. If so, then the transaction value
-#     in fiat is calculated taking into account the current price.
-#         3) Agent pools always act independently.
-#         4) The holding time is an average across the whole ecosystem.        
-        
-#     """
-    
-#     def __init__(self,
-#                  holding_time:Union[float,HoldingTimeController],supply:Union[float,SupplyController,List[Union[float,SupplyController]]],
-#                  fiat:str='$',tokens:List[str]=['tokenA','tokenB'],price_function:PriceFunctionController=PriceFunction_EOE,
-#                  price_function_parameters:Dict={},
-#                  unit_of_time:str='month',initial_prices:List[float]=[0,0])->None:
-        
-#         super(TokenEconomy_MultipleTokens,self).__init__(holding_time=holding_time,supply=supply,fiat=fiat,
-#                                                 price_function=price_function, 
-#                                                 unit_of_time=unit_of_time,token=tokens)
-        
 
-#         self.tokens=tokens
-#         self._price_functions={}
-#         self.prices={}
-#         for count,token in enumerate(self.tokens):
-#             self._price_functions[token]=copy.deepcopy(price_function(**price_function_parameters))
-#             self._price_functions[token].link(TokenEconomy,self)
-#             self.prices[token]=initial_prices[count]  
-#             if type(supply[count])==float or type(supply[count])==int:
-#                 self._supply[token]=SupplyController_Constant(supply)
-#             else:
-#                 self._supply[token]=supply
-#             self.supply[token]=supply[count]
-            
-        
-#         return None
-    
-#     def execute(self)->bool:
-              
-#         if not self.test_integrity():
-#             raise Exception('Integrity of pools not correct. Please make sure all agent pools have the correct dependencies.')
-            
-#         self.num_users=0
-#         self.transactions_volume_in_tokens={}
-#         for tok in self.tokens:
-#             self.transactions_volume_in_tokens[tok]=0
-#             self.transactions_value_in_fiat[tok]=0
-        
-
-#         for agent in self._agent_pools:
-#             agent.execute()
-#             if agent.currency==self.fiat:
-#                 self.transactions_value_in_fiat+=agent.get_transactions()
-#             else:
-#                 for tok in self.tokens:
-#                     if agent.currency==tok:
-#                         self.transactions_volume_in_tokens[tok]+=agent.get_transactions()
-#                         self.transactions_value_in_fiat[tok]+=agent.get_transactions()*self.prices[tok]
-#             self.num_users+=agent.get_num_users()
-            
-#         self._num_users_store.append(self.num_users)
-            
-#         self._holding_time_controller.execute()
-#         self.holding_time=self._holding_time_controller.get_holding_time()
-        
-#         for tok in tokens:
-#             self._supply[tok].execute()
-#             self.supply[tok]=self._supply.get_supply()
-        
-#         for token in self.tokens:
-#             self._price_functions[token].execute()
-#             self.prices[token]=self._price_functions[token].get_price()
-        
-#         self._transactions_value_store_in_fiat.append(self.transactions_value_in_fiat)
-#         self._prices_store.append(self.price)
-        
-#         for tok in self.tokens:
-#             self._transactions_value_store_in_tokens[tok].append(self.transactions_volume_in_tokens[tok])
-        
-        
-
-                            
-        
-#         self.iteration+=1
-        
-#         return True
 
 class TokenMetaSimulator():
+    """
+    This is a class that can be used to perform multiple simulations with a TokenEconomy class
+    and then returns the results.
+    
+    
+    """
     
     
     def __init__(self,token_economy:TokenEconomy)->None:
@@ -378,11 +424,6 @@ class TokenMetaSimulator():
         self.repetitions=None
         
         self.unit_of_time=token_economy.unit_of_time
-        
-        
-    def get_stats(self,report_dataframe):
-        
-        pass
         
     def execute(self,iterations:int=36,repetitions=30)->pd.DataFrame:
         iteration_runs=[]
