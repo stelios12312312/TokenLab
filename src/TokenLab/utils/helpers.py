@@ -29,8 +29,8 @@ def log_saturated_space(start:int,stop:int,num:int):
 
 
 def generate_distribution_param_from_sequence(param_name:str,
-                                              function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space],
-                                              start:int,stop:int,num:int)->List[Dict]:
+                                              start:int,stop:int,num:int,
+                                              function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]=np.linspace)->List[Dict]:
     """
     Generates a list of dictionaries, by using a sequence function.
     

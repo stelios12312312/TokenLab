@@ -10,11 +10,14 @@ from typing import List, Dict,Union
 from baseclasses import *
 from utils.helpers import log_saturated_space
 import copy
+import scipy
+import warnings
+import time
 
 
 class UserGrowth(Controller):
     """
-    Base class that models user growth.
+    Base class that models user growth. Dependencies include AgentPool and TokenEconomy.
     """
     
     def __init__(self):
@@ -41,7 +44,10 @@ class UserGrowth(Controller):
         return self.num_users
     
     def reset(self)->None:
-        
+        """
+        Resets the iteration counter to 0.
+
+        """
         self.iteration=0
     
     
@@ -122,7 +128,7 @@ class UserGrowth_Spaced(UserGrowth):
     
     def reset(self)->None:
         """
-        recalcualates the noise component and sets the user counter back to 0
+        recalculates the noise component and sets the user counter back to 0
         """
         
         self._num_users_store=copy.deepcopy(self._num_users_store_original)
@@ -151,26 +157,91 @@ class UserGrowth_Spaced(UserGrowth):
         """
         
         return self._num_users_store
+    
+    
+    
         
+class UserGrowth_Constant(UserGrowth):
+    """
+    Simplest type of usergrowth class. The user growth simply stays constant.
+    """
+    
+    def __init__(self,constant:int):
+        """
         
+        Parameters
+        ----------
+        constant : int
+            The total number of users.
+
+        """
+        
+        super(UserGrowth_Constant,self).__init__()
+        self.num_users=constant        
     
     
       
 class UserGrowth_Stochastic(UserGrowth):
+    """
+    UserGrowth that simply samples a random value during each iteration.
+    
+    """
     
     
-    def __init__(self):
+    def __init__(self,user_growth_distribution:scipy.stats=scipy.stats.poisson,
+                 user_growth_dist_parameters:Union[List,Dict]=[{'mu':1000}],add_to_userbase:bool=False,
+                 num_initial_users:int=0):
+        """
+        
+
+        Parameters
+        ----------
+        user_growth_distribution : scipy.stats, optional
+            The distribution to sample values from. The default is scipy.stats.poisson.
+        
+        user_growth_dist_parameters : Union[List,Dict], optional
+            Either a list of dictionaries, or a dictionary. If a list is provided
+            then the parameters change at every iteration. The default is [{'mu':1000}].
+        
+        add_to_user_base : bool, optional 
+        If False, then the actual number of users is sampled from the distribution. If True,
+        then this number of users is added to the total number of users. Default is false.
+        
+        num_initial_users : int, optional
+        The number of initial users. Default is 0
+        """
+        
+        super(UserGrowth_Stochastic,self).__init__()
+
+        
+        self.user_growth_distribution=user_growth_distribution
+        self.user_growth_dist_parameters=user_growth_dist_parameters
+        self.num_users=num_initial_users
+        self.add_to_userbase=add_to_userbase
+        
         
         return None
     
     def execute(self):
+        seed=int(int(time.time())*np.random.rand())
+        if type(self.user_growth_dist_parameters)==list:
+            try:
+                params=self.user_growth_dist_parameters[self.iteration]
+            except:
+                warnings.warn("Iterations for UserGrowth stochastic exhausted. Simply using the last item on the list of parameters.")
+                params=self.user_growth_dist_parameters[-1]
+        else:
+            params=self.user_growth_dist_parameters
+            
+        self._active_params=params
+        value=self.user_growth_distribution.rvs(size=1,random_state=seed,**params)[0]
         
-        return None
-    
-    
-class UserGrowth_Constant(UserGrowth):
-    
-    def __init__(self,constant:int):
+        if self.add_to_userbase:
+            self.num_users+=value
+        else:
+            self.num_users=value
         
-        super(UserGrowth_Constant,self).__init__()
-        self.num_users=constant
+        self.iteration+=1
+        return self.num_users
+    
+    

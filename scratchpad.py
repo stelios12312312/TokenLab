@@ -29,20 +29,17 @@ HOLDING_TIME=HoldingTime_Adaptive(1)
 SUPPLY=10**7
 INITIAL_PRICE=1
 
-usm_fiat=UserGrowth_Spaced(100,54000,ITERATIONS,log_saturated_space)
+usm_fiat=UserGrowth_Stochastic(user_growth_distribution=scipy.stats.poisson,
+                               user_growth_dist_parameters={'mu':10000},add_to_userbase=True)
 
 ap_fiat=AgentPool_Basic(users_controller=usm_fiat,transactions_controller=1000,currency='$')
 
 investors=SupplyController_InvestorDumperSpaced(dumping_initial=100,dumping_final=1000000000,num_steps=ITERATIONS)
-investors._dumping_store_original.shape
 
-te=TokenEconomy_Basic(holding_time=HoldingTime_Stochastic(),supply=SUPPLY,
-                      price_function=PriceFunction_EOE,token='tokenA',
-                      price_function_parameters={'noise_addon':AddOn_RandomNoiseProportional(std_param=7)},
-                      initial_price=INITIAL_PRICE)
+te=TokenEconomy_Basic(holding_time=HOLDING_TIME,supply=SUPPLY,token='tokenA',initial_price=INITIAL_PRICE)
 
 te.add_agent_pools([ap_fiat])
-te.add_supply_pools([investors])
+
 meta=TokenMetaSimulator(te)
 meta.execute(iterations=ITERATIONS,repetitions=50)
 reps=meta.get_data()

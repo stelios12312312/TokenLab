@@ -18,7 +18,11 @@ import time
 
 class TransactionManagement(Controller):
     """
+    Abstract class.
+    
     Models transactions for individual agents, by modelling them as an aggregate.
+    
+    It requires the total number of users conducting those transactions.
     
     """
             
@@ -32,12 +36,31 @@ class TransactionManagement(Controller):
         pass
     
     
-    def execute(self,num_users):
+    def execute(self,dependency:str="AgentPool"):
+        """
+        
+
+        Parameters
+        ----------
+        dependency: The execute function of TransactionsManagement requires the user to define the 
+        dependency. Usually this is either AgentPool or TokenEconomy.
+        
+        This is where the number of users will be acquired from, when calculating the total transaction value.
+
+        Returns
+        -------
+        None.
+
+        """
         
         return None
     
     
     def reset(self)->None:
+        """
+        Sets the iteration counter to 0.
+
+        """
         
         self.iteration=0
         pass        
@@ -49,6 +72,10 @@ class TransactionManagement(Controller):
     
 class TransactionManagement_Constant(TransactionManagement):
     
+    """
+    TransactionManagement implementation where the total value per user stays the same.
+    """
+    
     def __init__(self,average_transaction_value:float):
         
         super(TransactionManagement_Constant,self).__init__()
@@ -59,9 +86,22 @@ class TransactionManagement_Constant(TransactionManagement):
         self.average_transaction_value=average_transaction_value
         
         
-    def execute(self,dependency="AgentPool")->float:
+    def execute(self,dependency:str="AgentPool")->float:
         """
-        dependency: Available options are either AgentPool or TokenEconomy
+        
+        
+        
+        Parameters
+        ----------
+        dependency:str: Available options are either AgentPool or TokenEconomy.
+        
+        The execute function of TransactionsManagement requires the user to define the 
+        dependency. Usually this is either AgentPool or TokenEconomy.
+        
+        This is where the number of users will be acquired from, when calculating the total transaction value.
+        
+        Final transaction value is simply num_users*constant (defined at class initialisation)
+        
         """
         
         if dependency=="AgentPool":
@@ -87,7 +127,11 @@ class TransactionManagement_Trend(TransactionManagement):
     """
     Creates a trend of transactions (increasing or decreasing), while also accepting noise add-ons.
     
-    It has a dependency on a UserGrowth class. To be used inside an agent pool.
+    It has a dependency on a UserGrowth class. To be used inside an agent pool. At execution it can read
+    either from the agent class or the token economy.
+    
+    So, it essentially functions like a constant tranction class, where the constant is either rising or
+    going down in a smooth way.
     
     
     Properties of interest:
@@ -100,6 +144,27 @@ class TransactionManagement_Trend(TransactionManagement):
     def __init__(self,average_transaction_initial:float, average_transaction_final:float,num_steps:int,
                  space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]=np.linspace,name:str=None,
                  noise_addon:AddOn=None):
+        """
+        
+
+        Parameters
+        ----------
+        average_transaction_initial : float
+            The initial transaction size.
+        average_transaction_final : float
+            The final transaction size.
+        num_steps : int
+            This should be equal to the number of iterations you want the simulation to run for.
+        space_function : Union[np.linspace,np.logspace,np.geomspace,log_saturated_space], optional
+            The function that will generate the steps. The default is np.linspace. Other options include np.geomspace
+            and log_saturated_space from the helpers module.
+        name : str, optional
+            The name of this controller. The default is None.
+        noise_addon : AddOn, optional
+            The default is None.
+
+
+        """
         
         self.dependencies={AgentPool:None}
 
@@ -129,9 +194,32 @@ class TransactionManagement_Trend(TransactionManagement):
         self._transactions_value_store=[]
         
         
-    def execute(self)->float:
+    def execute(self,dependency:str="AgentPool")->float:
+        """
         
-        num_users=self.dependencies[UserGrowth].get_num_users()
+        Parameters
+        ----------
+        dependency : str, optional
+            Where to read the number of users from. The default is "AgentPool".
+
+
+        Returns
+        -------
+        float
+            The total value of transactions.
+
+        """
+        
+        if dependency=="AgentPool":
+            dependency=AgentPool
+        elif dependency=="TokenEconomy":
+            dependency=TokenEconomy
+        else:
+            raise Exception('You must use either AgentPool or TokenEconomy')
+            
+        
+        num_users=self.dependencies[dependency]['num_users']
+        
         self.total_users=num_users
         
         self.transactions_value=num_users*self._transactions_means_store[self.iteration]
@@ -141,7 +229,15 @@ class TransactionManagement_Trend(TransactionManagement):
         return self.transactions_value   
 
         
-    def reset(self)->float:
+    def reset(self)->bool:
+        """
+        Sets the iterations counter to 0, and recalculates the effect of any
+        noise add-ons.
+
+        Returns
+        -------
+        True if reset was successful.
+        """
         
         self.iteration=0
         self._transactions_means_store=copy.deepcopy(self._transactions_means_store_original)
@@ -157,6 +253,8 @@ class TransactionManagement_Trend(TransactionManagement):
                     dummy.append(self._transactions_means_store_original[i])
         
             self._transactions_means_store=dummy
+            
+        return True
     
     
 class TransactionManagement_Stochastic(TransactionManagement):
@@ -284,8 +382,16 @@ class TransactionManagement_Stochastic(TransactionManagement):
         return None
     
     
-    def execute(self)->float:
-        num_users=self.dependencies[AgentPool].get_num_users()
+    def execute(self,dependency:str="AgentPool")->float:
+        if dependency=="AgentPool":
+            dependency=AgentPool
+        elif dependency=="TokenEconomy":
+            dependency=TokenEconomy
+        else:
+            raise Exception('You must use either AgentPool or TokenEconomy')
+        
+        
+        num_users=self.dependencies[dependency]['num_users']
         self.total_users=num_users
         
         #because activitiy_probabilities can be either an int or a list, we have to take into account both scenarios
