@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+<meta name="generator" content="pdoc 0.10.0" />
+<title>src.TokenLab.simulationcomponents.supplyclasses API documentation</title>
+<meta name="description" content="Created on Wed Nov 30 11:03:57 2022 …" />
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/typography.min.css" integrity="sha256-7l/o7C8jubJiy74VsKTidCy1yBkRtiUGbVkYBylBqUg=" crossorigin>
+<link rel="stylesheet preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/styles/github.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:30px;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:1em 0 .50em 0}h3{font-size:1.4em;margin:25px 0 10px 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .3s ease-in-out}a:hover{color:#e82}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900}pre code{background:#f8f8f8;font-size:.8em;line-height:1.4em}code{background:#f2f2f1;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{background:#f8f8f8;border:0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0;padding:1ex}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-weight:bold;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em .5em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.item .name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul{padding-left:1.5em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/highlight.min.js" integrity="sha256-Uv3H6lx7dJmRfRvH8TH6kJD1TSK1aFcwgx+mdg3epi8=" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => hljs.initHighlighting())</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>src.TokenLab.simulationcomponents.supplyclasses</code></h1>
+</header>
+<section id="section-intro">
+<p>Created on Wed Nov 30 11:03:57 2022</p>
+<p>@author: stylianoskampakis</p>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+&#34;&#34;&#34;
+Created on Wed Nov 30 11:03:57 2022
+
+@author: stylianoskampakis
+&#34;&#34;&#34;
+
+from typing import List, Dict,Union
+from baseclasses import *
+from utils.helpers import log_saturated_space
+import scipy
+from scipy import stats
+from scipy.stats import uniform
+import time
+import copy
+
+class SupplyController(Controller):
+    &#34;&#34;&#34;
+    Base class for other supply controllers.
+    &#34;&#34;&#34;
+
+    
+    def __init__(self):
+        super(SupplyController,self).__init__()
+        self.supply=None
+
+    def get_supply(self)-&gt;float:
+        
+        return self.supply
+    
+    def execute(self)-&gt;float:
+        
+        pass
+    
+class SupplyController_Constant(SupplyController):
+    &#34;&#34;&#34;
+    Most basic type of supply controller. Supply is simply constant 
+    and doesn&#39;t change.
+    &#34;&#34;&#34;
+    def __init__(self,supply:float):
+        &#34;&#34;&#34;
+        
+
+        Parameters
+        ----------
+        supply : float
+            The total supply.
+
+        Returns
+        -------
+        None.
+
+        &#34;&#34;&#34;
+        super(SupplyController_Constant,self).__init__()
+        self.supply=supply
+        
+        
+        
+class SupplyController_AdaptiveStochastic(SupplyController):
+    &#34;&#34;&#34;
+    More advanced supply class for simulations. It assumes that at every iteration, some of tokens purchased
+    are removed from circulation, and then a random % of them returns in the next iteration.
+    
+    Therefore, this class simulates total supply, but also circulating supply.
+    
+    This supply controller attaches itself to a TokenEconomy and reads from there directly
+    the transaction volume, the price and the holding time.
+    &#34;&#34;&#34;
+    
+    def __init__(self,
+                 removal_distribution:scipy.stats=uniform,removal_dist_parameters={&#39;loc&#39;:0,&#39;scale&#39;:0.1},
+                 addition_distribution:scipy.stats=uniform,addition_dist_parameters={&#39;loc&#39;:0,&#39;scale&#39;:0.05},
+                 return_negative=True
+                 ):
+        &#34;&#34;&#34;
+        
+
+        Parameters
+        ----------
+        removal_distribution : scipy.stats, optional
+             A scipy.stats distribution that determines how much % of the supply is removed and held off the market
+             at each iteration. The distribution must return numbers only in the range [0,1] or a subset of this range. 
+             This is used to simulate holders who are removing liquidity from the market. The default distribution is uniform.
+        removal_dist_parameters : Parameters for the removal distribution, optional
+            DESCRIPTION. The default is {&#39;loc&#39;:0,&#39;scale&#39;:0.1}.
+        addition_distribution : This performs the inverse function of the removal distribution. It simply takes
+        some of the assets removed, and gets them back in ciruculation.. scipy.stats, optional
+            . The default is uniform.
+        addition_dist_parameters : TYPE, optional
+            Parameters for the addition distribution. The default is {&#39;loc&#39;:0,&#39;scale&#39;:0.05}.
+        return_negative: If True, then the execute() function can return a negative number. This is interpreted 
+        as removing from the supply.
+
+        Returns
+        -------
+        None.
+
+        &#34;&#34;&#34;
+    
+
+        self.dependencies={TokenEconomy:None}
+        self.inactive_tokens=0
+        
+        self._removal_distribution=removal_distribution
+        self._removal_dist_parameters=removal_dist_parameters
+        
+        self._addition_distribution=addition_distribution
+        self._addition_dist_parameters=addition_dist_parameters
+                
+        self.return_negative=return_negative
+        self.supply=0
+        
+        
+    def execute(self)-&gt;None:
+        &#34;&#34;&#34;
+        
+        The function works as follows
+        
+        1. Read from the token economy the total purchases of tokens
+        2. Calculate the tokens that need to be removed
+        3. Calculate the tokens that need to be added.
+        4. If the the total supply ends up being less than 
+        
+
+        &#34;&#34;&#34;
+        tokeneconomy=self.dependencies[TokenEconomy]
+        purchases_in_tokens=tokeneconomy.transactions_volume_in_tokens*tokeneconomy.holding_time/tokeneconomy.price
+        
+        seed=int(int(time.time())*np.random.rand())
+        percentage_removal=self._removal_distribution.rvs(size=1,**self._removal_dist_parameters,random_state=seed)[0]
+        token_removal=purchases_in_tokens*percentage_removal
+        
+        self.inactive_tokens+=token_removal
+
+        
+        percentage_addition=self._addition_distribution.rvs(size=1,**self._addition_dist_parameters,random_state=seed)[0]
+        tokens_coming_back=self.inactive_tokens*percentage_addition
+        new_supply = self.supply + tokens_coming_back - token_removal
+        
+        if new_supply&lt;=0 and not self.return_negative:
+            new_supply=self.supply + tokens_coming_back
+        self.supply=new_supply
+        
+        
+        
+class SupplyController_InvestorDumperSpaced(SupplyController):
+    &#34;&#34;&#34;
+    Simulates an investor pool that is just dumping the coin in a predictable fashion. Supports noise addons.
+    &#34;&#34;&#34;
+    
+    def __init__(self,dumping_initial:float,dumping_final:float,num_steps:int,
+                 space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]=np.linspace,name:str=None,
+                 noise_addon:AddOn=None):
+        &#34;&#34;&#34;
+        
+
+        Parameters
+        ----------
+        dumping_initial : float
+            The initial number of tokens to be dumped.
+        dumping_final : float
+            DESCRIPTION.
+        num_steps : int
+            The number of iterations the simulation will go for.
+        space_function : Union[np.linspace,np.logspace,np.geomspace,log_saturated_space], optional
+            A function that will generate the sequence of supply points. The default is np.linspace.
+        name : str, optional
+            The name of this controller. The default is None.
+        noise_addon : AddOn, optional
+            Noise AddOn from the AddOns module. The default is None.
+
+        Returns
+        -------
+        None.
+
+        &#34;&#34;&#34;
+        
+        super(SupplyController_InvestorDumperSpaced,self).__init__()
+
+        self.num_steps=num_steps
+        self.space_function=space_function
+        self._noise_component=noise_addon
+        
+        self.name=name
+        
+        self._dumping_store_original=np.round(self.space_function(start=dumping_initial,stop=dumping_final,num=num_steps)).astype(int)
+        self._dumping_store=copy.deepcopy(self._dumping_store_original)
+        
+        #applies the noise addon. If a value is below 0, then it is kept at 0.
+        if self._noise_component!=None:
+            dummy=[]
+            for i in range(len(self._dumping_store)):
+                temporary= self._dumping_store_original[i]+ self._noise_component.apply(**{&#39;value&#39;:self._dumping_store_original[i]})
+                if temporary&gt;=0:
+                    dummy.append(temporary)
+                else:
+                    dummy.append(self._dumping_store_original[i])
+        
+            self._dumping_store=dummy
+        
+        self._dumped_tokens_store=[]
+        self.max_iterations=num_steps
+        self.iteration=0
+        
+            
+    def execute(self)-&gt;float:
+        &#34;&#34;&#34;
+        Simply executes the controller and updates the supply.
+
+        Returns
+        -------
+        float
+            The supply of tokens dumped.
+
+        &#34;&#34;&#34;
+        
+        self.dumping_number=self._dumping_store[self.iteration]
+        
+        self._dumped_tokens_store.append(self.dumping_number)
+        
+        self.supply=self.dumping_number
+        
+        self.iteration+=1
+        return self.dumping_number  
+        
+    def get_dumped_store(self):
+        
+        
+        return self._dumping_store
+    
+        
+        </code></pre>
+</details>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.supplyclasses.SupplyController"><code class="flex name class">
+<span>class <span class="ident">SupplyController</span></span>
+</code></dt>
+<dd>
+<div class="desc"><p>Base class for other supply controllers.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class SupplyController(Controller):
+    &#34;&#34;&#34;
+    Base class for other supply controllers.
+    &#34;&#34;&#34;
+
+    
+    def __init__(self):
+        super(SupplyController,self).__init__()
+        self.supply=None
+
+    def get_supply(self)-&gt;float:
+        
+        return self.supply
+    
+    def execute(self)-&gt;float:
+        
+        pass</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>baseclasses.Controller</li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_AdaptiveStochastic" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController_AdaptiveStochastic">SupplyController_AdaptiveStochastic</a></li>
+<li><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_Constant" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController_Constant">SupplyController_Constant</a></li>
+<li><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_InvestorDumperSpaced" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController_InvestorDumperSpaced">SupplyController_InvestorDumperSpaced</a></li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.supplyclasses.SupplyController.execute"><code class="name flex">
+<span>def <span class="ident">execute</span></span>(<span>self) ‑> float</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def execute(self)-&gt;float:
+    
+    pass</code></pre>
+</details>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.supplyclasses.SupplyController.get_supply"><code class="name flex">
+<span>def <span class="ident">get_supply</span></span>(<span>self) ‑> float</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_supply(self)-&gt;float:
+    
+    return self.supply</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_AdaptiveStochastic"><code class="flex name class">
+<span>class <span class="ident">SupplyController_AdaptiveStochastic</span></span>
+<span>(</span><span>removal_distribution: <module 'scipy.stats' from '/Users/stylianoskampakis/opt/anaconda3/envs/kalgera3/lib/python3.9/site-packages/scipy/stats/__init__.py'> = &lt;scipy.stats._continuous_distns.uniform_gen object&gt;, removal_dist_parameters={'loc': 0, 'scale': 0.1}, addition_distribution: <module 'scipy.stats' from '/Users/stylianoskampakis/opt/anaconda3/envs/kalgera3/lib/python3.9/site-packages/scipy/stats/__init__.py'> = &lt;scipy.stats._continuous_distns.uniform_gen object&gt;, addition_dist_parameters={'loc': 0, 'scale': 0.05}, return_negative=True)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>More advanced supply class for simulations. It assumes that at every iteration, some of tokens purchased
+are removed from circulation, and then a random % of them returns in the next iteration.</p>
+<p>Therefore, this class simulates total supply, but also circulating supply.</p>
+<p>This supply controller attaches itself to a TokenEconomy and reads from there directly
+the transaction volume, the price and the holding time.</p>
+<h2 id="parameters">Parameters</h2>
+<dl>
+<dt><strong><code>removal_distribution</code></strong> :&ensp;<code>scipy.stats</code>, optional</dt>
+<dd>A scipy.stats distribution that determines how much % of the supply is removed and held off the market
+at each iteration. The distribution must return numbers only in the range [0,1] or a subset of this range.
+This is used to simulate holders who are removing liquidity from the market. The default distribution is uniform.</dd>
+<dt><strong><code>removal_dist_parameters</code></strong> :&ensp;<code>Parameters for the removal distribution</code>, optional</dt>
+<dd>DESCRIPTION. The default is {'loc':0,'scale':0.1}.</dd>
+<dt><strong><code>addition_distribution</code></strong> :&ensp;<code>This performs the inverse function</code> of <code>the removal distribution. It simply takes</code></dt>
+<dd>&nbsp;</dd>
+<dt>some of the assets removed, and gets them back in ciruculation.. scipy.stats, optional</dt>
+<dt>. The default is uniform.</dt>
+<dt><strong><code>addition_dist_parameters</code></strong> :&ensp;<code>TYPE</code>, optional</dt>
+<dd>Parameters for the addition distribution. The default is {'loc':0,'scale':0.05}.</dd>
+<dt><strong><code>return_negative</code></strong> :&ensp;<code>If True, then the execute() function can return a negative number. This is interpreted </code></dt>
+<dd>&nbsp;</dd>
+</dl>
+<p>as removing from the supply.</p>
+<h2 id="returns">Returns</h2>
+<p>None.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class SupplyController_AdaptiveStochastic(SupplyController):
+    &#34;&#34;&#34;
+    More advanced supply class for simulations. It assumes that at every iteration, some of tokens purchased
+    are removed from circulation, and then a random % of them returns in the next iteration.
+    
+    Therefore, this class simulates total supply, but also circulating supply.
+    
+    This supply controller attaches itself to a TokenEconomy and reads from there directly
+    the transaction volume, the price and the holding time.
+    &#34;&#34;&#34;
+    
+    def __init__(self,
+                 removal_distribution:scipy.stats=uniform,removal_dist_parameters={&#39;loc&#39;:0,&#39;scale&#39;:0.1},
+                 addition_distribution:scipy.stats=uniform,addition_dist_parameters={&#39;loc&#39;:0,&#39;scale&#39;:0.05},
+                 return_negative=True
+                 ):
+        &#34;&#34;&#34;
+        
+
+        Parameters
+        ----------
+        removal_distribution : scipy.stats, optional
+             A scipy.stats distribution that determines how much % of the supply is removed and held off the market
+             at each iteration. The distribution must return numbers only in the range [0,1] or a subset of this range. 
+             This is used to simulate holders who are removing liquidity from the market. The default distribution is uniform.
+        removal_dist_parameters : Parameters for the removal distribution, optional
+            DESCRIPTION. The default is {&#39;loc&#39;:0,&#39;scale&#39;:0.1}.
+        addition_distribution : This performs the inverse function of the removal distribution. It simply takes
+        some of the assets removed, and gets them back in ciruculation.. scipy.stats, optional
+            . The default is uniform.
+        addition_dist_parameters : TYPE, optional
+            Parameters for the addition distribution. The default is {&#39;loc&#39;:0,&#39;scale&#39;:0.05}.
+        return_negative: If True, then the execute() function can return a negative number. This is interpreted 
+        as removing from the supply.
+
+        Returns
+        -------
+        None.
+
+        &#34;&#34;&#34;
+    
+
+        self.dependencies={TokenEconomy:None}
+        self.inactive_tokens=0
+        
+        self._removal_distribution=removal_distribution
+        self._removal_dist_parameters=removal_dist_parameters
+        
+        self._addition_distribution=addition_distribution
+        self._addition_dist_parameters=addition_dist_parameters
+                
+        self.return_negative=return_negative
+        self.supply=0
+        
+        
+    def execute(self)-&gt;None:
+        &#34;&#34;&#34;
+        
+        The function works as follows
+        
+        1. Read from the token economy the total purchases of tokens
+        2. Calculate the tokens that need to be removed
+        3. Calculate the tokens that need to be added.
+        4. If the the total supply ends up being less than 
+        
+
+        &#34;&#34;&#34;
+        tokeneconomy=self.dependencies[TokenEconomy]
+        purchases_in_tokens=tokeneconomy.transactions_volume_in_tokens*tokeneconomy.holding_time/tokeneconomy.price
+        
+        seed=int(int(time.time())*np.random.rand())
+        percentage_removal=self._removal_distribution.rvs(size=1,**self._removal_dist_parameters,random_state=seed)[0]
+        token_removal=purchases_in_tokens*percentage_removal
+        
+        self.inactive_tokens+=token_removal
+
+        
+        percentage_addition=self._addition_distribution.rvs(size=1,**self._addition_dist_parameters,random_state=seed)[0]
+        tokens_coming_back=self.inactive_tokens*percentage_addition
+        new_supply = self.supply + tokens_coming_back - token_removal
+        
+        if new_supply&lt;=0 and not self.return_negative:
+            new_supply=self.supply + tokens_coming_back
+        self.supply=new_supply</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController">SupplyController</a></li>
+<li>baseclasses.Controller</li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_AdaptiveStochastic.execute"><code class="name flex">
+<span>def <span class="ident">execute</span></span>(<span>self) ‑> None</span>
+</code></dt>
+<dd>
+<div class="desc"><p>The function works as follows</p>
+<ol>
+<li>Read from the token economy the total purchases of tokens</li>
+<li>Calculate the tokens that need to be removed</li>
+<li>Calculate the tokens that need to be added.</li>
+<li>If the the total supply ends up being less than</li>
+</ol></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def execute(self)-&gt;None:
+    &#34;&#34;&#34;
+    
+    The function works as follows
+    
+    1. Read from the token economy the total purchases of tokens
+    2. Calculate the tokens that need to be removed
+    3. Calculate the tokens that need to be added.
+    4. If the the total supply ends up being less than 
+    
+
+    &#34;&#34;&#34;
+    tokeneconomy=self.dependencies[TokenEconomy]
+    purchases_in_tokens=tokeneconomy.transactions_volume_in_tokens*tokeneconomy.holding_time/tokeneconomy.price
+    
+    seed=int(int(time.time())*np.random.rand())
+    percentage_removal=self._removal_distribution.rvs(size=1,**self._removal_dist_parameters,random_state=seed)[0]
+    token_removal=purchases_in_tokens*percentage_removal
+    
+    self.inactive_tokens+=token_removal
+
+    
+    percentage_addition=self._addition_distribution.rvs(size=1,**self._addition_dist_parameters,random_state=seed)[0]
+    tokens_coming_back=self.inactive_tokens*percentage_addition
+    new_supply = self.supply + tokens_coming_back - token_removal
+    
+    if new_supply&lt;=0 and not self.return_negative:
+        new_supply=self.supply + tokens_coming_back
+    self.supply=new_supply</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_Constant"><code class="flex name class">
+<span>class <span class="ident">SupplyController_Constant</span></span>
+<span>(</span><span>supply: float)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Most basic type of supply controller. Supply is simply constant
+and doesn't change.</p>
+<h2 id="parameters">Parameters</h2>
+<dl>
+<dt><strong><code>supply</code></strong> :&ensp;<code>float</code></dt>
+<dd>The total supply.</dd>
+</dl>
+<h2 id="returns">Returns</h2>
+<p>None.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class SupplyController_Constant(SupplyController):
+    &#34;&#34;&#34;
+    Most basic type of supply controller. Supply is simply constant 
+    and doesn&#39;t change.
+    &#34;&#34;&#34;
+    def __init__(self,supply:float):
+        &#34;&#34;&#34;
+        
+
+        Parameters
+        ----------
+        supply : float
+            The total supply.
+
+        Returns
+        -------
+        None.
+
+        &#34;&#34;&#34;
+        super(SupplyController_Constant,self).__init__()
+        self.supply=supply</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController">SupplyController</a></li>
+<li>baseclasses.Controller</li>
+</ul>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_InvestorDumperSpaced"><code class="flex name class">
+<span>class <span class="ident">SupplyController_InvestorDumperSpaced</span></span>
+<span>(</span><span>dumping_initial: float, dumping_final: float, num_steps: int, space_function: Union[linspace, logspace, geomspace, log_saturated_space] = &lt;function linspace&gt;, name: str = None, noise_addon: baseclasses.AddOn = None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Simulates an investor pool that is just dumping the coin in a predictable fashion. Supports noise addons.</p>
+<h2 id="parameters">Parameters</h2>
+<dl>
+<dt><strong><code>dumping_initial</code></strong> :&ensp;<code>float</code></dt>
+<dd>The initial number of tokens to be dumped.</dd>
+<dt><strong><code>dumping_final</code></strong> :&ensp;<code>float</code></dt>
+<dd>DESCRIPTION.</dd>
+<dt><strong><code>num_steps</code></strong> :&ensp;<code>int</code></dt>
+<dd>The number of iterations the simulation will go for.</dd>
+<dt><strong><code>space_function</code></strong> :&ensp;<code>Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]</code>, optional</dt>
+<dd>A function that will generate the sequence of supply points. The default is np.linspace.</dd>
+<dt><strong><code>name</code></strong> :&ensp;<code>str</code>, optional</dt>
+<dd>The name of this controller. The default is None.</dd>
+<dt><strong><code>noise_addon</code></strong> :&ensp;<code>AddOn</code>, optional</dt>
+<dd>Noise AddOn from the AddOns module. The default is None.</dd>
+</dl>
+<h2 id="returns">Returns</h2>
+<p>None.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class SupplyController_InvestorDumperSpaced(SupplyController):
+    &#34;&#34;&#34;
+    Simulates an investor pool that is just dumping the coin in a predictable fashion. Supports noise addons.
+    &#34;&#34;&#34;
+    
+    def __init__(self,dumping_initial:float,dumping_final:float,num_steps:int,
+                 space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]=np.linspace,name:str=None,
+                 noise_addon:AddOn=None):
+        &#34;&#34;&#34;
+        
+
+        Parameters
+        ----------
+        dumping_initial : float
+            The initial number of tokens to be dumped.
+        dumping_final : float
+            DESCRIPTION.
+        num_steps : int
+            The number of iterations the simulation will go for.
+        space_function : Union[np.linspace,np.logspace,np.geomspace,log_saturated_space], optional
+            A function that will generate the sequence of supply points. The default is np.linspace.
+        name : str, optional
+            The name of this controller. The default is None.
+        noise_addon : AddOn, optional
+            Noise AddOn from the AddOns module. The default is None.
+
+        Returns
+        -------
+        None.
+
+        &#34;&#34;&#34;
+        
+        super(SupplyController_InvestorDumperSpaced,self).__init__()
+
+        self.num_steps=num_steps
+        self.space_function=space_function
+        self._noise_component=noise_addon
+        
+        self.name=name
+        
+        self._dumping_store_original=np.round(self.space_function(start=dumping_initial,stop=dumping_final,num=num_steps)).astype(int)
+        self._dumping_store=copy.deepcopy(self._dumping_store_original)
+        
+        #applies the noise addon. If a value is below 0, then it is kept at 0.
+        if self._noise_component!=None:
+            dummy=[]
+            for i in range(len(self._dumping_store)):
+                temporary= self._dumping_store_original[i]+ self._noise_component.apply(**{&#39;value&#39;:self._dumping_store_original[i]})
+                if temporary&gt;=0:
+                    dummy.append(temporary)
+                else:
+                    dummy.append(self._dumping_store_original[i])
+        
+            self._dumping_store=dummy
+        
+        self._dumped_tokens_store=[]
+        self.max_iterations=num_steps
+        self.iteration=0
+        
+            
+    def execute(self)-&gt;float:
+        &#34;&#34;&#34;
+        Simply executes the controller and updates the supply.
+
+        Returns
+        -------
+        float
+            The supply of tokens dumped.
+
+        &#34;&#34;&#34;
+        
+        self.dumping_number=self._dumping_store[self.iteration]
+        
+        self._dumped_tokens_store.append(self.dumping_number)
+        
+        self.supply=self.dumping_number
+        
+        self.iteration+=1
+        return self.dumping_number  
+        
+    def get_dumped_store(self):
+        
+        
+        return self._dumping_store</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController">SupplyController</a></li>
+<li>baseclasses.Controller</li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_InvestorDumperSpaced.execute"><code class="name flex">
+<span>def <span class="ident">execute</span></span>(<span>self) ‑> float</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Simply executes the controller and updates the supply.</p>
+<h2 id="returns">Returns</h2>
+<dl>
+<dt><code>float</code></dt>
+<dd>The supply of tokens dumped.</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def execute(self)-&gt;float:
+    &#34;&#34;&#34;
+    Simply executes the controller and updates the supply.
+
+    Returns
+    -------
+    float
+        The supply of tokens dumped.
+
+    &#34;&#34;&#34;
+    
+    self.dumping_number=self._dumping_store[self.iteration]
+    
+    self._dumped_tokens_store.append(self.dumping_number)
+    
+    self.supply=self.dumping_number
+    
+    self.iteration+=1
+    return self.dumping_number  </code></pre>
+</details>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_InvestorDumperSpaced.get_dumped_store"><code class="name flex">
+<span>def <span class="ident">get_dumped_store</span></span>(<span>self)</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_dumped_store(self):
+    
+    
+    return self._dumping_store</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<h1>Index</h1>
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="src.TokenLab.simulationcomponents" href="index.html">src.TokenLab.simulationcomponents</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController">SupplyController</a></code></h4>
+<ul class="">
+<li><code><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController.execute" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController.execute">execute</a></code></li>
+<li><code><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController.get_supply" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController.get_supply">get_supply</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_AdaptiveStochastic" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController_AdaptiveStochastic">SupplyController_AdaptiveStochastic</a></code></h4>
+<ul class="">
+<li><code><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_AdaptiveStochastic.execute" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController_AdaptiveStochastic.execute">execute</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_Constant" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController_Constant">SupplyController_Constant</a></code></h4>
+</li>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_InvestorDumperSpaced" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController_InvestorDumperSpaced">SupplyController_InvestorDumperSpaced</a></code></h4>
+<ul class="">
+<li><code><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_InvestorDumperSpaced.execute" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController_InvestorDumperSpaced.execute">execute</a></code></li>
+<li><code><a title="src.TokenLab.simulationcomponents.supplyclasses.SupplyController_InvestorDumperSpaced.get_dumped_store" href="#src.TokenLab.simulationcomponents.supplyclasses.SupplyController_InvestorDumperSpaced.get_dumped_store">get_dumped_store</a></code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc" title="pdoc: Python API documentation generator"><cite>pdoc</cite> 0.10.0</a>.</p>
+</footer>
+</body>
+</html>

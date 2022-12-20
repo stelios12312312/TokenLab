@@ -9,13 +9,14 @@ Created on Mon Dec  5 19:52:42 2022
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
+from typing import List
 
 
-def stepwise_selection(X[List], y[List], 
-                       initial_list[List[str]]=[], 
-                       threshold_in[float]=0.001, 
-                       threshold_out[float] = 0.05, 
-                       verbose[Bool]=True,square[Bool]=False):
+def stepwise_selection(X:[List], y:[List], 
+                       initial_list:[List[str]]=[], 
+                       threshold_in:[float]=0.001, 
+                       threshold_out:[float] = 0.05, 
+                       verbose:[bool]=True,square:[bool]=False):
     """ Perform a forward-backward feature selection 
     based on p-value from statsmodels.api.OLS
     

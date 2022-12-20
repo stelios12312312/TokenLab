@@ -1,0 +1,1327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+<meta name="generator" content="pdoc 0.10.0" />
+<title>src.TokenLab.simulationcomponents.transactionclasses API documentation</title>
+<meta name="description" content="Created on Fri Nov 18 12:19:09 2022 …" />
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/typography.min.css" integrity="sha256-7l/o7C8jubJiy74VsKTidCy1yBkRtiUGbVkYBylBqUg=" crossorigin>
+<link rel="stylesheet preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/styles/github.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:30px;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:1em 0 .50em 0}h3{font-size:1.4em;margin:25px 0 10px 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .3s ease-in-out}a:hover{color:#e82}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900}pre code{background:#f8f8f8;font-size:.8em;line-height:1.4em}code{background:#f2f2f1;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{background:#f8f8f8;border:0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0;padding:1ex}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-weight:bold;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em .5em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.item .name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul{padding-left:1.5em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/highlight.min.js" integrity="sha256-Uv3H6lx7dJmRfRvH8TH6kJD1TSK1aFcwgx+mdg3epi8=" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => hljs.initHighlighting())</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>src.TokenLab.simulationcomponents.transactionclasses</code></h1>
+</header>
+<section id="section-intro">
+<p>Created on Fri Nov 18 12:19:09 2022</p>
+<p>@author: stylianoskampakis</p>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+&#34;&#34;&#34;
+Created on Fri Nov 18 12:19:09 2022
+
+@author: stylianoskampakis
+&#34;&#34;&#34;
+from baseclasses import *
+from typing import List, Dict,Union
+from usergrowthclasses import UserGrowth
+import scipy
+from scipy.stats import binom,norm,poisson
+import numpy as np
+from utils.helpers import log_saturated_space
+import copy
+import time
+
+
+class TransactionManagement(Controller):
+    &#34;&#34;&#34;
+    Abstract class.
+    
+    Models transactions for individual agents, by modelling them as an aggregate.
+    
+    It requires the total number of users conducting those transactions.
+    
+    &#34;&#34;&#34;
+            
+    
+    def __init__(self):
+        super(TransactionManagement,self).__init__()
+        self.dependencies={AgentPool:None,TokenEconomy:None}
+        self.transactions_value=None
+        #keeps a record of transactions across all iterations
+        self._transactions_value_store=[]
+        pass
+    
+    
+    def execute(self,dependency:str=&#34;AgentPool&#34;):
+        &#34;&#34;&#34;
+        
+
+        Parameters
+        ----------
+        dependency: The execute function of TransactionsManagement requires the user to define the 
+        dependency. Usually this is either AgentPool or TokenEconomy.
+        
+        This is where the number of users will be acquired from, when calculating the total transaction value.
+
+        Returns
+        -------
+        None.
+
+        &#34;&#34;&#34;
+        
+        return None
+    
+    
+    def reset(self)-&gt;None:
+        &#34;&#34;&#34;
+        Sets the iteration counter to 0.
+
+        &#34;&#34;&#34;
+        
+        self.iteration=0
+        pass        
+    
+    
+    def get_transactions(self)-&gt;List:
+        
+        return self.transactions_value
+    
+class TransactionManagement_Constant(TransactionManagement):
+    
+    &#34;&#34;&#34;
+    TransactionManagement implementation where the total value per user stays the same.
+    &#34;&#34;&#34;
+    
+    def __init__(self,average_transaction_value:float):
+        
+        super(TransactionManagement_Constant,self).__init__()
+        
+        #if average_transaction_value&lt;0:
+        #    raise Exception(&#39;Average transaction value cannot be negative&#39;)
+            
+        self.average_transaction_value=average_transaction_value
+        
+        
+    def execute(self,dependency:str=&#34;AgentPool&#34;)-&gt;float:
+        &#34;&#34;&#34;
+        
+        
+        
+        Parameters
+        ----------
+        dependency:str: Available options are either AgentPool or TokenEconomy.
+        
+        The execute function of TransactionsManagement requires the user to define the 
+        dependency. Usually this is either AgentPool or TokenEconomy.
+        
+        This is where the number of users will be acquired from, when calculating the total transaction value.
+        
+        Final transaction value is simply num_users*constant (defined at class initialisation)
+        
+        &#34;&#34;&#34;
+        
+        if dependency==&#34;AgentPool&#34;:
+            dependency=AgentPool
+        elif dependency==&#34;TokenEconomy&#34;:
+            dependency=TokenEconomy
+        else:
+            raise Exception(&#39;You must use either AgentPool or TokenEconomy&#39;)
+            
+        
+        num_users=self.dependencies[dependency][&#39;num_users&#39;]
+        self.total_users=num_users
+        
+        self.transactions_value=num_users*self.average_transaction_value
+        
+        self._transactions_value_store.append(self.transactions_value)
+        self.iteration+=1
+        return self.transactions_value
+
+        
+
+class TransactionManagement_Trend(TransactionManagement):
+    &#34;&#34;&#34;
+    Creates a trend of transactions (increasing or decreasing), while also accepting noise add-ons.
+    
+    It has a dependency on a UserGrowth class. To be used inside an agent pool. At execution it can read
+    either from the agent class or the token economy.
+    
+    So, it essentially functions like a constant tranction class, where the constant is either rising or
+    going down in a smooth way.
+    
+    
+    Properties of interest:
+        
+    _transactions_means_store: The average transaction size for a given iteration
+    _transactions_value_store: The actual value of the transaction
+    
+    &#34;&#34;&#34;
+    
+    def __init__(self,average_transaction_initial:float, average_transaction_final:float,num_steps:int,
+                 space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]=np.linspace,name:str=None,
+                 noise_addon:AddOn=None):
+        &#34;&#34;&#34;
+        
+
+        Parameters
+        ----------
+        average_transaction_initial : float
+            The initial transaction size.
+        average_transaction_final : float
+            The final transaction size.
+        num_steps : int
+            This should be equal to the number of iterations you want the simulation to run for.
+        space_function : Union[np.linspace,np.logspace,np.geomspace,log_saturated_space], optional
+            The function that will generate the steps. The default is np.linspace. Other options include np.geomspace
+            and log_saturated_space from the helpers module.
+        name : str, optional
+            The name of this controller. The default is None.
+        noise_addon : AddOn, optional
+            The default is None.
+
+
+        &#34;&#34;&#34;
+        
+        self.dependencies={AgentPool:None}
+
+        
+        self.num_steps=num_steps
+        self.space_function=space_function
+        self._noise_component=noise_addon
+        
+        self.name=name
+        
+        self._transactions_means_store_original=np.round(self.space_function(start=average_transaction_initial,stop=average_transaction_final,num=num_steps)).astype(int)
+        self._transactions_means_store=copy.deepcopy(self._transactions_means_store_original)
+        
+        #applies the noise addon. If a value is below 0, then it is kept at 0.
+        if self._noise_component!=None:
+            dummy=[]
+            for i in range(len(self._transactions_means_store)):
+                temporary= self._transactions_means_store_original[i]+ self._noise_component.apply(**{&#39;value&#39;:self._transactions_means_store_original[i]})
+                if temporary&gt;=0:
+                    dummy.append(temporary)
+                else:
+                    dummy.append(self._transactions_means_store_original[i])
+        
+            self._transactions_means_store=dummy
+        
+        self.max_iterations=num_steps
+        self._transactions_value_store=[]
+        
+        
+    def execute(self,dependency:str=&#34;AgentPool&#34;)-&gt;float:
+        &#34;&#34;&#34;
+        
+        Parameters
+        ----------
+        dependency : str, optional
+            Where to read the number of users from. The default is &#34;AgentPool&#34;.
+
+
+        Returns
+        -------
+        float
+            The total value of transactions.
+
+        &#34;&#34;&#34;
+        
+        if dependency==&#34;AgentPool&#34;:
+            dependency=AgentPool
+        elif dependency==&#34;TokenEconomy&#34;:
+            dependency=TokenEconomy
+        else:
+            raise Exception(&#39;You must use either AgentPool or TokenEconomy&#39;)
+            
+        
+        num_users=self.dependencies[dependency][&#39;num_users&#39;]
+        
+        self.total_users=num_users
+        
+        self.transactions_value=num_users*self._transactions_means_store[self.iteration]
+        
+        self._transactions_value_store.append(self.transactions_value)
+        self.iteration+=1
+        return self.transactions_value   
+
+        
+    def reset(self)-&gt;bool:
+        &#34;&#34;&#34;
+        Sets the iterations counter to 0, and recalculates the effect of any
+        noise add-ons.
+
+        Returns
+        -------
+        True if reset was successful.
+        &#34;&#34;&#34;
+        
+        self.iteration=0
+        self._transactions_means_store=copy.deepcopy(self._transactions_means_store_original)
+        
+        #applies the noise addon. If a value is below 0, then it is kept at 0.
+        if self._noise_component!=None:
+            dummy=[]
+            for i in range(len(self._transactions_means_store)):
+                temporary= self._transactions_means_store_original[i]+ self._noise_component.apply(**{&#39;value&#39;:self._transactions_means_store_original[i]})
+                if temporary&gt;=0:
+                    dummy.append(temporary)
+                else:
+                    dummy.append(self._transactions_means_store_original[i])
+        
+            self._transactions_means_store=dummy
+            
+        return True
+    
+    
+class TransactionManagement_Stochastic(TransactionManagement):
+    &#34;&#34;&#34;
+    Users a simple binomial distribution to model the number of active users.
+    
+    Uses the normal distribution to simulate the transaction value.
+    
+    So, at each iteration the execute() function does the following
+    
+    1) Uses the binomial distribution to simulate the number of active users.
+    2) Uses the value_mean parameter and the value_std to calculate the average value of transactions.
+    3) Uses 1 and 2 to get an estimate of the total value.
+    
+    
+    
+    Dependent class: The execute() argument is reading from a UserGrowth class that provides
+    the current number of users
+    
+    
+    &#34;&#34;&#34;
+
+
+
+    def __init__(self,
+                 value_per_transaction:float=None,
+                 transactions_per_user:Union[int,list[int]]=None,
+                 value_distribution:scipy.stats=norm,transactions_distribution:scipy.stats=poisson,
+                 value_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={&#39;loc&#39;:10,&#39;scale&#39;:100},
+                 transactions_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={&#39;mu&#39;:5},name:str=None,
+                 activity_probs:Union[float,list[float]]=1,type_transaction:str=&#39;positive&#39;)-&gt;None:
+        
+        &#34;&#34;&#34;
+        activity_probs: This is either a float or a list of floats, and determines the parameter p of the binomial
+        distribution
+        
+        value_per_transaction: If this is set, then the value per transaction is fixed, and overrides the distribution. Otherwise,
+        leave to None.
+        
+        transactions_per_user: If this is set, then the number of transactions is fixed, and overrides the distribution. Otherwise, 
+        leave to None.
+        
+        value_dist_parameters: Parameters for the value distribution. This can also be a list of dictionaries, where each dictionary
+        within the list is a set of parameters. The values inside the dictionary must use the keys &#39;loc&#39; and &#39;scale&#39;.
+        
+        value_distribution: by default this is the normal distribution, but any scipy distribution 
+         is supported.
+        
+        transactions_distribution: uses a distribution to model the number of transactions per user. By default
+        this is a Poisson distribution
+        
+        transactions_dist_parameters: Parameters for the transaction distribution. This can also be a list of dictionaries, where each dictionary
+        within the list is a set of parameters.
+        
+        type_transaction: positive (positive transactions only), negative or mixed. It is positive by default
+        
+        
+        The value at each iteration of execution is sampled from the value distribution (if the distribution is set)
+        
+        The final equation is using the following formulas when value distribution is active:
+            
+        total value = distribution(loc,scale)
+        a) loc = num_active_users*num_transactions*value_per_transaction(or loc parameter)
+        b) scale = scale 
+    
+        If the value distribution is absent, and a value_per_transaction is defined instead, then
+        the formula becomes:
+            
+        total value = val_mean*self.active_users*trans
+        
+        NOTE: Average transactions per user can never be below 0. If 0 (due to random sampling) then it&#39;s set to 1
+        
+        
+        &#34;&#34;&#34;
+        super(TransactionManagement_Stochastic,self).__init__()
+        self.name=name
+
+        self.active_users=0
+        self.total_users=0
+        self._transactions_value_store=[]
+        
+        self.dependencies={AgentPool:None}
+        
+        self.activity_probabilities=activity_probs
+        
+        
+        self.transactions_distribution=transactions_distribution
+        self.transactions_per_user=transactions_per_user
+        self.transaction_dist_parameters=transactions_dist_parameters
+
+        
+        self.value_distribution=value_distribution
+        self.value_per_transaction=value_per_transaction
+        self.value_dist_parameters=value_dist_parameters
+        
+        if type_transaction not in [&#39;positive&#39;,&#39;negative&#39;,&#39;mix&#39;]:
+            raise Exception (&#39;You must define a type_transaction as positive, negative or mixed&#39;)
+        
+        self.type_transaction=type_transaction
+        
+        if value_per_transaction==None and value_dist_parameters==None:
+            raise Exception(&#39;You need to define at least value per transaction or value_dist_parameters&#39;)
+            
+        if transactions_per_user==None and transactions_dist_parameters==None:
+            raise Exception(&#39;You need to define at least transaction_per_user or transaction_dist_parameters&#39;)
+        
+        
+        #sanity test, all lists should be the same length
+        lengths=[]
+        if isinstance(self.value_dist_parameters,(list,np.ndarray)):
+            self.max_iterations=len(self.value_dist_parameters)
+            lengths.append(len(self.value_dist_parameters))
+        
+        if isinstance(self.transaction_dist_parameters,(list,np.ndarray)):
+            self.max_iterations=len(self.transaction_dist_parameters)
+            lengths.append(len(self.transaction_dist_parameters))
+            
+        if isinstance(self.activity_probabilities,(list,np.ndarray)):
+            self.max_iterations=len(self.activity_probabilities)
+            lengths.append(len(self.activity_probabilities))
+            
+        if len(set(lengths))&gt;1:
+            raise Exception(&#39;When supplying lists as arguments, they should all have the same length.&#39;)
+
+        return None
+    
+    
+    def execute(self,dependency:str=&#34;AgentPool&#34;)-&gt;float:
+        if dependency==&#34;AgentPool&#34;:
+            dependency=AgentPool
+        elif dependency==&#34;TokenEconomy&#34;:
+            dependency=TokenEconomy
+        else:
+            raise Exception(&#39;You must use either AgentPool or TokenEconomy&#39;)
+        
+        
+        num_users=self.dependencies[dependency][&#39;num_users&#39;]
+        self.total_users=num_users
+        
+        #because activitiy_probabilities can be either an int or a list, we have to take into account both scenarios
+        if isinstance(self.activity_probabilities,(list,np.ndarray)):
+            act=self.activity_probabilities[self.iteration]
+        else:
+            act=self.activity_probabilities
+            
+        seed=int(int(time.time())*np.random.rand())
+        self.active_users=binom.rvs(int(num_users),act,random_state=seed)
+            
+            
+        if isinstance(self.transaction_dist_parameters,(list,np.ndarray)):
+            trans_param=self.transaction_dist_parameters[self.iteration] 
+        else:
+            trans_param=self.transaction_dist_parameters
+            
+            
+        if self.transactions_per_user is None:
+            seed=int(int(time.time())*np.random.rand())
+            trans=self.transactions_distribution.rvs(size=1,**trans_param,random_state=seed)[0]
+            if trans&lt;=0:
+                trans=1
+        else:
+            trans=self.transactions_per_user
+            
+        self.num_transactions=trans
+            
+        
+        if isinstance(self.value_dist_parameters,(list,np.ndarray)):
+            val_param=self.value_dist_parameters[self.iteration]
+        else:
+            val_param=self.value_dist_parameters
+        
+        if self.value_per_transaction is None:
+            seed=int(int(time.time())*np.random.rand())
+            value_mean=self.value_distribution.rvs(size=1,loc=val_param[&#39;loc&#39;]*self.active_users*trans,scale=val_param[&#39;scale&#39;],random_state=seed)[0]
+        else:
+            value_mean=self.value_per_transaction*self.active_users*trans
+            
+        #transaction value can never be negative
+        if value_mean&lt;0 and self.type_transaction==&#39;positive&#39;:
+            value_mean=0
+        elif value_mean&gt;0 and self.type_transaction==&#39;negative&#39;:
+            value_mean=0
+            
+        
+        self.transactions_value=value_mean
+        
+        self._transactions_value_store.append(value_mean)
+        self.iteration+=1
+        return self.transactions_value        
+        </code></pre>
+</details>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement"><code class="flex name class">
+<span>class <span class="ident">TransactionManagement</span></span>
+</code></dt>
+<dd>
+<div class="desc"><p>Abstract class.</p>
+<p>Models transactions for individual agents, by modelling them as an aggregate.</p>
+<p>It requires the total number of users conducting those transactions.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class TransactionManagement(Controller):
+    &#34;&#34;&#34;
+    Abstract class.
+    
+    Models transactions for individual agents, by modelling them as an aggregate.
+    
+    It requires the total number of users conducting those transactions.
+    
+    &#34;&#34;&#34;
+            
+    
+    def __init__(self):
+        super(TransactionManagement,self).__init__()
+        self.dependencies={AgentPool:None,TokenEconomy:None}
+        self.transactions_value=None
+        #keeps a record of transactions across all iterations
+        self._transactions_value_store=[]
+        pass
+    
+    
+    def execute(self,dependency:str=&#34;AgentPool&#34;):
+        &#34;&#34;&#34;
+        
+
+        Parameters
+        ----------
+        dependency: The execute function of TransactionsManagement requires the user to define the 
+        dependency. Usually this is either AgentPool or TokenEconomy.
+        
+        This is where the number of users will be acquired from, when calculating the total transaction value.
+
+        Returns
+        -------
+        None.
+
+        &#34;&#34;&#34;
+        
+        return None
+    
+    
+    def reset(self)-&gt;None:
+        &#34;&#34;&#34;
+        Sets the iteration counter to 0.
+
+        &#34;&#34;&#34;
+        
+        self.iteration=0
+        pass        
+    
+    
+    def get_transactions(self)-&gt;List:
+        
+        return self.transactions_value</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>baseclasses.Controller</li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Constant" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Constant">TransactionManagement_Constant</a></li>
+<li><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Stochastic" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Stochastic">TransactionManagement_Stochastic</a></li>
+<li><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Trend" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Trend">TransactionManagement_Trend</a></li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.execute"><code class="name flex">
+<span>def <span class="ident">execute</span></span>(<span>self, dependency: str = 'AgentPool')</span>
+</code></dt>
+<dd>
+<div class="desc"><h2 id="parameters">Parameters</h2>
+<dl>
+<dt><strong><code>dependency</code></strong> :&ensp;<code>The execute function</code> of <code>TransactionsManagement requires the user to define the </code></dt>
+<dd>&nbsp;</dd>
+</dl>
+<p>dependency. Usually this is either AgentPool or TokenEconomy.</p>
+<p>This is where the number of users will be acquired from, when calculating the total transaction value.</p>
+<h2 id="returns">Returns</h2>
+<p>None.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def execute(self,dependency:str=&#34;AgentPool&#34;):
+    &#34;&#34;&#34;
+    
+
+    Parameters
+    ----------
+    dependency: The execute function of TransactionsManagement requires the user to define the 
+    dependency. Usually this is either AgentPool or TokenEconomy.
+    
+    This is where the number of users will be acquired from, when calculating the total transaction value.
+
+    Returns
+    -------
+    None.
+
+    &#34;&#34;&#34;
+    
+    return None</code></pre>
+</details>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.get_transactions"><code class="name flex">
+<span>def <span class="ident">get_transactions</span></span>(<span>self) ‑> List</span>
+</code></dt>
+<dd>
+<div class="desc"></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_transactions(self)-&gt;List:
+    
+    return self.transactions_value</code></pre>
+</details>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.reset"><code class="name flex">
+<span>def <span class="ident">reset</span></span>(<span>self) ‑> None</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Sets the iteration counter to 0.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def reset(self)-&gt;None:
+    &#34;&#34;&#34;
+    Sets the iteration counter to 0.
+
+    &#34;&#34;&#34;
+    
+    self.iteration=0
+    pass        </code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Constant"><code class="flex name class">
+<span>class <span class="ident">TransactionManagement_Constant</span></span>
+<span>(</span><span>average_transaction_value: float)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>TransactionManagement implementation where the total value per user stays the same.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class TransactionManagement_Constant(TransactionManagement):
+    
+    &#34;&#34;&#34;
+    TransactionManagement implementation where the total value per user stays the same.
+    &#34;&#34;&#34;
+    
+    def __init__(self,average_transaction_value:float):
+        
+        super(TransactionManagement_Constant,self).__init__()
+        
+        #if average_transaction_value&lt;0:
+        #    raise Exception(&#39;Average transaction value cannot be negative&#39;)
+            
+        self.average_transaction_value=average_transaction_value
+        
+        
+    def execute(self,dependency:str=&#34;AgentPool&#34;)-&gt;float:
+        &#34;&#34;&#34;
+        
+        
+        
+        Parameters
+        ----------
+        dependency:str: Available options are either AgentPool or TokenEconomy.
+        
+        The execute function of TransactionsManagement requires the user to define the 
+        dependency. Usually this is either AgentPool or TokenEconomy.
+        
+        This is where the number of users will be acquired from, when calculating the total transaction value.
+        
+        Final transaction value is simply num_users*constant (defined at class initialisation)
+        
+        &#34;&#34;&#34;
+        
+        if dependency==&#34;AgentPool&#34;:
+            dependency=AgentPool
+        elif dependency==&#34;TokenEconomy&#34;:
+            dependency=TokenEconomy
+        else:
+            raise Exception(&#39;You must use either AgentPool or TokenEconomy&#39;)
+            
+        
+        num_users=self.dependencies[dependency][&#39;num_users&#39;]
+        self.total_users=num_users
+        
+        self.transactions_value=num_users*self.average_transaction_value
+        
+        self._transactions_value_store.append(self.transactions_value)
+        self.iteration+=1
+        return self.transactions_value</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement">TransactionManagement</a></li>
+<li>baseclasses.Controller</li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Constant.execute"><code class="name flex">
+<span>def <span class="ident">execute</span></span>(<span>self, dependency: str = 'AgentPool') ‑> float</span>
+</code></dt>
+<dd>
+<div class="desc"><h2 id="parameters">Parameters</h2>
+<p>dependency:str: Available options are either AgentPool or TokenEconomy.</p>
+<p>The execute function of TransactionsManagement requires the user to define the
+dependency. Usually this is either AgentPool or TokenEconomy.</p>
+<p>This is where the number of users will be acquired from, when calculating the total transaction value.</p>
+<p>Final transaction value is simply num_users*constant (defined at class initialisation)</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def execute(self,dependency:str=&#34;AgentPool&#34;)-&gt;float:
+    &#34;&#34;&#34;
+    
+    
+    
+    Parameters
+    ----------
+    dependency:str: Available options are either AgentPool or TokenEconomy.
+    
+    The execute function of TransactionsManagement requires the user to define the 
+    dependency. Usually this is either AgentPool or TokenEconomy.
+    
+    This is where the number of users will be acquired from, when calculating the total transaction value.
+    
+    Final transaction value is simply num_users*constant (defined at class initialisation)
+    
+    &#34;&#34;&#34;
+    
+    if dependency==&#34;AgentPool&#34;:
+        dependency=AgentPool
+    elif dependency==&#34;TokenEconomy&#34;:
+        dependency=TokenEconomy
+    else:
+        raise Exception(&#39;You must use either AgentPool or TokenEconomy&#39;)
+        
+    
+    num_users=self.dependencies[dependency][&#39;num_users&#39;]
+    self.total_users=num_users
+    
+    self.transactions_value=num_users*self.average_transaction_value
+    
+    self._transactions_value_store.append(self.transactions_value)
+    self.iteration+=1
+    return self.transactions_value</code></pre>
+</details>
+</dd>
+</dl>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement">TransactionManagement</a></b></code>:
+<ul class="hlist">
+<li><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.reset" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.reset">reset</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Stochastic"><code class="flex name class">
+<span>class <span class="ident">TransactionManagement_Stochastic</span></span>
+<span>(</span><span>value_per_transaction: float = None, transactions_per_user: Union[int, list[int]] = None, value_distribution: <module 'scipy.stats' from '/Users/stylianoskampakis/opt/anaconda3/envs/kalgera3/lib/python3.9/site-packages/scipy/stats/__init__.py'> = &lt;scipy.stats._continuous_distns.norm_gen object&gt;, transactions_distribution: <module 'scipy.stats' from '/Users/stylianoskampakis/opt/anaconda3/envs/kalgera3/lib/python3.9/site-packages/scipy/stats/__init__.py'> = &lt;scipy.stats._discrete_distns.poisson_gen object&gt;, value_dist_parameters: Union[Dict[str, float], List[Dict[str, float]]] = {'loc': 10, 'scale': 100}, transactions_dist_parameters: Union[Dict[str, float], List[Dict[str, float]]] = {'mu': 5}, name: str = None, activity_probs: Union[float, list[float]] = 1, type_transaction: str = 'positive')</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Users a simple binomial distribution to model the number of active users.</p>
+<p>Uses the normal distribution to simulate the transaction value.</p>
+<p>So, at each iteration the execute() function does the following</p>
+<p>1) Uses the binomial distribution to simulate the number of active users.
+2) Uses the value_mean parameter and the value_std to calculate the average value of transactions.
+3) Uses 1 and 2 to get an estimate of the total value.</p>
+<p>Dependent class: The execute() argument is reading from a UserGrowth class that provides
+the current number of users</p>
+<p>activity_probs: This is either a float or a list of floats, and determines the parameter p of the binomial
+distribution</p>
+<p>value_per_transaction: If this is set, then the value per transaction is fixed, and overrides the distribution. Otherwise,
+leave to None.</p>
+<p>transactions_per_user: If this is set, then the number of transactions is fixed, and overrides the distribution. Otherwise,
+leave to None.</p>
+<p>value_dist_parameters: Parameters for the value distribution. This can also be a list of dictionaries, where each dictionary
+within the list is a set of parameters. The values inside the dictionary must use the keys 'loc' and 'scale'.</p>
+<p>value_distribution: by default this is the normal distribution, but any scipy distribution
+is supported.</p>
+<p>transactions_distribution: uses a distribution to model the number of transactions per user. By default
+this is a Poisson distribution</p>
+<p>transactions_dist_parameters: Parameters for the transaction distribution. This can also be a list of dictionaries, where each dictionary
+within the list is a set of parameters.</p>
+<p>type_transaction: positive (positive transactions only), negative or mixed. It is positive by default</p>
+<p>The value at each iteration of execution is sampled from the value distribution (if the distribution is set)</p>
+<p>The final equation is using the following formulas when value distribution is active:</p>
+<p>total value = distribution(loc,scale)
+a) loc = num_active_users<em>num_transactions</em>value_per_transaction(or loc parameter)
+b) scale = scale </p>
+<p>If the value distribution is absent, and a value_per_transaction is defined instead, then
+the formula becomes:</p>
+<p>total value = val_mean<em>self.active_users</em>trans</p>
+<p>NOTE: Average transactions per user can never be below 0. If 0 (due to random sampling) then it's set to 1</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class TransactionManagement_Stochastic(TransactionManagement):
+    &#34;&#34;&#34;
+    Users a simple binomial distribution to model the number of active users.
+    
+    Uses the normal distribution to simulate the transaction value.
+    
+    So, at each iteration the execute() function does the following
+    
+    1) Uses the binomial distribution to simulate the number of active users.
+    2) Uses the value_mean parameter and the value_std to calculate the average value of transactions.
+    3) Uses 1 and 2 to get an estimate of the total value.
+    
+    
+    
+    Dependent class: The execute() argument is reading from a UserGrowth class that provides
+    the current number of users
+    
+    
+    &#34;&#34;&#34;
+
+
+
+    def __init__(self,
+                 value_per_transaction:float=None,
+                 transactions_per_user:Union[int,list[int]]=None,
+                 value_distribution:scipy.stats=norm,transactions_distribution:scipy.stats=poisson,
+                 value_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={&#39;loc&#39;:10,&#39;scale&#39;:100},
+                 transactions_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={&#39;mu&#39;:5},name:str=None,
+                 activity_probs:Union[float,list[float]]=1,type_transaction:str=&#39;positive&#39;)-&gt;None:
+        
+        &#34;&#34;&#34;
+        activity_probs: This is either a float or a list of floats, and determines the parameter p of the binomial
+        distribution
+        
+        value_per_transaction: If this is set, then the value per transaction is fixed, and overrides the distribution. Otherwise,
+        leave to None.
+        
+        transactions_per_user: If this is set, then the number of transactions is fixed, and overrides the distribution. Otherwise, 
+        leave to None.
+        
+        value_dist_parameters: Parameters for the value distribution. This can also be a list of dictionaries, where each dictionary
+        within the list is a set of parameters. The values inside the dictionary must use the keys &#39;loc&#39; and &#39;scale&#39;.
+        
+        value_distribution: by default this is the normal distribution, but any scipy distribution 
+         is supported.
+        
+        transactions_distribution: uses a distribution to model the number of transactions per user. By default
+        this is a Poisson distribution
+        
+        transactions_dist_parameters: Parameters for the transaction distribution. This can also be a list of dictionaries, where each dictionary
+        within the list is a set of parameters.
+        
+        type_transaction: positive (positive transactions only), negative or mixed. It is positive by default
+        
+        
+        The value at each iteration of execution is sampled from the value distribution (if the distribution is set)
+        
+        The final equation is using the following formulas when value distribution is active:
+            
+        total value = distribution(loc,scale)
+        a) loc = num_active_users*num_transactions*value_per_transaction(or loc parameter)
+        b) scale = scale 
+    
+        If the value distribution is absent, and a value_per_transaction is defined instead, then
+        the formula becomes:
+            
+        total value = val_mean*self.active_users*trans
+        
+        NOTE: Average transactions per user can never be below 0. If 0 (due to random sampling) then it&#39;s set to 1
+        
+        
+        &#34;&#34;&#34;
+        super(TransactionManagement_Stochastic,self).__init__()
+        self.name=name
+
+        self.active_users=0
+        self.total_users=0
+        self._transactions_value_store=[]
+        
+        self.dependencies={AgentPool:None}
+        
+        self.activity_probabilities=activity_probs
+        
+        
+        self.transactions_distribution=transactions_distribution
+        self.transactions_per_user=transactions_per_user
+        self.transaction_dist_parameters=transactions_dist_parameters
+
+        
+        self.value_distribution=value_distribution
+        self.value_per_transaction=value_per_transaction
+        self.value_dist_parameters=value_dist_parameters
+        
+        if type_transaction not in [&#39;positive&#39;,&#39;negative&#39;,&#39;mix&#39;]:
+            raise Exception (&#39;You must define a type_transaction as positive, negative or mixed&#39;)
+        
+        self.type_transaction=type_transaction
+        
+        if value_per_transaction==None and value_dist_parameters==None:
+            raise Exception(&#39;You need to define at least value per transaction or value_dist_parameters&#39;)
+            
+        if transactions_per_user==None and transactions_dist_parameters==None:
+            raise Exception(&#39;You need to define at least transaction_per_user or transaction_dist_parameters&#39;)
+        
+        
+        #sanity test, all lists should be the same length
+        lengths=[]
+        if isinstance(self.value_dist_parameters,(list,np.ndarray)):
+            self.max_iterations=len(self.value_dist_parameters)
+            lengths.append(len(self.value_dist_parameters))
+        
+        if isinstance(self.transaction_dist_parameters,(list,np.ndarray)):
+            self.max_iterations=len(self.transaction_dist_parameters)
+            lengths.append(len(self.transaction_dist_parameters))
+            
+        if isinstance(self.activity_probabilities,(list,np.ndarray)):
+            self.max_iterations=len(self.activity_probabilities)
+            lengths.append(len(self.activity_probabilities))
+            
+        if len(set(lengths))&gt;1:
+            raise Exception(&#39;When supplying lists as arguments, they should all have the same length.&#39;)
+
+        return None
+    
+    
+    def execute(self,dependency:str=&#34;AgentPool&#34;)-&gt;float:
+        if dependency==&#34;AgentPool&#34;:
+            dependency=AgentPool
+        elif dependency==&#34;TokenEconomy&#34;:
+            dependency=TokenEconomy
+        else:
+            raise Exception(&#39;You must use either AgentPool or TokenEconomy&#39;)
+        
+        
+        num_users=self.dependencies[dependency][&#39;num_users&#39;]
+        self.total_users=num_users
+        
+        #because activitiy_probabilities can be either an int or a list, we have to take into account both scenarios
+        if isinstance(self.activity_probabilities,(list,np.ndarray)):
+            act=self.activity_probabilities[self.iteration]
+        else:
+            act=self.activity_probabilities
+            
+        seed=int(int(time.time())*np.random.rand())
+        self.active_users=binom.rvs(int(num_users),act,random_state=seed)
+            
+            
+        if isinstance(self.transaction_dist_parameters,(list,np.ndarray)):
+            trans_param=self.transaction_dist_parameters[self.iteration] 
+        else:
+            trans_param=self.transaction_dist_parameters
+            
+            
+        if self.transactions_per_user is None:
+            seed=int(int(time.time())*np.random.rand())
+            trans=self.transactions_distribution.rvs(size=1,**trans_param,random_state=seed)[0]
+            if trans&lt;=0:
+                trans=1
+        else:
+            trans=self.transactions_per_user
+            
+        self.num_transactions=trans
+            
+        
+        if isinstance(self.value_dist_parameters,(list,np.ndarray)):
+            val_param=self.value_dist_parameters[self.iteration]
+        else:
+            val_param=self.value_dist_parameters
+        
+        if self.value_per_transaction is None:
+            seed=int(int(time.time())*np.random.rand())
+            value_mean=self.value_distribution.rvs(size=1,loc=val_param[&#39;loc&#39;]*self.active_users*trans,scale=val_param[&#39;scale&#39;],random_state=seed)[0]
+        else:
+            value_mean=self.value_per_transaction*self.active_users*trans
+            
+        #transaction value can never be negative
+        if value_mean&lt;0 and self.type_transaction==&#39;positive&#39;:
+            value_mean=0
+        elif value_mean&gt;0 and self.type_transaction==&#39;negative&#39;:
+            value_mean=0
+            
+        
+        self.transactions_value=value_mean
+        
+        self._transactions_value_store.append(value_mean)
+        self.iteration+=1
+        return self.transactions_value        </code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement">TransactionManagement</a></li>
+<li>baseclasses.Controller</li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement">TransactionManagement</a></b></code>:
+<ul class="hlist">
+<li><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.execute" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.execute">execute</a></code></li>
+<li><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.reset" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.reset">reset</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Trend"><code class="flex name class">
+<span>class <span class="ident">TransactionManagement_Trend</span></span>
+<span>(</span><span>average_transaction_initial: float, average_transaction_final: float, num_steps: int, space_function: Union[linspace, logspace, geomspace, log_saturated_space] = &lt;function linspace&gt;, name: str = None, noise_addon: baseclasses.AddOn = None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Creates a trend of transactions (increasing or decreasing), while also accepting noise add-ons.</p>
+<p>It has a dependency on a UserGrowth class. To be used inside an agent pool. At execution it can read
+either from the agent class or the token economy.</p>
+<p>So, it essentially functions like a constant tranction class, where the constant is either rising or
+going down in a smooth way.</p>
+<p>Properties of interest:</p>
+<p>_transactions_means_store: The average transaction size for a given iteration
+_transactions_value_store: The actual value of the transaction</p>
+<h2 id="parameters">Parameters</h2>
+<dl>
+<dt><strong><code>average_transaction_initial</code></strong> :&ensp;<code>float</code></dt>
+<dd>The initial transaction size.</dd>
+<dt><strong><code>average_transaction_final</code></strong> :&ensp;<code>float</code></dt>
+<dd>The final transaction size.</dd>
+<dt><strong><code>num_steps</code></strong> :&ensp;<code>int</code></dt>
+<dd>This should be equal to the number of iterations you want the simulation to run for.</dd>
+<dt><strong><code>space_function</code></strong> :&ensp;<code>Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]</code>, optional</dt>
+<dd>The function that will generate the steps. The default is np.linspace. Other options include np.geomspace
+and log_saturated_space from the helpers module.</dd>
+<dt><strong><code>name</code></strong> :&ensp;<code>str</code>, optional</dt>
+<dd>The name of this controller. The default is None.</dd>
+<dt><strong><code>noise_addon</code></strong> :&ensp;<code>AddOn</code>, optional</dt>
+<dd>The default is None.</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class TransactionManagement_Trend(TransactionManagement):
+    &#34;&#34;&#34;
+    Creates a trend of transactions (increasing or decreasing), while also accepting noise add-ons.
+    
+    It has a dependency on a UserGrowth class. To be used inside an agent pool. At execution it can read
+    either from the agent class or the token economy.
+    
+    So, it essentially functions like a constant tranction class, where the constant is either rising or
+    going down in a smooth way.
+    
+    
+    Properties of interest:
+        
+    _transactions_means_store: The average transaction size for a given iteration
+    _transactions_value_store: The actual value of the transaction
+    
+    &#34;&#34;&#34;
+    
+    def __init__(self,average_transaction_initial:float, average_transaction_final:float,num_steps:int,
+                 space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]=np.linspace,name:str=None,
+                 noise_addon:AddOn=None):
+        &#34;&#34;&#34;
+        
+
+        Parameters
+        ----------
+        average_transaction_initial : float
+            The initial transaction size.
+        average_transaction_final : float
+            The final transaction size.
+        num_steps : int
+            This should be equal to the number of iterations you want the simulation to run for.
+        space_function : Union[np.linspace,np.logspace,np.geomspace,log_saturated_space], optional
+            The function that will generate the steps. The default is np.linspace. Other options include np.geomspace
+            and log_saturated_space from the helpers module.
+        name : str, optional
+            The name of this controller. The default is None.
+        noise_addon : AddOn, optional
+            The default is None.
+
+
+        &#34;&#34;&#34;
+        
+        self.dependencies={AgentPool:None}
+
+        
+        self.num_steps=num_steps
+        self.space_function=space_function
+        self._noise_component=noise_addon
+        
+        self.name=name
+        
+        self._transactions_means_store_original=np.round(self.space_function(start=average_transaction_initial,stop=average_transaction_final,num=num_steps)).astype(int)
+        self._transactions_means_store=copy.deepcopy(self._transactions_means_store_original)
+        
+        #applies the noise addon. If a value is below 0, then it is kept at 0.
+        if self._noise_component!=None:
+            dummy=[]
+            for i in range(len(self._transactions_means_store)):
+                temporary= self._transactions_means_store_original[i]+ self._noise_component.apply(**{&#39;value&#39;:self._transactions_means_store_original[i]})
+                if temporary&gt;=0:
+                    dummy.append(temporary)
+                else:
+                    dummy.append(self._transactions_means_store_original[i])
+        
+            self._transactions_means_store=dummy
+        
+        self.max_iterations=num_steps
+        self._transactions_value_store=[]
+        
+        
+    def execute(self,dependency:str=&#34;AgentPool&#34;)-&gt;float:
+        &#34;&#34;&#34;
+        
+        Parameters
+        ----------
+        dependency : str, optional
+            Where to read the number of users from. The default is &#34;AgentPool&#34;.
+
+
+        Returns
+        -------
+        float
+            The total value of transactions.
+
+        &#34;&#34;&#34;
+        
+        if dependency==&#34;AgentPool&#34;:
+            dependency=AgentPool
+        elif dependency==&#34;TokenEconomy&#34;:
+            dependency=TokenEconomy
+        else:
+            raise Exception(&#39;You must use either AgentPool or TokenEconomy&#39;)
+            
+        
+        num_users=self.dependencies[dependency][&#39;num_users&#39;]
+        
+        self.total_users=num_users
+        
+        self.transactions_value=num_users*self._transactions_means_store[self.iteration]
+        
+        self._transactions_value_store.append(self.transactions_value)
+        self.iteration+=1
+        return self.transactions_value   
+
+        
+    def reset(self)-&gt;bool:
+        &#34;&#34;&#34;
+        Sets the iterations counter to 0, and recalculates the effect of any
+        noise add-ons.
+
+        Returns
+        -------
+        True if reset was successful.
+        &#34;&#34;&#34;
+        
+        self.iteration=0
+        self._transactions_means_store=copy.deepcopy(self._transactions_means_store_original)
+        
+        #applies the noise addon. If a value is below 0, then it is kept at 0.
+        if self._noise_component!=None:
+            dummy=[]
+            for i in range(len(self._transactions_means_store)):
+                temporary= self._transactions_means_store_original[i]+ self._noise_component.apply(**{&#39;value&#39;:self._transactions_means_store_original[i]})
+                if temporary&gt;=0:
+                    dummy.append(temporary)
+                else:
+                    dummy.append(self._transactions_means_store_original[i])
+        
+            self._transactions_means_store=dummy
+            
+        return True</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement">TransactionManagement</a></li>
+<li>baseclasses.Controller</li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Trend.execute"><code class="name flex">
+<span>def <span class="ident">execute</span></span>(<span>self, dependency: str = 'AgentPool') ‑> float</span>
+</code></dt>
+<dd>
+<div class="desc"><h2 id="parameters">Parameters</h2>
+<dl>
+<dt><strong><code>dependency</code></strong> :&ensp;<code>str</code>, optional</dt>
+<dd>Where to read the number of users from. The default is "AgentPool".</dd>
+</dl>
+<h2 id="returns">Returns</h2>
+<dl>
+<dt><code>float</code></dt>
+<dd>The total value of transactions.</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def execute(self,dependency:str=&#34;AgentPool&#34;)-&gt;float:
+    &#34;&#34;&#34;
+    
+    Parameters
+    ----------
+    dependency : str, optional
+        Where to read the number of users from. The default is &#34;AgentPool&#34;.
+
+
+    Returns
+    -------
+    float
+        The total value of transactions.
+
+    &#34;&#34;&#34;
+    
+    if dependency==&#34;AgentPool&#34;:
+        dependency=AgentPool
+    elif dependency==&#34;TokenEconomy&#34;:
+        dependency=TokenEconomy
+    else:
+        raise Exception(&#39;You must use either AgentPool or TokenEconomy&#39;)
+        
+    
+    num_users=self.dependencies[dependency][&#39;num_users&#39;]
+    
+    self.total_users=num_users
+    
+    self.transactions_value=num_users*self._transactions_means_store[self.iteration]
+    
+    self._transactions_value_store.append(self.transactions_value)
+    self.iteration+=1
+    return self.transactions_value   </code></pre>
+</details>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Trend.reset"><code class="name flex">
+<span>def <span class="ident">reset</span></span>(<span>self) ‑> bool</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Sets the iterations counter to 0, and recalculates the effect of any
+noise add-ons.</p>
+<h2 id="returns">Returns</h2>
+<p>True if reset was successful.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def reset(self)-&gt;bool:
+    &#34;&#34;&#34;
+    Sets the iterations counter to 0, and recalculates the effect of any
+    noise add-ons.
+
+    Returns
+    -------
+    True if reset was successful.
+    &#34;&#34;&#34;
+    
+    self.iteration=0
+    self._transactions_means_store=copy.deepcopy(self._transactions_means_store_original)
+    
+    #applies the noise addon. If a value is below 0, then it is kept at 0.
+    if self._noise_component!=None:
+        dummy=[]
+        for i in range(len(self._transactions_means_store)):
+            temporary= self._transactions_means_store_original[i]+ self._noise_component.apply(**{&#39;value&#39;:self._transactions_means_store_original[i]})
+            if temporary&gt;=0:
+                dummy.append(temporary)
+            else:
+                dummy.append(self._transactions_means_store_original[i])
+    
+        self._transactions_means_store=dummy
+        
+    return True</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<h1>Index</h1>
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="src.TokenLab.simulationcomponents" href="index.html">src.TokenLab.simulationcomponents</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement">TransactionManagement</a></code></h4>
+<ul class="">
+<li><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.execute" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.execute">execute</a></code></li>
+<li><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.get_transactions" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.get_transactions">get_transactions</a></code></li>
+<li><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.reset" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement.reset">reset</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Constant" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Constant">TransactionManagement_Constant</a></code></h4>
+<ul class="">
+<li><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Constant.execute" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Constant.execute">execute</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Stochastic" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Stochastic">TransactionManagement_Stochastic</a></code></h4>
+</li>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Trend" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Trend">TransactionManagement_Trend</a></code></h4>
+<ul class="">
+<li><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Trend.execute" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Trend.execute">execute</a></code></li>
+<li><code><a title="src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Trend.reset" href="#src.TokenLab.simulationcomponents.transactionclasses.TransactionManagement_Trend.reset">reset</a></code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc" title="pdoc: Python API documentation generator"><cite>pdoc</cite> 0.10.0</a>.</p>
+</footer>
+</body>
+</html>

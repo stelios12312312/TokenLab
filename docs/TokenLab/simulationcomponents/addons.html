@@ -1,0 +1,657 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1" />
+<meta name="generator" content="pdoc 0.10.0" />
+<title>src.TokenLab.simulationcomponents.addons API documentation</title>
+<meta name="description" content="Created on Wed Nov 30 10:34:43 2022 …" />
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/sanitize.min.css" integrity="sha256-PK9q560IAAa6WVRRh76LtCaI8pjTJ2z11v0miyNNjrs=" crossorigin>
+<link rel="preload stylesheet" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/10up-sanitize.css/11.0.1/typography.min.css" integrity="sha256-7l/o7C8jubJiy74VsKTidCy1yBkRtiUGbVkYBylBqUg=" crossorigin>
+<link rel="stylesheet preload" as="style" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/styles/github.min.css" crossorigin>
+<style>:root{--highlight-color:#fe9}.flex{display:flex !important}body{line-height:1.5em}#content{padding:20px}#sidebar{padding:30px;overflow:hidden}#sidebar > *:last-child{margin-bottom:2cm}.http-server-breadcrumbs{font-size:130%;margin:0 0 15px 0}#footer{font-size:.75em;padding:5px 30px;border-top:1px solid #ddd;text-align:right}#footer p{margin:0 0 0 1em;display:inline-block}#footer p:last-child{margin-right:30px}h1,h2,h3,h4,h5{font-weight:300}h1{font-size:2.5em;line-height:1.1em}h2{font-size:1.75em;margin:1em 0 .50em 0}h3{font-size:1.4em;margin:25px 0 10px 0}h4{margin:0;font-size:105%}h1:target,h2:target,h3:target,h4:target,h5:target,h6:target{background:var(--highlight-color);padding:.2em 0}a{color:#058;text-decoration:none;transition:color .3s ease-in-out}a:hover{color:#e82}.title code{font-weight:bold}h2[id^="header-"]{margin-top:2em}.ident{color:#900}pre code{background:#f8f8f8;font-size:.8em;line-height:1.4em}code{background:#f2f2f1;padding:1px 4px;overflow-wrap:break-word}h1 code{background:transparent}pre{background:#f8f8f8;border:0;border-top:1px solid #ccc;border-bottom:1px solid #ccc;margin:1em 0;padding:1ex}#http-server-module-list{display:flex;flex-flow:column}#http-server-module-list div{display:flex}#http-server-module-list dt{min-width:10%}#http-server-module-list p{margin-top:0}.toc ul,#index{list-style-type:none;margin:0;padding:0}#index code{background:transparent}#index h3{border-bottom:1px solid #ddd}#index ul{padding:0}#index h4{margin-top:.6em;font-weight:bold}@media (min-width:200ex){#index .two-column{column-count:2}}@media (min-width:300ex){#index .two-column{column-count:3}}dl{margin-bottom:2em}dl dl:last-child{margin-bottom:4em}dd{margin:0 0 1em 3em}#header-classes + dl > dd{margin-bottom:3em}dd dd{margin-left:2em}dd p{margin:10px 0}.name{background:#eee;font-weight:bold;font-size:.85em;padding:5px 10px;display:inline-block;min-width:40%}.name:hover{background:#e0e0e0}dt:target .name{background:var(--highlight-color)}.name > span:first-child{white-space:nowrap}.name.class > span:nth-child(2){margin-left:.4em}.inherited{color:#999;border-left:5px solid #eee;padding-left:1em}.inheritance em{font-style:normal;font-weight:bold}.desc h2{font-weight:400;font-size:1.25em}.desc h3{font-size:1em}.desc dt code{background:inherit}.source summary,.git-link-div{color:#666;text-align:right;font-weight:400;font-size:.8em;text-transform:uppercase}.source summary > *{white-space:nowrap;cursor:pointer}.git-link{color:inherit;margin-left:1em}.source pre{max-height:500px;overflow:auto;margin:0}.source pre code{font-size:12px;overflow:visible}.hlist{list-style:none}.hlist li{display:inline}.hlist li:after{content:',\2002'}.hlist li:last-child:after{content:none}.hlist .hlist{display:inline;padding-left:1em}img{max-width:100%}td{padding:0 .5em}.admonition{padding:.1em .5em;margin-bottom:1em}.admonition-title{font-weight:bold}.admonition.note,.admonition.info,.admonition.important{background:#aef}.admonition.todo,.admonition.versionadded,.admonition.tip,.admonition.hint{background:#dfd}.admonition.warning,.admonition.versionchanged,.admonition.deprecated{background:#fd4}.admonition.error,.admonition.danger,.admonition.caution{background:lightpink}</style>
+<style media="screen and (min-width: 700px)">@media screen and (min-width:700px){#sidebar{width:30%;height:100vh;overflow:auto;position:sticky;top:0}#content{width:70%;max-width:100ch;padding:3em 4em;border-left:1px solid #ddd}pre code{font-size:1em}.item .name{font-size:1em}main{display:flex;flex-direction:row-reverse;justify-content:flex-end}.toc ul ul,#index ul{padding-left:1.5em}.toc > ul > li{margin-top:.5em}}</style>
+<style media="print">@media print{#sidebar h1{page-break-before:always}.source{display:none}}@media print{*{background:transparent !important;color:#000 !important;box-shadow:none !important;text-shadow:none !important}a[href]:after{content:" (" attr(href) ")";font-size:90%}a[href][title]:after{content:none}abbr[title]:after{content:" (" attr(title) ")"}.ir a:after,a[href^="javascript:"]:after,a[href^="#"]:after{content:""}pre,blockquote{border:1px solid #999;page-break-inside:avoid}thead{display:table-header-group}tr,img{page-break-inside:avoid}img{max-width:100% !important}@page{margin:0.5cm}p,h2,h3{orphans:3;widows:3}h1,h2,h3,h4,h5,h6{page-break-after:avoid}}</style>
+<script defer src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/10.1.1/highlight.min.js" integrity="sha256-Uv3H6lx7dJmRfRvH8TH6kJD1TSK1aFcwgx+mdg3epi8=" crossorigin></script>
+<script>window.addEventListener('DOMContentLoaded', () => hljs.initHighlighting())</script>
+</head>
+<body>
+<main>
+<article id="content">
+<header>
+<h1 class="title">Module <code>src.TokenLab.simulationcomponents.addons</code></h1>
+</header>
+<section id="section-intro">
+<p>Created on Wed Nov 30 10:34:43 2022</p>
+<p>@author: stylianoskampakis</p>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+&#34;&#34;&#34;
+Created on Wed Nov 30 10:34:43 2022
+
+@author: stylianoskampakis
+&#34;&#34;&#34;
+import numpy as np
+from baseclasses import *
+import scipy
+from scipy.stats import binom,norm
+import time
+import warnings
+from typing import Callable
+
+
+class AddOn_Noise(AddOn):
+    &#34;&#34;&#34;
+    Abstract class for add-on classes that are used to induce noise.
+    &#34;&#34;&#34;
+    
+    def __init__(self):
+        
+        pass
+    
+    def apply(self,**kwargs)-&gt;float:
+        &#34;&#34;&#34;
+        Abstract method. Each AddOn_Noise class needs to have an apply function
+        &#34;&#34;&#34;
+        
+        pass
+
+class AddOn_RandomNoise(AddOn_Noise):
+    &#34;&#34;&#34;
+    Adds random noise (normaly gaussian) to a parameter
+    &#34;&#34;&#34;
+    
+    def __init__(self,noise_dist:scipy.stats=scipy.stats.norm,
+                 dist_params:Dict={&#39;loc&#39;:0,&#39;scale&#39;:1})-&gt;None:
+        
+        &#34;&#34;&#34;        
+        Parameters
+        ----------
+        noise_dist: A scipy.stats distribution (by default normal)
+        dist_params: The distribution parameters in the format {&#39;loc&#39;:float,&#39;scale&#39;:float}
+        &#34;&#34;&#34;
+        
+        self.noise_dist=noise_dist
+        self.dist_params=dist_params
+        
+    
+    #need to use **kwargs for compatibility with other classes that take input 
+    #like AddOn_RandomNoiseProportional
+    def apply(self,**kwargs)-&gt;float:
+        &#34;&#34;&#34;
+
+        Parameters
+        ----------
+        **kwargs : this used for compatibility reasons, **kwargs is not applied at all in this particular.
+        instance
+
+        Returns
+        -------
+        float
+            noise.
+
+        &#34;&#34;&#34;
+        seed=int(int(time.time())*np.random.rand())
+        noise=self.noise_dist.rvs(size=1,**self.dist_params,random_state=seed)[0]
+        
+        return noise
+
+
+
+class AddOn_RandomNoiseProportional(AddOn_Noise):
+    &#34;&#34;&#34;
+    Adds random noise (normaly gaussian) to a parameter. The scale is dependent on the actual input value.
+    So, if we use gaussian, the std becomes value/std_param. So, if we apply this on price for example,
+    the more the price increases in size, the more volatility is induced.
+    &#34;&#34;&#34;
+    
+    def __init__(self,noise_dist:scipy.stats=scipy.stats.norm,
+                 mean_param=0,std_param=5)-&gt;None:
+        
+        &#34;&#34;&#34;
+        
+        Parameters
+        ----------
+        noise_dist: A scipy.stats distribution (by default normal)
+        mean_param: The mean of the distribution
+        std_param: The effective std of the distribution becomes value/std_param, where
+        value is externally provided in the apply function.
+        
+        &#34;&#34;&#34;
+        
+        self.noise_dist=noise_dist
+        self.mean_param=mean_param
+        self.std_param=std_param
+        
+        
+    def apply(self,value)-&gt;float:
+        seed=int(int(time.time())*np.random.rand())
+        noise=self.noise_dist.rvs(size=1,loc=self.mean_param,scale=value/self.std_param,random_state=seed)[0]
+        
+        return noise
+
+
+class Condition():
+    &#34;&#34;&#34;
+
+    
+    Example usage:
+        
+        usm_fiat=UserGrowth_Spaced(100,54000,ITERATIONS,log_saturated_space)
+        ap_fiat=AgentPool_Basic(users_controller=usm_fiat,transactions_controller=100,currency=&#39;$&#39;)
+        
+        Condition(ap_fiat,[&#39;transactions&#39;],lambda x:x[0]&gt;1000)
+    &#34;&#34;&#34;
+
+    def __init__(self,variables:List[str],condition:Callable,sim_component:Union[TokenEconomy,Controller]=None):
+        &#34;&#34;&#34;
+        Parameters
+        ----------
+        
+        variables: The variables must be in a list of the variables that the condition must access. 
+        
+        condition:  A lambda expression or function that accepts a list of variables and returns a Boolean. 
+        The condition must use brackets [] to access the variables. e.g. Condition(ap_fiat,[&#39;transactions&#39;],lambda x:x[0]&gt;1000)
+        
+        sim_component: the module where the variables will be read from. Has to either be a TokenEconomy or a Controller object
+        (e.g. Users Controller or Transactions Controller)
+        
+        &#34;&#34;&#34;
+        self.sim_component=sim_component
+        self.condition=condition
+        self.variables=variables
+        self.result=None
+        
+        return None
+        
+    
+    def execute(self)-&gt;bool:
+        &#34;&#34;&#34;
+        
+
+        Returns
+        -------
+        res : True/False depending on whether the condition is true or not.
+
+        &#34;&#34;&#34;
+        
+        var_list=[]
+        for vari in self.variables:
+            var_list.append(self.sim_component[vari])
+            
+        res=self.condition(var_list)
+
+        self.result=res
+        
+        return res
+    
+    def get_result(self)-&gt;bool:
+        &#34;&#34;&#34;
+        
+
+        Returns
+        -------
+            Returns the most recent result (if it has been executed), otherwise 
+            it returns None
+
+        &#34;&#34;&#34;
+        if self.result==None:
+            warnings.warn(&#39;Condition has not executed yet. Returning None.&#39;)
+        
+        return self.result
+    
+    
+        
+        
+        </code></pre>
+</details>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+</section>
+<section>
+<h2 class="section-title" id="header-classes">Classes</h2>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.addons.AddOn_Noise"><code class="flex name class">
+<span>class <span class="ident">AddOn_Noise</span></span>
+</code></dt>
+<dd>
+<div class="desc"><p>Abstract class for add-on classes that are used to induce noise.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class AddOn_Noise(AddOn):
+    &#34;&#34;&#34;
+    Abstract class for add-on classes that are used to induce noise.
+    &#34;&#34;&#34;
+    
+    def __init__(self):
+        
+        pass
+    
+    def apply(self,**kwargs)-&gt;float:
+        &#34;&#34;&#34;
+        Abstract method. Each AddOn_Noise class needs to have an apply function
+        &#34;&#34;&#34;
+        
+        pass</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li>baseclasses.AddOn</li>
+</ul>
+<h3>Subclasses</h3>
+<ul class="hlist">
+<li><a title="src.TokenLab.simulationcomponents.addons.AddOn_RandomNoise" href="#src.TokenLab.simulationcomponents.addons.AddOn_RandomNoise">AddOn_RandomNoise</a></li>
+<li><a title="src.TokenLab.simulationcomponents.addons.AddOn_RandomNoiseProportional" href="#src.TokenLab.simulationcomponents.addons.AddOn_RandomNoiseProportional">AddOn_RandomNoiseProportional</a></li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.addons.AddOn_Noise.apply"><code class="name flex">
+<span>def <span class="ident">apply</span></span>(<span>self, **kwargs) ‑> float</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Abstract method. Each AddOn_Noise class needs to have an apply function</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def apply(self,**kwargs)-&gt;float:
+    &#34;&#34;&#34;
+    Abstract method. Each AddOn_Noise class needs to have an apply function
+    &#34;&#34;&#34;
+    
+    pass</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.addons.AddOn_RandomNoise"><code class="flex name class">
+<span>class <span class="ident">AddOn_RandomNoise</span></span>
+<span>(</span><span>noise_dist: <module 'scipy.stats' from '/Users/stylianoskampakis/opt/anaconda3/envs/kalgera3/lib/python3.9/site-packages/scipy/stats/__init__.py'> = &lt;scipy.stats._continuous_distns.norm_gen object&gt;, dist_params: Dict = {'loc': 0, 'scale': 1})</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Adds random noise (normaly gaussian) to a parameter</p>
+<h2 id="parameters">Parameters</h2>
+<dl>
+<dt><strong><code>noise_dist</code></strong> :&ensp;<code>A scipy.stats distribution (by default normal)</code></dt>
+<dd>&nbsp;</dd>
+<dt><strong><code>dist_params</code></strong> :&ensp;<code>The distribution parameters in the format {'loc':float,'scale':float}</code></dt>
+<dd>&nbsp;</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class AddOn_RandomNoise(AddOn_Noise):
+    &#34;&#34;&#34;
+    Adds random noise (normaly gaussian) to a parameter
+    &#34;&#34;&#34;
+    
+    def __init__(self,noise_dist:scipy.stats=scipy.stats.norm,
+                 dist_params:Dict={&#39;loc&#39;:0,&#39;scale&#39;:1})-&gt;None:
+        
+        &#34;&#34;&#34;        
+        Parameters
+        ----------
+        noise_dist: A scipy.stats distribution (by default normal)
+        dist_params: The distribution parameters in the format {&#39;loc&#39;:float,&#39;scale&#39;:float}
+        &#34;&#34;&#34;
+        
+        self.noise_dist=noise_dist
+        self.dist_params=dist_params
+        
+    
+    #need to use **kwargs for compatibility with other classes that take input 
+    #like AddOn_RandomNoiseProportional
+    def apply(self,**kwargs)-&gt;float:
+        &#34;&#34;&#34;
+
+        Parameters
+        ----------
+        **kwargs : this used for compatibility reasons, **kwargs is not applied at all in this particular.
+        instance
+
+        Returns
+        -------
+        float
+            noise.
+
+        &#34;&#34;&#34;
+        seed=int(int(time.time())*np.random.rand())
+        noise=self.noise_dist.rvs(size=1,**self.dist_params,random_state=seed)[0]
+        
+        return noise</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="src.TokenLab.simulationcomponents.addons.AddOn_Noise" href="#src.TokenLab.simulationcomponents.addons.AddOn_Noise">AddOn_Noise</a></li>
+<li>baseclasses.AddOn</li>
+</ul>
+<h3>Methods</h3>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.addons.AddOn_RandomNoise.apply"><code class="name flex">
+<span>def <span class="ident">apply</span></span>(<span>self, **kwargs) ‑> float</span>
+</code></dt>
+<dd>
+<div class="desc"><h2 id="parameters">Parameters</h2>
+<dl>
+<dt><strong>kwargs : this used for compatibility reasons, </strong>kwargs is not applied at all in this particular.</dt>
+<dt><strong><code>instance</code></strong></dt>
+<dd>&nbsp;</dd>
+</dl>
+<h2 id="returns">Returns</h2>
+<dl>
+<dt><code>float</code></dt>
+<dd>noise.</dd>
+</dl></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def apply(self,**kwargs)-&gt;float:
+    &#34;&#34;&#34;
+
+    Parameters
+    ----------
+    **kwargs : this used for compatibility reasons, **kwargs is not applied at all in this particular.
+    instance
+
+    Returns
+    -------
+    float
+        noise.
+
+    &#34;&#34;&#34;
+    seed=int(int(time.time())*np.random.rand())
+    noise=self.noise_dist.rvs(size=1,**self.dist_params,random_state=seed)[0]
+    
+    return noise</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.addons.AddOn_RandomNoiseProportional"><code class="flex name class">
+<span>class <span class="ident">AddOn_RandomNoiseProportional</span></span>
+<span>(</span><span>noise_dist: <module 'scipy.stats' from '/Users/stylianoskampakis/opt/anaconda3/envs/kalgera3/lib/python3.9/site-packages/scipy/stats/__init__.py'> = &lt;scipy.stats._continuous_distns.norm_gen object&gt;, mean_param=0, std_param=5)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Adds random noise (normaly gaussian) to a parameter. The scale is dependent on the actual input value.
+So, if we use gaussian, the std becomes value/std_param. So, if we apply this on price for example,
+the more the price increases in size, the more volatility is induced.</p>
+<h2 id="parameters">Parameters</h2>
+<dl>
+<dt><strong><code>noise_dist</code></strong> :&ensp;<code>A scipy.stats distribution (by default normal)</code></dt>
+<dd>&nbsp;</dd>
+<dt><strong><code>mean_param</code></strong> :&ensp;<code>The mean</code> of <code>the distribution</code></dt>
+<dd>&nbsp;</dd>
+<dt><strong><code>std_param</code></strong> :&ensp;<code>The effective std</code> of <code>the distribution becomes value/std_param, where</code></dt>
+<dd>&nbsp;</dd>
+</dl>
+<p>value is externally provided in the apply function.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class AddOn_RandomNoiseProportional(AddOn_Noise):
+    &#34;&#34;&#34;
+    Adds random noise (normaly gaussian) to a parameter. The scale is dependent on the actual input value.
+    So, if we use gaussian, the std becomes value/std_param. So, if we apply this on price for example,
+    the more the price increases in size, the more volatility is induced.
+    &#34;&#34;&#34;
+    
+    def __init__(self,noise_dist:scipy.stats=scipy.stats.norm,
+                 mean_param=0,std_param=5)-&gt;None:
+        
+        &#34;&#34;&#34;
+        
+        Parameters
+        ----------
+        noise_dist: A scipy.stats distribution (by default normal)
+        mean_param: The mean of the distribution
+        std_param: The effective std of the distribution becomes value/std_param, where
+        value is externally provided in the apply function.
+        
+        &#34;&#34;&#34;
+        
+        self.noise_dist=noise_dist
+        self.mean_param=mean_param
+        self.std_param=std_param
+        
+        
+    def apply(self,value)-&gt;float:
+        seed=int(int(time.time())*np.random.rand())
+        noise=self.noise_dist.rvs(size=1,loc=self.mean_param,scale=value/self.std_param,random_state=seed)[0]
+        
+        return noise</code></pre>
+</details>
+<h3>Ancestors</h3>
+<ul class="hlist">
+<li><a title="src.TokenLab.simulationcomponents.addons.AddOn_Noise" href="#src.TokenLab.simulationcomponents.addons.AddOn_Noise">AddOn_Noise</a></li>
+<li>baseclasses.AddOn</li>
+</ul>
+<h3>Inherited members</h3>
+<ul class="hlist">
+<li><code><b><a title="src.TokenLab.simulationcomponents.addons.AddOn_Noise" href="#src.TokenLab.simulationcomponents.addons.AddOn_Noise">AddOn_Noise</a></b></code>:
+<ul class="hlist">
+<li><code><a title="src.TokenLab.simulationcomponents.addons.AddOn_Noise.apply" href="#src.TokenLab.simulationcomponents.addons.AddOn_Noise.apply">apply</a></code></li>
+</ul>
+</li>
+</ul>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.addons.Condition"><code class="flex name class">
+<span>class <span class="ident">Condition</span></span>
+<span>(</span><span>variables: List[str], condition: Callable, sim_component: Union[baseclasses.TokenEconomy, baseclasses.Controller] = None)</span>
+</code></dt>
+<dd>
+<div class="desc"><p>Example usage:</p>
+<pre><code>usm_fiat=UserGrowth_Spaced(100,54000,ITERATIONS,log_saturated_space)
+ap_fiat=AgentPool_Basic(users_controller=usm_fiat,transactions_controller=100,currency='$')
+
+Condition(ap_fiat,['transactions'],lambda x:x[0]&gt;1000)
+</code></pre>
+<h2 id="parameters">Parameters</h2>
+<dl>
+<dt><strong><code>variables</code></strong> :&ensp;<code>The variables must be in a list</code> of <code>the variables that the condition must access. </code></dt>
+<dd>&nbsp;</dd>
+<dt><strong><code>condition</code></strong> :&ensp;<code> A lambda expression</code> or <code>function that accepts a list</code> of <code>variables and returns a Boolean. </code></dt>
+<dd>&nbsp;</dd>
+</dl>
+<p>The condition must use brackets [] to access the variables. e.g. Condition(ap_fiat,['transactions'],lambda x:x[0]&gt;1000)</p>
+<dl>
+<dt><strong><code>sim_component</code></strong> :&ensp;<code>the module where the variables will be read from. Has to either be a TokenEconomy</code> or <code>a Controller object</code></dt>
+<dd>&nbsp;</dd>
+</dl>
+<p>(e.g. Users Controller or Transactions Controller)</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">class Condition():
+    &#34;&#34;&#34;
+
+    
+    Example usage:
+        
+        usm_fiat=UserGrowth_Spaced(100,54000,ITERATIONS,log_saturated_space)
+        ap_fiat=AgentPool_Basic(users_controller=usm_fiat,transactions_controller=100,currency=&#39;$&#39;)
+        
+        Condition(ap_fiat,[&#39;transactions&#39;],lambda x:x[0]&gt;1000)
+    &#34;&#34;&#34;
+
+    def __init__(self,variables:List[str],condition:Callable,sim_component:Union[TokenEconomy,Controller]=None):
+        &#34;&#34;&#34;
+        Parameters
+        ----------
+        
+        variables: The variables must be in a list of the variables that the condition must access. 
+        
+        condition:  A lambda expression or function that accepts a list of variables and returns a Boolean. 
+        The condition must use brackets [] to access the variables. e.g. Condition(ap_fiat,[&#39;transactions&#39;],lambda x:x[0]&gt;1000)
+        
+        sim_component: the module where the variables will be read from. Has to either be a TokenEconomy or a Controller object
+        (e.g. Users Controller or Transactions Controller)
+        
+        &#34;&#34;&#34;
+        self.sim_component=sim_component
+        self.condition=condition
+        self.variables=variables
+        self.result=None
+        
+        return None
+        
+    
+    def execute(self)-&gt;bool:
+        &#34;&#34;&#34;
+        
+
+        Returns
+        -------
+        res : True/False depending on whether the condition is true or not.
+
+        &#34;&#34;&#34;
+        
+        var_list=[]
+        for vari in self.variables:
+            var_list.append(self.sim_component[vari])
+            
+        res=self.condition(var_list)
+
+        self.result=res
+        
+        return res
+    
+    def get_result(self)-&gt;bool:
+        &#34;&#34;&#34;
+        
+
+        Returns
+        -------
+            Returns the most recent result (if it has been executed), otherwise 
+            it returns None
+
+        &#34;&#34;&#34;
+        if self.result==None:
+            warnings.warn(&#39;Condition has not executed yet. Returning None.&#39;)
+        
+        return self.result</code></pre>
+</details>
+<h3>Methods</h3>
+<dl>
+<dt id="src.TokenLab.simulationcomponents.addons.Condition.execute"><code class="name flex">
+<span>def <span class="ident">execute</span></span>(<span>self) ‑> bool</span>
+</code></dt>
+<dd>
+<div class="desc"><h2 id="returns">Returns</h2>
+<p>res : True/False depending on whether the condition is true or not.</p></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def execute(self)-&gt;bool:
+    &#34;&#34;&#34;
+    
+
+    Returns
+    -------
+    res : True/False depending on whether the condition is true or not.
+
+    &#34;&#34;&#34;
+    
+    var_list=[]
+    for vari in self.variables:
+        var_list.append(self.sim_component[vari])
+        
+    res=self.condition(var_list)
+
+    self.result=res
+    
+    return res</code></pre>
+</details>
+</dd>
+<dt id="src.TokenLab.simulationcomponents.addons.Condition.get_result"><code class="name flex">
+<span>def <span class="ident">get_result</span></span>(<span>self) ‑> bool</span>
+</code></dt>
+<dd>
+<div class="desc"><h2 id="returns">Returns</h2>
+<pre><code>Returns the most recent result (if it has been executed), otherwise 
+it returns None
+</code></pre></div>
+<details class="source">
+<summary>
+<span>Expand source code</span>
+</summary>
+<pre><code class="python">def get_result(self)-&gt;bool:
+    &#34;&#34;&#34;
+    
+
+    Returns
+    -------
+        Returns the most recent result (if it has been executed), otherwise 
+        it returns None
+
+    &#34;&#34;&#34;
+    if self.result==None:
+        warnings.warn(&#39;Condition has not executed yet. Returning None.&#39;)
+    
+    return self.result</code></pre>
+</details>
+</dd>
+</dl>
+</dd>
+</dl>
+</section>
+</article>
+<nav id="sidebar">
+<h1>Index</h1>
+<div class="toc">
+<ul></ul>
+</div>
+<ul id="index">
+<li><h3>Super-module</h3>
+<ul>
+<li><code><a title="src.TokenLab.simulationcomponents" href="index.html">src.TokenLab.simulationcomponents</a></code></li>
+</ul>
+</li>
+<li><h3><a href="#header-classes">Classes</a></h3>
+<ul>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.addons.AddOn_Noise" href="#src.TokenLab.simulationcomponents.addons.AddOn_Noise">AddOn_Noise</a></code></h4>
+<ul class="">
+<li><code><a title="src.TokenLab.simulationcomponents.addons.AddOn_Noise.apply" href="#src.TokenLab.simulationcomponents.addons.AddOn_Noise.apply">apply</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.addons.AddOn_RandomNoise" href="#src.TokenLab.simulationcomponents.addons.AddOn_RandomNoise">AddOn_RandomNoise</a></code></h4>
+<ul class="">
+<li><code><a title="src.TokenLab.simulationcomponents.addons.AddOn_RandomNoise.apply" href="#src.TokenLab.simulationcomponents.addons.AddOn_RandomNoise.apply">apply</a></code></li>
+</ul>
+</li>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.addons.AddOn_RandomNoiseProportional" href="#src.TokenLab.simulationcomponents.addons.AddOn_RandomNoiseProportional">AddOn_RandomNoiseProportional</a></code></h4>
+</li>
+<li>
+<h4><code><a title="src.TokenLab.simulationcomponents.addons.Condition" href="#src.TokenLab.simulationcomponents.addons.Condition">Condition</a></code></h4>
+<ul class="">
+<li><code><a title="src.TokenLab.simulationcomponents.addons.Condition.execute" href="#src.TokenLab.simulationcomponents.addons.Condition.execute">execute</a></code></li>
+<li><code><a title="src.TokenLab.simulationcomponents.addons.Condition.get_result" href="#src.TokenLab.simulationcomponents.addons.Condition.get_result">get_result</a></code></li>
+</ul>
+</li>
+</ul>
+</li>
+</ul>
+</nav>
+</main>
+<footer id="footer">
+<p>Generated by <a href="https://pdoc3.github.io/pdoc" title="pdoc: Python API documentation generator"><cite>pdoc</cite> 0.10.0</a>.</p>
+</footer>
+</body>
+</html>
