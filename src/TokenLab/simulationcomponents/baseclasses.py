@@ -193,6 +193,8 @@ class TokenEconomy():
         self.holding_time=None    
         self._holding_time_store=[]
         
+        self._effective_holding_time_store=[]
+        
         return None
     
     def execute(self):

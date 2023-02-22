@@ -75,7 +75,7 @@ class TokenEconomy_Basic(TokenEconomy):
                  holding_time:Union[float,HoldingTimeController],supply:Union[float,SupplyController],initial_price:float,
                  fiat:str='$',token:str='token',price_function:PriceFunctionController=PriceFunction_EOE,
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
-                 unit_of_time:str='month',agent_pools:List[AgentPool]=None)->None:
+                 unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False)->None:
 
         
 
@@ -105,6 +105,8 @@ class TokenEconomy_Basic(TokenEconomy):
             The unit of time The default is 'month'. This doesn't have any real effect on the simulations for now.
         agent_pools : List[AgentPool], optional
             The list of agent pools. The default is None.
+            
+        burn_token : bool, if True, then the tokens are burned at every iteration after being used
 
         Returns
         -------
@@ -152,6 +154,8 @@ class TokenEconomy_Basic(TokenEconomy):
             self.add_supply_pools(supply_pools)
             
         self.initialised=False
+        
+        self.burn_token=burn_token
             
         
         return None
@@ -341,7 +345,7 @@ class TokenEconomy_Basic(TokenEconomy):
         for agent in self._agent_pools:
             agent.execute()
             if agent.currency==self.token:
-                self.transactions_volume_in_tokens+=agent.get_transactions()
+                self.transactions_volume_in_tokens=agent.get_transactions()
                 self.transactions_value_in_fiat+=agent.get_transactions()*self.price
             elif agent.currency==self.fiat:
                 self.transactions_value_in_fiat+=agent.get_transactions()
@@ -352,7 +356,10 @@ class TokenEconomy_Basic(TokenEconomy):
                     return False
             else:
                 raise Exception('Agent pool found that does not function in neither fiat nor the token! Please specify correct currency!')
-            self.num_users+=agent.get_num_users()
+            self.num_users=agent.get_num_users()
+        
+        
+
         
         #Calculate price and the new holding time
         self._price_function.execute()
@@ -369,11 +376,15 @@ class TokenEconomy_Basic(TokenEconomy):
         #transaction volume in fiat and tokens
         #We add a small number to prevent division by 0
         self._effective_holding_time=self.price*self.supply/(self.transactions_value_in_fiat+0.000000001)
+        self._effective_holding_time_store.append(self._effective_holding_time)
              
         
         self._transactions_value_store_in_fiat.append(self.transactions_value_in_fiat)
         self._prices_store.append(self.price)
         self._transactions_value_store_in_tokens.append(self.transactions_volume_in_tokens)
+        
+        if self.burn_token:
+            self.supply-=self.transactions_volume_in_tokens
         
         self.iteration+=1
         
@@ -401,7 +412,7 @@ class TokenEconomy_Basic(TokenEconomy):
         
         df=pd.DataFrame({self.token+'_price':self._prices_store,'transactions_'+self.fiat:self._transactions_value_store_in_fiat,
                         'num_users':self._num_users_store,'iteration':np.arange(1,self.iteration+1),'holding_time':self._holding_time_store,
-                        'effective_holding_time':self._effective_holding_time,'supply':self._supply_store})
+                        'effective_holding_time':self._effective_holding_time_store,'supply':self._supply_store})
         
         
         df['transactions_'+self.token]=self._transactions_value_store_in_tokens

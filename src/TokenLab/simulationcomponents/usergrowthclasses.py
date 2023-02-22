@@ -58,7 +58,7 @@ class UserGrowth_Spaced(UserGrowth):
     Creates the number of users (for a predetermined number of iterations)
     using a function that is spacing out users between min and max. Options include:
     
-    linearspace, logspace, geomspace
+    linearspace, logspace, geomspace, logistic
     
     The class pre-calculates all users internally and stores them in _num_users_store.
     
@@ -98,10 +98,12 @@ class UserGrowth_Spaced(UserGrowth):
         
         self._num_users_store_original=np.round(self.space_function(start=self._initial_users,
                                                                     stop=self.max_users,num=num_steps)).astype(int)
+        self._num_users_store=copy.deepcopy(self._num_users_store_original)
+
         #applies the noise addon. If a value is below 0, then it is kept at 0.
         if self._noise_component!=None:
             dummy=[]
-            for i in range(len(self._num_users_store)):
+            for i in range(len(self._num_users_store_original)):
                 temporary= self._num_users_store_original[i]+ self._noise_component.apply(**{'value':self._num_users_store_original[i]})
                 if temporary>=0:
                     dummy.append(temporary)
@@ -114,7 +116,7 @@ class UserGrowth_Spaced(UserGrowth):
         if use_difference:
             self._num_users_store_original=[self._initial_users]+np.diff(self._num_users_store_original).tolist()
         
-        self._num_users_store=copy.deepcopy(self._num_users_store_original)
+            self._num_users_store=copy.deepcopy(self._num_users_store_original)
 
         
         self.max_iterations=num_steps

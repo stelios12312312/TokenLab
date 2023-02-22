@@ -7,6 +7,7 @@ Created on Thu Nov  3 17:01:38 2022
 """
 import numpy as np
 from typing import Union,List,Dict
+import scipy
 
 def log_saturated_space(start:int,stop:int,num:int):
     """
@@ -20,6 +21,21 @@ def log_saturated_space(start:int,stop:int,num:int):
     
     return final
 
+
+def logistic_saturated_space(start:int,stop:int,num:int,steepness:float=1):
+    """
+    Creates a sequence (between start and end) that saturates following a logistic curve
+    """
+    
+    original_space=np.linspace(start=start,stop=stop,num=num)/stop
+    subtractor=np.linspace(start=-6,stop=6,num=num)
+    
+    spaces=scipy.special.expit(steepness*(original_space+subtractor))
+    spaces_weights=spaces/max(spaces)
+    final=spaces_weights*(stop+start)
+    #final[0]=start
+    
+    return final
 
 # def equation_of_exchange(price:float,supply_in_tokens:float,transaction_volume_in_fiat:float,holding_time:float):
     

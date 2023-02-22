@@ -11,7 +11,7 @@ from usergrowthclasses import UserGrowth
 import scipy
 from scipy.stats import binom,norm,poisson
 import numpy as np
-from utils.helpers import log_saturated_space
+from utils.helpers import log_saturated_space,logistic_saturated_space
 import copy
 import time
 
@@ -121,6 +121,31 @@ class TransactionManagement_Constant(TransactionManagement):
         self.iteration+=1
         return self.transactions_value
 
+
+class TransactionManagement_Assumptions(TransactionManagement):
+    """
+    Class that simply provides transactions based on a pre-defined assumptions.
+    
+    Does not use any dependencies
+    """
+    
+    def __init__(self,data:List):
+        super(TransactionManagement_Assumptions,self).__init__()
+        
+        self.data=np.ndarray.flatten(np.array(data))
+        
+        
+    def execute(self)->float:
+        
+        res=self.data[self.iteration]
+        
+        self.transactions_value=res
+        self.iteration+=1
+        
+        return res
+        
+        
+
         
 
 class TransactionManagement_Trend(TransactionManagement):
@@ -142,7 +167,8 @@ class TransactionManagement_Trend(TransactionManagement):
     """
     
     def __init__(self,average_transaction_initial:float, average_transaction_final:float,num_steps:int,
-                 space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]=np.linspace,name:str=None,
+                 space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space,logistic_saturated_space]=np.linspace,
+                 name:str=None,
                  noise_addon:AddOn=None):
         """
         
