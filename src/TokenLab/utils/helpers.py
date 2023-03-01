@@ -22,7 +22,7 @@ def log_saturated_space(start:int,stop:int,num:int):
     return final
 
 
-def logistic_saturated_space(start:int,stop:int,num:int,steepness:float=1):
+def logistic_saturated_space(start:int,stop:int,num:int,steepness:float=1,takeoff:float=0):
     """
     Creates a sequence (between start and end) that saturates following a logistic curve
     """
@@ -30,7 +30,7 @@ def logistic_saturated_space(start:int,stop:int,num:int,steepness:float=1):
     original_space=np.linspace(start=start,stop=stop,num=num)/stop
     subtractor=np.linspace(start=-6,stop=6,num=num)
     
-    spaces=scipy.special.expit(steepness*(original_space+subtractor))
+    spaces=scipy.special.expit(steepness*(original_space+subtractor+takeoff))
     spaces_weights=spaces/max(spaces)
     final=spaces_weights*(stop+start)
     #final[0]=start

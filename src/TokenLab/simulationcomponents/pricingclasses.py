@@ -72,7 +72,7 @@ class HoldingTime_Stochastic(HoldingTimeController):
     Uses a probability distribution and samples a random holding time per iteration.
     """
     
-    def __init__(self,holding_time_dist:scipy.stats=scipy.stats.halfnorm,holding_time_params:Dict={'loc':0,'scale':1},
+    def __init__(self,holding_time_dist:scipy.stats=scipy.stats.halfnorm,holding_time_params:Union[Dict[str,float],List[Dict[str,float]]]={'loc':0,'scale':1},
                  minimum:float=0.1):
         """
         
@@ -91,6 +91,8 @@ class HoldingTime_Stochastic(HoldingTimeController):
         None.
 
         """
+        super(HoldingTime_Stochastic,self).__init__()
+
         self.distribution=holding_time_dist
         self.dist_params=holding_time_params
         self.minimum=minimum
@@ -108,10 +110,23 @@ class HoldingTime_Stochastic(HoldingTimeController):
 
         """
         seed=int(int(time.time())*np.random.rand())
+        
+        if type(self.dist_params)==type([]):
+            #if the end of the iteration has been reached simply use the last one
+            try:
+                parameters=self.dist_params[self.iteration]
+            except:
+                parameters=self.dist_params[-1]
+        else:
+            parameters=self.dist_params
 
-        self.holding_time=self.distribution.rvs(size=1,**self.dist_params,random_state=seed)[0]
+
+        self.holding_time=self.distribution.rvs(size=1,**parameters,random_state=seed)[0]
         if self.holding_time<self.minimum:
             self.holding_time=self.minimum
+            
+        self.iteration+=1
+
         
         return self.holding_time
     
