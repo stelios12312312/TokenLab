@@ -8,7 +8,7 @@ Created on Wed Nov 30 11:03:57 2022
 
 from typing import List, Dict,Union
 from baseclasses import *
-from utils.helpers import log_saturated_space
+from TokenLab.utils.helpers import log_saturated_space
 import scipy
 from scipy import stats
 from scipy.stats import uniform

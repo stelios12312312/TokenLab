@@ -11,7 +11,7 @@ from usergrowthclasses import UserGrowth
 import scipy
 from scipy.stats import binom,norm,poisson
 import numpy as np
-from utils.helpers import log_saturated_space,logistic_saturated_space
+from TokenLab.utils.helpers import log_saturated_space,logistic_saturated_space
 import copy
 import time
 
@@ -420,6 +420,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
         num_users=self.dependencies[dependency]['num_users']
         self.total_users=num_users
         
+        #Start by estimating how many users are actually active
         #because activitiy_probabilities can be either an int or a list, we have to take into account both scenarios
         if isinstance(self.activity_probabilities,(list,np.ndarray)):
             act=self.activity_probabilities[self.iteration]
@@ -435,7 +436,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
         else:
             trans_param=self.transaction_dist_parameters
             
-            
+        #Get the average transaction size. If the transaction is below 0, then it becomes 0
         if self.transactions_per_user is None:
             seed=int(int(time.time())*np.random.rand())
             trans=self.transactions_distribution.rvs(size=1,**trans_param,random_state=seed)[0]
@@ -444,7 +445,8 @@ class TransactionManagement_Stochastic(TransactionManagement):
         else:
             trans=self.transactions_per_user
             
-        self.num_transactions=trans
+        #multiply average transactions per user times the number of users
+        self.num_transactions=trans*num_users
             
         
         if isinstance(self.value_dist_parameters,(list,np.ndarray)):
@@ -464,8 +466,8 @@ class TransactionManagement_Stochastic(TransactionManagement):
         elif value_mean>0 and self.type_transaction=='negative':
             value_mean=0
             
-        
-        self.transactions_value=value_mean
+        #total value is average expected value times the number of transactions
+        self.transactions_value=value_mean*self.num_transactions
         
         self._transactions_value_store.append(value_mean)
         self.iteration+=1

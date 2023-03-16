@@ -436,7 +436,7 @@ class TokenMetaSimulator():
         
         self.unit_of_time=token_economy.unit_of_time
         
-    def execute(self,iterations:int=36,repetitions=30)->pd.DataFrame:
+    def execute(self,iterations:int=36,repetitions:int=30)->pd.DataFrame:
         iteration_runs=[]
         repetition_reports=[]
         for i in tqdm(range(repetitions)):
@@ -471,7 +471,15 @@ class TokenMetaSimulator():
         return self.data
     
     
-    def get_report(self,functions:List=[np.mean,np.std,np.max,np.min],segment:Union[List,Tuple,int,str]=None)->pd.DataFrame:
+    def _quantile_10(x):
+        
+        return np.quantile(x,0.10)
+    
+    def _quantile_90(x):
+        
+        return np.quantile(x,0.90)
+    
+    def get_report(self,functions:List=[np.mean,np.std,np.max,np.min,_quantile_10,_quantile_90],segment:Union[List,Tuple,int,str]=None)->pd.DataFrame:
         """
         segment: 
             a)Either a list with indices [index1,index2] where index1<index2<repetitions
@@ -503,7 +511,7 @@ class TokenMetaSimulator():
             
         pass
             
-    def get_timeseries(self,feature:str)->Union[matplotlib.collections.PolyCollection,pd.DataFrame]:
+    def get_timeseries(self,feature:str,use_std:bool=False)->Union[matplotlib.collections.PolyCollection,pd.DataFrame]:
         
         """
         Calculates an average for a certain feature in the report, (e.g. price) and then computes
@@ -511,16 +519,27 @@ class TokenMetaSimulator():
         """
         
         timeseries_mean=self.data.groupby('iteration_time')[feature].mean()
+        timeseries_median=self.data.groupby('iteration_time')[feature].median()
         timeseries_std=self.data.groupby('iteration_time')[feature].std()
+        timeseries_quant_10=self.data.groupby('iteration_time')[feature].quantile(0.1)
+        timeseries_quant_90=self.data.groupby('iteration_time')[feature].quantile(0.9)
+
         
-        final=pd.DataFrame({feature+'_mean':timeseries_mean.values,
-                            'sd':timeseries_std.values,
+        final=pd.DataFrame({feature+'_mean':timeseries_mean.values,feature+'_median':timeseries_median.values,
+                            'sd':timeseries_std.values,'quant_10%':timeseries_quant_10,
+                            'quant_90%':timeseries_quant_90,
                             self.unit_of_time:np.arange(len(timeseries_mean))})
         
-        lower=timeseries_mean-1.96*timeseries_std
-        higher=timeseries_mean+1.96*timeseries_std
+        if use_std:
+            lower=timeseries_mean-1.96*timeseries_std
+            higher=timeseries_mean+1.96*timeseries_std
+            toplot=timeseries_mean
+        else:
+            lower=timeseries_quant_10
+            higher=timeseries_quant_90
+            toplot=timeseries_median
         
-        plt.plot(final[self.unit_of_time].values,timeseries_mean)
+        plt.plot(final[self.unit_of_time].values,toplot)
         plt.xlabel(self.unit_of_time)
         plt.ylabel(feature)
         ax=plt.fill_between(final[self.unit_of_time],lower,higher,alpha=0.2)
