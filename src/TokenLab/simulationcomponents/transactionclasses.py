@@ -308,9 +308,13 @@ class TransactionManagement_Stochastic(TransactionManagement):
     def __init__(self,
                  value_per_transaction:float=None,
                  transactions_per_user:Union[int,list[int]]=None,
-                 value_distribution:scipy.stats=norm,transactions_distribution:scipy.stats=poisson,
+                 value_distribution:scipy.stats=norm,
                  value_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'loc':10,'scale':100},
-                 transactions_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'mu':5},name:str=None,
+                 value_constant:float=None,
+                 transactions_distribution:scipy.stats=poisson,
+                 transactions_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'mu':5},
+                 transactions_constant:float=None,
+                 name:str=None,
                  activity_probs:Union[float,list[float]]=1,type_transaction:str='positive')->None:
         
         """
@@ -329,11 +333,17 @@ class TransactionManagement_Stochastic(TransactionManagement):
         value_distribution: by default this is the normal distribution, but any scipy distribution 
          is supported.
         
+        value_constant: If this is not None, then the expected value of a transaction is always value constant. In the back-scenes
+        this creates a uniform distribution with bounds [value_constant,value_constant]
+        
         transactions_distribution: uses a distribution to model the number of transactions per user. By default
         this is a Poisson distribution
         
         transactions_dist_parameters: Parameters for the transaction distribution. This can also be a list of dictionaries, where each dictionary
         within the list is a set of parameters.
+        
+        transactions_constant: If this is not None, then the expected number of transactions is equal to this constant.
+        In the back-scenes, this creates a uniform distribution with bounds [transactions_constant,transactions_constant]
         
         type_transaction: positive (positive transactions only), negative or mixed. It is positive by default
         
@@ -370,22 +380,26 @@ class TransactionManagement_Stochastic(TransactionManagement):
         self.transactions_distribution=transactions_distribution
         self.transactions_per_user=transactions_per_user
         self.transaction_dist_parameters=transactions_dist_parameters
+        self.transactions_constant=transactions_constant
 
         
         self.value_distribution=value_distribution
         self.value_per_transaction=value_per_transaction
         self.value_dist_parameters=value_dist_parameters
+        self.value_constant=value_constant
         
         if type_transaction not in ['positive','negative','mix']:
             raise Exception ('You must define a type_transaction as positive, negative or mixed')
         
         self.type_transaction=type_transaction
         
-        if value_per_transaction==None and value_dist_parameters==None:
-            raise Exception('You need to define at least value per transaction or value_dist_parameters')
+        if value_per_transaction==None and value_dist_parameters==None and value_constant==None:
+            raise Exception('You need to define at least value per transaction, value_dist_parameters or value_constant')
             
-        if transactions_per_user==None and transactions_dist_parameters==None:
-            raise Exception('You need to define at least transaction_per_user or transaction_dist_parameters')
+        if transactions_per_user==None and transactions_dist_parameters==None and transactions_constant==None:
+            raise Exception('You need to define at least transaction_per_users, transaction_dist_parameters or transactions_constant')
+            
+
         
         
         #sanity test, all lists should be the same length
@@ -404,6 +418,15 @@ class TransactionManagement_Stochastic(TransactionManagement):
             
         if len(set(lengths))>1:
             raise Exception('When supplying lists as arguments, they should all have the same length.')
+            
+            
+        if transactions_constant!=None:
+            self.transactions_distribution=scipy.stats.uniform
+            self.transaction_dist_parameters={'loc':transactions_constant,'scale':0}
+            
+        if value_constant!=None:
+            self.value_distribution=scipy.stats.uniform
+            self.value_dist_parameters={'loc':value_constant,'scale':0}
 
         return None
     
