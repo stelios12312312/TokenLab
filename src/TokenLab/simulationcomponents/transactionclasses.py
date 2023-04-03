@@ -307,7 +307,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
 
     def __init__(self,
                  value_per_transaction:float=None,
-                 transactions_per_user:Union[int,list[int]]=None,
+                 transactions_per_user:Union[int,List[int]]=None,
                  value_distribution:scipy.stats=norm,
                  value_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'loc':10,'scale':100},
                  value_constant:float=None,
@@ -315,7 +315,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
                  transactions_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'mu':5},
                  transactions_constant:float=None,
                  name:str=None,
-                 activity_probs:Union[float,list[float]]=1,type_transaction:str='positive')->None:
+                 activity_probs:Union[float,List[float]]=1,type_transaction:str='positive')->None:
         
         """
         activity_probs: This is either a float or a list of floats, and determines the parameter p of the binomial
