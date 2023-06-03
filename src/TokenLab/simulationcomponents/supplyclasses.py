@@ -56,6 +56,45 @@ class SupplyController_Constant(SupplyController):
         self.supply=supply
         
         
+class SupplyController_FromData(SupplyController):
+    
+    def __init__(self,values:list,on_end_continue:bool=True):
+        """
+        
+
+        Parameters
+        ----------
+        values : list
+            The circulating supply for each iteration.
+        on_end_continue : bool, optional
+            If True, then the controller will keep providing the last value once it runs out of iterations
+            If false, then it will raise an error. The default is True.
+
+        Returns
+        -------
+        None.
+
+        """
+        super(SupplyController_FromData,self).__init__()
+        
+        self._supplylist = values
+        self._iteration = 0
+        self._on_end = on_end_continue
+        
+    def execute(self):
+        self._supply = self._supplylist[self._iteration]
+        self._iteration+=1
+        
+        if self._on_end and self._iteration==len(self._supplylist):
+            self._iteration-=1
+        elif not self._on_end and self._iteration==len(self._supplylist):
+            raise Exception('Supply controller reached the end of iterations and no supply is provided!')
+        
+    def get_supply(self):
+        return self._supply
+        
+        
+        
         
 class SupplyController_AdaptiveStochastic(SupplyController):
     """

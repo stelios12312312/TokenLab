@@ -511,7 +511,7 @@ class TokenMetaSimulator():
             
         pass
             
-    def get_timeseries(self,feature:str,use_std:bool=False)->Union[matplotlib.collections.PolyCollection,pd.DataFrame]:
+    def get_timeseries(self,feature:str,use_std:bool=False,log_scale:bool=False)->Union[matplotlib.collections.PolyCollection,pd.DataFrame]:
         
         """
         Calculates an average for a certain feature in the report, (e.g. price) and then computes
@@ -543,6 +543,9 @@ class TokenMetaSimulator():
         plt.xlabel(self.unit_of_time)
         plt.ylabel(feature)
         ax=plt.fill_between(final[self.unit_of_time],lower,higher,alpha=0.2)
+        
+        if log_scale:
+            plt.yscale('log')
         
         plt.show()
         

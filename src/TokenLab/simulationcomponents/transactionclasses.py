@@ -122,7 +122,7 @@ class TransactionManagement_Constant(TransactionManagement):
         return self.transactions_value
 
 
-class TransactionManagement_Assumptions(TransactionManagement):
+class TransactionManagement_FromData(TransactionManagement):
     """
     Class that simply provides transactions based on a pre-defined assumptions.
     
@@ -130,7 +130,7 @@ class TransactionManagement_Assumptions(TransactionManagement):
     """
     
     def __init__(self,data:List):
-        super(TransactionManagement_Assumptions,self).__init__()
+        super(TransactionManagement_FromData,self).__init__()
         
         self.data=np.ndarray.flatten(np.array(data))
         
