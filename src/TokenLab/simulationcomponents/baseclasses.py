@@ -104,6 +104,10 @@ class AgentPool(Controller):
         self.currency=None
         self.name=None
         self.dependencies={TokenEconomy:None}
+        #This is a mechanism that enables agent pools to generate new pools
+        #The new pools need to change at the execute() function, and follow a format like
+        #[('AgentPool',object),'SupplyPool':object}
+        self.new_pools = []
         
         
 
@@ -133,6 +137,10 @@ class AgentPool(Controller):
     def reset(self)->None:
         
         self.iteration=0
+        
+    def execute(self)->list:
+        
+        return self.new_pools
         
 
 class TokenEconomy():

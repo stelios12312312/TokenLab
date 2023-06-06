@@ -29,6 +29,8 @@ class AddOn_Noise(AddOn):
         """
         
         pass
+    
+    
 
 class AddOn_RandomNoise(AddOn_Noise):
     """

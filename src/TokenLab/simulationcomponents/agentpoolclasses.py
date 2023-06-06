@@ -33,7 +33,7 @@ class AgentPool_Basic(AgentPool):
         """
         
         users_controller: Controller specifying how the userbase grows over time. If the users controller is an integer,
-        then the AgentPool class will simply take it as a constant valeu for all simulations
+        then the AgentPool class will simply take it as a constant value for all simulations
         
         transactions_controller: Controller that determines
         currency: the currency this pool represents.
@@ -59,7 +59,6 @@ class AgentPool_Basic(AgentPool):
         
         self.dependencies={TokenEconomy:None}
 
-        
         return None
     
     
@@ -104,6 +103,72 @@ class AgentPool_Basic(AgentPool):
         self.iteration=0
         self.users_controller.reset()
         self.transactions_controller.reset()
+
+        
+class AgentPool_Staking(AgentPool_Basic):
+    def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
+                 staking_controller:SupplyStaker,staking_controller_params:dict,
+                 currency:str='$',name:str=None,dumper:bool=False,
+                 )->None:
+        """
+        
+        users_controller: Controller specifying how the userbase grows over time. If the users controller is an integer,
+        then the AgentPool class will simply take it as a constant value for all simulations
+        
+        transactions_controller: Controller that determines
+        currency: the currency this pool represents.
+        name: the name of the pool, this can come in very handy during debugging
+        dumper: Whether this is an agent pool that only sells tokens
+        
+        
+        """      
+        super(AgentPool_Staking,self).__init__(users_controller=users_controller,transactions_controller=transactions_controller,
+                                               currency=currency,name=name,dumper=dumper)
+        self.staking_controller = staking_controller
+        self.staking_controller_params = staking_controller_params
+        
+
+        return None
+    
+    def reset(self)->None:
+        self.iteration=0
+        self.users_controller.reset()
+        self.transactions_controller.reset()
+        self.staking_controller.reset()
+        
+    
+    def execute(self)->None:
+        """
+        Runs the agent pool. It increases iterations by 1, and then calculates the new number of users
+        and the new number of transactions.
+        
+        It then creates a number of stakers depending on the number of transactions.
+        
+        Fields:
+            'iterations','num_users','transactions'
+
+        Returns
+        -------
+        None
+            DESCRIPTION.
+
+        """
+        self.iteration+=1
+        self.num_users = self.users_controller.execute()
+        self.transactions = self.transactions_controller.execute()
+        
+        number_of_stakers = int(self.transactions/self.staking_controller.get_staking_amount())
+        
+        new_pools=[]
+        for i in range(number_of_stakers):
+            new_pools.append(('SupplyPool',self.staking_controller(**self.staking_controller_params)))
+        
+        self.new_pools = new_pools
+        
+        return self.new_pools
+    
+    
+    
         
 
 class AgentPool_Conditional(Initialisable,AgentPool):

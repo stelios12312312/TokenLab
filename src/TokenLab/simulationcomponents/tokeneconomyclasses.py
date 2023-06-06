@@ -343,7 +343,7 @@ class TokenEconomy_Basic(TokenEconomy):
 
         #Execute agent pools
         for agent in self._agent_pools:
-            agent.execute()
+            new_pools = agent.execute()
             if agent.currency==self.token:
                 self.transactions_volume_in_tokens=agent.get_transactions()
                 self.transactions_value_in_fiat+=agent.get_transactions()*self.price
@@ -354,6 +354,14 @@ class TokenEconomy_Basic(TokenEconomy):
                 else:
                     warnings.warn('Warning! Price reached 0 at iteration : '+str(self.iteration+1))
                     return False
+                
+            #Agent pools can spawn new pools. This is primarily used in staking
+            if new_pools!=None:
+                for pool in new_pools:
+                    if pool[0]=='AgentPool':
+                        self._agent_pools.append(pool[1])
+                    if pool[0]=='SupplyPool':
+                        self._supply_pools.append(pool[1])
             else:
                 raise Exception('Agent pool found that does not function in neither fiat nor the token! Please specify correct currency!')
             self.num_users=agent.get_num_users()

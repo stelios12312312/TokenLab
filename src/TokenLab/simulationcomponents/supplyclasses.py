@@ -82,7 +82,7 @@ class SupplyController_FromData(SupplyController):
         self._on_end = on_end_continue
         
     def execute(self):
-        self._supply = self._supplylist[self._iteration]
+        self.supply = self._supplylist[self._iteration]
         self._iteration+=1
         
         if self._on_end and self._iteration==len(self._supplylist):
@@ -90,9 +90,26 @@ class SupplyController_FromData(SupplyController):
         elif not self._on_end and self._iteration==len(self._supplylist):
             raise Exception('Supply controller reached the end of iterations and no supply is provided!')
         
-    def get_supply(self):
-        return self._supply
+
         
+        
+class SupplyStaker(SupplyController):
+    def __init__(self,staking_amount:float,rewards:float,lockup_duration:int):
+        super(SupplyStaker,self).__init__()
+        self._iteration=0
+        self._staking_amount = staking_amount
+        
+
+    def execute(self):
+        if self._iteration == 0:
+            self.supply = -1*self._staking_amount
+        elif self._iteration == lockup_duration:
+            self.supply = self._staking_amount + rewards
+            
+    def get_staking_amount(self):
+        
+        return self._staking_amount
+    
         
         
         
