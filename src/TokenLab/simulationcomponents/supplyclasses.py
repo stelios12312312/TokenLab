@@ -33,6 +33,12 @@ class SupplyController(Controller):
         
         pass
     
+    def reset(self)->bool:
+        
+        self._iteration = 0
+        
+        return True
+    
 class SupplyController_Constant(SupplyController):
     """
     Most basic type of supply controller. Supply is simply constant 

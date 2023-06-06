@@ -106,7 +106,7 @@ class AgentPool(Controller):
         self.dependencies={TokenEconomy:None}
         #This is a mechanism that enables agent pools to generate new pools
         #The new pools need to change at the execute() function, and follow a format like
-        #[('AgentPool',object),'SupplyPool':object}
+        #[('AgentPool',object),('SupplyPool':object)]
         self.new_pools = []
         
         

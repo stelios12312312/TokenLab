@@ -355,6 +355,10 @@ class TokenEconomy_Basic(TokenEconomy):
                     warnings.warn('Warning! Price reached 0 at iteration : '+str(self.iteration+1))
                     return False
                 
+            else:
+                raise Exception('Agent pool found that does not function in neither fiat nor the token! Please specify correct currency!')
+            self.num_users=agent.get_num_users()
+            
             #Agent pools can spawn new pools. This is primarily used in staking
             if new_pools!=None:
                 for pool in new_pools:
@@ -362,9 +366,6 @@ class TokenEconomy_Basic(TokenEconomy):
                         self._agent_pools.append(pool[1])
                     if pool[0]=='SupplyPool':
                         self._supply_pools.append(pool[1])
-            else:
-                raise Exception('Agent pool found that does not function in neither fiat nor the token! Please specify correct currency!')
-            self.num_users=agent.get_num_users()
         
         
 

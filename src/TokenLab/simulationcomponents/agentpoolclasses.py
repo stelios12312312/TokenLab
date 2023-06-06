@@ -9,6 +9,7 @@ from typing import List, Dict,Union
 from baseclasses import *
 from usergrowthclasses import UserGrowth,UserGrowth_Constant
 from transactionclasses import TransactionManagement, TransactionManagement_Constant
+from supplyclasses import SupplyStaker
 import copy
 from typing import TypedDict
 from addons import Condition
@@ -134,7 +135,6 @@ class AgentPool_Staking(AgentPool_Basic):
         self.iteration=0
         self.users_controller.reset()
         self.transactions_controller.reset()
-        self.staking_controller.reset()
         
     
     def execute(self)->None:
@@ -157,7 +157,7 @@ class AgentPool_Staking(AgentPool_Basic):
         self.num_users = self.users_controller.execute()
         self.transactions = self.transactions_controller.execute()
         
-        number_of_stakers = int(self.transactions/self.staking_controller.get_staking_amount())
+        number_of_stakers = int(self.transactions/self.staking_controller_params['staking_amount'])
         
         new_pools=[]
         for i in range(number_of_stakers):
