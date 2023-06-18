@@ -72,10 +72,11 @@ class TokenEconomy_Basic(TokenEconomy):
     """
     
     def __init__(self,
-                 holding_time:Union[float,HoldingTimeController],supply:Union[float,SupplyController],initial_price:float,
+                 holding_time:Union[float,HoldingTimeController],supply:Union[float,SupplyController],
+                 initial_price:float,
                  fiat:str='$',token:str='token',price_function:PriceFunctionController=PriceFunction_EOE,
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
-                 unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False)->None:
+                 unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,supply_is_added:bool=False)->None:
 
         
 
@@ -87,6 +88,7 @@ class TokenEconomy_Basic(TokenEconomy):
             DA controller determining how the holding time is being calculated..
         supply : Union[float,SupplyController]
             the core supply, or a supply controller that determines the release schedule.
+
         initial_price : float
             The starting price.
         fiat : str, optional
@@ -105,7 +107,9 @@ class TokenEconomy_Basic(TokenEconomy):
             The unit of time The default is 'month'. This doesn't have any real effect on the simulations for now.
         agent_pools : List[AgentPool], optional
             The list of agent pools. The default is None.
-            
+        supply_is_added : bool
+            If True, then the circulating supply is added to the current supply. Otherwise, it's just provided as the ground truth.
+        
         burn_token : bool, if True, then the tokens are burned at every iteration after being used
 
         Returns
@@ -156,6 +160,8 @@ class TokenEconomy_Basic(TokenEconomy):
         self.initialised=False
         
         self.burn_token=burn_token
+        
+        self.supply_is_added = supply_is_added
             
         
         return None
@@ -269,6 +275,7 @@ class TokenEconomy_Basic(TokenEconomy):
             
             raise Warning('duplicate agent pools detected! It is likely the simulation will not run successfuly!')
             
+            
         return True
     
     def initialise(self)->None:
@@ -279,6 +286,8 @@ class TokenEconomy_Basic(TokenEconomy):
         for agent in self._agent_pools:
             if isinstance(agent,Initialisable):
                 agent.initialise()
+                
+        self.supply=0
         self.initialised=True
     
     def execute(self)->bool:
@@ -323,18 +332,33 @@ class TokenEconomy_Basic(TokenEconomy):
         self.transactions_value_in_fiat=0
         self.transactions_volume_in_tokens=0
         
+        self._temp_agent_pools = []
+        self._temp_supply_pools = []
+        
         #Run the core supply
         self._supply.execute()
-        self.supply=self._supply.get_supply()
+        if self.supply_is_added:
+            self.supply += self._supply.get_supply()
+        else:
+            self.supply=self._supply.get_supply()
 
-        for supplypool in self._supply_pools:
+        for supplypool in self._supply_pools+self._temp_supply_pools:
             supplypool.execute()
             self.supply+=supplypool.get_supply()
+            if self.supply_is_added==False:
+                warnings.warn("""Warning! There are supply pools affecting total supply, but supply_is_added=False. This means that
+                              in the next iteration, the effect of the supply pools will disappear! 
+                              Please make sure that this is really the intended behaviour.""")
+
 
             
-        if self.supply<=0:
-            warnings.warn('Warning! Supply reached 0! Iteration number :'+str(self.iteration))
+        if self.supply==0:
+            warnings.warn('Warning! Supply reached 0! Iteration number {0}'.format(self.iteration))
+            
+        if self.supply<0:
+            warnings.warn('Warning! Supply reached BELOW 0! Iteration number {0}'.format(self.iteration))
             return False
+        
         
         
         #Get the holding time
@@ -342,7 +366,7 @@ class TokenEconomy_Basic(TokenEconomy):
         
 
         #Execute agent pools
-        for agent in self._agent_pools:
+        for agent in self._agent_pools+self._temp_agent_pools:
             new_pools = agent.execute()
             if agent.currency==self.token:
                 self.transactions_volume_in_tokens=agent.get_transactions()
@@ -359,16 +383,15 @@ class TokenEconomy_Basic(TokenEconomy):
                 raise Exception('Agent pool found that does not function in neither fiat nor the token! Please specify correct currency!')
             self.num_users=agent.get_num_users()
             
-            #Agent pools can spawn new pools. This is primarily used in staking
+            #Agent pools can spawn new pools. This is primarily used in staking.
+            
             if new_pools!=None:
                 for pool in new_pools:
                     if pool[0]=='AgentPool':
-                        self._agent_pools.append(pool[1])
+                        self._temp_agent_pools.append(pool[1])
                     if pool[0]=='SupplyPool':
-                        self._supply_pools.append(pool[1])
+                        self._temp_supply_pools.append(pool[1])
         
-        
-
         
         #Calculate price and the new holding time
         self._price_function.execute()
@@ -380,7 +403,7 @@ class TokenEconomy_Basic(TokenEconomy):
         self._holding_time_store.append(self.holding_time)
         self._num_users_store.append(self.num_users)
         self._supply_store.append(self.supply)
-        
+            
         #this is the holding time if we were simply feeding back the equation of exchange on the current
         #transaction volume in fiat and tokens
         #We add a small number to prevent division by 0

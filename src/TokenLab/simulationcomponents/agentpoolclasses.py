@@ -157,6 +157,14 @@ class AgentPool_Staking(AgentPool_Basic):
         self.num_users = self.users_controller.execute()
         self.transactions = self.transactions_controller.execute()
         
+        keys=[]
+        for k in self.dependencies.keys():
+            keys.append(k)
+        token_economy_supply = self.dependencies[keys[0]].supply
+        
+        if self.transactions > token_economy_supply:
+            self.transactions = token_economy_supply*np.random.rand() - 1
+        
         number_of_stakers = int(self.transactions/self.staking_controller_params['staking_amount'])
         
         new_pools=[]
