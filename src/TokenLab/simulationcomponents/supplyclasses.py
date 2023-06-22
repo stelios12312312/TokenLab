@@ -116,6 +116,27 @@ class SupplyStaker(SupplyController):
         
         return self._staking_amount
     
+    
+class SupplyController_Bonding(SupplyController):
+    """
+    This is a supply class that is used only alongside bonding curves.
+    
+    It simply uses the estimated number of tokens in the economy, and translates this into supply.
+    """
+    
+    def __init__(self):
+        super(SupplyController_Bonding,self).__init__()
+        self.dependencies={TokenEconomy:None}
+        self.supply = 0
+        
+    def execute(self):
+        tokeneconomy=self.dependencies[TokenEconomy]
+        
+        if len(tokeneconomy._transactions_value_store_in_tokens)>0:
+            self.supply = tokeneconomy._transactions_value_store_in_tokens[-1]
+        
+        
+        
         
         
         
