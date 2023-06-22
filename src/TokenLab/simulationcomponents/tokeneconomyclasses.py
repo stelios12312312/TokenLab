@@ -582,4 +582,32 @@ class TokenMetaSimulator():
         plt.show()
         
         return ax,final
-
+    
+class TokenEconomy_Dependent(TokenEconomy_Basic):
+    
+    
+    def __init__(self,dependent_token_economy:TokenEconomy_Basic,
+                 holding_time:Union[float,HoldingTimeController],supply:Union[float,SupplyController],
+                 initial_price:float,
+                 fiat:str='tokenA',token:str='tokenB',price_function:PriceFunctionController=PriceFunction_EOE,
+                 price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
+                 unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,supply_is_added:bool=False)->None:
+        
+    super(TokenEconomy_Dependent,self).__init__(holding_time=holding_time,supply=supply,
+    initial_price=initial_price,
+    fiat=fiat,token=token,price_function=price_function,
+    price_function_parameters=price_function_parameters,supply_pool=supply_pools,
+    unit_of_time=unit_of_time,agent_pools=agent_pools,burn_token=burn_token,supply_is_added=supply_is_added)
+    
+    self._token_economy = dependent_token_economy
+    
+    
+    def execute(self):
+        
+    super(TokenEconomy_Dependent,self).execute()
+    prime_token_used = self.transactions_value_in_fiat
+    
+    self._token_economy.supply += prime_token_used
+    
+    
+    
