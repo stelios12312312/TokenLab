@@ -19,6 +19,7 @@ import time
 from addons import AddOn_RandomNoise, AddOn_RandomNoiseProportional
 
 
+
 class HoldingTimeController(Controller):
     """
     Abstract class from which all HoldingTime controllers should inherit.
@@ -250,3 +251,30 @@ class PriceFunction_EOE(PriceFunctionController):
             self.price=price_new_2
         
         self.iteration+=1
+        
+class PriceFunction_BondingCurve(PriceFunctionController):
+    """
+    
+    Implements pricing based upon bonding curves.
+    
+    The bonding curve is always a function of supply.
+    """
+    
+    def __init__(self,function:Callable):
+        
+        super(PriceFunction_BondingCurve,self).__init__()
+        self._bonding_function = function
+        
+    def execute(self)->float:
+        tokeneconomy=self.dependencies[TokenEconomy]
+        supply_of_tokens=tokeneconomy.supply
+        
+        price_new = self._bonding_function(supply_of_tokens)
+        
+        self.price = price_new
+        
+        self.iteration+=1
+        
+        
+        
+        
