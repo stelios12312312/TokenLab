@@ -76,7 +76,8 @@ class TokenEconomy_Basic(TokenEconomy):
                  initial_price:float,
                  fiat:str='$',token:str='token',price_function:PriceFunctionController=PriceFunction_EOE,
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
-                 unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,supply_is_added:bool=False)->None:
+                 unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,
+                 supply_is_added:bool=False,name:str=None)->None:
 
         
 
@@ -123,7 +124,7 @@ class TokenEconomy_Basic(TokenEconomy):
         
         super(TokenEconomy_Basic,self).__init__(holding_time=holding_time,supply=supply,fiat=fiat,token=token,
                                                 price_function=price_function, 
-                                                unit_of_time=unit_of_time,token_initial_price=[initial_price])
+                                                unit_of_time=unit_of_time,token_initial_price=[initial_price],name=name)
         
         
         if type(holding_time)==float or type(holding_time)==int:
@@ -283,6 +284,9 @@ class TokenEconomy_Basic(TokenEconomy):
         Initialises any agent pools that need to be initialised. These are pools that inherit from the Initialisable
         class, and require initialisation in order to sort out their dependencies.
         """
+        if len(self._agent_pools)==0:
+            raise Exception('The token economy is not connected to any agent pools!')
+        
         for agent in self._agent_pools:
             if isinstance(agent,Initialisable):
                 agent.initialise()
@@ -374,7 +378,8 @@ class TokenEconomy_Basic(TokenEconomy):
             elif agent.currency==self.fiat:
                 self.transactions_value_in_fiat+=agent.get_transactions()
                 if self.price>0:
-                    self.transactions_volume_in_tokens=agent.get_transactions()*self.holding_time/self.price
+                    # self.transactions_volume_in_tokens=agent.get_transactions()*self.holding_time/self.price
+                    self.transactions_volume_in_tokens=agent.get_transactions()/self.price
                 else:
                     warnings.warn('Warning! Price reached 0 at iteration : '+str(self.iteration+1))
                     return False
@@ -593,21 +598,50 @@ class TokenEconomy_Dependent(TokenEconomy_Basic):
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
                  unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,supply_is_added:bool=False)->None:
         
-    super(TokenEconomy_Dependent,self).__init__(holding_time=holding_time,supply=supply,
-    initial_price=initial_price,
-    fiat=fiat,token=token,price_function=price_function,
-    price_function_parameters=price_function_parameters,supply_pool=supply_pools,
-    unit_of_time=unit_of_time,agent_pools=agent_pools,burn_token=burn_token,supply_is_added=supply_is_added)
-    
-    self._token_economy = dependent_token_economy
+        super(TokenEconomy_Dependent,self).__init__(holding_time=holding_time,supply=supply,\
+        initial_price=initial_price,\
+        fiat=fiat,token=token,price_function=price_function,\
+        price_function_parameters=price_function_parameters,\
+        unit_of_time=unit_of_time,burn_token=burn_token,supply_is_added=supply_is_added)
+        
+        self._token_economy = dependent_token_economy
     
     
     def execute(self):
         
-    super(TokenEconomy_Dependent,self).execute()
-    prime_token_used = self.transactions_value_in_fiat
+        super(TokenEconomy_Dependent,self).execute()
+        prime_token_used = self.transactions_value_in_fiat
+        
+        self._token_economy.supply -= prime_token_used
     
-    self._token_economy.supply += prime_token_used
     
+class TokenEcosystem(TokenEconomy):
     
-    
+    def __init__(self,token_economies:List[TokenEconomy],randomize_order:bool=False,
+                 unit_of_time='month',master:str=None):
+        
+        self.token_economies = token_economies
+        self._randomize = randomize_order
+        self.unit_of_time = unit_of_time
+        self.master = master
+        
+        
+    def execute(self):
+        if self._randomize:
+            random.shuffle(self.token_economies)
+            
+        for tokenec in self.token_economies:
+            tokenec.execute()
+            
+        return True
+            
+    def reset(self):
+        for tokenec in self.token_economies:
+            tokenec.reset()
+            
+    def get_data(self):
+        for tokenec in self.token_economies:
+            if tokenec.name == self.master:
+                return tokenec.get_data()
+        
+        return None

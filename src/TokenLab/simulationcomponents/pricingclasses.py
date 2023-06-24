@@ -260,14 +260,15 @@ class PriceFunction_BondingCurve(PriceFunctionController):
     The bonding curve is always a function of supply.
     """
     
-    def __init__(self,function:Callable):
-        
+    def __init__(self,function:Callable):        
         super(PriceFunction_BondingCurve,self).__init__()
         self._bonding_function = function
         
     def execute(self)->float:
         tokeneconomy=self.dependencies[TokenEconomy]
-        supply_of_tokens=tokeneconomy.supply
+        supply_of_tokens = tokeneconomy.transactions_volume_in_tokens
+        
+        tokeneconomy.supply += supply_of_tokens
         
         price_new = self._bonding_function(supply_of_tokens)
         
@@ -276,5 +277,49 @@ class PriceFunction_BondingCurve(PriceFunctionController):
         self.iteration+=1
         
         
+class PriceFunction_IssuanceCurve(PriceFunctionController):
+    """
+    
+    Implements pricing based upon bonding curves.
+    
+    The difference between the boding curve and the issuance curve, is that the 
+    issuance curve takes into account all the tokens that have ever entered circulation.
+    
+    The bonding curve takes into account only the tokens that are now in the main token economy.
+    
+    """
+    
+    def __init__(self,function:Callable,keep_internal_supply_state:bool=True):
+        """
+        
+
+        Parameters
+        ----------
+        function : Callable
+            The bonding curve function.
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        super(PriceFunction_IssuanceCurve,self).__init__()
+        self._bonding_function = function
+        self._tokens_ever_issued = 0
+        
+    def execute(self)->float:
+        tokeneconomy=self.dependencies[TokenEconomy]
+        supply_of_tokens = tokeneconomy.transactions_volume_in_tokens
+        
+        tokeneconomy.supply += supply_of_tokens
+        
+        self._tokens_ever_issued += supply_of_tokens
+        
+        price_new = self._bonding_function(self._tokens_ever_issued)
+        
+        self.price = price_new
+        
+        self.iteration+=1
         
         

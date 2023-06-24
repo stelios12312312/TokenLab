@@ -151,7 +151,8 @@ class TokenEconomy():
     def __init__(self,
                  holding_time:Union[float,Controller],supply:Union[float,Controller],
                  fiat:str,token:str,
-                 unit_of_time:str,price_function:Controller,token_initial_price:List,adapt_supply_to_token_sales:bool=False)->None:
+                 unit_of_time:str,price_function:Controller,token_initial_price:List,adapt_supply_to_token_sales:bool=False,
+                 name:str=None)->None:
         
         """
         fiat: the fiat currency used to denominate the economy
@@ -202,6 +203,8 @@ class TokenEconomy():
         self._holding_time_store=[]
         
         self._effective_holding_time_store=[]
+        
+        self.name = name
         
         return None
     
