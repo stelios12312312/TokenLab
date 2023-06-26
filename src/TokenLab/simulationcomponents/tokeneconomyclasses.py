@@ -474,7 +474,6 @@ class TokenMetaSimulator():
         self.unit_of_time=token_economy.unit_of_time
         
     def execute(self,iterations:int=36,repetitions:int=30)->pd.DataFrame:
-        iteration_runs=[]
         repetition_reports=[]
         for i in tqdm(range(repetitions)):
             scipy.stats.rv_continuous.random_state==int(time.time()+int(np.random.rand()))
@@ -486,8 +485,7 @@ class TokenMetaSimulator():
                 #it_current_data.append(token_economy_copy.get_state())
                 if not result:
                     break
-            it_current_data=token_economy_copy.get_data()
-            iteration_runs.append(it_current_data.copy())
+            it_current_data = token_economy_copy.get_data()
             
             it_current_data['repetition_run']=i
             it_current_data['iteration_time']=np.arange(it_current_data.shape[0])
@@ -596,22 +594,30 @@ class TokenEconomy_Dependent(TokenEconomy_Basic):
                  initial_price:float,
                  fiat:str='tokenA',token:str='tokenB',price_function:PriceFunctionController=PriceFunction_EOE,
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
-                 unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,supply_is_added:bool=False)->None:
+                 unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,supply_is_added:bool=False,
+                 name:str=None)->None:
+        
+                
+        if name==None:
+            raise Exception('Dependent token economy must always have a name!')
         
         super(TokenEconomy_Dependent,self).__init__(holding_time=holding_time,supply=supply,\
         initial_price=initial_price,\
         fiat=fiat,token=token,price_function=price_function,\
         price_function_parameters=price_function_parameters,\
-        unit_of_time=unit_of_time,burn_token=burn_token,supply_is_added=supply_is_added)
+        unit_of_time=unit_of_time,burn_token=burn_token,supply_is_added=supply_is_added,name=name)
         
         self._token_economy = dependent_token_economy
+
     
     
     def execute(self):
         
         super(TokenEconomy_Dependent,self).execute()
         prime_token_used = self.transactions_value_in_fiat
+        print(self.supply)
         
+        #model the transfer of tokens from the main token economy to the dependent one
         self._token_economy.supply -= prime_token_used
     
     
@@ -624,6 +630,10 @@ class TokenEcosystem(TokenEconomy):
         self._randomize = randomize_order
         self.unit_of_time = unit_of_time
         self.master = master
+        
+        for tokenec in self.token_economies:
+            if tokenec.name==None:
+                raise Exception('Master token economy and all other token economies need to have a name!')
         
         
     def execute(self):
@@ -640,8 +650,11 @@ class TokenEcosystem(TokenEconomy):
             tokenec.reset()
             
     def get_data(self):
+        data = []
         for tokenec in self.token_economies:
-            if tokenec.name == self.master:
-                return tokenec.get_data()
+            datum = tokenec.get_data()
+            datum['name'] = tokenec.name
+            data.append(datum)
+        data = pd.concat(data,axis=1)
         
-        return None
+        return data
