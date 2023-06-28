@@ -260,17 +260,24 @@ class PriceFunction_BondingCurve(PriceFunctionController):
     The bonding curve is always a function of supply.
     """
     
-    def __init__(self,function:Callable):        
+    def __init__(self,function:Callable,max_supply:float=np.inf):
+                         
         super(PriceFunction_BondingCurve,self).__init__()
         self._bonding_function = function
+        self._max_supply = max_supply
         
     def execute(self)->float:
         tokeneconomy=self.dependencies[TokenEconomy]
         supply_of_tokens = tokeneconomy.transactions_volume_in_tokens
         
+        if supply_of_tokens + tokeneconomy.supply > self._max_supply:
+            supply_of_tokens = self._max_supply - tokeneconomy.supply
+                
         tokeneconomy.supply += supply_of_tokens
         
-        price_new = self._bonding_function(supply_of_tokens)
+        price_new = self._bonding_function(tokeneconomy.supply)
+        if price_new>7:
+            asdasd=23232
         
         self.price = price_new
         
@@ -289,7 +296,8 @@ class PriceFunction_IssuanceCurve(PriceFunctionController):
     
     """
     
-    def __init__(self,function:Callable,keep_internal_supply_state:bool=True):
+    def __init__(self,function:Callable,keep_internal_supply_state:bool=True,
+                 max_supply:float=np.inf):
         """
         
 
@@ -307,14 +315,20 @@ class PriceFunction_IssuanceCurve(PriceFunctionController):
         super(PriceFunction_IssuanceCurve,self).__init__()
         self._bonding_function = function
         self._tokens_ever_issued = 0
+        self._max_supply = max_supply
         
     def execute(self)->float:
         tokeneconomy=self.dependencies[TokenEconomy]
         supply_of_tokens = tokeneconomy.transactions_volume_in_tokens
         
-        tokeneconomy.supply += supply_of_tokens
+        new_supply = tokeneconomy.supply + supply_of_tokens
+        if new_supply>self._max_supply:
+            new_supply = self._max_supply - tokeneconomy.supply
+            
+            
+        tokeneconomy.supply += new_supply
         
-        self._tokens_ever_issued += supply_of_tokens
+        self._tokens_ever_issued += new_supply
         
         price_new = self._bonding_function(self._tokens_ever_issued)
         

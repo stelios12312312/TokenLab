@@ -77,7 +77,8 @@ class TokenEconomy_Basic(TokenEconomy):
                  fiat:str='$',token:str='token',price_function:PriceFunctionController=PriceFunction_EOE,
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
                  unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,
-                 supply_is_added:bool=False,name:str=None)->None:
+                 supply_is_added:bool=False,name:str=None,safeguard_current_supply_level:bool=False,
+                 ignore_supply_controller:bool=False)->None:
 
         
 
@@ -112,6 +113,10 @@ class TokenEconomy_Basic(TokenEconomy):
             If True, then the circulating supply is added to the current supply. Otherwise, it's just provided as the ground truth.
         
         burn_token : bool, if True, then the tokens are burned at every iteration after being used
+        
+        safeguard_current_supply_level : bool, if True, then it protects the current supply from simulated transactions. It caps
+        transactions by the maximum circulating supply. If mechanisms like bonding curves are used, this is not needed. Also,
+        some simulations might not require it. It always operates after the 2nd iteration onwards.
 
         Returns
         -------
@@ -163,6 +168,10 @@ class TokenEconomy_Basic(TokenEconomy):
         self.burn_token=burn_token
         
         self.supply_is_added = supply_is_added
+        
+        self.safeguard_current_supply_level = safeguard_current_supply_level
+        
+        self.ignore_supply_controller = ignore_supply_controller
             
         
         return None
@@ -341,10 +350,11 @@ class TokenEconomy_Basic(TokenEconomy):
         
         #Run the core supply
         self._supply.execute()
-        if self.supply_is_added:
-            self.supply += self._supply.get_supply()
-        else:
-            self.supply=self._supply.get_supply()
+        if not self.ignore_supply_controller:
+            if self.supply_is_added:
+                self.supply += self._supply.get_supply()
+            else:
+                self.supply=self._supply.get_supply()
 
         for supplypool in self._supply_pools+self._temp_supply_pools:
             supplypool.execute()
@@ -368,7 +378,6 @@ class TokenEconomy_Basic(TokenEconomy):
         #Get the holding time
         self.holding_time=self._holding_time_controller.get_holding_time()
         
-
         #Execute agent pools
         for agent in self._agent_pools+self._temp_agent_pools:
             new_pools = agent.execute()
@@ -383,6 +392,11 @@ class TokenEconomy_Basic(TokenEconomy):
                 else:
                     warnings.warn('Warning! Price reached 0 at iteration : '+str(self.iteration+1))
                     return False
+                
+                if self.safeguard_current_supply_level:
+                    if self.transactions_volume_in_tokens > self.supply and self.iteration>0:
+                        self.transactions_volume_in_tokens = self.supply
+                        self.transactions_value_in_fiat = self.transactions_volume_in_tokens*self.price
                 
             else:
                 raise Exception('Agent pool found that does not function in neither fiat nor the token! Please specify correct currency!')
@@ -595,7 +609,7 @@ class TokenEconomy_Dependent(TokenEconomy_Basic):
                  fiat:str='tokenA',token:str='tokenB',price_function:PriceFunctionController=PriceFunction_EOE,
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
                  unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,supply_is_added:bool=False,
-                 name:str=None)->None:
+                 name:str=None,ignore_supply_controller:bool=False)->None:
         
                 
         if name==None:
@@ -605,7 +619,7 @@ class TokenEconomy_Dependent(TokenEconomy_Basic):
         initial_price=initial_price,\
         fiat=fiat,token=token,price_function=price_function,\
         price_function_parameters=price_function_parameters,\
-        unit_of_time=unit_of_time,burn_token=burn_token,supply_is_added=supply_is_added,name=name)
+        unit_of_time=unit_of_time,burn_token=burn_token,supply_is_added=supply_is_added,name=name,ignore_supply_controller=ignore_supply_controller)
         
         self._token_economy = dependent_token_economy
 
@@ -615,7 +629,6 @@ class TokenEconomy_Dependent(TokenEconomy_Basic):
         
         super(TokenEconomy_Dependent,self).execute()
         prime_token_used = self.transactions_value_in_fiat
-        print(self.supply)
         
         #model the transfer of tokens from the main token economy to the dependent one
         self._token_economy.supply -= prime_token_used
@@ -654,6 +667,9 @@ class TokenEcosystem(TokenEconomy):
         for tokenec in self.token_economies:
             datum = tokenec.get_data()
             datum['name'] = tokenec.name
+            cols = datum.columns
+            cols=[col+'_'+tokenec.name for col in cols]
+            datum.set_axis(cols,axis=1,inplace=True)
             data.append(datum)
         data = pd.concat(data,axis=1)
         

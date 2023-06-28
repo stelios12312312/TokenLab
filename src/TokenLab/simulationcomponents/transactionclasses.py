@@ -145,7 +145,53 @@ class TransactionManagement_FromData(TransactionManagement):
         return res
         
         
+class TransactionManagement_Channeled(TransactionManagement):
+    """
+    Class that channels a % of the tokens from a token economy, to another.
+    
+    This is meant to be used in situations where there are multiple token economies.
+    """
+    
+    def __init__(self,dependency_token_economy,fiat_or_token:str,percentage:float):
+        """
+        
 
+        Parameters
+        ----------
+        dependency_tokeneconomy : TYPE
+            The token economy where the tokens will be read from.
+        fiat_or_token : str
+            Must be either 'fiat' or 'token'.
+            
+        percentage : float
+            The percentage of tokens channeled to the dependent economy.
+
+        Returns
+        -------
+        None.
+
+        """
+        super(TransactionManagement_Channeled,self).__init__()
+        
+        self._dependency_token_economy = dependency_token_economy
+        self._fiat_or_token = fiat_or_token
+        self._percentage = percentage
+        
+        
+    def execute(self)->float:
+        
+        if self._fiat_or_token=='fiat':
+            value = self._dependency_token_economy.transactions_value_in_fiat * self._percentage
+        elif self._fiat_or_token=='token':
+            value = self._dependency_token_economy.transactions_volume_in_tokens * self._percentage
+        else:
+            raise Exception('When using a channeled transactions manager you need to define Fiat or Token!')
+        
+        self.transactions_value=value
+        self.iteration+=1
+        
+        return value
+        
         
 
 class TransactionManagement_Trend(TransactionManagement):
