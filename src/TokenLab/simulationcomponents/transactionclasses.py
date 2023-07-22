@@ -191,6 +191,29 @@ class TransactionManagement_Channeled(TransactionManagement):
         self.iteration+=1
         
         return value
+    
+    
+class TransactionManagement_Assumptions(TransactionManagement):
+    """
+    Class that simply provides transactions based on a pre-defined assumptions.
+    
+    Does not use any dependencies
+    """
+    
+    def __init__(self,data:List):
+        super(TransactionManagement_Assumptions,self).__init__()
+        
+        self.data=np.ndarray.flatten(np.array(data))
+        
+        
+    def execute(self)->float:
+        
+        res=self.data[self.iteration]
+        
+        self.transactions_value=res
+        self.iteration+=1
+        
+        return res
         
         
 
