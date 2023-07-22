@@ -276,8 +276,6 @@ class PriceFunction_BondingCurve(PriceFunctionController):
         tokeneconomy.supply += supply_of_tokens
         
         price_new = self._bonding_function(tokeneconomy.supply)
-        if price_new>7:
-            asdasd=23232
         
         self.price = price_new
         
