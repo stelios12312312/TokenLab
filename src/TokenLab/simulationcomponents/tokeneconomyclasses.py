@@ -77,7 +77,7 @@ class TokenEconomy_Basic(TokenEconomy):
                  fiat:str='$',token:str='token',price_function:PriceFunctionController=PriceFunction_EOE,
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
                  unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,
-                 supply_is_added:bool=False,name:str=None,safeguard_current_supply_level:bool=False,
+                 supply_is_added:bool=True,name:str=None,safeguard_current_supply_level:bool=False,
                  ignore_supply_controller:bool=False)->None:
 
         
@@ -110,7 +110,9 @@ class TokenEconomy_Basic(TokenEconomy):
         agent_pools : List[AgentPool], optional
             The list of agent pools. The default is None.
         supply_is_added : bool
-            If True, then the circulating supply is added to the current supply. Otherwise, it's just provided as the ground truth.
+            If True, then the circulating supply is added to the current supply. 
+            Otherwise, it's just provided as the ground truth. True is the default behaviour. The constant supply controller is set for this behaviour
+            returning 0 after the 1 iteration.
         
         burn_token : bool, if True, then the tokens are burned at every iteration after being used
         
@@ -353,6 +355,7 @@ class TokenEconomy_Basic(TokenEconomy):
         #Run the core supply
         self._supply.execute()
         if not self.ignore_supply_controller:
+            self.supply=self._supply.get_supply()
             if self.supply_is_added:
                 self.supply += self._supply.get_supply()
             else:
@@ -361,10 +364,10 @@ class TokenEconomy_Basic(TokenEconomy):
         for supplypool in self._supply_pools+self._temp_supply_pools:
             supplypool.execute()
             self.supply+=supplypool.get_supply()
-            if self.supply_is_added==False:
-                warnings.warn("""Warning! There are supply pools affecting total supply, but supply_is_added=False. This means that
-                              in the next iteration, the effect of the supply pools will disappear! 
-                              Please make sure that this is really the intended behaviour.""")
+            # if self.supply_is_added==False:
+            #     warnings.warn("""Warning! There are supply pools affecting total supply, but supply_is_added=False. This means that
+            #                   in the next iteration, the effect of the supply pools will disappear! 
+            #                   Please make sure that this is really the intended behaviour.""")
 
 
             

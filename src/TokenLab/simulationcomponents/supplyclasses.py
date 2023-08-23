@@ -61,6 +61,15 @@ class SupplyController_Constant(SupplyController):
         super(SupplyController_Constant,self).__init__()
         self.supply=supply
         
+    def execute(self)->float:
+        
+        if self.iteration==0:
+            self.iteration+=1
+            return self.supply
+        else:
+            self.iteration+=1
+            return 0
+        
         
 class SupplyController_FromData(SupplyController):
     
@@ -226,7 +235,7 @@ class SupplyController_AdaptiveStochastic(SupplyController):
         self.supply=new_supply
         
     
-class SupplController_Burn(SupplyController):
+class SupplyController_Burn(SupplyController):
     """
     Simulates a burn mechanism.
     """
@@ -267,7 +276,7 @@ class SupplController_Burn(SupplyController):
         current_supply = tokeneconomy.supply
         
         if self.burn_style=='perc':
-            burn_tokens = -1*curreply_supply*self.burn_param
+            burn_tokens = -1*current_supply*self.burn_param
         elif self.burn_style=='fixed':
             burn_tokens = -1*self.burn_param
         else:
