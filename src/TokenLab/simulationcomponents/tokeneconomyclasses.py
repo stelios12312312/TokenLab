@@ -141,8 +141,10 @@ class TokenEconomy_Basic(TokenEconomy):
             
         if type(supply)==float or type(supply)==int:
             self._supply=SupplyController_Constant(supply)
+        elif type(supply)==list or type(supply)==type(np.array([1,2,3])):
+            self._supply=SupplyController_FromData(supply)
         else:
-            self._supply=supply
+            self._supply=suply
             
         self._supply.link(TokenEconomy,self)
             

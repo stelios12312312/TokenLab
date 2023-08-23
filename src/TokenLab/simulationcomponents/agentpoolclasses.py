@@ -104,6 +104,10 @@ class AgentPool_Basic(AgentPool):
         self.iteration=0
         self.users_controller.reset()
         self.transactions_controller.reset()
+        
+        
+    def get_tokeneconomy(self)->TokenEconomy:
+        return self.dependencies[TokenEconomy]
 
         
 class AgentPool_Staking(AgentPool_Basic):

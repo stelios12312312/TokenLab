@@ -1,0 +1,17 @@
+﻿Prompt,Code
+Create stochastic holding time,holding_time=HoldingTime_Stochastic()
+Create transaction pool that reads from data,transactions = TransactionManagement_Assumptions(data)
+Define supply of 10**8,SUPPLY=10**8
+Define initial price of 0.1,INITIAL_PRICE=0.1
+Set simulation to 30 months,ITERATIONS=30
+Add all that in a token economy,"ap_fiat=AgentPool_Basic(users_controller=1,transactions_controller=assumptions,currency='$')
+
+
+te=TokenEconomy_Basic(holding_time=holding_time,supply=SUPPLY,token='tokenA',
+                      initial_price=INITIAL_PRICE,burn_token=True)
+
+te.add_agent_pools([ap_fiat])"
+Simulate,"meta=TokenMetaSimulator(te)
+meta.execute(iterations=ITERATIONS,repetitions=100)
+reps=meta.get_data()"
+Get price of token from simulation,meta.get_timeseries('tokenA_price')

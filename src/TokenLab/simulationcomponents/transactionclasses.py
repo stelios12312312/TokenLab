@@ -193,6 +193,9 @@ class TransactionManagement_Channeled(TransactionManagement):
         return value
     
     
+    
+    
+    
 class TransactionManagement_Assumptions(TransactionManagement):
     """
     Class that simply provides transactions based on a pre-defined assumptions.
@@ -215,7 +218,7 @@ class TransactionManagement_Assumptions(TransactionManagement):
         
         return res
         
-        
+
 
 class TransactionManagement_Trend(TransactionManagement):
     """
@@ -350,6 +353,36 @@ class TransactionManagement_Trend(TransactionManagement):
             self._transactions_means_store=dummy
             
         return True
+    
+    
+class TransactionManagement_MarketcapStochastic(TransactionManagement):
+    
+    def __init__(self,distribution=scipy.stats.norm,distribution_params = {'loc':0,'scale':0.25},sign='any'):
+        super(TransactionManagement_MarketcapStochastic).__init__()
+        
+        self.dependencies = {AgentPool:None}
+        self.distribution = distribution
+        self.distribution_params = distribution_params
+        self.sign = sign
+        
+        
+    def execute(self)->float:
+        
+        tokeneconomy = self.dependencies[AgentPool].get_tokeneconomy()
+        marketcap = tokeneconomy.price * tokeneconomy.supply
+        
+        random_perc = scipy.stats.norm(**self.distribution_params).rvs(1)[0]
+        transactions = random_perc*marketcap
+        
+        if self.sign=='any':
+            pass
+        elif self.sign=='positive':
+            transactions=np.abs(transactions)
+        elif self.sign=='negative':
+            transactions = -np.abs(transactions)
+        
+        return transactions
+    
     
     
 class TransactionManagement_Stochastic(TransactionManagement):

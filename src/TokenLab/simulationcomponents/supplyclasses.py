@@ -225,6 +225,58 @@ class SupplyController_AdaptiveStochastic(SupplyController):
             new_supply=self.supply + tokens_coming_back
         self.supply=new_supply
         
+    
+class SupplController_Burn(SupplyController):
+    """
+    Simulates a burn mechanism.
+    """
+    
+    def __init__(self,burn_param=0.05,burn_style='perc'):
+        """
+        
+
+        Parameters
+        ----------
+        burn_param : int or float, optional
+            Used alongside burn_style (Explained below) The default is 0.05.
+        burn_style : TYPE, optional
+            Choose 'perc' or 'fixed'. The default is 'perc'. Percentage means
+            that you burn a %burn_param number of tokens at each iteration.
+            
+            Otherwise you burn a fixed number pf tokens equal to burn_param
+
+        Returns
+        -------
+        None.
+
+        """
+        
+        super(SupplyController_Burn,self).__init__()
+        
+        self.burn_param = burn_param
+        self.burn_style = burn_style
+        
+        self.dependencies={TokenEconomy:None}
+
+    
+    
+    def execute(self):
+        
+        tokeneconomy=self.dependencies[TokenEconomy]
+
+        current_supply = tokeneconomy.supply
+        
+        if self.burn_style=='perc':
+            burn_tokens = -1*curreply_supply*self.burn_param
+        elif self.burn_style=='fixed':
+            burn_tokens = -1*self.burn_param
+        else:
+            raise Exception('SupplyController_Burn Exception! You must define burn_style as either "fixed" or "perc"')
+            
+        self.supply = burn_tokens
+        
+        self.iteration+=1
+    
         
         
 class SupplyController_InvestorDumperSpaced(SupplyController):

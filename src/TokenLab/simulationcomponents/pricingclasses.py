@@ -335,3 +335,26 @@ class PriceFunction_IssuanceCurve(PriceFunctionController):
         self.iteration+=1
         
         
+class PriceFunction_LinearRegression(PriceFunctionController):
+    
+    """
+    Implements a pricing function based upon the research by Kampakis and Melody
+    """
+        
+    
+    def __init__(self):
+        
+        super(PriceFunction_LinearRegression,self).__init__()
+        
+    
+    def execute(self)->float:
+        tokeneconomy=self.dependencies[TokenEconomy]
+        
+        price_new = 1.5 * tokeneconomy.holding_time + 0.0000001*tokeneconomy.supply + \
+            0.0000001*tokeneconomy.transactions_value_in_fiat
+
+        self.price = price_new        
+        self.iteration+=1
+
+
+        
