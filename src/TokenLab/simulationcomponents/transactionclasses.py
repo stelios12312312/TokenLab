@@ -126,7 +126,10 @@ class TransactionManagement_FromData(TransactionManagement):
     """
     Class that simply provides transactions based on a pre-defined assumptions.
     
-    Does not use any dependencies
+    Does not use any dependencies.
+    
+    The difference with TransactionManagement_Assumptions is that this class completely ignores
+    the number of users.
     """
     
     def __init__(self,data:List):
