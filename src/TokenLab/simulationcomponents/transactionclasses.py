@@ -204,14 +204,24 @@ class TransactionManagement_Assumptions(TransactionManagement):
     """
     
     def __init__(self,data:List):
+        self.dependencies={AgentPool:None}
+        
         super(TransactionManagement_Assumptions,self).__init__()
         
         self.data=np.ndarray.flatten(np.array(data))
         
         
-    def execute(self)->float:
+    def execute(self,dependency:str="AgentPool")->float:
         
-        res=self.data[self.iteration]
+        if dependency=="AgentPool":
+            dependency=AgentPool
+        elif dependency=="TokenEconomy":
+            dependency=TokenEconomy
+        else:
+            raise Exception('You must use either AgentPool or TokenEconomy')
+            
+        num_users=self.dependencies[dependency]['num_users']
+        res=self.data[self.iteration]*num_users
         
         self.transactions_value=res
         self.iteration+=1

@@ -355,7 +355,6 @@ class TokenEconomy_Basic(TokenEconomy):
         #Run the core supply
         self._supply.execute()
         if not self.ignore_supply_controller:
-            self.supply=self._supply.get_supply()
             if self.supply_is_added:
                 self.supply += self._supply.get_supply()
             else:

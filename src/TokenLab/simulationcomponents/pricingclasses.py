@@ -73,7 +73,7 @@ class HoldingTime_Stochastic(HoldingTimeController):
     Uses a probability distribution and samples a random holding time per iteration.
     """
     
-    def __init__(self,holding_time_dist:scipy.stats=scipy.stats.halfnorm,holding_time_params:Union[Dict[str,float],List[Dict[str,float]]]={'loc':0,'scale':1},
+    def __init__(self,holding_time_dist:scipy.stats=scipy.stats.lognorm,holding_time_params:Union[Dict[str,float],List[Dict[str,float]]]={'loc':0,'s':1},
                  minimum:float=0.1):
         """
         
@@ -202,7 +202,7 @@ class PriceFunction_EOE(PriceFunctionController):
     noise w as added.
     """
     
-    def __init__(self,noise_addon:AddOn=None,smoothing_param:float=1):
+    def __init__(self,noise_addon:AddOn=None,smoothing_param:float=1,use_velocity:bool=True):
         """
         
         Parameters
@@ -219,6 +219,7 @@ class PriceFunction_EOE(PriceFunctionController):
         """
         super(PriceFunction_EOE,self).__init__()
         self._noise_addon=noise_addon
+        self.use_velocity = use_velocity
         
         if smoothing_param>1 or smoothing_param<0:
             raise Exception('Smoothing param must be in [0,1]')
@@ -230,14 +231,24 @@ class PriceFunction_EOE(PriceFunctionController):
         
         transaction_volume_in_fiat=tokeneconomy.transactions_value_in_fiat
         holding_time=tokeneconomy.holding_time
+        
+                
         #supply_of_tokens=tokeneconomy.transactions_value_in_tokens
         supply_of_tokens=tokeneconomy.supply
         
+        if self.use_velocity:
+            velocity = 0.69049 - 0.32288 * np.log(holding_time) + 0.04242 * np.log(holding_time)**2     
+            
+            if velocity<0:
+                velocity=0.1
+            
+            price_new=transaction_volume_in_fiat/(supply_of_tokens*velocity)
+        else:
+            price_new=holding_time*transaction_volume_in_fiat/supply_of_tokens
+
                 
 
         #noise adjustment
-        price_new=holding_time*transaction_volume_in_fiat/supply_of_tokens
-        
         price_new=self.smoothing_param*price_new+(1-self.smoothing_param)*tokeneconomy.price
         
         if self._noise_addon!=None:
@@ -349,9 +360,25 @@ class PriceFunction_LinearRegression(PriceFunctionController):
     
     def execute(self)->float:
         tokeneconomy=self.dependencies[TokenEconomy]
+        H = tokeneconomy.holding_time
         
-        price_new = 1.5 * tokeneconomy.holding_time + 0.0000001*tokeneconomy.supply + \
-            0.0000001*tokeneconomy.transactions_value_in_fiat
+        V = 0.69049 - 0.32288 * np.log(H) + 0.04242 * np.log(H)**2
+        
+        if V<0:
+            V = 0.01
+        
+        T = tokeneconomy.transactions_value_in_fiat
+        M = tokeneconomy.supply
+        
+        log_price_new = -13.08784 + 1.16628 * np.log(T) + 0.51055 * np.log(1/M) - 0.67874 * np.log(1/V)
+        price_new = np.exp(log_price_new)
+            
+        if price_new<0:
+            price_new = 0.0001
+            
+        # if price_new>tokeneconomy.price*1.1:
+        #     price_new = tokeneconomy.price*1.1
+
 
         self.price = price_new        
         self.iteration+=1

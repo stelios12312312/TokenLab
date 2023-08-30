@@ -89,7 +89,9 @@ class AddOn_RandomNoiseProportional(AddOn_Noise):
         Parameters
         ----------
         noise_dist: A scipy.stats distribution (by default normal)
-        mean_param: The mean of the distribution
+        mean_param: The mean of the distribution. This is added to the provided value at execution.
+        For example, if modelling user growth, the current number of users is added to this number
+        
         std_param: The effective std of the distribution becomes value/std_param, where
         value is externally provided in the apply function.
         
@@ -102,7 +104,7 @@ class AddOn_RandomNoiseProportional(AddOn_Noise):
         
     def apply(self,value)->float:
         seed=int(int(time.time())*np.random.rand())
-        noise=self.noise_dist.rvs(size=1,loc=self.mean_param,scale=value/self.std_param,random_state=seed)[0]
+        noise=self.noise_dist.rvs(size=1,loc=self.mean_param+value,scale=value/self.std_param,random_state=seed)[0]
         
         return noise
 

@@ -25,29 +25,64 @@ from TokenLab.simulationcomponents.addons import AddOn_RandomNoise, AddOn_Random
 from utils.helpers import *
 from matplotlib import pyplot as plt
 
+import numpy as np
 
-ITERATIONS=60
-HOLDING_TIME=1
-SUPPLY=10**10
-INITIAL_PRICE=0.5
+# Preliminary Definitions
 
-usm_fiat=UserGrowth_Spaced(100,54000,ITERATIONS,log_saturated_space)
+# Sample 30 times from a triangular distribution
 
-ap_fiat=AgentPool_Basic(users_controller=usm_fiat,transactions_controller=1000,currency='$')
 
-investors=SupplyController_InvestorDumperSpaced(dumping_initial=100,dumping_final=500000000,num_steps=ITERATIONS)
 
-burn_mechanism = SupplyController_Burn(burn_param=0.2,burn_style='perc')
+# Define constants
+INITIAL_SUPPLY = 0.2*(5*10**9)
+INITIAL_PRICE = 0.03
+ITERATIONS = 30*9
+FINAL_SUPPLY = 1.6e9
+FINAL_SUPPLY = INITIAL_SUPPLY + 400*10**6
+holding_time = HoldingTime_Stochastic(holding_time_params={'loc':0,'s':1})
+BURN_PARAM = 0.05/30
 
-te=TokenEconomy_Basic(holding_time=HoldingTime_Stochastic(),supply=SUPPLY,
-                      price_function=PriceFunction_EOE,token='tokenA',
-                      price_function_parameters={'noise_addon':AddOn_RandomNoiseProportional(std_param=7)},
-                      initial_price=INITIAL_PRICE,supply_is_added=False)
+data = np.random.triangular(left=150000, mode=200000, right=250000, size=ITERATIONS).astype(float)
+# data=data*0.1
+# Process data with TransactionManagement_Assumptions
+transactions = TransactionManagement_Assumptions(data)
 
+# Define the NEW_SUPPLY array
+NEW_SUPPLY = np.linspace(INITIAL_SUPPLY, FINAL_SUPPLY, ITERATIONS)
+
+
+# Token Economy Setup for the first agent pool
+ap_fiat = AgentPool_Basic(users_controller=1, transactions_controller=transactions, currency='$')
+
+# Define the burn mechanism with 5% burn rate
+burn_mechanism = SupplyController_Burn(burn_param=BURN_PARAM, burn_style='perc')
+
+# Initialize the token economy using NEW_SUPPLY for the supply argument
+te = TokenEconomy_Basic(
+    holding_time=holding_time, 
+    supply=NEW_SUPPLY, 
+    token='tokenA', 
+    initial_price=INITIAL_PRICE, 
+    burn_token=True,unit_of_time='day'
+    ,price_function = PriceFunction_LinearRegression
+)
+
+# Add the agent pool and burn mechanism to the token economy
 te.add_agent_pools([ap_fiat])
-te.add_supply_pools([investors,burn_mechanism])
-meta=TokenMetaSimulator(te)
-meta.execute(iterations=ITERATIONS,repetitions=50)
-reps=meta.get_data()
-plot,data=meta.get_timeseries('tokenA_price')
-plot
+te.add_supply_pools([burn_mechanism])
+
+# Simulation
+meta = TokenMetaSimulator(te)
+meta.execute(iterations=ITERATIONS, repetitions=100)
+reps = meta.get_data()
+
+# Extract Token Price Data
+token_price_timeseries = meta.get_timeseries('tokenA_price')
+
+# plt.hist(data)
+# plt.xlabel('Daily transaction volume in $')
+# plt.ylabel('Frequency')
+
+# plt.hist(scipy.stats.lognorm(loc=0,s=1).rvs(1000))
+# plt.xlabel('Holding time in days')
+# plt.ylabel('Frequency')
