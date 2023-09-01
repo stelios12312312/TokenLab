@@ -24,6 +24,8 @@ class SupplyController(Controller):
     def __init__(self):
         super(SupplyController,self).__init__()
         self.supply=None
+        self._iteration = 0
+
 
     def get_supply(self)->float:
         
@@ -60,14 +62,15 @@ class SupplyController_Constant(SupplyController):
         """
         super(SupplyController_Constant,self).__init__()
         self.supply=supply
+        self._iteration=0
         
     def execute(self)->float:
         
-        if self.iteration==0:
-            self.iteration+=1
+        if self._iteration==0:
+            self._iteration+=1
             return self.supply
         else:
-            self.iteration+=1
+            self._iteration+=1
             return 0
         
         
@@ -104,7 +107,35 @@ class SupplyController_FromData(SupplyController):
             self._iteration-=1
         elif not self._on_end and self._iteration==len(self._supplylist):
             raise Exception('Supply controller reached the end of iterations and no supply is provided!')
+    
+
+    
+class SupplyController_CliffVesting(SupplyController):
+    
+    def __init__(self,token_amount:float,vesting_period:int,cliff:int):
+        super(SupplyController_CliffVesting,self).__init__()
         
+        data = []
+        chunk = token_amount/vesting_period
+        for i in range(cliff+vesting_period):
+            if i<cliff:
+                data.append(0)
+            else:
+                data.append(chunk)
+        
+        self._data= data
+        
+    def execute(self):
+        try:
+            self.supply = self._data[self._iteration]
+        except:
+            self.supply = 0
+        
+        self._iteration+=1
+        
+        return self.supply
+        
+    
 
         
         

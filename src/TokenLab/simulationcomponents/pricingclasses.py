@@ -353,9 +353,32 @@ class PriceFunction_LinearRegression(PriceFunctionController):
     """
         
     
-    def __init__(self):
+    def __init__(self,top_appreciation:float=0.3,std_prior:float=0.2):
+        """
+        
+
+        Parameters
+        ----------
+        top_appreciation : float, optional
+            If the price appreciates by more than top_appreciation%, then cap the appreciation. The default is 0.3.
+        std_prior : float, optional
+            This is used in the calculation of the price if stochastic=True. The default is 0.2.
+            
+            The way this is used is that it sets the variance of the prediction interval (t-distribution)
+            equal to std_prior*previous_price. Hence the variance increases as the price increases.
+            This relationship has been confirmed through empirical data, but the exact prior requires
+            further validation.
+
+        Returns
+        -------
+        None.
+
+        """
         
         super(PriceFunction_LinearRegression,self).__init__()
+        
+        self.top_appreciation = top_appreciation
+        self.std_prior = std_prior
         
     
     def execute(self)->float:
@@ -363,21 +386,29 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         H = tokeneconomy.holding_time
         
         V = 0.69049 - 0.32288 * np.log(H) + 0.04242 * np.log(H)**2
+        # V = 0.03358 + 1.20329 * 1/H	
         
         if V<0:
-            V = 0.01
-        
+            V = 0.001
+            
+        # print(V)
+                    
         T = tokeneconomy.transactions_value_in_fiat
         M = tokeneconomy.supply
+        previous_price = tokeneconomy.price
         
-        log_price_new = -13.08784 + 1.16628 * np.log(T) + 0.51055 * np.log(1/M) - 0.67874 * np.log(1/V)
-        price_new = np.exp(log_price_new)
+        log_price_new = -0.08506 + 0.00139 * np.log(T) - 0.00481 * np.log(1/M) + 0.00059 * np.log(1/V) + \
+            0.99644 * np.log(previous_price)
+            
+        sample = log_price_new+scipy.stats.t(13000).rvs(1)*self.std_prior*previous_price
+
+        price_new = np.exp(sample[0])
             
         if price_new<0:
             price_new = 0.0001
             
-        # if price_new>tokeneconomy.price*1.1:
-        #     price_new = tokeneconomy.price*1.1
+        if price_new>tokeneconomy.price*(1+self.top_appreciation):
+            price_new = tokeneconomy.price*(1+self.top_appreciation)
 
 
         self.price = price_new        
