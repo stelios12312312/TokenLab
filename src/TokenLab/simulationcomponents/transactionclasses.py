@@ -197,8 +197,6 @@ class TransactionManagement_Channeled(TransactionManagement):
     
     
     
-    
-    
 class TransactionManagement_Assumptions(TransactionManagement):
     """
     Class that simply provides transactions based on a pre-defined assumptions.

@@ -146,7 +146,7 @@ class TokenEconomy_Basic(TokenEconomy):
         elif type(supply)==list or type(supply)==type(np.array([1,2,3])):
             self._supply=SupplyController_FromData(supply)
         else:
-            self._supply=suply
+            self._supply=supply
             
         self._supply.link(TokenEconomy,self)
             
@@ -386,10 +386,22 @@ class TokenEconomy_Basic(TokenEconomy):
         for agent in self._agent_pools+self._temp_agent_pools:
             new_pools = agent.execute()
             if agent.currency==self.token:
-                self.transactions_volume_in_tokens=agent.get_transactions()
-                self.transactions_value_in_fiat+=agent.get_transactions()*self.price
+                tokens = agent.get_transactions()
+                
+                if tokens>0:
+                    self.transactions_volume_in_tokens+=tokens
+                    self.transactions_value_in_fiat+=agent.get_transactions()*self.price
+                #negative tokens, indicates sell pressure, which indicates that the supply has increased
+                #this will push prices downward
+                if tokens<=0:
+                    self.supply+=np.abs(tokens)
             elif agent.currency==self.fiat:
-                self.transactions_value_in_fiat+=agent.get_transactions()
+                transactions = agent.get_transactions()
+                if transactions>0:
+                    self.transactions_value_in_fiat+=transactions
+                else:
+                    new_tokens = transactions/self.price
+                    self.supply+=np.abs(new_tokens)
                 if self.price>0:
                     # self.transactions_volume_in_tokens=agent.get_transactions()*self.holding_time/self.price
                     self.transactions_volume_in_tokens=agent.get_transactions()/self.price

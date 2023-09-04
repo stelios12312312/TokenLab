@@ -73,7 +73,7 @@ class HoldingTime_Stochastic(HoldingTimeController):
     Uses a probability distribution and samples a random holding time per iteration.
     """
     
-    def __init__(self,holding_time_dist:scipy.stats=scipy.stats.lognorm,holding_time_params:Union[Dict[str,float],List[Dict[str,float]]]={'loc':0,'s':1},
+    def __init__(self,distribution:scipy.stats=scipy.stats.lognorm,holding_time_params:Union[Dict[str,float],List[Dict[str,float]]]={'loc':0,'s':1},
                  minimum:float=0.1):
         """
         
@@ -94,7 +94,7 @@ class HoldingTime_Stochastic(HoldingTimeController):
         """
         super(HoldingTime_Stochastic,self).__init__()
 
-        self.distribution=holding_time_dist
+        self.distribution=distribution
         self.dist_params=holding_time_params
         self.minimum=minimum
         self.execute()
@@ -237,15 +237,16 @@ class PriceFunction_EOE(PriceFunctionController):
         supply_of_tokens=tokeneconomy.supply
         
         if self.use_velocity:
-            velocity = 0.69049 - 0.32288 * np.log(holding_time) + 0.04242 * np.log(holding_time)**2     
+            V = 0.03358 + 1.20329 * 1/holding_time
+
             
             if velocity<0:
-                velocity=0.1
+                velocity=0.01
             
             price_new=transaction_volume_in_fiat/(supply_of_tokens*velocity)
         else:
             price_new=holding_time*transaction_volume_in_fiat/supply_of_tokens
-
+            
                 
 
         #noise adjustment
@@ -353,7 +354,7 @@ class PriceFunction_LinearRegression(PriceFunctionController):
     """
         
     
-    def __init__(self,top_appreciation:float=0.3,std_prior:float=0.2):
+    def __init__(self,top_appreciation:float=0.3,std_prior:float=0.01):
         """
         
 
@@ -385,8 +386,8 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         tokeneconomy=self.dependencies[TokenEconomy]
         H = tokeneconomy.holding_time
         
-        V = 0.69049 - 0.32288 * np.log(H) + 0.04242 * np.log(H)**2
-        # V = 0.03358 + 1.20329 * 1/H	
+        # V = 0.69049 - 0.32288 * np.log(H) + 0.04242 * np.log(H)**2
+        V = 0.03358 + 1.20329 * 1/H	
         
         if V<0:
             V = 0.001
@@ -397,14 +398,16 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         M = tokeneconomy.supply
         previous_price = tokeneconomy.price
         
-        log_price_new = -0.08506 + 0.00139 * np.log(T) - 0.00481 * np.log(1/M) + 0.00059 * np.log(1/V) + \
-            0.99644 * np.log(previous_price)
+        # log_price_new = -0.08506 + 0.00139 * np.log(T) - 0.00481 * np.log(1/M) + 0.00059 * np.log(1/V) \
+          #  +0.99644 * np.log(previous_price)
+          
+        log_price_new = 5.40484 + 0.86606 * np.log(T) + 1.14534 * np.log(1/M) + 1.36417 * np.log(1/V)
             
         sample = log_price_new+scipy.stats.t(13000).rvs(1)*self.std_prior*previous_price
 
         price_new = np.exp(sample[0])
             
-        if price_new<0:
+        if price_new<=0:
             price_new = 0.0001
             
         if price_new>tokeneconomy.price*(1+self.top_appreciation):
