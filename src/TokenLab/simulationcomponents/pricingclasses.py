@@ -237,7 +237,7 @@ class PriceFunction_EOE(PriceFunctionController):
         supply_of_tokens=tokeneconomy.supply
         
         if self.use_velocity:
-            V = 0.03358 + 1.20329 * 1/holding_time
+            velocity = 0.03358 + 1.20329 * 1/holding_time
 
             
             if velocity<0:
@@ -354,7 +354,7 @@ class PriceFunction_LinearRegression(PriceFunctionController):
     """
         
     
-    def __init__(self,top_appreciation:float=0.3,std_prior:float=0.01):
+    def __init__(self,top_appreciation:float=0.3,std_prior:float=0.1,anchoring:float=0.3):
         """
         
 
@@ -380,6 +380,7 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         
         self.top_appreciation = top_appreciation
         self.std_prior = std_prior
+        self.anchoring=anchoring
         
     
     def execute(self)->float:
@@ -401,11 +402,11 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         # log_price_new = -0.08506 + 0.00139 * np.log(T) - 0.00481 * np.log(1/M) + 0.00059 * np.log(1/V) \
           #  +0.99644 * np.log(previous_price)
           
-        log_price_new = 5.40484 + 0.86606 * np.log(T) + 1.14534 * np.log(1/M) + 1.36417 * np.log(1/V)
+        log_price_new = 0.88 * np.log(T) + 0.84* np.log(1/M) + 1.15 * np.log(1/V)
             
         sample = log_price_new+scipy.stats.t(13000).rvs(1)*self.std_prior*previous_price
 
-        price_new = np.exp(sample[0])
+        price_new = (1-self.anchoring)*np.exp(sample[0]) + self.anchoring*previous_price
             
         if price_new<=0:
             price_new = 0.0001
