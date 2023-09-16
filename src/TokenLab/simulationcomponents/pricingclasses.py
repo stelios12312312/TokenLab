@@ -131,6 +131,17 @@ class HoldingTime_Stochastic(HoldingTimeController):
         
         return self.holding_time
     
+    
+    def sample(self)->List:
+        """
+        Samples datapoints to plot them
+        """
+        
+        datapoints = self.distribution.rvs(size=1000,**self.dist_params)        
+
+        
+        return datapoints
+    
 class HoldingTime_Adaptive(HoldingTimeController):
     
     """

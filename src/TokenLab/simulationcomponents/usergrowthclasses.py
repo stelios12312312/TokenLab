@@ -160,6 +160,13 @@ class UserGrowth_Spaced(UserGrowth):
         
         return self._num_users_store
     
+    def get_data(self)->List:
+        """
+        Used for compatibility reasons
+        """
+        
+        return self.get_users_store()
+    
     
     
         
