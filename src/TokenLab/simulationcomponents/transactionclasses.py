@@ -204,12 +204,27 @@ class TransactionManagement_Assumptions(TransactionManagement):
     Does not use any dependencies
     """
     
-    def __init__(self,data:List):
+    def __init__(self,data:List, noise_addon:AddOn=None):
+   
         self.dependencies={AgentPool:None}
         
         super(TransactionManagement_Assumptions,self).__init__()
         
         self.data=np.ndarray.flatten(np.array(data))
+        
+        self._noise_component=noise_addon
+
+        
+        if self._noise_component!=None:
+            dummy=[]
+            for i in range(len(self.data)):
+                temporary = self.data[i]+ self._noise_component.apply(**{'value':self.data[i]})
+                if temporary>=0:
+                    dummy.append(temporary)
+                else:
+                    dummy.append(self.data_transactions_means_store_original[i])
+        
+            self.data=dummy
         
         
     def execute(self,dependency:str="AgentPool")->float:

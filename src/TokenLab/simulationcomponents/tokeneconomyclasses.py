@@ -576,18 +576,19 @@ class TokenMetaSimulator():
             
         pass
             
-    def get_timeseries(self,feature:str,use_std:bool=False,log_scale:bool=False)->Union[matplotlib.collections.PolyCollection,pd.DataFrame]:
+    def get_timeseries(self,feature:str,use_std:bool=False,log_scale:bool=False,multiple:float=1)->Union[matplotlib.collections.PolyCollection,pd.DataFrame]:
         
         """
         Calculates an average for a certain feature in the report, (e.g. price) and then computes
         a lineplot over time, plus 95% confidence interval. Returns both the plot and the transformed data.
         """
         
-        timeseries_mean=self.data.groupby('iteration_time')[feature].mean()
-        timeseries_median=self.data.groupby('iteration_time')[feature].median()
-        timeseries_std=self.data.groupby('iteration_time')[feature].std()
-        timeseries_quant_10=self.data.groupby('iteration_time')[feature].quantile(0.1)
-        timeseries_quant_90=self.data.groupby('iteration_time')[feature].quantile(0.9)
+        feature_group = self.data.groupby('iteration_time')[feature]
+        timeseries_mean = feature_group.mean()*multiple
+        timeseries_median = feature_group.median()*multiple
+        timeseries_std = feature_group.std()*multiple
+        timeseries_quant_10 = feature_group.quantile(0.1)*multiple
+        timeseries_quant_90 = feature_group.quantile(0.9)*multiple
 
         
         final=pd.DataFrame({feature+'_mean':timeseries_mean.values,feature+'_median':timeseries_median.values,
