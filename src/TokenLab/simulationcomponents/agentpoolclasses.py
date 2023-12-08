@@ -13,6 +13,7 @@ from supplyclasses import SupplyStaker
 import copy
 from typing import TypedDict
 from addons import Condition
+from treasuryclasses import TreasuryBasic
 
 
 
@@ -30,7 +31,7 @@ class AgentPool_Basic(AgentPool):
 
     
     def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
-                 currency:str='$',name:str=None,dumper:bool=False)->None:
+                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,treasury:TreasuryBasic=None)->None:
         """
         
         users_controller: Controller specifying how the userbase grows over time. If the users controller is an integer,
@@ -40,6 +41,9 @@ class AgentPool_Basic(AgentPool):
         currency: the currency this pool represents.
         name: the name of the pool, this can come in very handy during debugging
         dumper: Whether this is an agent pool that only sells tokens
+        
+        chained: A chained agent pool is using another Agent Pool's user pool .If this argument is set to True
+        then the agent pool will not execute its user controller.
         
         
         """      
@@ -55,10 +59,13 @@ class AgentPool_Basic(AgentPool):
         self.transactions_controller=transactions_controller
         self.transactions_controller.link(AgentPool,self)
         self.currency=currency
+        self.chained =chained
         
         self.name=name
         
         self.dependencies={TokenEconomy:None}
+        
+        self.treasury = treasury
 
         return None
     
@@ -78,8 +85,10 @@ class AgentPool_Basic(AgentPool):
 
         """
         self.iteration+=1
-        self.num_users = self.users_controller.execute()
+        if not self.chained:
+            self.num_users = self.users_controller.execute()
         self.transactions = self.transactions_controller.execute()
+        
         
         return None
     
@@ -113,14 +122,14 @@ class AgentPool_Basic(AgentPool):
 class AgentPool_Staking(AgentPool_Basic):
     def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
                  staking_controller:SupplyStaker,staking_controller_params:dict,
-                 currency:str='$',name:str=None,dumper:bool=False,
+                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False
                  )->None:
         """
         
         users_controller: Controller specifying how the userbase grows over time. If the users controller is an integer,
         then the AgentPool class will simply take it as a constant value for all simulations
         
-        transactions_controller: Controller that determines
+        transactions_controller: Controller that determines the transaction volume
         currency: the currency this pool represents.
         name: the name of the pool, this can come in very handy during debugging
         dumper: Whether this is an agent pool that only sells tokens
@@ -128,7 +137,7 @@ class AgentPool_Staking(AgentPool_Basic):
         
         """      
         super(AgentPool_Staking,self).__init__(users_controller=users_controller,transactions_controller=transactions_controller,
-                                               currency=currency,name=name,dumper=dumper)
+                                               currency=currency,name=name,dumper=dumper,chained=chained)
         self.staking_controller = staking_controller
         self.staking_controller_params = staking_controller_params
         
@@ -158,7 +167,8 @@ class AgentPool_Staking(AgentPool_Basic):
 
         """
         self.iteration+=1
-        self.num_users = self.users_controller.execute()
+        if not self.chained:
+            self.num_users = self.users_controller.execute()
         self.transactions = self.transactions_controller.execute()
         
         keys=[]

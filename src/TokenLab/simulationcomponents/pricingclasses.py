@@ -365,7 +365,7 @@ class PriceFunction_LinearRegression(PriceFunctionController):
     """
         
     
-    def __init__(self,top_appreciation:float=0.3,std_prior:float=0.1,anchoring:float=0.3):
+    def __init__(self,top_appreciation:float=0.3,std_prior:float=0.1,anchoring:float=0.1,proportionate_noise=True):
         """
         
 
@@ -374,7 +374,7 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         top_appreciation : float, optional
             If the price appreciates by more than top_appreciation%, then cap the appreciation. The default is 0.3.
         std_prior : float, optional
-            This is used in the calculation of the price if stochastic=True. The default is 0.2.
+            This is used in the calculation of the price if stochastic=True. The default is 0.1.
             
             The way this is used is that it sets the variance of the prediction interval (t-distribution)
             equal to std_prior*previous_price. Hence the variance increases as the price increases.
@@ -392,6 +392,7 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         self.top_appreciation = top_appreciation
         self.std_prior = std_prior
         self.anchoring=anchoring
+        self.proportionate_noise=proportionate_noise
         
     
     def execute(self)->float:
@@ -415,7 +416,10 @@ class PriceFunction_LinearRegression(PriceFunctionController):
           
         log_price_new = 0.88 * np.log(T) + 0.84* np.log(1/M) + 1.15 * np.log(1/V)
             
-        sample = log_price_new+scipy.stats.t(13000).rvs(1)*self.std_prior*previous_price
+        if self.proportionate_noise:
+            sample = log_price_new+scipy.stats.t(13000).rvs(1)*self.std_prior*previous_price
+        else:
+            sample = log_price_new+scipy.stats.t(13000).rvs(1)*self.std_prior
 
         price_new = (1-self.anchoring)*np.exp(sample[0]) + self.anchoring*previous_price
             

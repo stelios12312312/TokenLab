@@ -14,6 +14,8 @@ from scipy import stats
 from scipy.stats import uniform
 import time
 import copy
+from abc import ABC, abstractmethod 
+
 
 class SupplyController(Controller):
     """
@@ -137,20 +139,53 @@ class SupplyController_CliffVesting(SupplyController):
         
     
 
-        
-        
-class SupplyStaker(SupplyController):
-    def __init__(self,staking_amount:float,rewards:float,lockup_duration:int):
-        super(SupplyStaker,self).__init__()
-        self._iteration=0
+class SupplyStaker(SupplyController, ABC):
+    
+    def __init__(self,staking_amount:float):
+        super(SupplyController,self).__init__()
         self._staking_amount = staking_amount
+        self._iteration=0
+
+        
+        
+    def get_staking_amount(self):
+        
+        return self._staking_amount
+        
+    @abstractmethod
+    def execute(self):
+        
+        pass
+        
+        
+    
+        
+class SupplyStakerLockup(SupplyStaker):
+    def __init__(self,staking_amount:float,rewards:float,lockup_duration:int):
+        super(SupplyStakerLockup,self).__init__(staking_amount)
+        self._rewards = rewards
         
 
     def execute(self):
         if self._iteration == 0:
             self.supply = -1*self._staking_amount
         elif self._iteration == lockup_duration:
-            self.supply = self._staking_amount + rewards
+            self.supply = self._staking_amount + self.rewards
+            
+
+    
+    
+class SupplyStakerMonthly(SupplyController):
+    def __init__(self,staking_amount:float,rewards:float):
+        super(SupplyStaker,self).__init__()
+        self.rewards = rewards
+        
+
+    def execute(self):
+        if self._iteration == 0:
+            self.supply = -1*self._staking_amount
+        else:
+            self.supply = self.rewards
             
     def get_staking_amount(self):
         

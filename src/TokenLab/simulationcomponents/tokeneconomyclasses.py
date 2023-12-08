@@ -306,6 +306,19 @@ class TokenEconomy_Basic(TokenEconomy):
                 
         self.supply=0
         self.initialised=True
+        
+    def change_supply(self,currency_type:str,value:float)->None:
+        if currency_type==self.token:
+            if value>=self.supply and value>0:
+                self.supply+=value
+            elif value<=self.supply and value<0:
+                self.supply-=value
+            else:
+                print('Warning! Invalid supply change. Supply {0} and value {1}'.format(self.supply,value))
+        else:
+            print("Currency {0} is not the economy's token!".format(currency_type))
+        
+        
     
     def execute(self)->bool:
         """
@@ -362,7 +375,7 @@ class TokenEconomy_Basic(TokenEconomy):
 
         for supplypool in self._supply_pools+self._temp_supply_pools:
             supplypool.execute()
-            self.supply+=supplypool.get_supply()
+            self.change_supply(self.token,supplypool.get_supply())
             # if self.supply_is_added==False:
             #     warnings.warn("""Warning! There are supply pools affecting total supply, but supply_is_added=False. This means that
             #                   in the next iteration, the effect of the supply pools will disappear! 
@@ -394,14 +407,14 @@ class TokenEconomy_Basic(TokenEconomy):
                 #negative tokens, indicates sell pressure, which indicates that the supply has increased
                 #this will push prices downward
                 if tokens<=0:
-                    self.supply+=np.abs(tokens)
+                    self.change_supply(self.token,np.abs(tokens))
             elif agent.currency==self.fiat:
                 transactions = agent.get_transactions()
                 if transactions>0:
                     self.transactions_value_in_fiat+=transactions
                 else:
                     new_tokens = transactions/self.price
-                    self.supply+=np.abs(new_tokens)
+                    self.change_supply(self.token,np.abs(new_tokens))
                 if self.price>0:
                     # self.transactions_volume_in_tokens=agent.get_transactions()*self.holding_time/self.price
                     self.transactions_volume_in_tokens=agent.get_transactions()/self.price
@@ -451,7 +464,7 @@ class TokenEconomy_Basic(TokenEconomy):
         self._transactions_value_store_in_tokens.append(self.transactions_volume_in_tokens)
         
         if self.burn_token:
-            self.supply-=self.transactions_volume_in_tokens
+            self.change_supply(self.token,-self.transactions_volume_in_tokens)
         
         self.iteration+=1
         
