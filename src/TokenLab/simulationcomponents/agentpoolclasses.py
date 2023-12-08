@@ -66,6 +66,8 @@ class AgentPool_Basic(AgentPool):
         self.dependencies={TokenEconomy:None}
         
         self.treasury = treasury
+        if self.treasury!=None:
+            self.treasury.link(AgentPool,self)
 
         return None
     
@@ -87,6 +89,8 @@ class AgentPool_Basic(AgentPool):
         self.iteration+=1
         if not self.chained:
             self.num_users = self.users_controller.execute()
+        else:
+            self.num_users = self.users_controller.num_users
         self.transactions = self.transactions_controller.execute()
         
         
@@ -169,6 +173,8 @@ class AgentPool_Staking(AgentPool_Basic):
         self.iteration+=1
         if not self.chained:
             self.num_users = self.users_controller.execute()
+        else:
+            self.num_users = self.users_controller.num_users
         self.transactions = self.transactions_controller.execute()
         
         keys=[]

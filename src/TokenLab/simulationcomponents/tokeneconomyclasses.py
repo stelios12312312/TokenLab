@@ -309,9 +309,9 @@ class TokenEconomy_Basic(TokenEconomy):
         
     def change_supply(self,currency_type:str,value:float)->None:
         if currency_type==self.token:
-            if value>=self.supply and value>0:
+            if value>=self.supply and value>=0:
                 self.supply+=value
-            elif value<=self.supply and value<0:
+            elif value<=self.supply and value<=0:
                 self.supply-=value
             else:
                 print('Warning! Invalid supply change. Supply {0} and value {1}'.format(self.supply,value))
@@ -380,8 +380,6 @@ class TokenEconomy_Basic(TokenEconomy):
             #     warnings.warn("""Warning! There are supply pools affecting total supply, but supply_is_added=False. This means that
             #                   in the next iteration, the effect of the supply pools will disappear! 
             #                   Please make sure that this is really the intended behaviour.""")
-
-
             
         if self.supply==0:
             warnings.warn('Warning! Supply reached 0! Iteration number {0}'.format(self.iteration))
