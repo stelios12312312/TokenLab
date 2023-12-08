@@ -26,9 +26,9 @@ class TreasuryBasic(Controller):
 
         self.treasury={}
             
-    def add_asset(self,value:float,currency_symbol:str):
+    def add_asset(self,currency_symbol:str,value:float):
         
-        final_fee=value*fee
+        final_value=value*self._fee
         
         if currency_symbol in self.treasury:
             self.treasury[currency_symbol]+=final_value
@@ -36,7 +36,8 @@ class TreasuryBasic(Controller):
             self.treasury[currency_symbol]=final_value
             
         tokenec = self.get_tokeneconomy()
-        tokenec.change_supply(currency_symbol,-1*final_value)
+        if tokenec.token==currency_symbol:
+            tokenec.change_supply(currency_symbol,-1*final_value)
 
 
         

@@ -93,6 +93,9 @@ class AgentPool_Basic(AgentPool):
             self.num_users = self.users_controller.num_users
         self.transactions = self.transactions_controller.execute()
         
+        if self.treasury!=None:
+            self.treasury.add_asset(currency_symbol=self.currency,value=self.transactions)
+        
         
         return None
     
