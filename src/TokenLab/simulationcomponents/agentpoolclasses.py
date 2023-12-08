@@ -31,7 +31,7 @@ class AgentPool_Basic(AgentPool):
 
     
     def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
-                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,treasury:TreasuryBasic=None)->None:
+                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,treasury:TreasuryBasic=None,fee:float=None)->None:
         """
         
         users_controller: Controller specifying how the userbase grows over time. If the users controller is an integer,
@@ -68,6 +68,10 @@ class AgentPool_Basic(AgentPool):
         self.treasury = treasury
         if self.treasury!=None:
             self.treasury.link(AgentPool,self)
+            self.fee = fee
+            
+            if fee==None:
+                raise Exception('When using a treasury within an agent pool, you also need to define a fee as a float in the range [0,1]')
 
         return None
     
@@ -94,7 +98,7 @@ class AgentPool_Basic(AgentPool):
         self.transactions = self.transactions_controller.execute()
         
         if self.treasury!=None:
-            self.treasury.add_asset(currency_symbol=self.currency,value=self.transactions)
+            self.treasury.add_asset(currency_symbol=self.currency,value=self.transactions,fee=self.fee)
         
         
         return None

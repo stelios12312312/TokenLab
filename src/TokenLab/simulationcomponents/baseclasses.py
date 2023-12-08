@@ -204,6 +204,8 @@ class TokenEconomy():
         
         self._effective_holding_time_store=[]
         
+        self._treasury_store = []
+        
         self.name = name
         
         return None

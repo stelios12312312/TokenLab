@@ -19,16 +19,14 @@ from addons import Condition
 
 class TreasuryBasic(Controller):
     
-    def __init__(self,fee:float=1):
+    def __init__(self,name:str='treasury'):
+        super(TreasuryBasic,self).__init__(name=name)
         self.dependencies={AgentPool:None}
-        self._fee = fee
-        
-
         self.treasury={}
             
-    def add_asset(self,currency_symbol:str,value:float):
+    def add_asset(self,currency_symbol:str,value:float,fee:float):
         
-        final_value=value*self._fee
+        final_value=value*fee
         
         if currency_symbol in self.treasury:
             self.treasury[currency_symbol]+=final_value
@@ -39,8 +37,6 @@ class TreasuryBasic(Controller):
         if tokenec.token==currency_symbol:
             tokenec.change_supply(currency_symbol,-1*final_value)
 
-
-        
     def retrieve_assset(self,currency_symbol:str,value:float):
         if currency_symbol in self.treasury:
             self.treasury[currency_symbol]-=value

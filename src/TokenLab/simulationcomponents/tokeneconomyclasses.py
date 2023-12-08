@@ -23,6 +23,7 @@ from pricingclasses import *
 import matplotlib
 import random
 from supplyclasses import *
+from treasuryclasses import *
 import warnings
 
 
@@ -78,7 +79,7 @@ class TokenEconomy_Basic(TokenEconomy):
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
                  unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,
                  supply_is_added:bool=True,name:str=None,safeguard_current_supply_level:bool=False,
-                 ignore_supply_controller:bool=False)->None:
+                 ignore_supply_controller:bool=False,treasuries:List[TreasuryBasic]=None)->None:
 
         
 
@@ -125,10 +126,6 @@ class TokenEconomy_Basic(TokenEconomy):
         None
 
         """        
-        
-        
-       
-        
         super(TokenEconomy_Basic,self).__init__(holding_time=holding_time,supply=supply,fiat=fiat,token=token,
                                                 price_function=price_function, 
                                                 unit_of_time=unit_of_time,token_initial_price=[initial_price],name=name)
@@ -176,6 +173,8 @@ class TokenEconomy_Basic(TokenEconomy):
         self.safeguard_current_supply_level = safeguard_current_supply_level
         
         self.ignore_supply_controller = ignore_supply_controller
+        
+        self.treasuries = treasuries
             
         
         return None
@@ -443,9 +442,12 @@ class TokenEconomy_Basic(TokenEconomy):
         self._price_function.execute()
         self._holding_time_controller.execute()        
         
-        #Store the parameters
         self.price=self._price_function.get_price()
+        
+        if self.burn_token:
+            self.change_supply(self.token,-self.transactions_volume_in_tokens)
 
+        #Store the parameters
         self._holding_time_store.append(self.holding_time)
         self._num_users_store.append(self.num_users)
         self._supply_store.append(self.supply)
@@ -461,8 +463,8 @@ class TokenEconomy_Basic(TokenEconomy):
         self._prices_store.append(self.price)
         self._transactions_value_store_in_tokens.append(self.transactions_volume_in_tokens)
         
-        if self.burn_token:
-            self.change_supply(self.token,-self.transactions_volume_in_tokens)
+        for tres in self.treasuries:
+            self._treasury_store.append((tres.name,tres.treasury.copy()))
         
         self.iteration+=1
         
@@ -487,11 +489,18 @@ class TokenEconomy_Basic(TokenEconomy):
 
         """
         
-        
-        df=pd.DataFrame({self.token+'_price':self._prices_store,'transactions_'+self.fiat:self._transactions_value_store_in_fiat,
+        package={self.token+'_price':self._prices_store,'transactions_'+self.fiat:self._transactions_value_store_in_fiat,
                         'num_users':self._num_users_store,'iteration':np.arange(1,self.iteration+1),'holding_time':self._holding_time_store,
-                        'effective_holding_time':self._effective_holding_time_store,'supply':self._supply_store})
+                        'effective_holding_time':self._effective_holding_time_store,'supply':self._supply_store}
         
+
+        
+        df=pd.DataFrame(package)
+        
+        temp_df=pd.DataFrame(self._treasury_store,columns=['treasury_name','treasury_value'])
+        for tres in self.treasuries:
+            df = pd.concat([df,temp_df[temp_df['treasury_name']==tres.name].reset_index(drop=False).copy()],axis=1)
+            
         
         df['transactions_'+self.token]=self._transactions_value_store_in_tokens
         return df
@@ -503,9 +512,7 @@ class TokenMetaSimulator():
     This is a class that can be used to perform multiple simulations with a TokenEconomy class
     and then returns the results.
     
-    
     """
-    
     
     def __init__(self,token_economy:TokenEconomy)->None:
         self.token_economy=copy.deepcopy(token_economy)
