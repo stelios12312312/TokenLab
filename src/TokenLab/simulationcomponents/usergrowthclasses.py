@@ -8,7 +8,7 @@ Created on Fri Nov 18 12:18:42 2022
 
 from typing import List, Dict,Union
 from baseclasses import *
-from TokenLab.utils.helpers import log_saturated_space
+from TokenLab.utils.helpers import log_saturated_space,logistic_saturated_space
 import copy
 import scipy
 import warnings
@@ -68,7 +68,7 @@ class UserGrowth_Spaced(UserGrowth):
     
     
     def __init__(self,initial_users:int,max_users:int,num_steps:int,
-                 space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space]=np.linspace,name:str=None,
+                 space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space,logistic_saturated_space]=np.linspace,name:str=None,
                  noise_addon:AddOn=None,use_difference:bool=False)->None:
         """
         use_difference: If True, it will calculate and return the difference between time steps. Essentially, the user 
