@@ -17,7 +17,7 @@ from treasuryclasses import TreasuryBasic
 
 
 
-class AgentPool_Basic(AgentPool):
+class AgentPool_Basic(AgentPool,Initialisable):
     """
     Simulates a set of agents. Requires:
         
@@ -30,8 +30,9 @@ class AgentPool_Basic(AgentPool):
     """
 
     
-    def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
-                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,treasury:TreasuryBasic=None,fee:float=None)->None:
+    def __init__(self,users_controller:Union[UserGrowth,int]=1,transactions_controller:TransactionManagement=1,
+                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,
+                 treasury:TreasuryBasic=None,fee:float=None)->None:
         """
         
         users_controller: Controller specifying how the userbase grows over time. If the users controller is an integer,
@@ -65,14 +66,13 @@ class AgentPool_Basic(AgentPool):
         
         self.dependencies={TokenEconomy:None}
         
+        self.fee = fee
+        
+        if fee==None and treasury!=None:
+            raise Exception('When using a treasury within an agent pool, you also need to define a fee as a float in the range [0,1]')
         self.treasury = treasury
-        if self.treasury!=None:
-            self.treasury.link(AgentPool,self)
-            self.fee = fee
-            
-            if fee==None:
-                raise Exception('When using a treasury within an agent pool, you also need to define a fee as a float in the range [0,1]')
-
+        
+     
         return None
     
     
@@ -98,10 +98,15 @@ class AgentPool_Basic(AgentPool):
         self.transactions = self.transactions_controller.execute()
         
         if self.treasury!=None:
-            self.treasury.add_asset(currency_symbol=self.currency,value=self.transactions,fee=self.fee)
-        
+            self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
         
         return None
+    
+    
+    def initialise(self):
+        if self.treasury!=None:
+            self.treasury.link(AgentPool,self)
+        self.initialised=True
     
     def test_integrity(self)->bool:
         """
@@ -133,7 +138,7 @@ class AgentPool_Basic(AgentPool):
 class AgentPool_Staking(AgentPool_Basic):
     def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
                  staking_controller:SupplyStaker,staking_controller_params:dict,
-                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False
+                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,treasury:TreasuryBasic=None,fee:float=None
                  )->None:
         """
         
@@ -148,7 +153,7 @@ class AgentPool_Staking(AgentPool_Basic):
         
         """      
         super(AgentPool_Staking,self).__init__(users_controller=users_controller,transactions_controller=transactions_controller,
-                                               currency=currency,name=name,dumper=dumper,chained=chained)
+                                               currency=currency,name=name,dumper=dumper,chained=chained,treasury=treasury,fee=fee)
         self.staking_controller = staking_controller
         self.staking_controller_params = staking_controller_params
         
@@ -194,11 +199,21 @@ class AgentPool_Staking(AgentPool_Basic):
         
         number_of_stakers = int(self.transactions/self.staking_controller_params['staking_amount'])
         
+        
         new_pools=[]
         for i in range(number_of_stakers):
-            new_pools.append(('SupplyPool',self.staking_controller(**self.staking_controller_params)))
+            new_staker = self.staking_controller(**self.staking_controller_params)
+            new_staker.link(AgentPool,self)
+            new_pools.append(('SupplyPool',new_staker))
         
         self.new_pools = new_pools
+        
+        
+        #now update treasury (if any)
+        if self.treasury!=None:
+            total_amount = 0
+            for staker in self.new_pools:   
+                self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
         
         return self.new_pools
     
@@ -218,7 +233,7 @@ class AgentPool_Conditional(Initialisable,AgentPool):
     """
     
     def __init__(self,users_controller:Union[UserGrowth,int]=None,transactions_controller:TransactionManagement=None,
-                 currency:str='$',name:str=None,connect_to_token_economy:bool=True):
+                 currency:str='$',name:str=None,connect_to_token_economy:bool=True,treasury:TreasuryBasic=None,fee:float=None):
         """
         
 
@@ -274,6 +289,10 @@ class AgentPool_Conditional(Initialisable,AgentPool):
         self.name=name
         self.num_users=0
         self.transactions=0
+        
+        if fee==None and treasury!=None:
+            raise Exception('When using a treasury within an agent pool, you also need to define a fee as a float in the range [0,1]')
+        self.treasury = treasury
         
         
     def add_condition(self,condition:Condition,controller:Union[UserGrowth,TransactionManagement])->bool:
@@ -350,7 +369,12 @@ class AgentPool_Conditional(Initialisable,AgentPool):
             if con[0].sim_component==None:
                 con[0].sim_component=self.dependencies[TokenEconomy]
                 
+        if self.treasury!=None:
+            self.treasury.link(AgentPool,self)
+                
         self.initialised=True
+        
+        
         
         
     def execute(self)->None:
@@ -381,6 +405,9 @@ class AgentPool_Conditional(Initialisable,AgentPool):
             
         if self.transactions_controller!=None:
             self.transactions+=self.transactions_controller.execute()
+            
+        if self.treasury!=None:
+            self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
         
         for con in self.conditions_map:
             logical_result=con[0].execute()

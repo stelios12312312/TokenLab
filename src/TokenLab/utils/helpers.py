@@ -8,6 +8,8 @@ Created on Thu Nov  3 17:01:38 2022
 import numpy as np
 from typing import Union,List,Dict
 import scipy
+from numpy.polynomial.polynomial import Polynomial
+
 
 def log_saturated_space(start:int,stop:int,num:int):
     """
@@ -97,5 +99,18 @@ def merge_param_dists(dist1,dist2):
             dist1[i][k]=dist2[i][k]
             
     return dist1
+
+
+def fit_polynomial(y,degree=4):
+    x = np.arange(1, len(y) + 1)
+    
+    # Fit a polynomial model
+    degree = degree # Degree of the polynomial
+    coefs = np.polyfit(x, y, degree)
+    
+    # Create a polynomial object
+    p = Polynomial(coefs[::-1]) 
+    
+    return p
 
 

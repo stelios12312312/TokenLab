@@ -140,21 +140,40 @@ class SupplyController_CliffVesting(SupplyController):
     
 
 class SupplyStaker(SupplyController, ABC):
-    
     def __init__(self,staking_amount:float):
+        """
+        
+
+        Parameters
+        ----------
+        staking_amount : float
+            DESCRIPTION.
+        source : If none, then the source is the token economy. No special treatment required.
+            If not None, then this has to be set to a treasury class, and rewards will come from there.
+
+        Returns
+        -------
+        None.
+
+        """
         super(SupplyController,self).__init__()
         self._staking_amount = staking_amount
         self._iteration=0
+        self.dependencies={AgentPool:None}
 
-        
         
     def get_staking_amount(self):
         
         return self._staking_amount
+    
+    def get_linked_agentpool(self):
+        
+        return self.dependencies[AgentPool]
         
     @abstractmethod
     def execute(self):
-        
+        self.source=self.get_linked_agentpool().treasury
+
         pass
         
         
@@ -164,28 +183,47 @@ class SupplyStakerLockup(SupplyStaker):
     def __init__(self,staking_amount:float,rewards:float,lockup_duration:int):
         super(SupplyStakerLockup,self).__init__(staking_amount)
         self._rewards = rewards
-        
+
 
     def execute(self):
+        self.source=get_linked_agentpool.treasury
+            
+            
         if self._iteration == 0:
-            self.supply = -1*self._staking_amount
+            value = -1*self._staking_amount
         elif self._iteration == lockup_duration:
             self.supply = self._staking_amount + self.rewards
-            
-
+        
+        if self.source==None:
+            self.supply=value
+        else:
+            agentpool=get_linked_agentpool()
+            currency = agentpool.currency
+            to_remove = agentpool.treasury.retrieve_asset(currency_symbol=currency,value=value)
+            self.supply=to_remove
     
     
 class SupplyStakerMonthly(SupplyController):
     def __init__(self,staking_amount:float,rewards:float):
         super(SupplyStaker,self).__init__()
         self.rewards = rewards
-        
 
     def execute(self):
+        self.source=get_linked_agentpool.treasury
+
         if self._iteration == 0:
-            self.supply = -1*self._staking_amount
+            value = -1*self._staking_amount
         else:
-            self.supply = self.rewards
+            value = self.rewards
+        
+        if self.source==None:
+            self.supply=value
+        else:
+            agentpool=get_linked_agentpool()
+            currency = agentpool.currency
+            to_remove = agentpool.treasury.retrieve_asset(currency_symbol=currency,value=value)
+            self.supply=to_remove
+            
             
     def get_staking_amount(self):
         

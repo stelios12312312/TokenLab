@@ -463,8 +463,9 @@ class TokenEconomy_Basic(TokenEconomy):
         self._prices_store.append(self.price)
         self._transactions_value_store_in_tokens.append(self.transactions_volume_in_tokens)
         
-        for tres in self.treasuries:
-            self._treasury_store.append((tres.name,tres.treasury.copy()))
+        if self.treasuries!=None:
+            for tres in self.treasuries:
+                self._treasury_store.append((tres.name,tres.treasury.copy()))
         
         self.iteration+=1
         
@@ -498,8 +499,11 @@ class TokenEconomy_Basic(TokenEconomy):
         df=pd.DataFrame(package)
         
         temp_df=pd.DataFrame(self._treasury_store,columns=['treasury_name','treasury_value'])
-        for tres in self.treasuries:
-            df = pd.concat([df,temp_df[temp_df['treasury_name']==tres.name].reset_index(drop=False).copy()],axis=1)
+        if self.treasuries!=None:
+            for tres in self.treasuries:
+                dummy_df = temp_df[temp_df['treasury_name']==tres.name].reset_index(drop=True).copy()
+                dummy_df.columns = [tres.name,tres.name+'_value']
+                df = pd.concat([df,dummy_df],axis=1)
             
         
         df['transactions_'+self.token]=self._transactions_value_store_in_tokens

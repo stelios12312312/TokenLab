@@ -18,24 +18,45 @@ from addons import Condition
 
 
 class TreasuryBasic(Controller):
-    
-    def __init__(self,name:str='treasury'):
+    def __init__(self,name:str='treasury',treasury:dict={}):
         super(TreasuryBasic,self).__init__(name=name)
         self.dependencies={AgentPool:None}
-        self.treasury={}
+        self.treasury=treasury
             
-    def add_asset(self,currency_symbol:str,value:float,fee:float):
         
-        final_value=value*fee
         
+    def execute(self,currency_symbol:str,value:float):
+        
+        if value>0:
+            self.add_asset(currency_symbol,value)
+        elif value<=0:
+            self.retrieve_asset(currency_symbol,value)
+        
+        
+    def add_asset(self,currency_symbol:str,value:float):
+        """
+        Parameters
+        ----------
+        currency_symbol : str
+            The token or currency symbol.
+        value : float
+        fee : float, optional
+            When fee=1, then you add 100% of the assets. When less than 1, then this functions, as some sort of fee over the original assets.
+            The default is 1.
+
+        Returns
+        -------
+        None.
+
+        """
         if currency_symbol in self.treasury:
-            self.treasury[currency_symbol]+=final_value
+            self.treasury[currency_symbol]+=value
         else:
-            self.treasury[currency_symbol]=final_value
+            self.treasury[currency_symbol]=value
             
         tokenec = self.get_tokeneconomy()
         if tokenec.token==currency_symbol:
-            tokenec.change_supply(currency_symbol,-1*final_value)
+            tokenec.change_supply(currency_symbol,-1*value)
 
     def retrieve_assset(self,currency_symbol:str,value:float):
         if currency_symbol in self.treasury:
@@ -49,6 +70,16 @@ class TreasuryBasic(Controller):
     def get_tokeneconomy(self)->TokenEconomy:
         return self.dependencies[AgentPool].get_tokeneconomy()
     
+    
+# class TreasurySink(Controller):
+    
+#     def __init__(self,transactions_controller:TransactionManagement,name='treasury_sink',treasury:TreasuryBasic=None,currency:str='$'):
+#         if TreasuryBasic==None:
+#             raise Exception('Need to define a connected Treasury for the TreasurySink!')
+            
+        
+            
+#     def execute(self,amount):
 
 
 # class TreasuryBurner(Controller):

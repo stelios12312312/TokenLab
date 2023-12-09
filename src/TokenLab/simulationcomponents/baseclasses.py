@@ -32,7 +32,7 @@ class Initialisable():
     
     def initialise(self):
         
-        self.iitialised=True
+        self.initialised=True
     
 
 class Controller():
