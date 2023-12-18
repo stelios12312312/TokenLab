@@ -101,7 +101,7 @@ def merge_param_dists(dist1,dist2):
     return dist1
 
 
-def fit_polynomial(y,degree=4):
+def fit_polynomial(y,degree=3):
     x = np.arange(1, len(y) + 1)
     
     # Fit a polynomial model
@@ -113,4 +113,12 @@ def fit_polynomial(y,degree=4):
     
     return p
 
+def extrapolate_to_length(series,length):
+    p = fit_polynomial(series,degree=3)
+    results = series.copy()
+    for i in range(length-len(series)):
+        prediction = p(len(series)+i)
+        results.append(prediction)
+        
+    return results
 

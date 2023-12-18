@@ -156,3 +156,8 @@ cython_debug/
 projects/
 scratchpad.py
 .DS_Store
+.DS_Store
+demo/celery.sqlite
+*.db
+src/TokenLab/.DS_Store
+.DS_Store

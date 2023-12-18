@@ -213,7 +213,7 @@ class PriceFunction_EOE(PriceFunctionController):
     noise w as added.
     """
     
-    def __init__(self,noise_addon:AddOn=None,smoothing_param:float=1,use_velocity:bool=True):
+    def __init__(self,noise_addon:AddOn=None,smoothing_param:float=0.3,use_velocity:bool=True):
         """
         
         Parameters
@@ -365,7 +365,7 @@ class PriceFunction_LinearRegression(PriceFunctionController):
     """
         
     
-    def __init__(self,top_appreciation:float=0.3,std_prior:float=0.1,anchoring:float=0.1,proportionate_noise=True):
+    def __init__(self,top_appreciation:float=0.3,std_prior:float=0.1,anchoring:float=0.3,proportionate_noise=True):
         """
         
 
@@ -414,7 +414,10 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         # log_price_new = -0.08506 + 0.00139 * np.log(T) - 0.00481 * np.log(1/M) + 0.00059 * np.log(1/V) \
           #  +0.99644 * np.log(previous_price)
           
-        log_price_new = 0.88 * np.log(T) + 0.84* np.log(1/M) + 1.15 * np.log(1/V)
+        if T>0: 
+            log_price_new = 0.88 * np.log(T) + 0.84* np.log(1/M) + 1.15 * np.log(1/V)
+        else:
+            log_price_new=0
             
         if self.proportionate_noise:
             sample = log_price_new+scipy.stats.t(13000).rvs(1)*self.std_prior*previous_price

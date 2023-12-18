@@ -93,6 +93,8 @@ class AgentPool_Basic(AgentPool,Initialisable):
         self.iteration+=1
         if not self.chained:
             self.num_users = self.users_controller.execute()
+            if self.num_users<0:
+                raise Exception('Negative users detected in agent pool with name='+self.name)
         else:
             self.num_users = self.users_controller.num_users
         self.transactions = self.transactions_controller.execute()

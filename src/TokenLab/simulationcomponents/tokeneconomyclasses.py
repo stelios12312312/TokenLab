@@ -308,12 +308,12 @@ class TokenEconomy_Basic(TokenEconomy):
         
     def change_supply(self,currency_type:str,value:float)->None:
         if currency_type==self.token:
-            if value>=self.supply and value>=0:
+            if value>=0:
                 self.supply+=value
             elif value<=self.supply and value<=0:
-                self.supply-=value
+                self.supply+=value
             else:
-                print('Warning! Invalid supply change. Supply {0} and value {1}'.format(self.supply,value))
+                print('Warning! Invalid supply change in tokeneconomy {2}. Supply {0} and value {1}'.format(self.supply,value,self.name))
         else:
             print("Currency {0} is not the economy's token!".format(currency_type))
         
@@ -407,7 +407,7 @@ class TokenEconomy_Basic(TokenEconomy):
                     self.change_supply(self.token,np.abs(tokens))
             elif agent.currency==self.fiat:
                 transactions = agent.get_transactions()
-                if transactions>0:
+                if transactions>=0:
                     self.transactions_value_in_fiat+=transactions
                 else:
                     new_tokens = transactions/self.price
@@ -503,7 +503,9 @@ class TokenEconomy_Basic(TokenEconomy):
             for tres in self.treasuries:
                 dummy_df = temp_df[temp_df['treasury_name']==tres.name].reset_index(drop=True).copy()
                 dummy_df.columns = [tres.name,tres.name+'_value']
-                df = pd.concat([df,dummy_df],axis=1)
+                value_only = dummy_df[tres.name+'_value'].apply(pd.Series)
+                value_only.name = tres.name+'_deposits_' + value_only.columns[0]
+                df = pd.concat([df,value_only],axis=1)
             
         
         df['transactions_'+self.token]=self._transactions_value_store_in_tokens
@@ -568,6 +570,9 @@ class TokenMetaSimulator():
     
     def get_report(self,functions:List=[np.mean,np.std,np.max,np.min,_quantile_10,_quantile_90],segment:Union[List,Tuple,int,str]=None)->pd.DataFrame:
         """
+        Creates a segment of data from repetition runs, which gives you better look into certain parts of the simulation
+        from a time perspective
+        
         segment: 
             a)Either a list with indices [index1,index2] where index1<index2<repetitions
             b) an integer, in which case we choose only a particular repetition
@@ -598,7 +603,8 @@ class TokenMetaSimulator():
             
         pass
             
-    def get_timeseries(self,feature:str,use_std:bool=False,log_scale:bool=False,multiple:float=1)->Union[matplotlib.collections.PolyCollection,pd.DataFrame]:
+    def get_timeseries(self,feature:str,use_std:bool=False,log_scale:bool=False,
+                       multiple:float=1,plot:bool=True)->Union[matplotlib.collections.PolyCollection,pd.DataFrame]:
         
         """
         Calculates an average for a certain feature in the report, (e.g. price) and then computes
@@ -627,17 +633,18 @@ class TokenMetaSimulator():
             higher=timeseries_quant_90
             toplot=timeseries_median
         
-        plt.plot(final[self.unit_of_time].values,toplot)
-        plt.xlabel(self.unit_of_time)
-        plt.ylabel(feature)
-        ax=plt.fill_between(final[self.unit_of_time],lower,higher,alpha=0.2)
+        if plot:
+            plt.plot(final[self.unit_of_time].values,toplot)
+            plt.xlabel(self.unit_of_time)
+            plt.ylabel(feature)
+            ax=plt.fill_between(final[self.unit_of_time],lower,higher,alpha=0.2)
+            
+            if log_scale:
+                plt.yscale('log')
+            
+            plt.show()
         
-        if log_scale:
-            plt.yscale('log')
-        
-        plt.show()
-        
-        return ax,final
+        return None,final
     
 class TokenEconomy_Dependent(TokenEconomy_Basic):
     

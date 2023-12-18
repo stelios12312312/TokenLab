@@ -201,10 +201,13 @@ class TransactionManagement_Assumptions(TransactionManagement):
     """
     Class that simply provides transactions based on a pre-defined assumptions.
     
-    Does not use any dependencies
+    By default, it reads the number of users and then computes the total transactions as
+    num_users*transactions. If ignore_num_users=True, then it ignores the num of users, and it is equivalent
+    to TransactionsManagement_FromData
+    
     """
     
-    def __init__(self,data:List, noise_addon:AddOn=None):
+    def __init__(self,data:List, noise_addon:AddOn=None,ignore_num_users:bool=False):
    
         self.dependencies={AgentPool:None}
         
@@ -213,6 +216,8 @@ class TransactionManagement_Assumptions(TransactionManagement):
         self.data=np.ndarray.flatten(np.array(data))
         
         self._noise_component=noise_addon
+        
+        self._ignore_num_users = ignore_num_users
 
         
         if self._noise_component!=None:
@@ -235,8 +240,11 @@ class TransactionManagement_Assumptions(TransactionManagement):
             dependency=TokenEconomy
         else:
             raise Exception('You must use either AgentPool or TokenEconomy')
-            
-        num_users=self.dependencies[dependency]['num_users']
+        
+        if not self._ignore_num_users:
+            num_users=self.dependencies[dependency]['num_users']
+        else:
+            num_users = 1
         res=self.data[self.iteration]*num_users
         
         self.transactions_value=res
@@ -505,6 +513,11 @@ class TransactionManagement_Stochastic(TransactionManagement):
         self.activity_probabilities=activity_probs
         
         
+        if transactions_constant!=None:
+            transactions_per_user=None
+            transactions_dist_parameters=None
+            print('transactions_constant is not None. Overriding transactions_dist_parameters and transactions_per_user')
+        
         self.transactions_distribution=transactions_distribution
         self.transactions_per_user=transactions_per_user
         self.transaction_dist_parameters=transactions_dist_parameters
@@ -526,9 +539,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
             
         if transactions_per_user==None and transactions_dist_parameters==None and transactions_constant==None:
             raise Exception('You need to define at least transaction_per_users, transaction_dist_parameters or transactions_constant')
-            
-
-        
+                    
         
         #sanity test, all lists should be the same length
         lengths=[]

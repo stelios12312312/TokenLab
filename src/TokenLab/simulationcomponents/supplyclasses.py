@@ -15,6 +15,8 @@ from scipy.stats import uniform
 import time
 import copy
 from abc import ABC, abstractmethod 
+import scipy.stats
+from typing import Union
 
 
 class SupplyController(Controller):
@@ -140,7 +142,7 @@ class SupplyController_CliffVesting(SupplyController):
     
 
 class SupplyStaker(SupplyController, ABC):
-    def __init__(self,staking_amount:float):
+    def __init__(self,staking_amount:float=0):
         """
         
 
@@ -180,54 +182,62 @@ class SupplyStaker(SupplyController, ABC):
     
         
 class SupplyStakerLockup(SupplyStaker):
-    def __init__(self,staking_amount:float,rewards:float,lockup_duration:int):
-        super(SupplyStakerLockup,self).__init__(staking_amount)
-        self._rewards = rewards
-
+    def __init__(self, staking_amount: Union[float, scipy.stats.rv_continuous], rewards: Union[float, scipy.stats.rv_continuous], lockup_duration: int):
+        super(SupplyStakerLockup, self).__init__(staking_amount)
+        self.lockup_duration = lockup_duration
 
     def execute(self):
-        self.source=get_linked_agentpool.treasury
-            
+        self.source = get_linked_agentpool().treasury
             
         if self._iteration == 0:
-            value = -1*self._staking_amount
-        elif self._iteration == lockup_duration:
-            self.supply = self._staking_amount + self.rewards
-        
-        if self.source==None:
-            self.supply=value
+            value = -1 * self._get_value(self.staking_amount)
+        elif self._iteration == self.lockup_duration:
+            self.supply = self._get_value(self.staking_amount) + self._get_value(self.rewards)
         else:
-            agentpool=get_linked_agentpool()
+            value = 0  # No change in supply for other iterations
+
+        if self.source is None:
+            self.supply = value
+        else:
+            agentpool = get_linked_agentpool()
             currency = agentpool.currency
-            to_remove = agentpool.treasury.retrieve_asset(currency_symbol=currency,value=value)
-            self.supply=to_remove
+            to_remove = agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
+            self.supply = to_remove
+
+    def _get_value(self, param):
+        if isinstance(param, scipy.stats.rv_continuous):
+            return param.rvs()  # Sample from the distribution
+        else:
+            return param  # Use the float value directly
     
     
 class SupplyStakerMonthly(SupplyController):
-    def __init__(self,staking_amount:float,rewards:float):
-        super(SupplyStaker,self).__init__()
+    def __init__(self, staking_amount: Union[float, scipy.stats.rv_continuous], rewards: Union[float, scipy.stats.rv_continuous]):
+        super(SupplyStakerMonthly, self).__init__()
+        self.staking_amount = staking_amount
         self.rewards = rewards
 
     def execute(self):
-        self.source=get_linked_agentpool.treasury
+        self.source = get_linked_agentpool().treasury
 
         if self._iteration == 0:
-            value = -1*self._staking_amount
+            value = -1 * self._get_value(self.staking_amount)
         else:
-            value = self.rewards
-        
-        if self.source==None:
-            self.supply=value
+            value = self._get_value(self.rewards)
+
+        if self.source is None:
+            self.supply = value
         else:
-            agentpool=get_linked_agentpool()
+            agentpool = get_linked_agentpool()
             currency = agentpool.currency
-            to_remove = agentpool.treasury.retrieve_asset(currency_symbol=currency,value=value)
-            self.supply=to_remove
-            
-            
-    def get_staking_amount(self):
-        
-        return self._staking_amount
+            to_remove = agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
+            self.supply = to_remove
+
+    def _get_value(self, param):
+        if isinstance(param, scipy.stats.rv_continuous):
+            return param.rvs()  
+        else:
+            return param  
     
     
 class SupplyController_Bonding(SupplyController):

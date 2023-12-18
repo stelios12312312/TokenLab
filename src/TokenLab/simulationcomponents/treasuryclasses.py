@@ -58,7 +58,7 @@ class TreasuryBasic(Controller):
         if tokenec.token==currency_symbol:
             tokenec.change_supply(currency_symbol,-1*value)
 
-    def retrieve_assset(self,currency_symbol:str,value:float):
+    def retrieve_asset(self,currency_symbol:str,value:float):
         if currency_symbol in self.treasury:
             self.treasury[currency_symbol]-=value
             if self.treasury[currency_symbol]<0:
