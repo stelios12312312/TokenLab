@@ -199,7 +199,12 @@ class AgentPool_Staking(AgentPool_Basic):
         if self.transactions > token_economy_supply:
             self.transactions = token_economy_supply*np.random.rand() - 1
         
-        number_of_stakers = int(self.transactions/self.staking_controller_params['staking_amount'])
+        try:
+            number_of_stakers = int(self.transactions/self.staking_controller_params['staking_amount'])
+        except:
+            staking_amount = self.staking_controller_params['staking_amount'].rvs(1)[0]
+            number_of_stakers = int(self.transactions/staking_amount)
+
         
         
         new_pools=[]

@@ -27,13 +27,13 @@ class TransactionManagement(Controller):
     """
             
     
-    def __init__(self):
+    def __init__(self,ignore_num_users:bool=False):
         super(TransactionManagement,self).__init__()
         self.dependencies={AgentPool:None,TokenEconomy:None}
         self.transactions_value=None
         #keeps a record of transactions across all iterations
         self._transactions_value_store=[]
-        pass
+        self._ignore_num_users = ignore_num_users
     
     
     def execute(self,dependency:str="AgentPool"):
@@ -418,6 +418,29 @@ class TransactionManagement_MarketcapStochastic(TransactionManagement):
         return transactions
     
     
+class TransactionManagement_TrendSimple(TransactionManagement):
+    
+    def __init__(self,start_amount:float,increment:float):
+        super(TransactionManagement_TrendSimple,self).__init__()
+        
+        self._start_amount = start_amount
+        self._increment = increment
+        self.transactions_value = 0
+        self.iteration=0
+
+        
+    def execute(self):
+        self.transactions_value = self._start_amount+self.iteration*self._increment
+        
+        self.iteration+=1
+        
+        return self.transactions_value
+        
+        
+
+        
+    
+    
     
 class TransactionManagement_Stochastic(TransactionManagement):
     """
@@ -443,7 +466,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
 
     def __init__(self,
                  value_per_transaction:float=None,
-                 transactions_per_user:Union[int,List[int]]=None,
+                 transactions_per_user:Union[int,List[int]]=1,
                  value_distribution:scipy.stats=norm,
                  value_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'loc':10,'scale':100},
                  value_constant:float=None,

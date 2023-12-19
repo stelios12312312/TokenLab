@@ -204,7 +204,7 @@ class TokenEconomy_Basic(TokenEconomy):
         
         if agent_pool.currency!=self.fiat:
             if np.logical_not(agent_pool.currency in self.tokens):
-                raise Exception('The currency of this agent pool is neither the fiat, nor the token')  
+                raise Exception('The currency of this agent pool is neither the fiat, nor the token. Agent pool name :'+agent_pool.name)  
 
         if agent_pool.currency==self.fiat:
             self.fiat_exists=True
@@ -310,10 +310,11 @@ class TokenEconomy_Basic(TokenEconomy):
         if currency_type==self.token:
             if value>=0:
                 self.supply+=value
-            elif value<=self.supply and value<=0:
+            elif value<=self.supply+value and value<=0:
                 self.supply+=value
             else:
-                print('Warning! Invalid supply change in tokeneconomy {2}. Supply {0} and value {1}'.format(self.supply,value,self.name))
+                self.supply=0
+                print('Warning! Invalid supply change in tokeneconomy {2}. Supply {0} and value {1}. Setting supply to 0.'.format(self.supply,value,self.name))
         else:
             print("Currency {0} is not the economy's token!".format(currency_type))
         
@@ -385,6 +386,7 @@ class TokenEconomy_Basic(TokenEconomy):
             
         if self.supply<0:
             warnings.warn('Warning! Supply reached BELOW 0! Iteration number {0}'.format(self.iteration))
+            supply=0
             return False
         
         
