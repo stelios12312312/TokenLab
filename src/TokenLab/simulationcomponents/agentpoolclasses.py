@@ -140,7 +140,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
 class AgentPool_Staking(AgentPool_Basic):
     def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
                  staking_controller:SupplyStaker,staking_controller_params:dict,
-                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,treasury:TreasuryBasic=None,fee:float=None
+                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,treasury:TreasuryBasic=None,fee:float=0
                  )->None:
         """
         
@@ -199,28 +199,33 @@ class AgentPool_Staking(AgentPool_Basic):
         if self.transactions > token_economy_supply:
             self.transactions = token_economy_supply*np.random.rand() - 1
         
+        
         try:
-            number_of_stakers = int(self.transactions/self.staking_controller_params['staking_amount'])
+            staking_amount = self.staking_controller_params['staking_amount'] - self.staking_controller_params['staking_amount']*self.fee
         except:
             staking_amount = self.staking_controller_params['staking_amount'].rvs(1)[0]
-            number_of_stakers = int(self.transactions/staking_amount)
+            staking_amount = staking_amount - staking_amount*self.fee
+            
+        number_of_stakers = int(self.transactions/staking_amount)
 
-        
+                
+        #now update treasury (if any)
+        if self.treasury!=None:
+            total_fee = self.transactions*self.fee
+            self.treasury.execute(currency_symbol=self.currency,value=total_fee)
         
         new_pools=[]
+        print('Loading stakers...')
         for i in range(number_of_stakers):
             new_staker = self.staking_controller(**self.staking_controller_params)
             new_staker.link(AgentPool,self)
+            new_staker.execute()
             new_pools.append(('SupplyPool',new_staker))
+        print('Stakers finished')
         
         self.new_pools = new_pools
         
-        
-        #now update treasury (if any)
-        if self.treasury!=None:
-            total_amount = 0
-            for staker in self.new_pools:   
-                self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
+
         
         return self.new_pools
     

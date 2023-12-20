@@ -211,14 +211,20 @@ class SupplyStakerLockup(SupplyStaker):
             return param  # Use the float value directly
     
     
-class SupplyStakerMonthly(SupplyController):
+class SupplyStakerMonthly(SupplyStaker):
     def __init__(self, staking_amount: Union[float, scipy.stats.rv_continuous], rewards: Union[float, scipy.stats.rv_continuous]):
         super(SupplyStakerMonthly, self).__init__()
         self.staking_amount = staking_amount
         self.rewards = rewards
+        
+        try:
+            self.staking_amount.rvs(1)
+            self._rvs=True
+        except:
+            self._rvs=False
 
     def execute(self):
-        self.source = get_linked_agentpool().treasury
+        self.source = super().get_linked_agentpool().treasury
 
         if self._iteration == 0:
             value = -1 * self._get_value(self.staking_amount)
@@ -228,14 +234,14 @@ class SupplyStakerMonthly(SupplyController):
         if self.source is None:
             self.supply = value
         else:
-            agentpool = get_linked_agentpool()
+            agentpool = super().get_linked_agentpool()
             currency = agentpool.currency
             to_remove = agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
             self.supply = to_remove
 
     def _get_value(self, param):
-        if isinstance(param, scipy.stats.rv_continuous):
-            return param.rvs()  
+        if self._rvs:
+            return param.rvs(1)[0]  
         else:
             return param  
     
