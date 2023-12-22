@@ -8,7 +8,7 @@ Created on Fri Nov 18 12:20:03 2022
 from typing import List, Dict,Union
 from baseclasses import *
 from usergrowthclasses import UserGrowth,UserGrowth_Constant
-from transactionclasses import TransactionManagement, TransactionManagement_Constant
+from transactionclasses import TransactionManagement, TransactionManagement_Constant, TransactionManagement_Stochastic
 from supplyclasses import SupplyStaker
 import copy
 from typing import TypedDict
@@ -79,7 +79,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
         self.fee = fee
         
         if fee==None and treasury!=None:
-            raise Exception('When using a treasury within an agent pool, you also need to define a fee as a float in the range [0,1]')
+            raise Exception('When using a treasury within an agent pool, you also need to define a fee.')
         self.treasury = treasury
         
         if fee_type!='perc' and fee_type!='fixed':
@@ -87,7 +87,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
         else:
             self.fee_type=fee_type
             
-        if fee_type=='fixed' and not isinstance(self.transactions_controller,TransactionsManagement_Stochastic):
+        if fee_type=='fixed' and not isinstance(self.transactions_controller,TransactionManagement_Stochastic):
             raise Exception('Error! Fixed fee type can only with with TransactionsManagement_Stochastic as it requires an estimation of the total number of transactions.')
         
      
@@ -122,7 +122,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
                 self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
             else:
                 value = self.transactions_controller.get_num_transactions()*self.fee
-                self.treasury.execute(value)
+                self.treasury.execute(value=value,currency_symbol=self.currency)
         
         return None
     
