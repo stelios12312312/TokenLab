@@ -506,7 +506,7 @@ class TokenEconomy_Basic(TokenEconomy):
                 dummy_df = temp_df[temp_df['treasury_name']==tres.name].reset_index(drop=True).copy()
                 dummy_df.columns = [tres.name,tres.name+'_value']
                 value_only = dummy_df[tres.name+'_value'].apply(pd.Series)
-                value_only.name = tres.name+'_deposits_' + value_only.columns[0]
+                value_only.columns = tres.name+'_deposits_' + value_only.columns
                 df = pd.concat([df,value_only],axis=1)
             
         

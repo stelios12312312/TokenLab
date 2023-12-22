@@ -32,7 +32,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
     
     def __init__(self,users_controller:Union[UserGrowth,int]=1,transactions_controller:TransactionManagement=1,
                  currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,
-                 treasury:TreasuryBasic=None,fee:float=None)->None:
+                 treasury:TreasuryBasic=None,fee:float=None,fee_type:str='perc')->None:
         """
         
         users_controller: Controller specifying how the userbase grows over time. If the users controller is an integer,
@@ -46,12 +46,20 @@ class AgentPool_Basic(AgentPool,Initialisable):
         chained: A chained agent pool is using another Agent Pool's user pool .If this argument is set to True
         then the agent pool will not execute its user controller.
         
+        fee_type: Fee type must be either 'perc' or 'fixed'. In the first case, fees are simply fee*transaction_value.
+        In the latter case it is transactions number * fee. In the latter case you need to use a TransactionsManagement class
+        that can return the number of transactions. The only class that can do that is TransactionManagement_Stochastic.
         
-        """      
+        
+        """   
+
         super(AgentPool_Basic,self).__init__()
+        
+        self.name=name
+
         if isinstance(users_controller,int):
             if users_controller==1:
-                print('Warning! Users set to 1 for agent pool with name : '+self.name)
+                print('Warning! Users set to 1 for agent pool with name : '+str(self.name))
             users_controller=UserGrowth_Constant(users_controller)
             
         if isinstance(transactions_controller,float) or isinstance(transactions_controller,int):
@@ -65,7 +73,6 @@ class AgentPool_Basic(AgentPool,Initialisable):
         self.currency=currency
         self.chained =chained
         
-        self.name=name
         
         self.dependencies={TokenEconomy:None}
         
@@ -74,6 +81,14 @@ class AgentPool_Basic(AgentPool,Initialisable):
         if fee==None and treasury!=None:
             raise Exception('When using a treasury within an agent pool, you also need to define a fee as a float in the range [0,1]')
         self.treasury = treasury
+        
+        if fee_type!='perc' and fee_type!='fixed':
+            raise Exception('fee_type must be either perc or fixed.')
+        else:
+            self.fee_type=fee_type
+            
+        if fee_type=='fixed' and not isinstance(self.transactions_controller,TransactionsManagement_Stochastic):
+            raise Exception('Error! Fixed fee type can only with with TransactionsManagement_Stochastic as it requires an estimation of the total number of transactions.')
         
      
         return None
@@ -103,7 +118,11 @@ class AgentPool_Basic(AgentPool,Initialisable):
         self.transactions = self.transactions_controller.execute()
         
         if self.treasury!=None:
-            self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
+            if self.fee_type=='perc':
+                self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
+            else:
+                value = self.transactions_controller.get_num_transactions()*self.fee
+                self.treasury.execute(value)
         
         return None
     

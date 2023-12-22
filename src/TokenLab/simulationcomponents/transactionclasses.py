@@ -34,6 +34,7 @@ class TransactionManagement(Controller):
         #keeps a record of transactions across all iterations
         self._transactions_value_store=[]
         self._ignore_num_users = ignore_num_users
+        self.num_transactions=1
     
     
     def execute(self,dependency:str="AgentPool"):
@@ -70,6 +71,11 @@ class TransactionManagement(Controller):
         
         return self.transactions_value
     
+    def get_num_transactions(self)->List:
+        
+        return self.num_transactions
+    
+        
 class TransactionManagement_Constant(TransactionManagement):
     
     """
