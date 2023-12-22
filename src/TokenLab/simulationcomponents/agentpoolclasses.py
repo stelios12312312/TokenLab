@@ -50,10 +50,13 @@ class AgentPool_Basic(AgentPool,Initialisable):
         """      
         super(AgentPool_Basic,self).__init__()
         if isinstance(users_controller,int):
+            if users_controller==1:
+                print('Warning! Users set to 1 for agent pool with name : '+self.name)
             users_controller=UserGrowth_Constant(users_controller)
             
         if isinstance(transactions_controller,float) or isinstance(transactions_controller,int):
             transactions_controller=TransactionManagement_Constant(transactions_controller)
+            
             
         self.users_controller=users_controller
         self.users_controller.link(AgentPool,self)
@@ -215,13 +218,11 @@ class AgentPool_Staking(AgentPool_Basic):
             self.treasury.execute(currency_symbol=self.currency,value=total_fee)
         
         new_pools=[]
-        print('Loading stakers...')
         for i in range(number_of_stakers):
             new_staker = self.staking_controller(**self.staking_controller_params)
             new_staker.link(AgentPool,self)
             new_staker.execute()
             new_pools.append(('SupplyPool',new_staker))
-        print('Stakers finished')
         
         self.new_pools = new_pools
         
