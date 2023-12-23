@@ -69,7 +69,7 @@ class UserGrowth_Spaced(UserGrowth):
     
     def __init__(self,initial_users:int,max_users:int,num_steps:int,
                  space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space,logistic_saturated_space]=np.linspace,name:str=None,
-                 noise_addon:AddOn=None,use_difference:bool=False)->None:
+                 noise_addons:[AddOn]=None,use_difference:bool=False)->None:
         """
         use_difference: If True, it will calculate and return the difference between time steps. Essentially, the user 
         base will grow according to the difference between the steps in the sequence.
@@ -92,7 +92,7 @@ class UserGrowth_Spaced(UserGrowth):
         self.max_users=max_users
         self.num_steps=num_steps
         self.space_function=space_function
-        self._noise_component=noise_addon
+        self._noise_component=noise_addons
         
         self.name=name
         
@@ -103,13 +103,16 @@ class UserGrowth_Spaced(UserGrowth):
         #applies the noise addon. If a value is below 0, then it is kept at 0.
         if self._noise_component!=None:
             dummy=[]
-            for i in range(len(self._num_users_store_original)):
-                temporary= self._noise_component.apply(**{'value':self._num_users_store_original[i]})
+            for i in range(len(self._num_users_store)):
+                temporary = self._num_users_store_original[i]
+                for noiser in self._noise_component:
+                    temporary = noiser.apply(**{'value':temporary})
+    
                 if temporary>=0:
                     dummy.append(temporary)
                 else:
                     dummy.append(self._num_users_store_original[i])
-        
+                
             self._num_users_store=dummy
         #self.num_users=self._initial_users
         
@@ -139,7 +142,10 @@ class UserGrowth_Spaced(UserGrowth):
         if self._noise_component!=None:
             dummy=[]
             for i in range(len(self._num_users_store)):
-                temporary= self._noise_component.apply(**{'value':self._num_users_store_original[i]})
+                temporary = self._num_users_store_original[i]
+                for noiser in self._noise_component:
+                    temporary = noiser.apply(**{'value':temporary})
+    
                 if temporary>=0:
                     dummy.append(temporary)
                 else:
@@ -199,7 +205,7 @@ class UserGrowth_Stochastic(UserGrowth):
     
     def __init__(self,user_growth_distribution:scipy.stats=scipy.stats.poisson,
                  user_growth_dist_parameters:Union[List,Dict]=[{'mu':1000}],add_to_userbase:bool=False,
-                 num_initial_users:int=0):
+                 num_initial_users:int=0,noise_add_ons:[AddOn]):
         """
         
 
@@ -250,6 +256,14 @@ class UserGrowth_Stochastic(UserGrowth):
         else:
             self.num_users=value
         
+        #apply noise components (if any)
+        if self._noise_component!=None:
+            value = self.num_users
+            for noiser in self._noise_component:
+                value = noiser.apply(**{'value':value})
+                
+            self.num_users=value
+            
         self.iteration+=1
         return self.num_users
     

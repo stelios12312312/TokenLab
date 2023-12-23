@@ -82,7 +82,7 @@ class TransactionManagement_Constant(TransactionManagement):
     TransactionManagement implementation where the total value per user stays the same.
     """
     
-    def __init__(self,average_transaction_value:float):
+    def __init__(self,average_transaction_value:float,noise_addons:[AddOn]):
         
         super(TransactionManagement_Constant,self).__init__()
         
@@ -226,16 +226,20 @@ class TransactionManagement_Assumptions(TransactionManagement):
         self._ignore_num_users = ignore_num_users
 
         
-        if self._noise_component!=None:
-            dummy=[]
+        if self._noise_component is not None:
+            dummy = []
             for i in range(len(self.data)):
-                temporary = self._noise_component.apply(**{'value':self.data[i]})
-                if temporary>=0:
+                temporary = self.data[i]
+                for noiser in self._noise_component:
+                    temporary = noiser.apply(value=temporary)
+                
+                if temporary >= 0:
                     dummy.append(temporary)
                 else:
                     dummy.append(self.data_transactions_means_store_original[i])
         
-            self.data=dummy
+            self.data = dummy
+
         
         
     def execute(self,dependency:str="AgentPool")->float:
