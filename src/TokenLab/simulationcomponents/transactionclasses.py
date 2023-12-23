@@ -82,7 +82,7 @@ class TransactionManagement_Constant(TransactionManagement):
     TransactionManagement implementation where the total value per user stays the same.
     """
     
-    def __init__(self,average_transaction_value:float,noise_addons:[AddOn]):
+    def __init__(self,average_transaction_value:float,noise_addons:[AddOn]=None):
         
         super(TransactionManagement_Constant,self).__init__()
         
@@ -166,7 +166,7 @@ class TransactionManagement_Channeled(TransactionManagement):
     
     """
     
-    def __init__(self,dependency_token_economy,fiat_or_token:str,percentage:float):
+    def __init__(self,dependency_token_economy,fiat_or_token:str,percentage:float,noise_addons:[AddOn]=None):
         """
         
 
@@ -190,6 +190,7 @@ class TransactionManagement_Channeled(TransactionManagement):
         self._dependency_token_economy = dependency_token_economy
         self._fiat_or_token = fiat_or_token
         self._percentage = percentage
+        self._noise_component = noise_addons
         
         
     def execute(self)->float:
@@ -222,7 +223,7 @@ class TransactionManagement_Assumptions(TransactionManagement):
     
     """
     
-    def __init__(self,data:List, noise_addon:AddOn=None,ignore_num_users:bool=False):
+    def __init__(self,data:List, noise_addons:[AddOn]=None,ignore_num_users:bool=False):
    
         self.dependencies={AgentPool:None}
         
@@ -230,11 +231,11 @@ class TransactionManagement_Assumptions(TransactionManagement):
         
         self.data=np.ndarray.flatten(np.array(data))
         
-        self._noise_component=noise_addon
+        self._noise_component=noise_addons
         
         self._ignore_num_users = ignore_num_users
-
         
+
         if self._noise_component is not None:
             dummy = []
             for i in range(len(self.data)):
@@ -294,7 +295,7 @@ class TransactionManagement_Trend(TransactionManagement):
     def __init__(self,average_transaction_initial:float, average_transaction_final:float,num_steps:int,
                  space_function:Union[np.linspace,np.logspace,np.geomspace,log_saturated_space,logistic_saturated_space]=np.linspace,
                  name:str=None,
-                 noise_addon:AddOn=None):
+                 noise_addons:[AddOn]=None):
         """
         
 
@@ -322,7 +323,7 @@ class TransactionManagement_Trend(TransactionManagement):
         
         self.num_steps=num_steps
         self.space_function=space_function
-        self._noise_component=noise_addon
+        self._noise_component=noise_addons
         
         self.name=name
         
@@ -396,17 +397,21 @@ class TransactionManagement_Trend(TransactionManagement):
         self.iteration=0
         self._transactions_means_store=copy.deepcopy(self._transactions_means_store_original)
         
-        #applies the noise addon. If a value is below 0, then it is kept at 0.
-        if self._noise_component!=None:
-            dummy=[]
+        # Applies the noise add-on. If a value is below 0, then it is kept at 0.
+        if self._noise_component is not None:
+            dummy = []
             for i in range(len(self._transactions_means_store)):
-                temporary= self._noise_component.apply(**{'value':self._transactions_means_store_original[i]})
-                if temporary>=0:
+                temporary = self._transactions_means_store_original[i]
+                for noiser in self._noise_component:
+                    temporary = noiser.apply(value=temporary)
+        
+                if temporary >= 0:
                     dummy.append(temporary)
                 else:
                     dummy.append(self._transactions_means_store_original[i])
         
-            self._transactions_means_store=dummy
+            self._transactions_means_store = dummy
+
             
         return True
     
@@ -588,7 +593,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
             transactions_dist_parameters=None
             print('transactions_constant is not None. Overriding transactions_dist_parameters and transactions_per_user')
             
-        if value_per_transaction==None:
+        if value_per_transaction!=None:
             value_distribution=None
             value_dist_parameters=None
             print('value_per_transaction is not None. Overriding transactions_dist_parameters and transactions_per_user')
@@ -614,10 +619,10 @@ class TransactionManagement_Stochastic(TransactionManagement):
         self.type_transaction=type_transaction
         
         if value_per_transaction==None and value_dist_parameters==None:
-            raise Exception('You need to define at least value per transaction, value_dist_parameters')
+            raise Exception('You need to define at least one of: value per transaction or value_dist_parameters')
             
         if transactions_per_user==None and transactions_dist_parameters==None:
-            raise Exception('You need to define at least transaction_per_users, transaction_dist_parameters or transactions_constant')
+            raise Exception('You need to define at least one of: transaction_per_users or transaction_dist_parameters or transactions_constant')
                     
         
         #sanity test, all lists should be the same length

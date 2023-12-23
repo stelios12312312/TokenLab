@@ -76,7 +76,7 @@ class AddOn_RandomNoise(AddOn_Noise):
         
         seed=int(int(time.time())*np.random.rand())
         noise=self.noise_dist.rvs(size=1,**self.dist_params,random_state=seed)[0]
-        if add_value:
+        if self.add_value:
             final = value + noise
         
         return final
@@ -116,7 +116,7 @@ class AddOn_RandomNoiseProportional(AddOn_Noise):
         seed=int(int(time.time())*np.random.rand())
         noise=self.noise_dist.rvs(size=1,loc=self.mean_param+value,scale=value/self.std_param,random_state=seed)[0]
         
-        if add_value:
+        if self.add_value:
             final = value + noise
         
         return final
