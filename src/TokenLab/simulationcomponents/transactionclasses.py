@@ -229,7 +229,7 @@ class TransactionManagement_Assumptions(TransactionManagement):
         if self._noise_component!=None:
             dummy=[]
             for i in range(len(self.data)):
-                temporary = self.data[i]+ self._noise_component.apply(**{'value':self.data[i]})
+                temporary = self._noise_component.apply(**{'value':self.data[i]})
                 if temporary>=0:
                     dummy.append(temporary)
                 else:
@@ -320,7 +320,7 @@ class TransactionManagement_Trend(TransactionManagement):
         if self._noise_component!=None:
             dummy=[]
             for i in range(len(self._transactions_means_store)):
-                temporary= self._transactions_means_store_original[i]+ self._noise_component.apply(**{'value':self._transactions_means_store_original[i]})
+                temporary= self._noise_component.apply(**{'value':self._transactions_means_store_original[i]})
                 if temporary>=0:
                     dummy.append(temporary)
                 else:
@@ -384,7 +384,7 @@ class TransactionManagement_Trend(TransactionManagement):
         if self._noise_component!=None:
             dummy=[]
             for i in range(len(self._transactions_means_store)):
-                temporary= self._transactions_means_store_original[i]+ self._noise_component.apply(**{'value':self._transactions_means_store_original[i]})
+                temporary= self._noise_component.apply(**{'value':self._transactions_means_store_original[i]})
                 if temporary>=0:
                     dummy.append(temporary)
                 else:
@@ -426,17 +426,33 @@ class TransactionManagement_MarketcapStochastic(TransactionManagement):
     
 class TransactionManagement_TrendSimple(TransactionManagement):
     
-    def __init__(self,start_amount:float,increment:float):
+    def __init__(self,start_amount:float,increment:float,noise_addon:AddOn=None):
         super(TransactionManagement_TrendSimple,self).__init__()
         
         self._start_amount = start_amount
         self._increment = increment
         self.transactions_value = 0
         self.iteration=0
+        self._noise_component=noise_addon
+
 
         
     def execute(self):
-        self.transactions_value = self._start_amount+self.iteration*self._increment
+        
+        dummy_value = self._start_amount+self.iteration*self._increment
+
+        
+        if self._noise_component!=None:
+          
+            temporary = self._noise_component.apply(**{'value':dummy_value})
+            if temporary>=0:
+                final_value = temporary
+            else:
+                final_value = dummy_value
+        else:
+            final_value = dummy_value
+                    
+        self.transactions_value = final_value
         
         self.iteration+=1
         
@@ -471,25 +487,22 @@ class TransactionManagement_Stochastic(TransactionManagement):
 
 
     def __init__(self,
+                 transactions_per_user:Union[int,List[int]]=None,
                  value_per_transaction:float=None,
-                 transactions_per_user:Union[int,List[int]]=1,
                  value_distribution:scipy.stats=norm,
-                 value_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'loc':10,'scale':100},
-                 value_constant:float=None,
+                 value_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'loc':1,'scale':10},
+                 value_drift_parameters:Dict[str,float]=None,
+                 transactions_constant:int=None,
                  transactions_distribution:scipy.stats=poisson,
-                 transactions_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'mu':5},
-                 transactions_constant:float=None,
+                 transactions_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'mu':1},
+                 transactions_drift_parameters:Dict[str,float]=None,
                  name:str=None,
-                 activity_probs:Union[float,List[float]]=1,type_transaction:str='positive')->None:
+                 activity_probs:Union[float,List[float]]=1,
+                 type_transaction:str='positive')->None:
         
         """
-        activity_probs: This is either a float or a list of floats, and determines the parameter p of the binomial
-        distribution
         
         value_per_transaction: If this is set, then the value per transaction is fixed, and overrides the distribution. Otherwise,
-        leave to None.
-        
-        transactions_per_user: If this is set, then the number of transactions is fixed, and overrides the distribution. Otherwise, 
         leave to None.
         
         value_dist_parameters: Parameters for the value distribution. This can also be a list of dictionaries, where each dictionary
@@ -497,15 +510,17 @@ class TransactionManagement_Stochastic(TransactionManagement):
         
         value_distribution: by default this is the normal distribution, but any scipy distribution 
          is supported.
+
         
-        value_constant: If this is not None, then the expected value of a transaction is always value constant. In the back-scenes
-        this creates a uniform distribution with bounds [value_constant,value_constant]
+        value_drift_parameters: If this is set, then the value dist parameters change at every iteration by adding those values to the value parameters.
         
         transactions_distribution: uses a distribution to model the number of transactions per user. By default
         this is a Poisson distribution
         
         transactions_dist_parameters: Parameters for the transaction distribution. This can also be a list of dictionaries, where each dictionary
         within the list is a set of parameters.
+        
+        transactions_drift_parameters: If this is set, then the parameters of the distribution for transactions change at every iteration, by adding those values to the parameters.
         
         transactions_constant: If this is not None, then the expected number of transactions is equal to this constant.
         In the back-scenes, this creates a uniform distribution with bounds [transactions_constant,transactions_constant]
@@ -525,6 +540,9 @@ class TransactionManagement_Stochastic(TransactionManagement):
         the formula becomes:
             
         total value = val_mean*self.active_users*trans
+        
+        activity_probs: This is either a float or a list of floats, and determines the parameter p of the binomial
+        distribution. Note: This is there for legacy reasons. You are recommended to use 
         
         NOTE: Average transactions per user can never be below 0. If 0 (due to random sampling) then it's set to 1
         
@@ -546,27 +564,33 @@ class TransactionManagement_Stochastic(TransactionManagement):
             transactions_per_user=None
             transactions_dist_parameters=None
             print('transactions_constant is not None. Overriding transactions_dist_parameters and transactions_per_user')
+            
+        if value_per_transaction==None:
+            
         
         self.transactions_distribution=transactions_distribution
         self.transactions_per_user=transactions_per_user
         self.transaction_dist_parameters=transactions_dist_parameters
-        self.transactions_constant=transactions_constant
+        self.transactions_drift_parameters = transactions_drift_parameters
 
         
         self.value_distribution=value_distribution
         self.value_per_transaction=value_per_transaction
         self.value_dist_parameters=value_dist_parameters
-        self.value_constant=value_constant
+        self.value_drift_parameters = value_drift_parameters
+        
+         
+    
         
         if type_transaction not in ['positive','negative','mix']:
             raise Exception ('You must define a type_transaction as positive, negative or mixed')
         
         self.type_transaction=type_transaction
         
-        if value_per_transaction==None and value_dist_parameters==None and value_constant==None:
-            raise Exception('You need to define at least value per transaction, value_dist_parameters or value_constant')
+        if value_per_transaction==None and value_dist_parameters==None:
+            raise Exception('You need to define at least value per transaction, value_dist_parameters)
             
-        if transactions_per_user==None and transactions_dist_parameters==None and transactions_constant==None:
+        if transactions_per_user==None and transactions_dist_parameters==None:
             raise Exception('You need to define at least transaction_per_users, transaction_dist_parameters or transactions_constant')
                     
         
@@ -588,13 +612,6 @@ class TransactionManagement_Stochastic(TransactionManagement):
             raise Exception('When supplying lists as arguments, they should all have the same length.')
             
             
-        if transactions_constant!=None:
-            self.transactions_distribution=scipy.stats.uniform
-            self.transaction_dist_parameters={'loc':transactions_constant,'scale':0}
-            
-        if value_constant!=None:
-            self.value_distribution=scipy.stats.uniform
-            self.value_dist_parameters={'loc':value_constant,'scale':0}
 
         return None
     
@@ -609,7 +626,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
         
         
         num_users=self.dependencies[dependency]['num_users']
-        self.total_users=num_users
+        self.total_users=int(num_users)
         
         #Start by estimating how many users are actually active
         #because activitiy_probabilities can be either an int or a list, we have to take into account both scenarios
@@ -619,7 +636,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
             act=self.activity_probabilities
             
         seed=int(int(time.time())*np.random.rand())
-        self.active_users=binom.rvs(int(num_users),act,random_state=seed)
+        self.active_users=int(binom.rvs(int(num_users),act,random_state=seed))
             
             
         if isinstance(self.transaction_dist_parameters,(list,np.ndarray)):
@@ -634,10 +651,10 @@ class TransactionManagement_Stochastic(TransactionManagement):
             if trans<=0:
                 trans=1
         else:
-            trans=self.transactions_per_user
+            trans=int(self.transactions_per_user)
             
         #multiply average transactions per user times the number of users
-        self.num_transactions=trans*num_users
+        self.num_transactions=int(trans*num_users)
             
         
         if isinstance(self.value_dist_parameters,(list,np.ndarray)):
@@ -661,6 +678,16 @@ class TransactionManagement_Stochastic(TransactionManagement):
         self.transactions_value=value_mean*self.num_transactions
         
         self._transactions_value_store.append(value_mean)
+        
+        if self.value_drift_parameters!=None:
+            for key in self.value_drift_parameters.keys():
+                self.value_dist_parameters[key]+=self.value_drift_parameters[key]
+                
+        if self.transactions_drift_parameters!=None:
+            for key in self.transactions_drift_parameters.keys():
+                self.transaction_dist_parameters[key]+=self.transactions_drift_parameters[key]
+        
+        
         self.iteration+=1
         return self.transactions_value        
         

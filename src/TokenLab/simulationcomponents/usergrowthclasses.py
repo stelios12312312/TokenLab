@@ -104,7 +104,7 @@ class UserGrowth_Spaced(UserGrowth):
         if self._noise_component!=None:
             dummy=[]
             for i in range(len(self._num_users_store_original)):
-                temporary= self._num_users_store_original[i]+ self._noise_component.apply(**{'value':self._num_users_store_original[i]})
+                temporary= self._noise_component.apply(**{'value':self._num_users_store_original[i]})
                 if temporary>=0:
                     dummy.append(temporary)
                 else:
@@ -139,7 +139,7 @@ class UserGrowth_Spaced(UserGrowth):
         if self._noise_component!=None:
             dummy=[]
             for i in range(len(self._num_users_store)):
-                temporary= self._num_users_store_original[i]+ self._noise_component.apply(**{'value':self._num_users_store_original[i]})
+                temporary= self._noise_component.apply(**{'value':self._num_users_store_original[i]})
                 if temporary>=0:
                     dummy.append(temporary)
                 else:

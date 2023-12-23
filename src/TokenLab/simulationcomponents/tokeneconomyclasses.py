@@ -382,7 +382,8 @@ class TokenEconomy_Basic(TokenEconomy):
             #                   Please make sure that this is really the intended behaviour.""")
             
         if self.supply==0:
-            warnings.warn('Warning! Supply reached 0! Iteration number {0}'.format(self.iteration))
+            dummy='Warning! Supply reached 0! Iteration number {0}'.format(self.iteration)
+            warnings.warn(dummy)
             
         if self.supply<0:
             warnings.warn('Warning! Supply reached BELOW 0! Iteration number {0}'.format(self.iteration))

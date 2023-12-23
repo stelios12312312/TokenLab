@@ -12,23 +12,26 @@ from scipy.stats import binom,norm
 import time
 import warnings
 from typing import Callable
+from abc import ABC, abstractmethod
 
 
-class AddOn_Noise(AddOn):
+
+class AddOn_Noise(AddOn, ABC):
     """
     Abstract class for add-on classes that are used to induce noise.
     """
-    
-    def __init__(self):
+
+    def __init__(self,add_value:bool=True):
+        super().__init__()
+        self.add_value=add_value
         
-        pass
-    
-    def apply(self,**kwargs)->float:
+    @abstractmethod
+    def apply(self, **kwargs) -> float:
         """
-        Abstract method. Each AddOn_Noise class needs to have an apply function
+        Abstract method. Each AddOn_Noise class needs to have an apply function.
         """
-        
         pass
+
     
     
 
@@ -38,7 +41,7 @@ class AddOn_RandomNoise(AddOn_Noise):
     """
     
     def __init__(self,noise_dist:scipy.stats=scipy.stats.norm,
-                 dist_params:Dict={'loc':0,'scale':1})->None:
+                 dist_params:Dict={'loc':0,'scale':1},add_value:bool=True)->None:
         
         """        
         Parameters
@@ -49,6 +52,7 @@ class AddOn_RandomNoise(AddOn_Noise):
         
         self.noise_dist=noise_dist
         self.dist_params=dist_params
+        self.add_value=add_value
         
     
     #need to use **kwargs for compatibility with other classes that take input 
@@ -59,7 +63,7 @@ class AddOn_RandomNoise(AddOn_Noise):
         Parameters
         ----------
         **kwargs : this used for compatibility reasons, **kwargs is not applied at all in this particular.
-        instance
+        instance unless 'value' is provided
 
         Returns
         -------
@@ -67,10 +71,15 @@ class AddOn_RandomNoise(AddOn_Noise):
             noise.
 
         """
+        
+        value = kwargs.get('value', 0)
+        
         seed=int(int(time.time())*np.random.rand())
         noise=self.noise_dist.rvs(size=1,**self.dist_params,random_state=seed)[0]
+        if add_value:
+            final = value + noise
         
-        return noise
+        return final
 
 
 
@@ -82,7 +91,7 @@ class AddOn_RandomNoiseProportional(AddOn_Noise):
     """
     
     def __init__(self,noise_dist:scipy.stats=scipy.stats.norm,
-                 mean_param=0,std_param=5)->None:
+                 mean_param=0,std_param=5,add_value:bool=True)->None:
         
         """
         
@@ -100,13 +109,59 @@ class AddOn_RandomNoiseProportional(AddOn_Noise):
         self.noise_dist=noise_dist
         self.mean_param=mean_param
         self.std_param=std_param
+        self.add_value=add_value
         
         
     def apply(self,value)->float:
         seed=int(int(time.time())*np.random.rand())
         noise=self.noise_dist.rvs(size=1,loc=self.mean_param+value,scale=value/self.std_param,random_state=seed)[0]
         
-        return noise
+        if add_value:
+            final = value + noise
+        
+        return final
+    
+
+class AddOn_RandomReduction(AddOn_Noise):
+    """
+    Reduces a parameter by a random percentage. The percentage is generated from a specified 
+    probability distribution within the range [0, 1]. 
+    
+    This class can be used to simulate things like the % of active users by using it inside a 
+    users growth class.
+    """
+    
+    def __init__(self, reduction_dist: scipy.stats.rv_continuous = scipy.stats.uniform(loc=0, scale=1)) -> None:
+        """
+        Parameters
+        ----------
+        reduction_dist: A scipy.stats distribution for the reduction percentage
+                        (by default uniform distribution between 0 and 1).
+        """
+        super().__init__()
+        self.reduction_dist = reduction_dist
+
+    def apply(self, value) -> float:
+        """
+        Applies a random reduction to the given value.
+
+        Parameters
+        ----------
+        value: The value to be reduced.
+
+        Returns
+        -------
+        float
+            The value after applying the random reduction.
+        """
+        # Generate a random reduction percentage
+        seed = int(time.time() * np.random.rand())
+        reduction_percentage = self.reduction_dist.rvs(random_state=seed)
+
+        # Calculate the reduced value
+        reduced_value = value * (1 - reduction_percentage)
+
+        return reduced_value
 
 
 class Condition():
