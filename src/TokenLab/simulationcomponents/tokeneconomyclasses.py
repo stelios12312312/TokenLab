@@ -79,7 +79,7 @@ class TokenEconomy_Basic(TokenEconomy):
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
                  unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,
                  supply_is_added:bool=True,name:str=None,safeguard_current_supply_level:bool=False,
-                 ignore_supply_controller:bool=False,treasuries:List[TreasuryBasic]=None)->None:
+                 ignore_supply_controller:bool=False,treasuries:List[TreasuryBasic]=[])->None:
 
         
 
@@ -302,6 +302,8 @@ class TokenEconomy_Basic(TokenEconomy):
         for agent in self._agent_pools:
             if isinstance(agent,Initialisable):
                 agent.initialise()
+                if agent.treasury!=None:
+                    self.treasuries.append(agent.treasury)
                 
         self.supply=0
         self.initialised=True
@@ -649,6 +651,10 @@ class TokenMetaSimulator():
         
         return None,final
     
+    def get_valid_cols(self):
+        
+        return self.data.columns
+    
 class TokenEconomy_Dependent(TokenEconomy_Basic):
     
     
@@ -723,3 +729,5 @@ class TokenEcosystem(TokenEconomy):
         data = pd.concat(data,axis=1)
         
         return data
+    
+

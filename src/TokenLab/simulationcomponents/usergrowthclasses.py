@@ -106,7 +106,7 @@ class UserGrowth_Spaced(UserGrowth):
             for i in range(len(self._num_users_store)):
                 temporary = self._num_users_store_original[i]
                 for noiser in self._noise_component:
-                    temporary = noiser.apply(**{'value':temporary})
+                    temporary = noiser.apply(value=temporary)
     
                 if temporary>=0:
                     dummy.append(temporary)

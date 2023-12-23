@@ -89,7 +89,6 @@ class AgentPool_Basic(AgentPool,Initialisable):
             
         if fee_type=='fixed' and not isinstance(self.transactions_controller,TransactionManagement_Stochastic):
             raise Exception('Error! Fixed fee type can only with with TransactionsManagement_Stochastic as it requires an estimation of the total number of transactions.')
-        
      
         return None
     
