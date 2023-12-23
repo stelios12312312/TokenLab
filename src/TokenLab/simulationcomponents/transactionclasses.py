@@ -90,12 +90,11 @@ class TransactionManagement_Constant(TransactionManagement):
         #    raise Exception('Average transaction value cannot be negative')
             
         self.average_transaction_value=average_transaction_value
+        self._noise_component = noise_addons
         
         
     def execute(self,dependency:str="AgentPool")->float:
         """
-        
-        
         
         Parameters
         ----------
@@ -122,6 +121,11 @@ class TransactionManagement_Constant(TransactionManagement):
         self.total_users=num_users
         
         self.transactions_value=num_users*self.average_transaction_value
+        
+        if self._noise_component is not None:
+            for noiser in self._noise_component:
+                self.transactions_value = noiser.apply(value=self.transactions_value)
+
         
         self._transactions_value_store.append(self.transactions_value)
         self.iteration+=1
@@ -159,6 +163,7 @@ class TransactionManagement_Channeled(TransactionManagement):
     Class that channels a % of the tokens from a token economy, to another.
     
     This is meant to be used in situations where there are multiple token economies.
+    
     """
     
     def __init__(self,dependency_token_economy,fiat_or_token:str,percentage:float):
@@ -195,6 +200,10 @@ class TransactionManagement_Channeled(TransactionManagement):
             value = self._dependency_token_economy.transactions_volume_in_tokens * self._percentage
         else:
             raise Exception('When using a channeled transactions manager you need to define Fiat or Token!')
+        
+        if self._noise_component is not None:
+            for noiser in self._noise_component:
+                value = noiser.apply(value=value)
         
         self.transactions_value=value
         self.iteration+=1
@@ -321,16 +330,19 @@ class TransactionManagement_Trend(TransactionManagement):
         self._transactions_means_store=copy.deepcopy(self._transactions_means_store_original)
         
         #applies the noise addon. If a value is below 0, then it is kept at 0.
-        if self._noise_component!=None:
-            dummy=[]
+        if self._noise_component is not None:
+            dummy = []
             for i in range(len(self._transactions_means_store)):
-                temporary= self._noise_component.apply(**{'value':self._transactions_means_store_original[i]})
-                if temporary>=0:
+                temporary = self._transactions_means_store_original[i]
+                for noiser in self._noise_component:
+                    temporary = noiser.apply(value=temporary)
+        
+                if temporary >= 0:
                     dummy.append(temporary)
                 else:
                     dummy.append(self._transactions_means_store_original[i])
         
-            self._transactions_means_store=dummy
+            self._transactions_means_store = dummy
         
         self.max_iterations=num_steps
         self._transactions_value_store=[]
@@ -400,6 +412,12 @@ class TransactionManagement_Trend(TransactionManagement):
     
     
 class TransactionManagement_MarketcapStochastic(TransactionManagement):
+    """
+    This is a special transactions class that models transactions as a percentage of marketcap.
+    
+    It is based upon an observation by Dr Stylianos Kampakis that day to day transaction volume difference
+    looks a lot like a standard normal distribution multiplied by the total market cap (i.e. a random walk).
+    """
     
     def __init__(self,distribution=scipy.stats.norm,distribution_params = {'loc':0,'scale':0.25},sign='any'):
         super(TransactionManagement_MarketcapStochastic).__init__()
@@ -430,26 +448,26 @@ class TransactionManagement_MarketcapStochastic(TransactionManagement):
     
 class TransactionManagement_TrendSimple(TransactionManagement):
     
-    def __init__(self,start_amount:float,increment:float,noise_addon:AddOn=None):
+    def __init__(self,start_amount:float,increment:float,noise_addons:[AddOn]=None):
         super(TransactionManagement_TrendSimple,self).__init__()
         
         self._start_amount = start_amount
         self._increment = increment
         self.transactions_value = 0
         self.iteration=0
-        self._noise_component=noise_addon
+        self._noise_component=noise_addons
 
 
         
     def execute(self):
-        
-        dummy_value = self._start_amount+self.iteration*self._increment
-
-        
-        if self._noise_component!=None:
-          
-            temporary = self._noise_component.apply(**{'value':dummy_value})
-            if temporary>=0:
+        dummy_value = self._start_amount + self.iteration * self._increment
+    
+        if self._noise_component is not None:
+            temporary = dummy_value
+            for noiser in self._noise_component:
+                temporary = noiser.apply(value=temporary)
+    
+            if temporary >= 0:
                 final_value = temporary
             else:
                 final_value = dummy_value
@@ -458,9 +476,10 @@ class TransactionManagement_TrendSimple(TransactionManagement):
                     
         self.transactions_value = final_value
         
-        self.iteration+=1
+        self.iteration += 1
         
         return self.transactions_value
+
         
         
 
@@ -570,7 +589,10 @@ class TransactionManagement_Stochastic(TransactionManagement):
             print('transactions_constant is not None. Overriding transactions_dist_parameters and transactions_per_user')
             
         if value_per_transaction==None:
-            
+            value_distribution=None
+            value_dist_parameters=None
+            print('value_per_transaction is not None. Overriding transactions_dist_parameters and transactions_per_user')
+
         
         self.transactions_distribution=transactions_distribution
         self.transactions_per_user=transactions_per_user
@@ -592,7 +614,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
         self.type_transaction=type_transaction
         
         if value_per_transaction==None and value_dist_parameters==None:
-            raise Exception('You need to define at least value per transaction, value_dist_parameters)
+            raise Exception('You need to define at least value per transaction, value_dist_parameters')
             
         if transactions_per_user==None and transactions_dist_parameters==None:
             raise Exception('You need to define at least transaction_per_users, transaction_dist_parameters or transactions_constant')

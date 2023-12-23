@@ -205,7 +205,7 @@ class UserGrowth_Stochastic(UserGrowth):
     
     def __init__(self,user_growth_distribution:scipy.stats=scipy.stats.poisson,
                  user_growth_dist_parameters:Union[List,Dict]=[{'mu':1000}],add_to_userbase:bool=False,
-                 num_initial_users:int=0,noise_add_ons:[AddOn]):
+                 num_initial_users:int=0,noise_add_ons:[AddOn]=None):
         """
         
 
