@@ -500,7 +500,7 @@ class TokenEconomy_Basic(TokenEconomy):
         
         package={self.token+'_price':self._prices_store,'transactions_'+self.fiat:self._transactions_value_store_in_fiat,'num_transactions':self._num_transactions_store,
                         'num_users':self._num_users_store,'iteration':np.arange(1,self.iteration+1),'holding_time':self._holding_time_store,
-                        'effective_holding_time':self._effective_holding_time_store,'supply':self._supply_store}
+                        'effective_holding_time':self._effective_holding_time_store,'supply':self._supply_store,'transactions_'+self.token:self._transactions_value_store_in_tokens}
         
 
         
@@ -516,7 +516,6 @@ class TokenEconomy_Basic(TokenEconomy):
                 df = pd.concat([df,value_only],axis=1)
             
         
-        df['transactions_'+self.token]=self._transactions_value_store_in_tokens
         return df
     
 
