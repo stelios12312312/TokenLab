@@ -515,12 +515,11 @@ class TransactionManagement_Stochastic(TransactionManagement):
 
 
     def __init__(self,
-                 transactions_per_user:Union[int,List[int]]=None,
                  value_per_transaction:float=None,
                  value_distribution:scipy.stats=norm,
                  value_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'loc':1,'scale':10},
                  value_drift_parameters:Dict[str,float]=None,
-                 transactions_constant:int=None,
+                 transactions_per_user:Union[int,List[int]]=None,
                  transactions_distribution:scipy.stats=poisson,
                  transactions_dist_parameters:Union[Dict[str,float],List[Dict[str,float]]]={'mu':1},
                  transactions_drift_parameters:Dict[str,float]=None,
@@ -550,7 +549,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
         
         transactions_drift_parameters: If this is set, then the parameters of the distribution for transactions change at every iteration, by adding those values to the parameters.
         
-        transactions_constant: If this is not None, then the expected number of transactions is equal to this constant.
+        transactions_per_user: If this is not None, then the expected number of transactions is equal to this constant.
         In the back-scenes, this creates a uniform distribution with bounds [transactions_constant,transactions_constant]
         
         type_transaction: positive (positive transactions only), negative or mixed. It is positive by default
@@ -588,8 +587,8 @@ class TransactionManagement_Stochastic(TransactionManagement):
         self.activity_probabilities=activity_probs
         
         
-        if transactions_constant!=None:
-            transactions_per_user=None
+        if transactions_per_user!=None:
+            transactions_distribution=None
             transactions_dist_parameters=None
             print('transactions_constant is not None. Overriding transactions_dist_parameters and transactions_per_user')
             
@@ -618,11 +617,11 @@ class TransactionManagement_Stochastic(TransactionManagement):
         
         self.type_transaction=type_transaction
         
-        if value_per_transaction==None and value_dist_parameters==None:
+        if value_per_transaction is None and value_dist_parameters is None:
             raise Exception('You need to define at least one of: value per transaction or value_dist_parameters')
             
-        if transactions_per_user==None and transactions_dist_parameters==None and transactions_constant:
-            raise Exception('You need to define at least one of: transactions_constant or transaction_dist_parameters or transactions_constant')
+        if transactions_per_user is None and transactions_dist_parameters is None and transactions_per_user is None:
+            raise Exception('You need to define at least one of: transactions_per_user or transaction_dist_parameters or transactions_constant')
                     
         
         #sanity test, all lists should be the same length
