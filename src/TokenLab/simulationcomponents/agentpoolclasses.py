@@ -156,6 +156,10 @@ class AgentPool_Basic(AgentPool,Initialisable):
         
     def get_tokeneconomy(self)->TokenEconomy:
         return self.dependencies[TokenEconomy]
+    
+    def get_num_transactions(self)->int:
+        
+        return self.transactions_controller.get_num_transactions()
 
         
 class AgentPool_Staking(AgentPool_Basic):

@@ -206,6 +206,8 @@ class TokenEconomy():
         
         self._treasury_store = []
         
+        self._num_transactions_store = []
+        
         self.name = name
         
         return None

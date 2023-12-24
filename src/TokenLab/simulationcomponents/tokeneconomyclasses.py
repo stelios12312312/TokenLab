@@ -363,6 +363,7 @@ class TokenEconomy_Basic(TokenEconomy):
         #These are the parameters which will be updated after this run of execute()
         self.transactions_value_in_fiat=0
         self.transactions_volume_in_tokens=0
+        self.num_transactions=0
         
         self._temp_agent_pools = []
         self._temp_supply_pools = []
@@ -431,7 +432,8 @@ class TokenEconomy_Basic(TokenEconomy):
                 
             else:
                 raise Exception('Agent pool found that does not function in neither fiat nor the token! Please specify correct currency!')
-            self.num_users=agent.get_num_users()
+            self.num_users+=agent.get_num_users()
+            self.num_transactions+=agent.get_num_transactions()
             
             #Agent pools can spawn new pools. This is primarily used in staking.
             
@@ -467,6 +469,7 @@ class TokenEconomy_Basic(TokenEconomy):
         self._transactions_value_store_in_fiat.append(self.transactions_value_in_fiat)
         self._prices_store.append(self.price)
         self._transactions_value_store_in_tokens.append(self.transactions_volume_in_tokens)
+        self._num_transactions_store.append(self.num_transactions)
         
         if self.treasuries!=None:
             for tres in self.treasuries:
@@ -495,7 +498,7 @@ class TokenEconomy_Basic(TokenEconomy):
 
         """
         
-        package={self.token+'_price':self._prices_store,'transactions_'+self.fiat:self._transactions_value_store_in_fiat,
+        package={self.token+'_price':self._prices_store,'transactions_'+self.fiat:self._transactions_value_store_in_fiat,'num_transactions':self._num_transactions_store,
                         'num_users':self._num_users_store,'iteration':np.arange(1,self.iteration+1),'holding_time':self._holding_time_store,
                         'effective_holding_time':self._effective_holding_time_store,'supply':self._supply_store}
         
