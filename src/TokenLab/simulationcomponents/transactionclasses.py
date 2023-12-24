@@ -621,8 +621,8 @@ class TransactionManagement_Stochastic(TransactionManagement):
         if value_per_transaction==None and value_dist_parameters==None:
             raise Exception('You need to define at least one of: value per transaction or value_dist_parameters')
             
-        if transactions_per_user==None and transactions_dist_parameters==None:
-            raise Exception('You need to define at least one of: transaction_per_users or transaction_dist_parameters or transactions_constant')
+        if transactions_per_user==None and transactions_dist_parameters==None and transactions_constant:
+            raise Exception('You need to define at least one of: transactions_constant or transaction_dist_parameters or transactions_constant')
                     
         
         #sanity test, all lists should be the same length
