@@ -142,7 +142,7 @@ class SupplyController_CliffVesting(SupplyController):
     
 
 class SupplyStaker(SupplyController, ABC):
-    def __init__(self,staking_amount:float=0):
+    def __init__(self,staking_amount:float=0,reward_as_perc:bool=True):
         """
         
 
@@ -162,6 +162,7 @@ class SupplyStaker(SupplyController, ABC):
         self._staking_amount = staking_amount
         self._iteration=0
         self.dependencies={AgentPool:None}
+        self.reward_as_perc=True
 
         
     def get_staking_amount(self):
@@ -182,17 +183,23 @@ class SupplyStaker(SupplyController, ABC):
     
         
 class SupplyStakerLockup(SupplyStaker):
-    def __init__(self, staking_amount: Union[float, scipy.stats.rv_continuous], rewards: Union[float, scipy.stats.rv_continuous], lockup_duration: int):
+    def __init__(self, staking_amount: Union[float, scipy.stats.rv_continuous], 
+                 rewards: Union[float, scipy.stats.rv_continuous], lockup_duration: int,reward_as_perc:bool=True):
         super(SupplyStakerLockup, self).__init__(staking_amount)
         self.lockup_duration = lockup_duration
+        self.reward_as_perc=reward_as_perc
 
     def execute(self):
         self.source = get_linked_agentpool().treasury
             
         if self._iteration == 0:
             value = -1 * self._get_value(self.staking_amount)
+            self._staking_amount = value
         elif self._iteration == self.lockup_duration:
-            self.supply = self._get_value(self.staking_amount) + self._get_value(self.rewards)
+            if not self.reward_as_perc:
+                self.supply = self._staking_amount + self._get_value(self.rewards)
+            else:
+                self.supply = self._staking_amount +  self._get_value(self.rewards)*self._staking_amount
         else:
             value = 0  # No change in supply for other iterations
 
@@ -212,10 +219,30 @@ class SupplyStakerLockup(SupplyStaker):
     
     
 class SupplyStakerMonthly(SupplyStaker):
-    def __init__(self, staking_amount: Union[float, scipy.stats.rv_continuous], rewards: Union[float, scipy.stats.rv_continuous]):
+    def __init__(self, staking_amount: Union[float, scipy.stats.rv_continuous], rewards: Union[float, scipy.stats.rv_continuous],
+                 reward_as_perc:bool=True):
+        """
+        
+
+        Parameters
+        ----------
+        staking_amount : Union[float, scipy.stats.rv_continuous]
+            DESCRIPTION.
+        rewards : Union[float, scipy.stats.rv_continuous]
+            DESCRIPTION.
+        reward_as_perc : bool, optional
+            DIf true, then the reward is calculated as a percentage of the staked amount. Otherwise it is fixed. The default is True.
+
+        Returns
+        -------
+        None.
+
+        """
         super(SupplyStakerMonthly, self).__init__()
         self.staking_amount = staking_amount
         self.rewards = rewards
+        self.reward_as_perc=reward_as_perc
+
         
         try:
             self.staking_amount.rvs(1)
@@ -228,8 +255,12 @@ class SupplyStakerMonthly(SupplyStaker):
 
         if self._iteration == 0:
             value = -1 * self._get_value(self.staking_amount)
+            self._staking_amount = value
         else:
-            value = self._get_value(self.rewards)
+            if not self.reward_as_perc:
+                value = self._get_value(self.rewards)
+            else:
+                value = self._get_value(self.rewards)*self._staking_amount
 
         if self.source is None:
             self.supply = value

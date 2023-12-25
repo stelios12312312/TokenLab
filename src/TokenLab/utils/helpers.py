@@ -113,11 +113,13 @@ def fit_polynomial(y,degree=3):
     
     return p
 
-def extrapolate_to_length(series,length):
-    p = fit_polynomial(series,degree=3)
+def extrapolate_to_length(series,length,p=3):
+    p = fit_polynomial(series,degree=p)
     results = series.copy()
     for i in range(length-len(series)):
         prediction = p(len(series)+i)
+        if prediction<0:
+            raise Warning('Warning! Negative prediction in extrapolation. Try different p?')
         results.append(prediction)
         
     return results

@@ -120,7 +120,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
             if self.fee_type=='perc':
                 self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
             else:
-                value = self.transactions_controller.get_num_transactions()*self.fee
+                value = self.transactions*self.fee
                 self.treasury.execute(value=value,currency_symbol=self.currency)
         
         return None

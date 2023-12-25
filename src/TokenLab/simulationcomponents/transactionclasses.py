@@ -612,7 +612,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
          
     
         
-        if type_transaction not in ['positive','negative','mix']:
+        if type_transaction not in ['positive','negative','mixed']:
             raise Exception ('You must define a type_transaction as positive, negative or mixed')
         
         self.type_transaction=type_transaction
@@ -674,17 +674,15 @@ class TransactionManagement_Stochastic(TransactionManagement):
         else:
             trans_param=self.transaction_dist_parameters
             
-        #Get the average transaction size. If the transaction is below 0, then it becomes 0
+        #Get the transactions.
         if self.transactions_per_user is None:
             seed=int(int(time.time())*np.random.rand())
-            trans=self.transactions_distribution.rvs(size=1,**trans_param,random_state=seed)[0]
-            if trans<=0:
-                trans=1
+            trans=np.mean(self.transactions_distribution.rvs(size=1000,**trans_param,random_state=seed))
         else:
             trans=int(self.transactions_per_user)
             
         #multiply average transactions per user times the number of users
-        self.num_transactions=int(trans*num_users)
+        self.num_transactions=trans
             
         
         if isinstance(self.value_dist_parameters,(list,np.ndarray)):
@@ -694,20 +692,23 @@ class TransactionManagement_Stochastic(TransactionManagement):
         
         if self.value_per_transaction is None:
             seed=int(int(time.time())*np.random.rand())
-            value_mean=self.value_distribution.rvs(size=1,loc=val_param['loc']*self.active_users*trans,scale=val_param['scale'],random_state=seed)[0]
+            value_mean=np.mean(self.value_distribution.rvs(size=1000,loc=val_param['loc'],scale=val_param['scale'],random_state=seed))
         else:
-            value_mean=self.value_per_transaction*self.active_users*trans
+            value_mean=self.value_per_transaction
+            
+        value_total = trans*value_mean*self.active_users*trans
+
             
         #transaction value can never be negative
-        if value_mean<0 and self.type_transaction=='positive':
-            value_mean=0
-        elif value_mean>0 and self.type_transaction=='negative':
-            value_mean=0
+        if value_total<0 and self.type_transaction=='positive':
+            value_total=0
+        elif value_total>0 and self.type_transaction=='negative':
+            value_total=0
             
         #total value is average expected value times the number of transactions
-        self.transactions_value=value_mean*self.num_transactions
+        self.transactions_value=value_total
         
-        self._transactions_value_store.append(value_mean)
+        self._transactions_value_store.append(value_total)
         
         if self.value_drift_parameters!=None:
             for key in self.value_drift_parameters.keys():
