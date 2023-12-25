@@ -142,7 +142,7 @@ class SupplyController_CliffVesting(SupplyController):
     
 
 class SupplyStaker(SupplyController, ABC):
-    def __init__(self,staking_amount:float=0,reward_as_perc:bool=True):
+    def __init__(self,staking_amount:float=0,reward_as_perc:bool=True,quit_prob:float=0):
         """
         
 
@@ -163,6 +163,7 @@ class SupplyStaker(SupplyController, ABC):
         self._iteration=0
         self.dependencies={AgentPool:None}
         self.reward_as_perc=True
+        self._quit_prob = quit_prob
 
         
     def get_staking_amount(self):
@@ -172,10 +173,16 @@ class SupplyStaker(SupplyController, ABC):
     def get_linked_agentpool(self):
         
         return self.dependencies[AgentPool]
+    
+    def quit_staking(self):
+        
+        self._staking_amount=0
         
     @abstractmethod
     def execute(self):
         self.source=self.get_linked_agentpool().treasury
+        if np.random.rand()<self._quit_prob:
+            self.quit_staking()
 
         pass
         
@@ -185,7 +192,24 @@ class SupplyStaker(SupplyController, ABC):
 class SupplyStakerLockup(SupplyStaker):
     def __init__(self, staking_amount: Union[float, scipy.stats.rv_continuous], 
                  rewards: Union[float, scipy.stats.rv_continuous], lockup_duration: int,reward_as_perc:bool=True):
-        super(SupplyStakerLockup, self).__init__(staking_amount)
+        """
+        Staking class for lockup types of vaults
+
+        Parameters
+        ----------
+        staking_amount : Union[float, scipy.stats.rv_continuous]
+        rewards : Union[float, scipy.stats.rv_continuous]
+            perc or fixed.
+        lockup_duration : int
+        reward_as_perc : bool, optional
+            If true, then the reward is calculated as a percentage of the staked amount. Otherwise it is fixed. The default is True.
+
+        Returns
+        -------
+        None.
+
+        """
+        super(SupplyStakerLockup, self).__init__(staking_amount,quit_prob=quit_prob)
         self.lockup_duration = lockup_duration
         self.reward_as_perc=reward_as_perc
 
@@ -214,6 +238,9 @@ class SupplyStakerLockup(SupplyStaker):
             self.supply = abs(value)
             
         self._iteration+=1
+        
+        if np.random.rand()<self._quit_prob:
+            self.quit_staking()
 
     def _get_value(self, param):
         try:
@@ -224,25 +251,28 @@ class SupplyStakerLockup(SupplyStaker):
     
 class SupplyStakerMonthly(SupplyStaker):
     def __init__(self, staking_amount: Union[float, scipy.stats.rv_continuous], rewards: Union[float, scipy.stats.rv_continuous],
-                 reward_as_perc:bool=True):
+                 reward_as_perc:bool=True,quit_prob:float=0):
         """
+        Staking class for monthly rewards. 
         
+        If a treasury is used tokens go back to treasury, and rewards are taken from there as well.
+        
+        Once rewards are given, they return into circulating supply
 
         Parameters
         ----------
         staking_amount : Union[float, scipy.stats.rv_continuous]
-            DESCRIPTION.
         rewards : Union[float, scipy.stats.rv_continuous]
-            DESCRIPTION.
+            perc or fixed.
         reward_as_perc : bool, optional
-            DIf true, then the reward is calculated as a percentage of the staked amount. Otherwise it is fixed. The default is True.
+            If true, then the reward is calculated as a percentage of the staked amount. Otherwise it is fixed. The default is True.
 
         Returns
         -------
         None.
 
         """
-        super(SupplyStakerMonthly, self).__init__()
+        super(SupplyStakerMonthly, self).__init__(quit_prob=quit_prob)
         self.staking_amount = staking_amount
         self.rewards = rewards
         self.reward_as_perc=reward_as_perc
@@ -272,6 +302,9 @@ class SupplyStakerMonthly(SupplyStaker):
             self.supply = abs(value)
             
         self._iteration+=1
+        
+        if np.random.rand()<self._quit_prob:
+            self.quit_staking()
 
     def _get_value(self, param):
         try:
