@@ -197,9 +197,9 @@ class SupplyStakerLockup(SupplyStaker):
             self._staking_amount = value
         elif self._iteration == self.lockup_duration:
             if not self.reward_as_perc:
-                self.supply = self._staking_amount + self._get_value(self.rewards)
+                value = self._staking_amount + self._get_value(self.rewards)
             else:
-                self.supply = self._staking_amount +  self._get_value(self.rewards)*self._staking_amount
+                value = self._staking_amount +  self._get_value(self.rewards)*self._staking_amount
         else:
             value = 0  # No change in supply for other iterations
 
@@ -208,8 +208,10 @@ class SupplyStakerLockup(SupplyStaker):
         else:
             agentpool = get_linked_agentpool()
             currency = agentpool.currency
-            to_remove = agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
-            self.supply = to_remove
+            #remove from treasury
+            agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
+            #the circulating supply increases in accordance with the total reward
+            self.supply = abs(value)
             
         self._iteration+=1
 
