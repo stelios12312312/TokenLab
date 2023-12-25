@@ -210,11 +210,13 @@ class SupplyStakerLockup(SupplyStaker):
             currency = agentpool.currency
             to_remove = agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
             self.supply = to_remove
+            
+        self._iteration+=1
 
     def _get_value(self, param):
-        if isinstance(param, scipy.stats.rv_continuous):
-            return param.rvs()  # Sample from the distribution
-        else:
+        try:
+            return param.rvs(1)[0]  # Sample from the distribution
+        except:
             return param  # Use the float value directly
     
     
@@ -243,12 +245,6 @@ class SupplyStakerMonthly(SupplyStaker):
         self.rewards = rewards
         self.reward_as_perc=reward_as_perc
 
-        
-        try:
-            self.staking_amount.rvs(1)
-            self._rvs=True
-        except:
-            self._rvs=False
 
     def execute(self):
         self.source = super().get_linked_agentpool().treasury
@@ -257,6 +253,7 @@ class SupplyStakerMonthly(SupplyStaker):
             value = -1 * self._get_value(self.staking_amount)
             self._staking_amount = value
         else:
+            #monthly rewards
             if not self.reward_as_perc:
                 value = self._get_value(self.rewards)
             else:
@@ -267,13 +264,17 @@ class SupplyStakerMonthly(SupplyStaker):
         else:
             agentpool = super().get_linked_agentpool()
             currency = agentpool.currency
-            to_remove = agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
-            self.supply = to_remove
+            #remove from treasury
+            agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
+            #the circulating supply increases in accordance with the total reward
+            self.supply = abs(value)
+            
+        self._iteration+=1
 
     def _get_value(self, param):
-        if self._rvs:
+        try:
             return param.rvs(1)[0]  
-        else:
+        except:
             return param  
     
     

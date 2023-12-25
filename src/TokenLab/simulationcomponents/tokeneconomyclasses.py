@@ -175,6 +175,9 @@ class TokenEconomy_Basic(TokenEconomy):
         self.ignore_supply_controller = ignore_supply_controller
         
         self.treasuries = treasuries
+        
+        self._temp_agent_pools = []
+        self._temp_supply_pools = []
             
         
         return None
@@ -308,6 +311,8 @@ class TokenEconomy_Basic(TokenEconomy):
         self.supply=0
         self.initialised=True
         
+
+        
     def change_supply(self,currency_type:str,value:float)->None:
         if currency_type==self.token:
             if value>=0:
@@ -365,8 +370,6 @@ class TokenEconomy_Basic(TokenEconomy):
         self.transactions_volume_in_tokens=0
         self.num_transactions=0
         
-        self._temp_agent_pools = []
-        self._temp_supply_pools = []
         
         #Run the core supply
         self._supply.execute()
