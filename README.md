@@ -23,7 +23,7 @@ If you have any requests or comments, please reach out to Dr Kampakis https://th
 
 ## Used by
 
-<a href="https://tesseract.academy"><img src="https://thedatascientist.com/wp-content/uploads/2023/05/tesseract-academy-logo.jpg-1.webp" alt="Tesseract Academy" style="width: auto; max-height: 100px; margin-right: 10px;"/></a>
-<a href="https://electiconsulting.com/"><img src="https://thedatascientist.com/wp-content/uploads/2023/12/electi-red-retina-logo.png" alt="Electi Consulting" style="width: auto; max-height: 100px;"/></a>
-<a href="https://hacken.io//"><img src="https://thedatascientist.com/wp-content/uploads/2023/12/hacken-logo.jpeg" alt="Hacken" style="width: auto; max-height: 100px;"/></a>
+<a href="https://tesseract.academy"><img src="https://thedatascientist.com/wp-content/uploads/2023/05/tesseract-academy-logo.jpg-1.webp" alt="Tesseract Academy" style="width: 100px; height: 100px; margin-right: 10px; object-fit: contain;"/></a>
+<a href="https://electiconsulting.com/"><img src="https://thedatascientist.com/wp-content/uploads/2023/12/electi-red-retina-logo.png" alt="Electi Consulting" style="width: 100px; height: 100px; margin-right: 10px; object-fit: contain;"/></a>
+<a href="https://hacken.io//"><img src="https://thedatascientist.com/wp-content/uploads/2023/12/hacken-logo.jpeg" alt="Hacken" style="width: 100px; height: 100px; object-fit: contain;"/></a>
 
