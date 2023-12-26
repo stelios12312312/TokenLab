@@ -23,10 +23,7 @@ If you have any requests or comments, please reach out to Dr Kampakis https://th
 
 ## Used by
 
-![Angelo https://angelos.art/](https://thedatascientist.com/wp-content/uploads/2022/12/Angelo-Logo.png)
+<a href="https://tesseract.academy"><img src="https://thedatascientist.com/wp-content/uploads/2023/05/tesseract-academy-logo.jpg-1.webp" alt="Tesseract Academy" style="width: auto; max-height: 100px; margin-right: 10px;"/></a>
+<a href="https://electiconsulting.com/"><img src="https://thedatascientist.com/wp-content/uploads/2023/12/electi-red-retina-logo.png" alt="Electi Consulting" style="width: auto; max-height: 100px;"/></a>
+<a href="https://hacken.io//"><img src="https://thedatascientist.com/wp-content/uploads/2023/12/hacken-logo.jpeg" alt="Hacken" style="width: auto; max-height: 100px;"/></a>
 
-![Algem https://www.algem.io/](https://thedatascientist.com/wp-content/uploads/2022/12/algem.png)
-
-![Tesseract Academy https://tesseract.academy](https://thedatascientist.com/wp-content/uploads/2022/02/logo-centered.png)
-
-![Electi Consulting https://electiconsulting.com/](https://thedatascientist.com/wp-content/uploads/2022/12/electi-red-retina-logo.png)

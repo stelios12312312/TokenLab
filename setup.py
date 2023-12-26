@@ -10,7 +10,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='TokenLab',  # Your package's name
-    version='0.1',  # Your package's version
+    version='0.2',  # Your package's version
     packages=find_packages(where="src"),  # Assuming your code is in the src directory
     package_dir={"": "src"},
     install_requires=[

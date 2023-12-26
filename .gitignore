@@ -163,3 +163,4 @@ src/TokenLab/.DS_Store
 .DS_Store
 src/TokenLab/simulationcomponents/.DS_Store
 notebooks/test_tra.py
+.pypirc
