@@ -78,7 +78,7 @@ class TokenEconomy_Basic(TokenEconomy):
                  fiat:str='$',token:str='token',price_function:PriceFunctionController=PriceFunction_EOE,
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
                  unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,
-                 supply_is_added:bool=True,name:str=None,safeguard_current_supply_level:bool=False,
+                 supply_is_added:bool=None,name:str=None,safeguard_current_supply_level:bool=False,
                  ignore_supply_controller:bool=False,treasuries:List[TreasuryBasic]=[])->None:
 
         
@@ -144,7 +144,7 @@ class TokenEconomy_Basic(TokenEconomy):
             self._supply=SupplyController_FromData(supply)
         else:
             self._supply=supply
-            
+                        
         self._supply.link(TokenEconomy,self)
             
         self.price=initial_price
@@ -167,6 +167,9 @@ class TokenEconomy_Basic(TokenEconomy):
         self.initialised=False
         
         self.burn_token=burn_token
+        
+        if supply_is_added is None:
+            raise Exception('Error! You must define supply_is_added as either True or False!')
         
         self.supply_is_added = supply_is_added
         
