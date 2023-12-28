@@ -118,6 +118,8 @@ class AddOn_RandomNoiseProportional(AddOn_Noise):
         
         if self.add_value:
             final = value + noise
+        else:
+            final=noise
         
         return final
     
