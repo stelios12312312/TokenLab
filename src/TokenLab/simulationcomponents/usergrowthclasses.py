@@ -23,6 +23,7 @@ class UserGrowth(Controller):
     def __init__(self):
         super(UserGrowth,self).__init__()
         self.num_users=0
+        self._num_users_store=None
         
         #conditional dependence, it is used only in conditions
         self.dependencies={AgentPool:None,TokenEconomy:None}
@@ -30,12 +31,12 @@ class UserGrowth(Controller):
         return None
     
     
-    def execute(self)->int:
-        self.iteration = self.iteration + 1
-        
-        if hasattr(self,'_num_users_store'):
+    def execute(self)->int:        
+        if self._num_users_store is not None:
             #this is only for precomputed user populations, like UserGrowth_Spaced
-            self.num_users=self._num_users_store[self.iteration-1]
+            self.num_users=self._num_users_store[self.iteration]
+        self.iteration = self.iteration + 1
+
         return self.num_users
     
     
@@ -193,6 +194,17 @@ class UserGrowth_Constant(UserGrowth):
         
         super(UserGrowth_Constant,self).__init__()
         self.num_users=constant        
+        
+        
+
+class UserGrowth_FromData(UserGrowth):
+    
+    def __init__(self,data:int):
+        
+        super(UserGrowth_FromData,self).__init__()
+        
+        self._num_users_store = np.ndarray.flatten(np.array(data))
+        
     
     
       

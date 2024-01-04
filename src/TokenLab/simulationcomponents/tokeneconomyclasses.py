@@ -309,7 +309,8 @@ class TokenEconomy_Basic(TokenEconomy):
             if isinstance(agent,Initialisable):
                 agent.initialise()
                 if agent.treasury!=None:
-                    self.treasuries.append(agent.treasury)
+                    if not agent.treasury in self.treasuries:
+                        self.treasuries.append(agent.treasury)
                 
         self.supply=0
         self.initialised=True

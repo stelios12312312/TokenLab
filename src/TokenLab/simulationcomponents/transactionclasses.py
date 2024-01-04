@@ -71,7 +71,7 @@ class TransactionManagement(Controller):
         
         return self.transactions_value
     
-    def get_num_transactions(self)->List:
+    def get_num_transactions(self)->int:
         
         return self.num_transactions
     
@@ -431,6 +431,7 @@ class TransactionManagement_MarketcapStochastic(TransactionManagement):
         self.distribution = distribution
         self.distribution_params = distribution_params
         self.sign = sign
+        self.num_transactions = 1
         
         
     def execute(self)->float:

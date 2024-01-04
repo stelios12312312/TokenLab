@@ -7,13 +7,14 @@ Created on Fri Nov 18 12:20:03 2022
 """
 from typing import List, Dict,Union
 from baseclasses import *
-from usergrowthclasses import UserGrowth,UserGrowth_Constant
-from transactionclasses import TransactionManagement, TransactionManagement_Constant, TransactionManagement_Stochastic
+from usergrowthclasses import UserGrowth,UserGrowth_Constant,UserGrowth_FromData
+from transactionclasses import TransactionManagement, TransactionManagement_Constant, TransactionManagement_Stochastic, TransactionManagement_FromData
 from supplyclasses import SupplyStaker
 import copy
 from typing import TypedDict
 from addons import Condition
 from treasuryclasses import TreasuryBasic
+import warnings
 
 
 
@@ -62,8 +63,15 @@ class AgentPool_Basic(AgentPool,Initialisable):
                 print('Warning! Users set to 1 for agent pool with name : '+str(self.name))
             users_controller=UserGrowth_Constant(users_controller)
             
+        if isinstance(users_controller,list):
+            users_controller = UserGrowth_FromData(users_controller)
+            
         if isinstance(transactions_controller,float) or isinstance(transactions_controller,int):
             transactions_controller=TransactionManagement_Constant(transactions_controller)
+            
+        if isinstance(transactions_controller,list):
+            transactions_controller=TransactionManagement_FromData(transactions_controller)
+            
             
             
         self.users_controller=users_controller
@@ -88,7 +96,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
             self.fee_type=fee_type
             
         if fee_type=='fixed' and not isinstance(self.transactions_controller,TransactionManagement_Stochastic):
-            raise Exception('Error! Fixed fee type can only with with TransactionsManagement_Stochastic as it requires an estimation of the total number of transactions.')
+            warnings.warn('Warning! Fixed fee type can only with with TransactionsManagement_Stochastic as it requires an estimation of the total number of transactions.')
      
         return None
     
