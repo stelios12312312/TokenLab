@@ -119,11 +119,16 @@ class SupplyController_CliffVesting(SupplyController):
     def __init__(self,token_amount:float,vesting_period:int,cliff:int):
         super(SupplyController_CliffVesting,self).__init__()
         
+        held_tokens=0
+        
         data = []
         chunk = token_amount/vesting_period
         for i in range(cliff+vesting_period):
             if i<cliff:
                 data.append(0)
+                held_tokens+=chunk
+            elif i==cliff:
+                data.append(held_tokens)
             else:
                 data.append(chunk)
         
