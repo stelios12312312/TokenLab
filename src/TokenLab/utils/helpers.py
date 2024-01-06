@@ -9,6 +9,7 @@ import numpy as np
 from typing import Union,List,Dict
 import scipy
 from numpy.polynomial.polynomial import Polynomial
+import warnings
 
 
 def log_saturated_space(start:int,stop:int,num:int):
@@ -39,11 +40,7 @@ def logistic_saturated_space(start:int,stop:int,num:int,steepness:float=1,takeof
     
     return final
 
-# def equation_of_exchange(price:float,supply_in_tokens:float,transaction_volume_in_fiat:float,holding_time:float):
-    
-#     price=holding_time*transaction_volume_in_finat/supply_in_tokens
-    
-#     return price
+
 
 
 def generate_distribution_param_from_sequence(param_name:str,
@@ -113,13 +110,20 @@ def fit_polynomial(y,degree=3):
     
     return p
 
-def extrapolate_to_length(series,length,p=3):
+def extrapolate_to_length(series,length,p=2,max_number:float=None):
     p = fit_polynomial(series,degree=p)
     results = series.copy()
+    
+    if max_number is None:
+        max_number = 10*max(series)
+    
     for i in range(length-len(series)):
         prediction = p(len(series)+i)
         if prediction<0:
             raise Warning('Warning! Negative prediction in extrapolation. Try different p?')
+        if prediction>max_number:
+            warnings.warn('Warning! Surpassing maximum allowed growth!')
+            prediction = max_number
         results.append(prediction)
         
     return results

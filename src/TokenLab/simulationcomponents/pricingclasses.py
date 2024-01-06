@@ -237,16 +237,19 @@ class PriceFunction_EOE(PriceFunctionController):
         else:
             self.smoothing_param=smoothing_param
     
-    def execute(self)->float:  
+    def execute(self,use_previous_supply:bool=True)->float:  
         tokeneconomy=self.dependencies[TokenEconomy]
         
         transaction_volume_in_fiat=tokeneconomy.transactions_value_in_fiat
         holding_time=tokeneconomy.holding_time
         
                 
-        #supply_of_tokens=tokeneconomy.transactions_value_in_tokens
-        supply_of_tokens=tokeneconomy.supply
-        
+        if use_previous_supply:
+            M = tokeneconomy.previous_supply
+        else:
+            M = tokeneconomy.supply
+            
+            
         if self.use_velocity:
             velocity = 0.03358 + 1.20329 * 1/holding_time
 
@@ -254,9 +257,9 @@ class PriceFunction_EOE(PriceFunctionController):
             if velocity<0:
                 velocity=0.01
             
-            price_new=transaction_volume_in_fiat/(supply_of_tokens*velocity)
+            price_new=transaction_volume_in_fiat/(M*velocity)
         else:
-            price_new=holding_time*transaction_volume_in_fiat/supply_of_tokens
+            price_new=holding_time*transaction_volume_in_fiat/M
             
                 
 
@@ -395,7 +398,7 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         self.proportionate_noise=proportionate_noise
         
     
-    def execute(self)->float:
+    def execute(self,use_previous_supply:bool=True)->float:
         tokeneconomy=self.dependencies[TokenEconomy]
         H = tokeneconomy.holding_time
         
@@ -408,7 +411,10 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         # print(V)
                     
         T = tokeneconomy.transactions_value_in_fiat
-        M = tokeneconomy.supply
+        if use_previous_supply:
+            M = tokeneconomy.previous_supply
+        else:
+            M = tokeneconomy.supply
         previous_price = tokeneconomy.price
         
         # log_price_new = -0.08506 + 0.00139 * np.log(T) - 0.00481 * np.log(1/M) + 0.00059 * np.log(1/V) \

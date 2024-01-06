@@ -118,6 +118,27 @@ class SupplyController_FromData(SupplyController):
 class SupplyController_CliffVesting(SupplyController):
     
     def __init__(self,token_amount:float,vesting_period:int,cliff:int,name=None,delay:int=0):
+        """
+        
+
+        Parameters
+        ----------
+        token_amount : float
+            DESCRIPTION.
+        vesting_period : int
+            DESCRIPTION.
+        cliff : int
+            DESCRIPTION.
+        name : TYPE, optional
+            DESCRIPTION. The default is None.
+        delay : int, optional
+            DESCRIPTION. The default is -1.
+
+        Returns
+        -------
+        None.
+
+        """
         super(SupplyController_CliffVesting,self).__init__()
         self.name=name
         
@@ -125,7 +146,10 @@ class SupplyController_CliffVesting(SupplyController):
         total_tokens = token_amount
         
         data = []
-        chunk = token_amount/vesting_period
+        if vesting_period==0:
+            chunk=token_amount
+        else:
+            chunk = token_amount/vesting_period
         for i in range(cliff+vesting_period):
             if i<delay:
                 data.append(0)

@@ -78,8 +78,9 @@ class TokenEconomy_Basic(TokenEconomy):
                  fiat:str='$',token:str='token',price_function:PriceFunctionController=PriceFunction_EOE,
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
                  unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,
-                 supply_is_added:bool=None,name:str=None,safeguard_current_supply_level:bool=False,
-                 ignore_supply_controller:bool=False,treasuries:List[TreasuryBasic]=[],max_supply:float=np.inf)->None:
+                 supply_is_added:bool=None,name:str=None,safeguard_current_supply_level:bool=True,
+                 ignore_supply_controller:bool=False,treasuries:List[TreasuryBasic]=[],max_supply:float=np.inf,
+                 dynamic_price:bool=False)->None:
 
         
 
@@ -120,6 +121,8 @@ class TokenEconomy_Basic(TokenEconomy):
         safeguard_current_supply_level : bool, if True, then it protects the current supply from simulated transactions. It caps
         transactions by the maximum circulating supply. If mechanisms like bonding curves are used, this is not needed. Also,
         some simulations might not require it. It always operates after the 2nd iteration onwards.
+        
+        dynamic_price: If True, then the agent pools are randomised, and a new price is computed after every agent pool acts.
 
         Returns
         -------
@@ -178,6 +181,8 @@ class TokenEconomy_Basic(TokenEconomy):
         self.ignore_supply_controller = ignore_supply_controller
         
         self.treasuries = treasuries
+        
+        self.dynamic_price = dynamic_price
         
         self._temp_agent_pools = []
         self._temp_supply_pools = []
@@ -404,12 +409,16 @@ class TokenEconomy_Basic(TokenEconomy):
             supply=0
             return False
         
+        self.previous_supply = self.supply
+        
         
         #Get the holding time
         self.holding_time=self._holding_time_controller.get_holding_time()
         
         #Execute agent pools
-        for agent in self._agent_pools+self._temp_agent_pools:
+        pools=self._agent_pools+self._temp_agent_pools
+        random.shuffle(pools)
+        for agent in pools:
             new_pools = agent.execute()
             if agent.currency==self.token:
                 tokens = agent.get_transactions()
@@ -429,14 +438,15 @@ class TokenEconomy_Basic(TokenEconomy):
                     new_tokens = transactions/self.price
                     self.change_supply(self.token,np.abs(new_tokens))
                 if self.price>0:
-                    self.transactions_volume_in_tokens=agent.get_transactions()*self.holding_time/self.price
+                    #self.transactions_volume_in_tokens=agent.get_transactions()*self.holding_time/self.price
                     self.transactions_volume_in_tokens=agent.get_transactions()/self.price
                 else:
-                    warnings.warn('Warning! Price reached 0 at iteration : '+str(self.iteration+1))
+                    warnings.warn('Warning! Price reached 0 at iteration : '+str(self.iteration))
                     return False
                 
                 if self.safeguard_current_supply_level:
-                    if self.transactions_volume_in_tokens > self.supply and self.iteration>0:
+                    if self.transactions_volume_in_tokens >= self.supply:
+                        warnings.warn('Warning! Demand surpassed supply at iteration : '+str(self.iteration))
                         self.transactions_volume_in_tokens = self.supply
                         self.transactions_value_in_fiat = self.transactions_volume_in_tokens*self.price
                 
@@ -454,12 +464,18 @@ class TokenEconomy_Basic(TokenEconomy):
                     if pool[0]=='SupplyPool':
                         self._temp_supply_pools.append(pool[1])
         
+            if self.dynamic_price:
+                #Calculate price and the new holding time
+                self._price_function.execute()        
+                self.price=self._price_function.get_price()
+                
+        if not self.dynamic_price:
+            #Calculate price and the new holding time
+            self._price_function.execute(use_previous_supply=False)        
+            self.price=self._price_function.get_price()
         
-        #Calculate price and the new holding time
-        self._price_function.execute()
         self._holding_time_controller.execute()        
-        
-        self.price=self._price_function.get_price()
+
         
         if self.burn_token:
             self.change_supply(self.token,-self.transactions_volume_in_tokens)
@@ -517,7 +533,7 @@ class TokenEconomy_Basic(TokenEconomy):
         df=pd.DataFrame(package)
         
         temp_df=pd.DataFrame(self._treasury_store,columns=['treasury_name','treasury_value'])
-        if self.treasuries!=None:
+        if self.treasuries is not None:
             for tres in self.treasuries:
                 dummy_df = temp_df[temp_df['treasury_name']==tres.name].reset_index(drop=True).copy()
                 dummy_df.columns = [tres.name,tres.name+'_value']
