@@ -1,6 +1,6 @@
 
 # TokenLab
-<a href="https://tesseract.academy"><img src="https://thedatascientist.com/wp-content/uploads/2024/01/tokenlab_logo.jpeg" alt="Tesseract Academy" object-fit: contain;"/></a>
+<a href="https://tesseract.academy"><img src="https://thedatascientist.com/wp-content/uploads/2024/01/tokenlab_logo.jpeg" alt="Tesseract Academy" /></a>
 
  A python library for simulating token economies for Web3.0 and blockchain projects. Created by Stylianos Kampakis, PhD, CStat
 
