@@ -33,7 +33,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
     
     def __init__(self,users_controller:Union[UserGrowth,int]=1,transactions_controller:TransactionManagement=1,
                  currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,
-                 treasury:TreasuryBasic=None,fee:float=None,fee_type:str='perc')->None:
+                 treasury:TreasuryBasic=None,fee:float=None,fee_type:str='perc',activation_iteration:float=0)->None:
         """
         
         users_controller: Controller specifying how the userbase grows over time. If the users controller is an integer,
@@ -51,6 +51,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
         In the latter case it is transactions number * fee. In the latter case you need to use a TransactionsManagement class
         that can return the number of transactions. The only class that can do that is TransactionManagement_Stochastic.
         
+        activation_iteration: if set to anything else than 0, then the agent pool will become active after that iteration
         
         """   
 
@@ -86,6 +87,8 @@ class AgentPool_Basic(AgentPool,Initialisable):
         
         self.fee = fee
         
+        self.activation_iteration = activation_iteration
+        
         if fee==None and treasury!=None:
             raise Exception('When using a treasury within an agent pool, you also need to define a fee.')
         self.treasury = treasury
@@ -115,7 +118,11 @@ class AgentPool_Basic(AgentPool,Initialisable):
             DESCRIPTION.
 
         """
-        self.iteration+=1
+        
+        if self.iteration<self.activation_iteration:
+            self.iteration+=1
+            return None
+        
         if not self.chained:
             self.num_users = self.users_controller.execute()
             if self.num_users<0:
@@ -130,6 +137,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
             else:
                 value = self.transactions*self.fee
                 self.treasury.execute(value=value,currency_symbol=self.currency)
+        self.iteration+=1
         
         return None
     
