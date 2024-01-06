@@ -79,7 +79,7 @@ class TokenEconomy_Basic(TokenEconomy):
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
                  unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,
                  supply_is_added:bool=None,name:str=None,safeguard_current_supply_level:bool=False,
-                 ignore_supply_controller:bool=False,treasuries:List[TreasuryBasic]=[])->None:
+                 ignore_supply_controller:bool=False,treasuries:List[TreasuryBasic]=[],max_supply:float=np.inf)->None:
 
         
 
@@ -181,7 +181,8 @@ class TokenEconomy_Basic(TokenEconomy):
         
         self._temp_agent_pools = []
         self._temp_supply_pools = []
-            
+        
+        self.max_supply=max_supply
         
         return None
     
@@ -320,7 +321,10 @@ class TokenEconomy_Basic(TokenEconomy):
     def change_supply(self,currency_type:str,value:float)->None:
         if currency_type==self.token:
             if value>=0:
-                self.supply+=value
+                if not value+self.supply>self.max_supply:
+                    self.supply+=value
+                else:
+                    self.supply=self.max_supply
             elif value<=self.supply+value and value<=0:
                 self.supply+=value
             else:
@@ -401,7 +405,6 @@ class TokenEconomy_Basic(TokenEconomy):
             return False
         
         
-        
         #Get the holding time
         self.holding_time=self._holding_time_controller.get_holding_time()
         
@@ -426,7 +429,7 @@ class TokenEconomy_Basic(TokenEconomy):
                     new_tokens = transactions/self.price
                     self.change_supply(self.token,np.abs(new_tokens))
                 if self.price>0:
-                    # self.transactions_volume_in_tokens=agent.get_transactions()*self.holding_time/self.price
+                    self.transactions_volume_in_tokens=agent.get_transactions()*self.holding_time/self.price
                     self.transactions_volume_in_tokens=agent.get_transactions()/self.price
                 else:
                     warnings.warn('Warning! Price reached 0 at iteration : '+str(self.iteration+1))

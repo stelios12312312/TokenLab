@@ -75,6 +75,7 @@ class SupplyController_Constant(SupplyController):
             return self.supply
         else:
             self._iteration+=1
+            self.supply=0
             return 0
         
         
@@ -116,21 +117,40 @@ class SupplyController_FromData(SupplyController):
     
 class SupplyController_CliffVesting(SupplyController):
     
-    def __init__(self,token_amount:float,vesting_period:int,cliff:int):
+    def __init__(self,token_amount:float,vesting_period:int,cliff:int,name=None):
         super(SupplyController_CliffVesting,self).__init__()
+        self.name=name
         
         held_tokens=0
+        total_tokens = token_amount
         
         data = []
         chunk = token_amount/vesting_period
         for i in range(cliff+vesting_period):
             if i<cliff:
                 data.append(0)
-                held_tokens+=chunk
+                if total_tokens>=chunk:
+                    total_tokens-=chunk
+                    held_tokens+=chunk
+                else:
+                    held_tokens+=total_tokens
+                    total_tokens=0
             elif i==cliff:
+                if total_tokens>=chunk:
+                    total_tokens-=chunk
+                    held_tokens+=chunk
+                else:
+                    held_tokens+=total_tokens
+                    total_tokens=0
                 data.append(held_tokens)
             else:
-                data.append(chunk)
+                if total_tokens>=chunk:
+                    data.append(chunk)
+                    total_tokens-=chunk
+                else:
+                    data.append(total_tokens)
+                    total_tokens=0
+
         
         self._data= data
         
