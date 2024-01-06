@@ -117,7 +117,7 @@ class SupplyController_FromData(SupplyController):
     
 class SupplyController_CliffVesting(SupplyController):
     
-    def __init__(self,token_amount:float,vesting_period:int,cliff:int,name=None):
+    def __init__(self,token_amount:float,vesting_period:int,cliff:int,name=None,delay:int=0):
         super(SupplyController_CliffVesting,self).__init__()
         self.name=name
         
@@ -127,7 +127,9 @@ class SupplyController_CliffVesting(SupplyController):
         data = []
         chunk = token_amount/vesting_period
         for i in range(cliff+vesting_period):
-            if i<cliff:
+            if i<delay:
+                data.append(0)
+            elif i<cliff:
                 data.append(0)
                 if total_tokens>=chunk:
                     total_tokens-=chunk
@@ -150,8 +152,6 @@ class SupplyController_CliffVesting(SupplyController):
                 else:
                     data.append(total_tokens)
                     total_tokens=0
-
-        
         self._data= data
         
     def execute(self):
