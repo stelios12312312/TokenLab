@@ -346,7 +346,7 @@ class SupplyStakerMonthly(SupplyStaker):
             agentpool = super().get_linked_agentpool()
             currency = agentpool.currency
             #remove from treasury
-            agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
+            agentpool.treasury.execute(currency_symbol=currency, value=value)
             #the circulating supply increases in accordance with the total reward
             self.supply = abs(value)
             

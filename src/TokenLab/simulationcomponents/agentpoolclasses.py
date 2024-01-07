@@ -133,7 +133,6 @@ class AgentPool_Basic(AgentPool,Initialisable):
         
         if self.treasury!=None:
             if self.fee_type=='perc':
-                print(self.currency)
                 self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
             else:
                 value = self.transactions*self.fee
@@ -182,7 +181,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
 class AgentPool_Staking(AgentPool_Basic):
     def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
                  staking_controller:SupplyStaker,staking_controller_params:dict,
-                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,treasury:TreasuryBasic=None,fee:float=0
+                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,treasury:TreasuryBasic=None,fee:float=0,fee_type:str='perc'
                  )->None:
         """
         
@@ -201,7 +200,6 @@ class AgentPool_Staking(AgentPool_Basic):
                                                fee_type=fee_type)
         self.staking_controller = staking_controller
         self.staking_controller_params = staking_controller_params
-        
 
         return None
     
