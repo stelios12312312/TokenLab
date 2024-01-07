@@ -13,6 +13,7 @@ import copy
 import scipy
 import warnings
 import time
+from matplotlib import pyplot as plt
 
 
 class UserGrowth(Controller):
@@ -173,6 +174,12 @@ class UserGrowth_Spaced(UserGrowth):
         """
         
         return self.get_users_store()
+    
+    def plot_users(self):
+        
+        plt.plot(self.get_users_store())
+        plt.xlabel('unit of time')
+        plt.ylabel('users')
     
     
     

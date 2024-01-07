@@ -133,6 +133,7 @@ class AgentPool_Basic(AgentPool,Initialisable):
         
         if self.treasury!=None:
             if self.fee_type=='perc':
+                print(self.currency)
                 self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
             else:
                 value = self.transactions*self.fee
@@ -196,7 +197,8 @@ class AgentPool_Staking(AgentPool_Basic):
         
         """      
         super(AgentPool_Staking,self).__init__(users_controller=users_controller,transactions_controller=transactions_controller,
-                                               currency=currency,name=name,dumper=dumper,chained=chained,treasury=treasury,fee=fee)
+                                               currency=currency,name=name,dumper=dumper,chained=chained,treasury=treasury,fee=fee,
+                                               fee_type=fee_type)
         self.staking_controller = staking_controller
         self.staking_controller_params = staking_controller_params
         
@@ -252,7 +254,11 @@ class AgentPool_Staking(AgentPool_Basic):
                 
         #now update treasury (if any)
         if self.treasury!=None:
-            total_fee = self.transactions*self.fee
+            if self.fee_type=='perc':
+                total_fee = self.transactions*self.fee
+            else:
+                total_fee = self.fee
+            
             self.treasury.execute(currency_symbol=self.currency,value=total_fee)
         
         new_pools=[]

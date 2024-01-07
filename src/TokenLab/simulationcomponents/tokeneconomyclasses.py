@@ -446,7 +446,7 @@ class TokenEconomy_Basic(TokenEconomy):
                 
                 if self.safeguard_current_supply_level:
                     if self.transactions_volume_in_tokens >= self.supply:
-                        warnings.warn('Warning! Demand surpassed supply at iteration : '+str(self.iteration))
+                        # warnings.warn('Warning! Demand surpassed supply at iteration : '+str(self.iteration))
                         self.transactions_volume_in_tokens = self.supply
                         self.transactions_value_in_fiat = self.transactions_volume_in_tokens*self.price
                 

@@ -25,8 +25,7 @@ class TreasuryBasic(Controller):
             
         
         
-    def execute(self,currency_symbol:str,value:float):
-        
+    def execute(self,currency_symbol:str,value:float):        
         if value>0:
             self.add_asset(currency_symbol,value)
         elif value<=0:
