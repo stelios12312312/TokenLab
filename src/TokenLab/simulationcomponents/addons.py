@@ -164,6 +164,9 @@ class AddOn_RandomReduction(AddOn_Noise):
         reduced_value = value * (1 - reduction_percentage)
 
         return reduced_value
+    
+    
+
 
 
 class Condition():

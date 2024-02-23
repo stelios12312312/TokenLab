@@ -9,7 +9,7 @@ from typing import List, Dict,Union
 from baseclasses import *
 from usergrowthclasses import UserGrowth,UserGrowth_Constant,UserGrowth_FromData
 from transactionclasses import TransactionManagement, TransactionManagement_Constant, TransactionManagement_Stochastic, TransactionManagement_FromData
-from supplyclasses import SupplyStaker
+from supplyclasses import SupplyStaker,SupplyController_Burn
 import copy
 from typing import TypedDict
 from addons import Condition
@@ -177,6 +177,66 @@ class AgentPool_Basic(AgentPool,Initialisable):
         
         return self.transactions_controller.get_num_transactions()
 
+
+class AgentPool_BuyBack(AgentPool_Basic):
+    def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
+                 currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,treasury:TreasuryBasic=None,fee:float=0,fee_type:str='perc'
+                 )->None:
+        """
+        
+        users_controller: Controller specifying how the userbase grows over time. If the users controller is an integer,
+        then the AgentPool class will simply take it as a constant value for all simulations
+        
+        transactions_controller: Controller that determines the transaction volume
+        currency: the currency this pool represents.
+        name: the name of the pool, this can come in very handy during debugging
+        dumper: Whether this is an agent pool that only sells tokens
+        
+        
+        """      
+        super(AgentPool_BuyBack,self).__init__(users_controller=users_controller,transactions_controller=transactions_controller,
+                                               currency=currency,name=name,dumper=dumper,chained=chained,treasury=treasury,fee=fee,
+                                               fee_type=fee_type)
+
+        return None
+    
+    def reset(self)->None:
+        self.iteration=0
+        self.users_controller.reset()
+        self.transactions_controller.reset()
+        
+        
+    def execute(self)->None:
+        """
+        Runs the agent pool. It increases iterations by 1, and then calculates the new number of users
+        and the new number of transactions.
+        
+        It then creates a number of stakers depending on the number of transactions.
+        
+        Fields:
+            'iterations','num_users','transactions'
+
+        Returns
+        -------
+        None
+            DESCRIPTION.
+
+        """
+        self.iteration+=1
+        if not self.chained:
+            self.num_users = self.users_controller.execute()
+        else:
+            self.num_users = self.users_controller.num_users
+        self.transactions = self.transactions_controller.execute()
+        
+
+        total_tokens_bought = self.transactions/self.dependencies[TokenEconomy].price
+        sup = SupplyController_Burn(burn_param=total_tokens_bought,burn_style='fixed',self_destruct=True)
+        sup.link(TokenEconomy,self.dependencies[TokenEconomy])
+        
+        return [('SupplyPool',sup)]
+        
+    
         
 class AgentPool_Staking(AgentPool_Basic):
     def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
@@ -267,8 +327,6 @@ class AgentPool_Staking(AgentPool_Basic):
             new_pools.append(('SupplyPool',new_staker))
         
         self.new_pools = new_pools
-        
-
         
         return self.new_pools
     

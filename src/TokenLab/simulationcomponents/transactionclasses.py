@@ -318,6 +318,9 @@ class TransactionManagement_Trend(TransactionManagement):
 
         """
         
+        super(TransactionManagement_Trend,self).__init__()
+
+        
         self.dependencies={AgentPool:None}
 
         

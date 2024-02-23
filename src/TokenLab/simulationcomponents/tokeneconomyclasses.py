@@ -78,9 +78,10 @@ class TokenEconomy_Basic(TokenEconomy):
                  fiat:str='$',token:str='token',price_function:PriceFunctionController=PriceFunction_EOE,
                  price_function_parameters:Dict={},supply_pools:List[SupplyController]=[],
                  unit_of_time:str='month',agent_pools:List[AgentPool]=None,burn_token:bool=False,
+                 burn_coefficient:float=1,
                  supply_is_added:bool=None,name:str=None,safeguard_current_supply_level:bool=True,
                  ignore_supply_controller:bool=False,treasuries:List[TreasuryBasic]=[],max_supply:float=np.inf,
-                 dynamic_price:bool=False)->None:
+                 dynamic_price:bool=False,multiple:float=1)->None:
 
         
 
@@ -117,12 +118,15 @@ class TokenEconomy_Basic(TokenEconomy):
             returning 0 after the 1 iteration.
         
         burn_token : bool, if True, then the tokens are burned at every iteration after being used
+        burn_coefficient: float, in between 0 and 1. It burns % of the tokens if burn_token=True
         
         safeguard_current_supply_level : bool, if True, then it protects the current supply from simulated transactions. It caps
         transactions by the maximum circulating supply. If mechanisms like bonding curves are used, this is not needed. Also,
         some simulations might not require it. It always operates after the 2nd iteration onwards.
         
         dynamic_price: If True, then the agent pools are randomised, and a new price is computed after every agent pool acts.
+
+        multiple: price multiple to use, default is 1 (i.e. no multiple)
 
         Returns
         -------
@@ -172,7 +176,8 @@ class TokenEconomy_Basic(TokenEconomy):
         self.burn_token=burn_token
         
         if supply_is_added is None:
-            raise Exception('Error! You must define supply_is_added as either True or False!')
+            print('Setting supply_is_added=True ! This will work fine for most use cases, unless you want the supply to take certain values irrespective of the trading volume.')
+            supply_is_added=True
         
         self.supply_is_added = supply_is_added
         
@@ -188,6 +193,13 @@ class TokenEconomy_Basic(TokenEconomy):
         self._temp_supply_pools = []
         
         self.max_supply=max_supply
+        
+        self.multiple=multiple
+        
+        if burn_coefficient>1 or burn_coefficient<=0:
+            raise Exception('burn_coefficient needs to be in (0,1]')
+        
+        self._burn_coefficient = burn_coefficient
         
         return None
     
@@ -474,11 +486,13 @@ class TokenEconomy_Basic(TokenEconomy):
             self._price_function.execute(use_previous_supply=False)        
             self.price=self._price_function.get_price()
         
+        self.price = self.price*self.multiple
+        
         self._holding_time_controller.execute()        
 
         
         if self.burn_token:
-            self.change_supply(self.token,-self.transactions_volume_in_tokens)
+            self.change_supply(self.token,-self.transactions_volume_in_tokens*self._burn_coefficient)
 
         #Store the parameters
         self._holding_time_store.append(self.holding_time)

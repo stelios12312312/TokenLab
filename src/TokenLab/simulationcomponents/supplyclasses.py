@@ -476,7 +476,7 @@ class SupplyController_Burn(SupplyController):
     Simulates a burn mechanism.
     """
     
-    def __init__(self,burn_param=0.05,burn_style='perc'):
+    def __init__(self,burn_param=0.05,burn_style='perc',self_destruct:bool=False):
         """
         
 
@@ -489,6 +489,7 @@ class SupplyController_Burn(SupplyController):
             that you burn a %burn_param number of tokens at each iteration.
             
             Otherwise you burn a fixed number pf tokens equal to burn_param
+        self_destruct: If True, then this supply pool works only once.
 
         Returns
         -------
@@ -502,6 +503,8 @@ class SupplyController_Burn(SupplyController):
         self.burn_style = burn_style
         
         self.dependencies={TokenEconomy:None}
+        
+        self.self_destruct = self_destruct
 
     
     
@@ -521,7 +524,10 @@ class SupplyController_Burn(SupplyController):
         self.supply = burn_tokens
         
         self.iteration+=1
-    
+        
+        if self.self_destruct:
+            self.burn_param=0
+        
         
         
 class SupplyController_InvestorDumperSpaced(SupplyController):
