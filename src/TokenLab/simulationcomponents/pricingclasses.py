@@ -421,7 +421,9 @@ class PriceFunction_LinearRegression(PriceFunctionController):
           #  +0.99644 * np.log(previous_price)
           
         if T>0: 
-            log_price_new = 0.88 * np.log(T) + 0.84* np.log(1/M) + 1.15 * np.log(1/V)
+            #log_price_new = 0.88 * np.log(T) + 0.84* np.log(1/M) + 1.15 * np.log(1/V)
+            #log_price_new = 0.88 * np.log(T) + 0.84* np.log(1/M) + 1.15 * np.log(1/V)
+            log_price_new = 5.40484 + 0.86606 * np.log(T) + 1.14534 * np.log(1/M) + 1.36417 * np.log(1/V)
         else:
             log_price_new=0
             
