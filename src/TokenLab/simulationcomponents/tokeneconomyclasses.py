@@ -196,8 +196,10 @@ class TokenEconomy_Basic(TokenEconomy):
         
         self.multiple=multiple
         
-        if burn_coefficient>1 or burn_coefficient<=0:
+        if (burn_coefficient>1 or burn_coefficient<=0) and self.burn_token==True:
             raise Exception('burn_coefficient needs to be in (0,1]')
+        elif self.burn_token==False:
+            print('Ignoring burn coefficient since burn_token=False')
         
         self._burn_coefficient = burn_coefficient
         
