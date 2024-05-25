@@ -213,7 +213,7 @@ class PriceFunction_EOE(PriceFunctionController):
     noise w as added.
     """
     
-    def __init__(self,noise_addon:AddOn=None,smoothing_param:float=0.3,use_velocity:bool=True):
+    def __init__(self,noise_addon:AddOn=None,smoothing_param:float=0.5,use_velocity:bool=True):
         """
         
         Parameters
@@ -242,7 +242,6 @@ class PriceFunction_EOE(PriceFunctionController):
         
         transaction_volume_in_fiat=tokeneconomy.transactions_value_in_fiat
         holding_time=tokeneconomy.holding_time
-        
                 
         if use_previous_supply:
             M = tokeneconomy.previous_supply
@@ -268,13 +267,12 @@ class PriceFunction_EOE(PriceFunctionController):
         
         if self._noise_addon!=None:
             price_new_2=self._noise_addon.apply(**{'value':price_new})
+            if price_new_2>0:
+                self.price = price_new_2
+            else:
+                self.price = price_new
         else:
-            price_new_2 = -1
-            
-        if price_new_2<0:
-            self.price=price_new
-        else:
-            self.price=price_new_2
+            self.price = price_new
         
         self.iteration+=1
         
@@ -422,8 +420,8 @@ class PriceFunction_LinearRegression(PriceFunctionController):
           
         if T>0: 
             #log_price_new = 0.88 * np.log(T) + 0.84* np.log(1/M) + 1.15 * np.log(1/V)
-            #log_price_new = 0.88 * np.log(T) + 0.84* np.log(1/M) + 1.15 * np.log(1/V)
-            log_price_new = 5.40484 + 0.86606 * np.log(T) + 1.14534 * np.log(1/M) + 1.36417 * np.log(1/V)
+            log_price_new = 0.88 * np.log(T) + 0.84* np.log(1/M) + 1.15 * np.log(1/V)
+            # log_price_new = 5.40484 + 0.86606 * np.log(T) + 1.14534 * np.log(1/M) + 1.36417 * np.log(1/V)
         else:
             log_price_new=0
             

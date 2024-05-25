@@ -31,6 +31,11 @@ class AddOn_Noise(AddOn, ABC):
         Abstract method. Each AddOn_Noise class needs to have an apply function.
         """
         pass
+    
+    def reset(self):
+        
+        self.iteration=0
+        
 
     
     
@@ -164,6 +169,40 @@ class AddOn_RandomReduction(AddOn_Noise):
         reduced_value = value * (1 - reduction_percentage)
 
         return reduced_value
+    
+class AddOn_MultiplierTimed(AddOn_Noise):
+    """
+    This class is used to supress or increase numbers for a predefined number of iterations
+    """
+    
+    def __init__(self, multiplier:float=1,iterations:List=[0,1]):
+        """
+        
+
+        Parameters
+        ----------
+        multiplier : float, optional
+            The value provided is multiplied by multiplier. The default is 1.
+        iterations : List, optional
+            The rule is applied only within the bounds [start_iteration,end_iteration]. The default is [0,1].
+
+        Returns
+        -------
+        None.
+
+        """
+        self.multiplier = multiplier
+        self.iterations = iterations
+        self.iteration=0
+        
+    def apply(self,value) -> float:
+        if self.iteration>=self.iterations[0] and self.iteration<=self.iterations[1]:
+            new_value = value*self.multiplier
+        else:
+            new_value = value
+        
+        self.iteration+=1
+        return new_value
     
     
 

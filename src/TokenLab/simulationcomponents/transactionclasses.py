@@ -14,6 +14,7 @@ import numpy as np
 from TokenLab.utils.helpers import log_saturated_space,logistic_saturated_space
 import copy
 import time
+from matplotlib import pyplot as plt
 
 
 class TransactionManagement(Controller):
@@ -74,6 +75,10 @@ class TransactionManagement(Controller):
     def get_num_transactions(self)->int:
         
         return self.num_transactions
+    
+    def plot(self):
+        
+        plt.plot(self._transactions_value_store)
     
         
 class TransactionManagement_Constant(TransactionManagement):
@@ -142,15 +147,37 @@ class TransactionManagement_FromData(TransactionManagement):
     the number of users.
     """
     
-    def __init__(self,data:List):
+    def __init__(self,data:List,repeat_last=True):
+        """
+        
+
+        Parameters
+        ----------
+        data : List
+            The supply schedule, one datapoint per unit of time.
+        repeat_last : TYPE, optional
+            If true, then keep emitting the last datapoint in case the list runs out. The default is True.
+
+        Returns
+        -------
+        None.
+
+        """
         super(TransactionManagement_FromData,self).__init__()
         
         self.data=np.ndarray.flatten(np.array(data))
+        self.repeat_last = repeat_last
         
         
     def execute(self)->float:
-        
-        res=self.data[self.iteration]
+        if self.iteration<len(self.data):
+            res=self.data[self.iteration]
+        else:
+            if self.repeat_last:
+                return self.data[-1]
+            else:
+                raise Exception ('TransactionManagement_FromData ran out of data!')
+  
         
         self.transactions_value=res
         self.iteration+=1
@@ -380,7 +407,13 @@ class TransactionManagement_Trend(TransactionManagement):
         
         self.total_users=num_users
         
-        self.transactions_value=num_users*self._transactions_means_store[self.iteration]
+        value=num_users*self._transactions_means_store[self.iteration]
+        
+        if self._noise_component is not None:
+            for noise in self._noise_component:
+                value = noise.apply(value)
+                
+        self.transactions_value = value
         
         self._transactions_value_store.append(self.transactions_value)
         self.iteration+=1
@@ -399,24 +432,19 @@ class TransactionManagement_Trend(TransactionManagement):
         
         self.iteration=0
         self._transactions_means_store=copy.deepcopy(self._transactions_means_store_original)
-        
-        # Applies the noise add-on. If a value is below 0, then it is kept at 0.
         if self._noise_component is not None:
-            dummy = []
-            for i in range(len(self._transactions_means_store)):
-                temporary = self._transactions_means_store_original[i]
-                for noiser in self._noise_component:
-                    temporary = noiser.apply(value=temporary)
-        
-                if temporary >= 0:
-                    dummy.append(temporary)
-                else:
-                    dummy.append(self._transactions_means_store_original[i])
-        
-            self._transactions_means_store = dummy
+            for noise in self._noise_component:
+                noise.reset()
 
             
         return True
+    
+    
+    def plot(self):
+        
+        plt.plot(self._transactions_means_store)
+        plt.xlabel('iterations')
+        plt.ylabel('transactions')
     
     
 class TransactionManagement_MarketcapStochastic(TransactionManagement):
@@ -696,7 +724,13 @@ class TransactionManagement_Stochastic(TransactionManagement):
         
         if self.value_per_transaction is None:
             seed=int(int(time.time())*np.random.rand())
-            value_mean=np.mean(self.value_distribution.rvs(size=1000,loc=val_param['loc'],scale=val_param['scale'],random_state=seed))
+            value_mean=np.mean(self.value_distribution.rvs(size=1000,**val_param,random_state=seed))
+
+            # try:
+            #     value_mean=np.mean(self.value_distribution.rvs(size=1000,loc=val_param['loc'],scale=val_param['scale'],random_state=seed))
+            # except:
+            #     value_mean=np.mean(self.value_distribution.rvs(size=1000,**val_param,random_state=seed))
+
         else:
             value_mean=self.value_per_transaction
             

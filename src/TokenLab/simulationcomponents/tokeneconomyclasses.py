@@ -176,8 +176,7 @@ class TokenEconomy_Basic(TokenEconomy):
         self.burn_token=burn_token
         
         if supply_is_added is None:
-            print('Setting supply_is_added=True ! This will work fine for most use cases, unless you want the supply to take certain values irrespective of the trading volume.')
-            supply_is_added=True
+            raise Exception('The parameter supply_is_added is not set! You need to make a decision. Setting supply_is_added=True ! This will work fine for most use cases, unless you want the supply to take certain values irrespective of the trading volume.')
         
         self.supply_is_added = supply_is_added
         
@@ -460,9 +459,9 @@ class TokenEconomy_Basic(TokenEconomy):
                 
                 if self.safeguard_current_supply_level:
                     if self.transactions_volume_in_tokens >= self.supply:
-                        # warnings.warn('Warning! Demand surpassed supply at iteration : '+str(self.iteration))
+                        print('Warning! Demand surpassed supply at iteration : '+str(self.iteration))
                         self.transactions_volume_in_tokens = self.supply
-                        self.transactions_value_in_fiat = self.transactions_volume_in_tokens*self.price
+                        #self.transactions_value_in_fiat = self.transactions_volume_in_tokens*self.price
                 
             else:
                 raise Exception('Agent pool found that does not function in neither fiat nor the token! Please specify correct currency!')
