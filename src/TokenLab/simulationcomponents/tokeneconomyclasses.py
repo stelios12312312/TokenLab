@@ -613,7 +613,7 @@ class TokenMetaSimulator:
     def execute(self, iterations: int = 36, repetitions: int = 30) -> pd.DataFrame:
         repetition_reports = []
         for i in tqdm(range(repetitions)):
-            scipy.stats.rv_continuous.random_state == int(
+            scipy.stats.rv_continuous.random_state = int(
                 time.time() + int(np.random.rand())
             )
             token_economy_copy = copy.deepcopy(self.token_economy)
