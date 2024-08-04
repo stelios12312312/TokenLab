@@ -311,18 +311,18 @@ class PriceFunction_BondingCurve(PriceFunctionController):
 
     def execute(self) -> float:
         tokeneconomy = self.dependencies[TokenEconomy]
-        supply_of_tokens = tokeneconomy.transactions_volume_in_tokens
+        current_supply = tokeneconomy.supply
+        transaction_volume = tokeneconomy.transactions_volume_in_tokens
 
-        if supply_of_tokens + tokeneconomy.supply > self._max_supply:
-            supply_of_tokens = self._max_supply - tokeneconomy.supply
+        # Ensure the supply does not exceed the max supply
+        new_supply = min(current_supply + transaction_volume, self._max_supply)
+        tokeneconomy.supply = new_supply
 
-        tokeneconomy.supply += supply_of_tokens
-
-        price_new = self._bonding_function(tokeneconomy.supply)
-
-        self.price = price_new
-
+        # Calculate the new price based on the bonding function
+        self.price = self._bonding_function(new_supply)
         self.iteration += 1
+
+        return self.price
 
 
 class PriceFunction_IssuanceCurve(PriceFunctionController):
