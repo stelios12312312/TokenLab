@@ -756,7 +756,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
         else:
             value_mean = self.value_per_transaction
 
-        value_total = trans * value_mean * self.active_users * trans
+        value_total = trans * value_mean * self.active_users
 
         # transaction value can never be negative
         if value_total < 0 and self.type_transaction == "positive":
