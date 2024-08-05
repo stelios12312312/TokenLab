@@ -182,15 +182,13 @@ class HoldingTime_Adaptive(HoldingTimeController):
             / (tokeneconomy.transactions_value_in_fiat + +0.000000001)
         )
 
-        if self._noise_addon != None:
-            dummy = self._noise_addon.apply(**{"value": price_new})
+        # Apply noise if noise_addon is set
+        if self._noise_addon:
+            noise = self._noise_addon.apply(value=holding_time)
+            holding_time += noise
 
-            if dummy + holding_time > 0:
-                holding_time = dummy + holding_time
-        if holding_time < self.minimum:
-            holding_time = self.minimum
-        elif holding_time > self.maximum:
-            holding_time = self.maximum
+        # Clamp the holding time within the specified minimum and maximum bounds
+        holding_time = max(self.minimum, min(holding_time, self.maximum))
 
         self.holding_time = holding_time
 
