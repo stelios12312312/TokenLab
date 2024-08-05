@@ -349,7 +349,7 @@ class PriceFunction_IssuanceCurve(PriceFunctionController):
         Parameters
         ----------
         function : Callable
-            The bonding curve function.
+            The issuance curve function.
 
         Returns
         -------
@@ -373,7 +373,7 @@ class PriceFunction_IssuanceCurve(PriceFunctionController):
         tokeneconomy.supply = new_supply
         self._tokens_ever_issued += added_supply
 
-        # Calculate new price based on the bonding function
+        # Calculate new price based on the issuance function
         self.price = self._bonding_function(self._tokens_ever_issued)
         self.iteration += 1
 
