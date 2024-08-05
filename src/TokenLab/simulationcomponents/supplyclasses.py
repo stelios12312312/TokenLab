@@ -105,15 +105,17 @@ class SupplyController_FromData(SupplyController):
         self._on_end = on_end_continue
 
     def execute(self):
-        self.supply = self._supplylist[self._iteration]
-        self._iteration += 1
-
-        if self._on_end and self._iteration == len(self._supplylist):
-            self._iteration -= 1
-        elif not self._on_end and self._iteration == len(self._supplylist):
-            raise Exception(
-                "Supply controller reached the end of iterations and no supply is provided!"
-            )
+        # Check if we have reached the end of the supply list
+        if self._iteration < len(self._supplylist):
+            self.supply = self._supplylist[self._iteration]
+            self._iteration += 1
+        else:
+            if self._on_end:
+                self.supply = self._supplylist[-1]
+            else:
+                raise Exception(
+                    "Supply controller reached the end of iterations and no supply is provided!"
+                )
 
 
 class SupplyController_CliffVesting(SupplyController):
