@@ -119,79 +119,85 @@ class SupplyController_FromData(SupplyController):
 
 
 class SupplyController_CliffVesting(SupplyController):
+    """
+    Implements a cliff vesting schedule for token supply.
+    """
 
     def __init__(
         self,
         token_amount: float,
         vesting_period: int,
         cliff: int,
-        name=None,
+        name = None,
         delay: int = 0,
     ):
         """
-
-
         Parameters
         ----------
         token_amount : float
-            DESCRIPTION.
+            The total amount of tokens to be vested.
         vesting_period : int
-            DESCRIPTION.
+            The total number of periods over which the tokens will be vested.
         cliff : int
-            DESCRIPTION.
-        name : TYPE, optional
-            DESCRIPTION. The default is None.
+            The initial number of periods with no vesting.
+        name : str, optional
+            The name of the vesting schedule. The default is None.
         delay : int, optional
-            DESCRIPTION. The default is -1.
+            The initial delay before vesting starts. The default is 0.
 
         Returns
         -------
         None.
-
         """
         super(SupplyController_CliffVesting, self).__init__()
         self.name = name
+        self._data = self._generate_vesting_schedule(
+            token_amount, vesting_period, cliff, delay
+        )
+        self._iteration = 0
 
-        held_tokens = 0
-        total_tokens = token_amount
+    def _generate_vesting_schedule(self, token_amount, vesting_period, cliff, delay):
+        """
+        Generates the vesting schedule.
 
+        Parameters
+        ----------
+        token_amount : float
+            The total amount of tokens to be vested.
+        vesting_period : int
+            The total number of periods over which the tokens will be vested.
+        cliff : int
+            The initial number of periods with no vesting.
+        delay : int
+            The initial delay before vesting starts.
+
+        Returns
+        -------
+        data : list
+            The vesting schedule as a list of token amounts.
+        """
         data = []
-        if vesting_period == 0:
-            chunk = token_amount
-        else:
-            chunk = token_amount / vesting_period
-        for i in range(cliff + vesting_period):
-            if i < delay:
+        total_tokens = token_amount
+        chunk = token_amount / vesting_period if vesting_period > 0 else token_amount
+
+        for period in range(delay + cliff + vesting_period):
+            if period < delay:
                 data.append(0)
-            elif i < cliff:
+            elif period < delay + cliff:
                 data.append(0)
-                if total_tokens >= chunk:
-                    total_tokens -= chunk
-                    held_tokens += chunk
-                else:
-                    held_tokens += total_tokens
-                    total_tokens = 0
-            elif i == cliff:
-                if total_tokens >= chunk:
-                    total_tokens -= chunk
-                    held_tokens += chunk
-                else:
-                    held_tokens += total_tokens
-                    total_tokens = 0
-                data.append(held_tokens)
+            elif period == delay + cliff:
+                data.append(min(total_tokens, chunk))
+                total_tokens -= min(total_tokens, chunk)
             else:
-                if total_tokens >= chunk:
-                    data.append(chunk)
-                    total_tokens -= chunk
-                else:
-                    data.append(total_tokens)
-                    total_tokens = 0
-        self._data = data
+                data.append(min(total_tokens, chunk))
+                total_tokens -= min(total_tokens, chunk)
+
+        return data
 
     def execute(self):
-        try:
+        if self._iteration < len(self._data):
             self.supply = self._data[self._iteration]
-        except:
+        else:
             self.supply = 0
 
         self._iteration += 1
