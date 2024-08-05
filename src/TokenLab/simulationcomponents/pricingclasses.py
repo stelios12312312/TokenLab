@@ -366,19 +366,18 @@ class PriceFunction_IssuanceCurve(PriceFunctionController):
         tokeneconomy = self.dependencies[TokenEconomy]
         supply_of_tokens = tokeneconomy.transactions_volume_in_tokens
 
-        new_supply = tokeneconomy.supply + supply_of_tokens
-        if new_supply > self._max_supply:
-            new_supply = self._max_supply - tokeneconomy.supply
+        # Calculate new supply ensuring it does not exceed max supply
+        new_supply = min(tokeneconomy.supply + supply_of_tokens, self._max_supply)
+        added_supply = new_supply - tokeneconomy.supply
 
-        tokeneconomy.supply += new_supply
+        tokeneconomy.supply = new_supply
+        self._tokens_ever_issued += added_supply
 
-        self._tokens_ever_issued += new_supply
-
-        price_new = self._bonding_function(self._tokens_ever_issued)
-
-        self.price = price_new
-
+        # Calculate new price based on the bonding function
+        self.price = self._bonding_function(self._tokens_ever_issued)
         self.iteration += 1
+
+        return self.price
 
 
 class PriceFunction_LinearRegression(PriceFunctionController):
