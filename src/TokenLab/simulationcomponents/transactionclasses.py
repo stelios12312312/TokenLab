@@ -216,26 +216,25 @@ class TransactionManagement_Channeled(TransactionManagement):
         self._noise_component = noise_addons
 
     def execute(self) -> float:
-
-        if self._fiat_or_token == "fiat":
-            value = (
-                self._dependency_token_economy.transactions_value_in_fiat
-                * self._percentage
-            )
-        elif self._fiat_or_token == "token":
-            value = (
-                self._dependency_token_economy.transactions_volume_in_tokens
-                * self._percentage
-            )
-        else:
+        # Validate the fiat_or_token value
+        if self._fiat_or_token not in ["fiat", "token"]:
             raise Exception(
                 "When using a channeled transactions manager you need to define Fiat or Token!"
             )
 
-        if self._noise_component is not None:
+        # Calculate the value based on the type (fiat or token)
+        value = self._percentage * (
+            self._dependency_token_economy.transactions_value_in_fiat
+            if self._fiat_or_token == "fiat"
+            else self._dependency_token_economy.transactions_volume_in_tokens
+        )
+
+        # Apply noise components if any
+        if self._noise_component:
             for noiser in self._noise_component:
                 value = noiser.apply(value=value)
 
+        # Update state and return the value
         self.transactions_value = value
         self.iteration += 1
 
