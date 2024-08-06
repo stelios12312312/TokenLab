@@ -395,7 +395,6 @@ class TransactionManagement_Trend(TransactionManagement):
 
     def execute(self, dependency: str = "AgentPool") -> float:
         """
-
         Parameters
         ----------
         dependency : str, optional
@@ -406,30 +405,26 @@ class TransactionManagement_Trend(TransactionManagement):
         -------
         float
             The total value of transactions.
-
         """
+        # Validate the dependency and resolve it to the actual class
+        if dependency not in self.dependencies:
+            raise Exception("You must use either 'AgentPool' or 'TokenEconomy'")
 
-        if dependency == "AgentPool":
-            dependency = AgentPool
-        elif dependency == "TokenEconomy":
-            dependency = TokenEconomy
-        else:
-            raise Exception("You must use either AgentPool or TokenEconomy")
+        num_users = self.dependencies[self.dependencies[dependency]]["num_users"]
 
-        num_users = self.dependencies[dependency]["num_users"]
-
-        self.total_users = num_users
-
+        # Calculate the transaction value
         value = num_users * self._transactions_means_store[self.iteration]
 
-        if self._noise_component is not None:
+        # Apply noise components if any
+        if self._noise_component:
             for noise in self._noise_component:
-                value = noise.apply(value)
+                value = noise.apply(value=value)
 
+        # Update state and return the value
         self.transactions_value = value
-
         self._transactions_value_store.append(self.transactions_value)
         self.iteration += 1
+
         return self.transactions_value
 
     def reset(self) -> bool:
