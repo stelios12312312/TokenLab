@@ -77,7 +77,7 @@ class UserGrowth_Spaced(UserGrowth):
             logistic_saturated_space,
         ] = np.linspace,
         name: str = None,
-        noise_addons: [AddOn] = None,
+        noise_addons: List[AddOn] = [],
         use_difference: bool = False,
     ) -> None:
         """
