@@ -281,24 +281,23 @@ class TransactionManagement_Assumptions(TransactionManagement):
             self.data = dummy
 
     def execute(self, dependency: str = "AgentPool") -> float:
+        # Validate dependency
+        if dependency not in self.dependencies:
+            raise Exception("You must use either 'AgentPool' or 'TokenEconomy'")
 
-        if dependency == "AgentPool":
-            dependency = AgentPool
-        elif dependency == "TokenEconomy":
-            dependency = TokenEconomy
-        else:
-            raise Exception("You must use either AgentPool or TokenEconomy")
+        # Get the number of users if not ignored
+        num_users = (
+            1 if self._ignore_num_users else self.dependencies[dependency]["num_users"]
+        )
 
-        if not self._ignore_num_users:
-            num_users = self.dependencies[dependency]["num_users"]
-        else:
-            num_users = 1
-        res = self.data[self.iteration] * num_users
+        # Calculate the transaction value
+        value = self.data[self.iteration] * num_users
 
-        self.transactions_value = res
+        # Update the state
+        self.transactions_value = value
         self.iteration += 1
 
-        return res
+        return value
 
 
 class TransactionManagement_Trend(TransactionManagement):
@@ -550,7 +549,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
 
     Dependent class: The execute() argument is reading from a UserGrowth class that provides
     the current number of users
-    
+
     """
 
     def __init__(
