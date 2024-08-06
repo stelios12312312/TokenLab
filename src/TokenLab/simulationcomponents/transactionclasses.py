@@ -510,20 +510,14 @@ class TransactionManagement_TrendSimple(TransactionManagement):
     def execute(self):
         dummy_value = self._start_amount + self.iteration * self._increment
 
-        if self._noise_component is not None:
-            temporary = dummy_value
+        if self._noise_component:
             for noiser in self._noise_component:
-                temporary = noiser.apply(value=temporary)
+                dummy_value = noiser.apply(value=dummy_value)
+            dummy_value = max(
+                dummy_value, self._start_amount + self.iteration * self._increment
+            )
 
-            if temporary >= 0:
-                final_value = temporary
-            else:
-                final_value = dummy_value
-        else:
-            final_value = dummy_value
-
-        self.transactions_value = final_value
-
+        self.transactions_value = dummy_value
         self.iteration += 1
 
         return self.transactions_value
