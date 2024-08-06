@@ -680,21 +680,28 @@ class SupplyController_InvestorDumperSpaced(SupplyController):
         self._dumping_store_original = self._generate_dumping_store(
             dumping_initial, dumping_final
         )
-        if not self._noise_component:
-            self._dumping_store = self._apply_noise(self._dumping_store_original)
+        self._dumping_store = self._apply_noise(self._dumping_store_original)
 
         self._dumped_tokens_store = []
         self.max_iterations = num_steps
         self.iteration = 0
 
     def _generate_dumping_store(self, start: float, stop: float) -> np.ndarray:
+        """
+        Generates the dumping store sequence using the space function.
+        """
 
         return np.round(
             self.space_function(start=start, stop=stop, num=self.num_steps)
         ).astype(int)
 
     def _apply_noise(self, dumping_store: np.ndarray) -> np.ndarray:
+        """
+        Applies noise to the dumping store if noise component is present.
+        """
 
+        if not self._noise_component:
+            return dumping_store
         noisy_store = []
         for value in dumping_store:
             noisy_value = value + self._noise_component.apply(value=value)
