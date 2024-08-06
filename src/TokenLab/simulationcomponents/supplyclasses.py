@@ -128,7 +128,7 @@ class SupplyController_CliffVesting(SupplyController):
         token_amount: float,
         vesting_period: int,
         cliff: int,
-        name = None,
+        name=None,
         delay: int = 0,
     ):
         """
@@ -636,6 +636,70 @@ class SupplyController_InvestorDumperSpaced(SupplyController):
         self._dumped_tokens_store = []
         self.max_iterations = num_steps
         self.iteration = 0
+
+
+class SupplyController_InvestorDumperSpaced(SupplyController):
+    """
+    Simulates an investor pool that is just dumping the coin in a predictable fashion. Supports noise addons.
+    """
+
+    def __init__(
+        self,
+        dumping_initial: float,
+        dumping_final: float,
+        num_steps: int,
+        space_function: Union[
+            np.linspace, np.logspace, np.geomspace, log_saturated_space
+        ] = np.linspace,
+        name: str = None,
+        noise_addon: AddOn = None,
+    ):
+        """
+        Parameters
+        ----------
+        dumping_initial : float
+            The initial number of tokens to be dumped.
+        dumping_final : float
+            The final number of tokens to be dumped.
+        num_steps : int
+            The number of iterations the simulation will go for.
+        space_function : Union[np.linspace,np.logspace,np.geomspace,log_saturated_space], optional
+            A function that will generate the sequence of supply points. The default is np.linspace.
+        name : str, optional
+            The name of this controller. The default is None.
+        noise_addon : AddOn, optional
+            Noise AddOn from the AddOns module. The default is None.
+        """
+        super(SupplyController_InvestorDumperSpaced, self).__init__()
+
+        self.name = name
+        self.num_steps = num_steps
+        self.space_function = space_function
+        self._noise_component = noise_addon
+
+        self._dumping_store_original = self._generate_dumping_store(
+            dumping_initial, dumping_final
+        )
+        if not self._noise_component:
+            self._dumping_store = self._apply_noise(self._dumping_store_original)
+
+        self._dumped_tokens_store = []
+        self.max_iterations = num_steps
+        self.iteration = 0
+
+    def _generate_dumping_store(self, start: float, stop: float) -> np.ndarray:
+
+        return np.round(
+            self.space_function(start=start, stop=stop, num=self.num_steps)
+        ).astype(int)
+
+    def _apply_noise(self, dumping_store: np.ndarray) -> np.ndarray:
+
+        noisy_store = []
+        for value in dumping_store:
+            noisy_value = value + self._noise_component.apply(value=value)
+            noisy_store.append(max(noisy_value, value))
+        return np.array(noisy_store)
 
     def execute(self) -> float:
         """
