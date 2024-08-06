@@ -81,6 +81,27 @@ class UserGrowth_Spaced(UserGrowth):
         use_difference: bool = False,
     ) -> None:
         """
+        Parameters
+        ----------
+        initial_users : int
+            The initial number of users.
+        max_users : int
+            The maximum number of users.
+        num_steps : int
+            The number of iterations the simulation will run for.
+        space_function : Union[np.linspace, np.logspace, np.geomspace, log_saturated_space, logistic_saturated_space], optional
+            A function that will generate the sequence of user numbers. The default is np.linspace.
+        name : str, optional
+            The name of this controller. The default is None.
+        noise_addons : List[AddOn], optional
+            Noise AddOns from the AddOns module. The default is an empty list.
+        use_difference : bool, optional
+            If True, it will calculate and return the difference between time steps. The default is False.
+
+        Returns
+        -------
+        None.
+
         use_difference: If True, it will calculate and return the difference between time steps. Essentially, the user
         base will grow according to the difference between the steps in the sequence.
 
@@ -93,7 +114,6 @@ class UserGrowth_Spaced(UserGrowth):
 
             with difference:
                 final=[100,0,20,30,50]
-
         """
         super(UserGrowth_Spaced, self).__init__()
 
@@ -102,63 +122,53 @@ class UserGrowth_Spaced(UserGrowth):
         self.num_steps = num_steps
         self.space_function = space_function
         self._noise_component = noise_addons
-
         self.name = name
+        self.use_difference = use_difference
 
-        self._num_users_store_original = np.round(
-            self.space_function(
-                start=self._initial_users, stop=self.max_users, num=num_steps
-            )
-        ).astype(int)
-        self._num_users_store = copy.deepcopy(self._num_users_store_original)
-
-        # applies the noise addon. If a value is below 0, then it is kept at 0.
-        if self._noise_component != None:
-            dummy = []
-            for i in range(len(self._num_users_store)):
-                temporary = self._num_users_store_original[i]
-                for noiser in self._noise_component:
-                    temporary = noiser.apply(value=temporary)
-
-                if temporary >= 0:
-                    dummy.append(temporary)
-                else:
-                    dummy.append(self._num_users_store_original[i])
-
-            self._num_users_store = dummy
-        # self.num_users=self._initial_users
-
-        if use_difference:
-            self._num_users_store_original = [self._initial_users] + np.diff(
-                self._num_users_store_original
-            ).tolist()
-
-            self._num_users_store = copy.deepcopy(self._num_users_store_original)
+        self._num_users_store_original = self._generate_user_store()
+        self._num_users_store = self._apply_noise(
+            copy.deepcopy(self._num_users_store_original)
+        )
 
         self.max_iterations = num_steps
 
+    def _generate_user_store(self) -> np.ndarray:
+        """
+        Generates the user store sequence using the space function.
+        """
+        user_store = np.round(
+            self.space_function(
+                start=self._initial_users, stop=self.max_users, num=self.num_steps
+            )
+        ).astype(int)
+
+        if self.use_difference:
+            user_store = [self._initial_users] + np.diff(user_store).tolist()
+
+        return user_store
+
+    def _apply_noise(self, user_store: np.ndarray) -> np.ndarray:
+        """
+        Applies noise to the user store if noise component is present.
+        """
+        if not self._noise_component:
+            return user_store
+
+        noisy_store = []
+        for value in user_store:
+            for noiser in self._noise_component:
+                value = noiser.apply(value=value)
+            noisy_store.append(max(value, 0))  # Ensure no negative values
+
+        return np.array(noisy_store)
+
     def reset(self) -> None:
         """
-        recalculates the noise component and sets the user counter back to 0
+        Recalculates the noise component and sets the user counter back to 0.
         """
-
-        self._num_users_store = copy.deepcopy(self._num_users_store_original)
-
-        # applies the noise addon. If a value is below 0, then it is kept at 0.
-        if self._noise_component != None:
-            dummy = []
-            for i in range(len(self._num_users_store)):
-                temporary = self._num_users_store_original[i]
-                for noiser in self._noise_component:
-                    temporary = noiser.apply(**{"value": temporary})
-
-                if temporary >= 0:
-                    dummy.append(temporary)
-                else:
-                    dummy.append(self._num_users_store_original[i])
-
-            self._num_users_store = dummy
-
+        self._num_users_store = self._apply_noise(
+            copy.deepcopy(self._num_users_store_original)
+        )
         self.iteration = 0
         self.num_users = self._initial_users
 
