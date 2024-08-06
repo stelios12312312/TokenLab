@@ -137,12 +137,6 @@ class UserGrowth_Spaced(UserGrowth):
 
         self.max_iterations = num_steps
 
-    def execute(self) -> int:
-
-        users = super(UserGrowth_Spaced, self).execute()
-
-        return users
-
     def reset(self) -> None:
         """
         recalculates the noise component and sets the user counter back to 0
