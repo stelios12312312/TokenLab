@@ -468,7 +468,7 @@ class TransactionManagement_MarketcapStochastic(TransactionManagement):
         distribution_params={"loc": 0, "scale": 0.25},
         sign="any",
     ):
-        super(TransactionManagement_MarketcapStochastic).__init__()
+        super(TransactionManagement_MarketcapStochastic, self).__init__()
 
         self.dependencies = {AgentPool: None}
         self.distribution = distribution
