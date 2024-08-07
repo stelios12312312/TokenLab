@@ -71,7 +71,7 @@ class TokenEconomy_Basic(TokenEconomy):
         agent_pools: List[AgentPool] = None,
         burn_token: bool = False,
         burn_coefficient: float = 1,
-        supply_is_added: bool = None,
+        supply_is_added: bool = True,
         name: str = None,
         safeguard_current_supply_level: bool = True,
         ignore_supply_controller: bool = False,
@@ -772,7 +772,7 @@ class TokenEconomy_Dependent(TokenEconomy_Basic):
         unit_of_time: str = "month",
         agent_pools: List[AgentPool] = None,
         burn_token: bool = False,
-        supply_is_added: bool = False,
+        supply_is_added: bool = True,
         name: str = None,
         ignore_supply_controller: bool = False,
     ) -> None:
