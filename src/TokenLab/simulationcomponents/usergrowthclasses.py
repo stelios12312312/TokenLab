@@ -235,7 +235,7 @@ class UserGrowth_Stochastic(UserGrowth):
         user_growth_dist_parameters: Union[List, Dict] = [{"mu": 1000}],
         add_to_userbase: bool = False,
         num_initial_users: int = 0,
-        noise_add_ons: [AddOn] = None,
+        noise_addons: List[AddOn] = [],
     ):
         """
 
@@ -263,7 +263,7 @@ class UserGrowth_Stochastic(UserGrowth):
         self.user_growth_dist_parameters = user_growth_dist_parameters
         self.num_users = num_initial_users
         self.add_to_userbase = add_to_userbase
-
+        self._noise_component = noise_addons
         return None
 
     def execute(self):
