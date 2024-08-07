@@ -281,8 +281,12 @@ class TransactionManagement_Assumptions(TransactionManagement):
 
     def execute(self, dependency: str = "AgentPool") -> float:
         # Validate dependency
-        if dependency not in self.dependencies:
-            raise Exception("You must use either 'AgentPool' or 'TokenEconomy'")
+        if dependency == "AgentPool":
+            dependency = AgentPool
+        elif dependency == "TokenEconomy":
+            dependency = TokenEconomy
+        else:
+            raise Exception("You must use either AgentPool or TokenEconomy")
 
         # Get the number of users if not ignored
         num_users = (
@@ -407,10 +411,14 @@ class TransactionManagement_Trend(TransactionManagement):
             The total value of transactions.
         """
         # Validate the dependency and resolve it to the actual class
-        if dependency not in self.dependencies:
-            raise Exception("You must use either 'AgentPool' or 'TokenEconomy'")
+        if dependency == "AgentPool":
+            dependency = AgentPool
+        elif dependency == "TokenEconomy":
+            dependency = TokenEconomy
+        else:
+            raise Exception("You must use either AgentPool or TokenEconomy")
 
-        num_users = self.dependencies[self.dependencies[dependency]]["num_users"]
+        num_users = self.dependencies[dependency]["num_users"]
 
         # Calculate the transaction value
         value = num_users * self._transactions_means_store[self.iteration]
