@@ -16,9 +16,6 @@ import warnings
 from transactionclasses import TransactionManagement, TransactionManagement_Constant, TransactionManagement_Stochastic, TransactionManagement_FromData
 from treasuryclasses import TreasuryBasic
 
-
-
-
 class AgentPool_Basic(AgentPool,Initialisable):
     """
     Simulates a set of agents. Requires:
@@ -30,7 +27,6 @@ class AgentPool_Basic(AgentPool,Initialisable):
     So, for this class the execute() function simply runs the users and the transactions controller. 
     
     """
-
     
     def __init__(self,users_controller:Union[UserGrowth,int]=1,transactions_controller:TransactionManagement=1,
                  currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,
@@ -56,54 +52,45 @@ class AgentPool_Basic(AgentPool,Initialisable):
         
         """   
 
+        # initialise the parent classes and the fields
         super(AgentPool_Basic,self).__init__()
-        
         self.name=name
+        self.currency=currency
+        self.chained =chained
+        self.fee = fee
+        self.activation_iteration = activation_iteration
+        self.dependencies={TokenEconomy:None}
 
+        # Check users_controller and transactions_controller types
         if isinstance(users_controller,int):
             if users_controller==1:
                 print('Warning! Users set to 1 for agent pool with name : '+str(self.name))
             users_controller=UserGrowth_Constant(users_controller)
-            
         if isinstance(users_controller,list):
             users_controller = UserGrowth_FromData(users_controller)
-            
         if isinstance(transactions_controller,float) or isinstance(transactions_controller,int):
-            transactions_controller=TransactionManagement_Constant(transactions_controller)
-            
+            transactions_controller=TransactionManagement_Constant(transactions_controller)         
         if isinstance(transactions_controller,list):
             transactions_controller=TransactionManagement_FromData(transactions_controller)
-            
-            
-            
+
+        # Link the controllers to the agent pool dependencies    
         self.users_controller=users_controller
         self.users_controller.link(AgentPool,self)
         self.transactions_controller=transactions_controller
         self.transactions_controller.link(AgentPool,self)
-        self.currency=currency
-        self.chained =chained
-        
-        
-        self.dependencies={TokenEconomy:None}
-        
-        self.fee = fee
-        
-        self.activation_iteration = activation_iteration
-        
+
+        # For fees in wrong occasions, raise exception and warnings
         if fee==None and treasury!=None:
             raise Exception('When using a treasury within an agent pool, you also need to define a fee.')
         self.treasury = treasury
-        
         if fee_type!='perc' and fee_type!='fixed':
             raise Exception('fee_type must be either perc or fixed.')
         else:
             self.fee_type=fee_type
-            
         if fee_type=='fixed' and not isinstance(self.transactions_controller,TransactionManagement_Stochastic):
             warnings.warn('Warning! Fixed fee type can only with with TransactionsManagement_Stochastic as it requires an estimation of the total number of transactions.')
-     
+        
         return None
-    
     
     def execute(self)->None:
         """
@@ -117,31 +104,35 @@ class AgentPool_Basic(AgentPool,Initialisable):
         -------
         None
             DESCRIPTION.
-
         """
         
+        # If the agent pool is not active, then simply increase the iteration and return None
         if self.iteration<self.activation_iteration:
             self.iteration+=1
             return None
         
-        if not self.chained:
-            self.num_users = self.users_controller.execute()
-            if self.num_users<0:
-                raise Exception('Negative users detected in agent pool with name='+self.name)
+        # If the agent pool is active, then execute the user and transaction controllers
         else:
-            self.num_users = self.users_controller.num_users
-        self.transactions = self.transactions_controller.execute()
-        
-        if self.treasury!=None:
-            if self.fee_type=='perc':
-                self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
+            # If the agent pool is not chained, the user controller is executed
+            # Otherwise, the number of users is taken from the chained agent pool
+            if not self.chained:
+                self.num_users = self.users_controller.execute()
+                if self.num_users<0:
+                    raise Exception('Negative users detected in agent pool with name='+self.name)
             else:
-                value = self.transactions*self.fee
-                self.treasury.execute(value=value,currency_symbol=self.currency)
-        self.iteration+=1
-        
-        return None
-    
+                self.num_users = self.users_controller.num_users # this is the number of users from the chained agent pool
+            self.transactions = self.transactions_controller.execute()
+            
+            # If the agent pool has a treasury, then execute the treasury
+            # The treasury can be either a fixed fee or a percentage fee
+            if self.treasury!=None:
+                if self.fee_type=='perc':
+                    self.treasury.execute(currency_symbol=self.currency,value=self.transactions*self.fee)
+                else:
+                    value = self.transactions*self.fee
+                    self.treasury.execute(value=value,currency_symbol=self.currency)
+            self.iteration+=1
+            return None
     
     def initialise(self):
         if self.treasury!=None:
@@ -150,36 +141,33 @@ class AgentPool_Basic(AgentPool,Initialisable):
     
     def test_integrity(self)->bool:
         """
-        
-
         Returns
         -------
         bool
-            Returns true if the integrity of the user and the transaction controller is True.
-
+            Returns true if both the integrity of the user and the transaction controller is True.
         """
-        if not self.users_controller.test_integrity():
+        if not (self.users_controller.test_integrity() and self.transactions_controller.test_integrity()):
             return False
-        if not self.transactions_controller.test_integrity():
-            return False
-        
-        return True
+        else:
+            return True
     
     def reset(self)->None:
+        """
+        Reset the iteration and the controllers
+        """
         self.iteration=0
         self.users_controller.reset()
         self.transactions_controller.reset()
-        
-        
+             
     def get_tokeneconomy(self)->TokenEconomy:
         return self.dependencies[TokenEconomy]
     
     def get_num_transactions(self)->int:
-        
         return self.transactions_controller.get_num_transactions()
 
 
 class AgentPool_BuyBack(AgentPool_Basic):
+
     def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
                  currency:str='$',name:str=None,dumper:bool=False,chained:bool=False,treasury:TreasuryBasic=None,fee:float=0,fee_type:str='perc'
                  )->None:
@@ -187,12 +175,10 @@ class AgentPool_BuyBack(AgentPool_Basic):
         
         users_controller: Controller specifying how the userbase grows over time. If the users controller is an integer,
         then the AgentPool class will simply take it as a constant value for all simulations
-        
         transactions_controller: Controller that determines the transaction volume
         currency: the currency this pool represents.
         name: the name of the pool, this can come in very handy during debugging
         dumper: Whether this is an agent pool that only sells tokens
-        
         
         """      
         super(AgentPool_BuyBack,self).__init__(users_controller=users_controller,transactions_controller=transactions_controller,
@@ -200,13 +186,7 @@ class AgentPool_BuyBack(AgentPool_Basic):
                                                fee_type=fee_type)
 
         return None
-    
-    def reset(self)->None:
-        self.iteration=0
-        self.users_controller.reset()
-        self.transactions_controller.reset()
-        
-        
+
     def execute(self)->None:
         """
         Runs the agent pool. It increases iterations by 1, and then calculates the new number of users
@@ -236,9 +216,13 @@ class AgentPool_BuyBack(AgentPool_Basic):
         sup.link(TokenEconomy,self.dependencies[TokenEconomy])
         
         return [('SupplyPool',sup)]
-        
     
+    def reset(self)->None:
+        self.iteration=0
+        self.users_controller.reset()
+        self.transactions_controller.reset()
         
+
 class AgentPool_Staking(AgentPool_Basic):
     def __init__(self,users_controller:Union[UserGrowth,int],transactions_controller:TransactionManagement,
                  staking_controller:SupplyStaker,staking_controller_params:dict,
@@ -269,7 +253,6 @@ class AgentPool_Staking(AgentPool_Basic):
         self.users_controller.reset()
         self.transactions_controller.reset()
         
-    
     def execute(self)->None:
         """
         Runs the agent pool. It increases iterations by 1, and then calculates the new number of users
@@ -330,10 +313,7 @@ class AgentPool_Staking(AgentPool_Basic):
         self.new_pools = new_pools
         
         return self.new_pools
-    
-    
-    
-        
+
 
 class AgentPool_Conditional(Initialisable,AgentPool):
     """
@@ -407,8 +387,7 @@ class AgentPool_Conditional(Initialisable,AgentPool):
         if fee==None and treasury!=None:
             raise Exception('When using a treasury within an agent pool, you also need to define a fee as a float in the range [0,1]')
         self.treasury = treasury
-        
-        
+              
     def add_condition(self,condition:Condition,controller:Union[UserGrowth,TransactionManagement])->bool:
         """
         Adds a Condition, which when True, triggers a controller object.
@@ -487,10 +466,7 @@ class AgentPool_Conditional(Initialisable,AgentPool):
             self.treasury.link(AgentPool,self)
                 
         self.initialised=True
-        
-        
-        
-        
+          
     def execute(self)->None:
         """
         This function first runs the users controller (if any), then the transactions controller (if any)
@@ -538,8 +514,7 @@ class AgentPool_Conditional(Initialisable,AgentPool):
                 else:
                     raise Exception('The condition was attached to an object that is neither a UserGrowth nor TransactionsManagement class!')        
         return None
-        
-        
+            
     def reset(self)->None:
         """
         Sets the iteration meter to 0 and resets
@@ -555,8 +530,7 @@ class AgentPool_Conditional(Initialisable,AgentPool):
             
         if self.transactions_controller!=None:
             self.transactions_controller.reset()
-            
-    
+             
     def test_integrity(self)->bool:
         """
         Tests the integrity of the controllers and the dependencies.
