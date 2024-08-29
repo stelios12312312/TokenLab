@@ -654,12 +654,12 @@ class AgentPool_Conditional(Initialisable, AgentPool):
 
         self.conditions_map.append([condition, controller])
 
-        for con in self.conditions_map:
+        for condition_, controller_ in self.conditions_map:
             # Link the controller to the agent pool
-            con[1].link(AgentPool, self)
+            controller_.link(AgentPool, self)
             # If no simulation component is specified for the condition, link it to the TokenEconomy
-            if con[0].sim_component is None:
-                con[0].sim_component = self.dependencies[TokenEconomy]
+            if condition_.sim_component is None:
+                condition_.sim_component = self.dependencies[TokenEconomy]
 
         return True
 
@@ -756,6 +756,7 @@ class AgentPool_Conditional(Initialisable, AgentPool):
 
         # Step 6: Evaluate conditions and execute associated controllers
         for condition, controller in self.conditions_map:
+            # condition.execute() returns True if the condition is met
             if condition.execute():
                 if isinstance(controller, TransactionManagement):
                     # Execute transaction controller based on connection type
@@ -822,4 +823,7 @@ class AgentPool_Conditional(Initialisable, AgentPool):
         Returns:
         - The number of transactions.
         """
-        return self.transactions_controller.get_num_transactions()
+        if self.transactions_controller:
+            return self.transactions_controller.get_num_transactions()
+        else:
+            return 0
