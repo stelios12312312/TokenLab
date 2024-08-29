@@ -219,14 +219,13 @@ class AddOn_MultiplierTimed(AddOn_Noise):
 
 class Condition:
     """
-
+    A class to evaluate a condition based on variables from a simulation component.
 
     Example usage:
-
-        usm_fiat=UserGrowth_Spaced(100,54000,ITERATIONS,log_saturated_space)
-        ap_fiat=AgentPool_Basic(users_controller=usm_fiat,transactions_controller=100,currency='$')
-
-        Condition(ap_fiat,['transactions'],lambda x:x[0]>1000)
+        usm_fiat = UserGrowth_Spaced(100, 54000, ITERATIONS, log_saturated_space)
+        ap_fiat = AgentPool_Basic(users_controller=usm_fiat, transactions_controller=100, currency='$')
+        condition = Condition(ap_fiat, ['transactions'], lambda x: x[0] > 1000)
+        result = condition.execute()
     """
 
     def __init__(
@@ -236,56 +235,52 @@ class Condition:
         sim_component: Union[TokenEconomy, Controller] = None,
     ):
         """
-        Parameters
+        Initializes the Condition class.
+
+        Parameters:
         ----------
+        sim_component : Union[TokenEconomy, Controller]
+            The simulation component from which the variables will be read.
+            This must be either a TokenEconomy or a Controller object (e.g., UserGrowth or TransactionManagement).
 
-        variables: The variables must be in a list of the variables that the condition must access.
+        variables : List[str]
+            A list of variable names that the condition needs to access.
 
-        condition:  A lambda expression or function that accepts a list of variables and returns a Boolean.
-        The condition must use brackets [] to access the variables. e.g. Condition(ap_fiat,['transactions'],lambda x:x[0]>1000)
-
-        sim_component: the module where the variables will be read from. Has to either be a TokenEconomy or a Controller object
-        (e.g. Users Controller or Transactions Controller)
-
+        condition : Callable[[List], bool]
+            A lambda expression or function that takes a list of variables and returns a Boolean.
+            The condition should access the variables via list indexing (e.g., lambda x: x[0] > 1000).
         """
         self.sim_component = sim_component
-        self.condition = condition
         self.variables = variables
+        self.condition = condition
         self.result = None
-
-        return None
 
     def execute(self) -> bool:
         """
+        Executes the condition based on the current values of the specified variables.
 
-
-        Returns
+        Returns:
         -------
-        res : True/False depending on whether the condition is true or not.
-
+        res : bool
+            True if the condition is met, False otherwise.
         """
+        # Gather the current values of the specified variables from the simulation component
+        var_list = [self.sim_component[vari] for vari in self.variables]
 
-        var_list = []
-        for vari in self.variables:
-            var_list.append(self.sim_component[vari])
+        # Evaluate the condition with the collected variables
+        self.result = self.condition(var_list)
 
-        res = self.condition(var_list)
+        return self.result
 
-        self.result = res
-
-        return res
-
-    def get_result(self) -> bool:
+    def get_result(self) -> Union[bool, None]:
         """
+        Returns the most recent result of the condition check.
 
-
-        Returns
+        Returns:
         -------
-            Returns the most recent result (if it has been executed), otherwise
-            it returns None
-
+        result : bool or None
+            The result of the most recent condition evaluation, or None if it hasn't been executed yet.
         """
-        if self.result == None:
-            warnings.warn("Condition has not executed yet. Returning None.")
-
+        if self.result is None:
+            warnings.warn("Condition has not been executed yet. Returning None.")
         return self.result
