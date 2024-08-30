@@ -339,25 +339,30 @@ class TokenEconomy_Basic(TokenEconomy):
 
         self.supply = 0
         self.initialised = True
-
+     
     def change_supply(self, currency_type: str, value: float) -> None:
+        """
+        Modifies the supply of the token based on the transaction volume or other factors.
+        
+        Ensures the supply remains within valid bounds and updates it accordingly.
+        
+        Parameters:
+        - currency_type: The type of currency (should be the token of the economy).
+        - value: The amount to change the supply by. Positive values increase the supply, negative values decrease it.
+        """
         if currency_type == self.token:
-            if value >= 0:
-                if not value + self.supply > self.max_supply:
-                    self.supply += value
-                else:
-                    self.supply = self.max_supply
-            elif value <= self.supply + value and value <= 0:
-                self.supply += value
-            else:
-                self.supply = 0
-                print(
-                    "Warning! Invalid supply change in tokeneconomy {2}. Supply {0} and value {1}. Setting supply to 0.".format(
-                        self.supply, value, self.name
+            new_supply = self.supply + value
+            
+            if value > 0:
+                self.supply = min(new_supply, self.max_supply)
+            elif value < 0:
+                self.supply = max(new_supply, 0)
+                if self.supply == 0:
+                    print(
+                        f"Warning! Invalid supply change in tokeneconomy {self.name}. Supply set to 0 after adjustment."
                     )
-                )
         else:
-            print("Currency {0} is not the economy's token!".format(currency_type))
+            print(f"Currency {currency_type} is not the economy's token!")
 
     def execute(self) -> bool:
         """
