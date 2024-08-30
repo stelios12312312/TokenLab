@@ -477,7 +477,7 @@ class SupplyController_AdaptiveStochastic(SupplyController):
         If the total supply becomes less than or equal to zero and `return_negative` is False,
         the supply will not decrease below zero.
         """
-        # Step 1: Read transaction data from the TokenEconomy
+        # Step 1: Calculate purchases_in_tokens based on current supply
         tokeneconomy = self.dependencies[TokenEconomy]
         purchases_in_tokens = (
             tokeneconomy.transactions_volume_in_tokens
@@ -498,6 +498,7 @@ class SupplyController_AdaptiveStochastic(SupplyController):
             size=1, **self._addition_dist_parameters, random_state=seed
         )[0]
         tokens_coming_back = self.inactive_tokens * percentage_addition
+        self.inactive_tokens -= tokens_coming_back
 
         # Step 4: Update the total supply
         new_supply = self.supply + tokens_coming_back - token_removal
