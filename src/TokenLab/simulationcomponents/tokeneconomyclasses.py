@@ -415,31 +415,6 @@ class TokenEconomy_Basic(TokenEconomy):
                 self.supply += self._supply.get_supply()
             else:
                 self.supply = self._supply.get_supply()
-        # Mutiple supply pools
-        for supplypool in self._supply_pools + self._temp_supply_pools:
-            supplypool.execute()
-            self.change_supply(self.token, supplypool.get_supply())
-            # if self.supply_is_added==False:
-            #     warnings.warn("""Warning! There are supply pools affecting total supply, but supply_is_added=False. This means that
-            #                   in the next iteration, the effect of the supply pools will disappear!
-            #                   Please make sure that this is really the intended behaviour.""")
-        # Check if supply is not negative or zero
-        if self.supply == 0:
-            dummy = "Warning! Supply reached 0! Iteration number {0}".format(
-                self.iteration
-            )
-            warnings.warn(dummy)
-
-        if self.supply < 0:
-            warnings.warn(
-                "Warning! Supply reached BELOW 0! Iteration number {0}".format(
-                    self.iteration
-                )
-            )
-            supply = 0
-            return False
-
-        self.previous_supply = self.supply
 
         # Get the holding time
         self.holding_time = self._holding_time_controller.get_holding_time()
@@ -508,7 +483,32 @@ class TokenEconomy_Basic(TokenEconomy):
                 # Calculate price and the new holding time
                 self._price_function.execute()
                 self.price = self._price_function.get_price()
+        
+        # Mutiple supply pools
+        for supplypool in self._supply_pools + self._temp_supply_pools:
+            supplypool.execute()
+            self.change_supply(self.token, supplypool.get_supply())
+            # if self.supply_is_added==False:
+            #     warnings.warn("""Warning! There are supply pools affecting total supply, but supply_is_added=False. This means that
+            #                   in the next iteration, the effect of the supply pools will disappear!
+            #                   Please make sure that this is really the intended behaviour.""")
+        # Check if supply is not negative or zero
+        if self.supply == 0:
+            dummy = "Warning! Supply reached 0! Iteration number {0}".format(
+                self.iteration
+            )
+            warnings.warn(dummy)
 
+        if self.supply < 0:
+            warnings.warn(
+                "Warning! Supply reached BELOW 0! Iteration number {0}".format(
+                    self.iteration
+                )
+            )
+            supply = 0
+            return False
+
+        self.previous_supply = self.supply
         if not self.dynamic_price:
             # Calculate price and the new holding time
             self._price_function.execute(use_previous_supply=False)
