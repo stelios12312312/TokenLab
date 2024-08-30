@@ -6,7 +6,7 @@ Created on Wed Nov 30 11:03:57 2022
 @author: stylianoskampakis
 """
 
-from typing import List, Dict, Union
+from typing import List, Dict, Union, Any
 from baseclasses import *
 from TokenLab.utils.helpers import log_saturated_space
 import scipy
@@ -412,48 +412,46 @@ class SupplyController_Bonding(SupplyController):
 
 class SupplyController_AdaptiveStochastic(SupplyController):
     """
-    More advanced supply class for simulations. It assumes that at every iteration, some of tokens purchased
-    are removed from circulation, and then a random % of them returns in the next iteration.
+    An advanced supply controller for simulations that models the dynamics of circulating and total supply.
 
-    Therefore, this class simulates total supply, but also circulating supply.
+    This class assumes that in each iteration, a portion of tokens purchased is removed from circulation,
+    and a random percentage of those tokens returns in the next iteration.
 
-    This supply controller attaches itself to a TokenEconomy and reads from there directly
-    the transaction volume, the price and the holding time.
+    The class simulates both total supply and circulating supply, attaching itself to a TokenEconomy
+    and directly reading transaction volume, price, and holding time.
     """
 
     def __init__(
         self,
         removal_distribution: scipy.stats = uniform,
-        removal_dist_parameters={"loc": 0, "scale": 0.1},
+        removal_dist_parameters: Dict[str, Any] = {"loc": 0, "scale": 0.1},
         addition_distribution: scipy.stats = uniform,
-        addition_dist_parameters={"loc": 0, "scale": 0.05},
-        return_negative=True,
+        addition_dist_parameters: Dict[str, Any] = {"loc": 0, "scale": 0.05},
+        return_negative: bool = True,
     ):
         """
-
+        Initializes the SupplyController_AdaptiveStochastic class.
 
         Parameters
         ----------
-        removal_distribution : scipy.stats, optional
-             A scipy.stats distribution that determines how much % of the supply is removed and held off the market
-             at each iteration. The distribution must return numbers only in the range [0,1] or a subset of this range.
-             This is used to simulate holders who are removing liquidity from the market. The default distribution is uniform.
-        removal_dist_parameters : Parameters for the removal distribution, optional
-            DESCRIPTION. The default is {'loc':0,'scale':0.1}.
-        addition_distribution : This performs the inverse function of the removal distribution. It simply takes
-        some of the assets removed, and gets them back in ciruculation.. scipy.stats, optional
-            . The default is uniform.
-        addition_dist_parameters : TYPE, optional
-            Parameters for the addition distribution. The default is {'loc':0,'scale':0.05}.
-        return_negative: If True, then the execute() function can return a negative number. This is interpreted
-        as removing from the supply.
+        removal_distribution : scipy.stats distribution, optional
+            A distribution that determines the percentage of supply removed from circulation in each iteration.
+            The distribution must return values in the range [0,1]. Default is uniform.
 
-        Returns
-        -------
-        None.
+        removal_dist_parameters : dict, optional
+            Parameters for the removal distribution. Default is {'loc': 0, 'scale': 0.1}.
 
+        addition_distribution : scipy.stats distribution, optional
+            A distribution that determines the percentage of removed tokens that return to circulation
+            in each iteration. Default is uniform.
+
+        addition_dist_parameters : dict, optional
+            Parameters for the addition distribution. Default is {'loc': 0, 'scale': 0.05}.
+
+        return_negative : bool, optional
+            If True, the `execute()` function can return a negative value, indicating a net removal from the supply.
+            Default is True.
         """
-
         self.dependencies = {TokenEconomy: None}
         self.inactive_tokens = 0
 
@@ -468,16 +466,18 @@ class SupplyController_AdaptiveStochastic(SupplyController):
 
     def execute(self) -> None:
         """
+        Executes the supply control logic for the current iteration.
 
-        The function works as follows
+        This method performs the following steps:
+        1. Reads the total purchases of tokens from the TokenEconomy.
+        2. Calculates the tokens to be removed from circulation.
+        3. Calculates the tokens to be added back to circulation.
+        4. Updates the total supply based on these calculations.
 
-        1. Read from the token economy the total purchases of tokens
-        2. Calculate the tokens that need to be removed
-        3. Calculate the tokens that need to be added.
-        4. If the the total supply ends up being less than
-
-
+        If the total supply becomes less than or equal to zero and `return_negative` is False,
+        the supply will not decrease below zero.
         """
+        # Step 1: Read transaction data from the TokenEconomy
         tokeneconomy = self.dependencies[TokenEconomy]
         purchases_in_tokens = (
             tokeneconomy.transactions_volume_in_tokens
@@ -485,22 +485,26 @@ class SupplyController_AdaptiveStochastic(SupplyController):
             / tokeneconomy.price
         )
 
-        seed = int(int(time.time()) * np.random.rand())
+        # Step 2: Calculate the percentage and amount of tokens to be removed
+        seed = int(time.time() * np.random.rand())
         percentage_removal = self._removal_distribution.rvs(
             size=1, **self._removal_dist_parameters, random_state=seed
         )[0]
         token_removal = purchases_in_tokens * percentage_removal
-
         self.inactive_tokens += token_removal
 
+        # Step 3: Calculate the percentage and amount of tokens to be added back
         percentage_addition = self._addition_distribution.rvs(
             size=1, **self._addition_dist_parameters, random_state=seed
         )[0]
         tokens_coming_back = self.inactive_tokens * percentage_addition
+
+        # Step 4: Update the total supply
         new_supply = self.supply + tokens_coming_back - token_removal
 
         if new_supply <= 0 and not self.return_negative:
             new_supply = self.supply + tokens_coming_back
+
         self.supply = new_supply
 
 
@@ -560,82 +564,6 @@ class SupplyController_Burn(SupplyController):
 
         if self.self_destruct:
             self.burn_param = 0
-
-
-class SupplyController_InvestorDumperSpaced(SupplyController):
-    """
-    Simulates an investor pool that is just dumping the coin in a predictable fashion. Supports noise addons.
-    """
-
-    def __init__(
-        self,
-        dumping_initial: float,
-        dumping_final: float,
-        num_steps: int,
-        space_function: Union[
-            np.linspace, np.logspace, np.geomspace, log_saturated_space
-        ] = np.linspace,
-        name: str = None,
-        noise_addon: AddOn = None,
-    ):
-        """
-
-
-        Parameters
-        ----------
-        dumping_initial : float
-            The initial number of tokens to be dumped.
-        dumping_final : float
-            DESCRIPTION.
-        num_steps : int
-            The number of iterations the simulation will go for.
-        space_function : Union[np.linspace,np.logspace,np.geomspace,log_saturated_space], optional
-            A function that will generate the sequence of supply points. The default is np.linspace.
-        name : str, optional
-            The name of this controller. The default is None.
-        noise_addon : AddOn, optional
-            Noise AddOn from the AddOns module. The default is None.
-
-        Returns
-        -------
-        None.
-
-        """
-
-        super(SupplyController_InvestorDumperSpaced, self).__init__()
-
-        self.num_steps = num_steps
-        self.space_function = space_function
-        self._noise_component = noise_addon
-
-        self.name = name
-
-        self._dumping_store_original = np.round(
-            self.space_function(
-                start=dumping_initial, stop=dumping_final, num=num_steps
-            )
-        ).astype(int)
-        self._dumping_store = copy.deepcopy(self._dumping_store_original)
-
-        # applies the noise addon. If a value is below 0, then it is kept at 0.
-        if self._noise_component != None:
-            dummy = []
-            for i in range(len(self._dumping_store)):
-                temporary = self._dumping_store_original[
-                    i
-                ] + self._noise_component.apply(
-                    **{"value": self._dumping_store_original[i]}
-                )
-                if temporary >= 0:
-                    dummy.append(temporary)
-                else:
-                    dummy.append(self._dumping_store_original[i])
-
-            self._dumping_store = dummy
-
-        self._dumped_tokens_store = []
-        self.max_iterations = num_steps
-        self.iteration = 0
 
 
 class SupplyController_InvestorDumperSpaced(SupplyController):
