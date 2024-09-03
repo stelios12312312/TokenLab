@@ -660,3 +660,108 @@ class SupplyController_InvestorDumperSpaced(SupplyController):
     def get_dumped_store(self):
 
         return self._dumping_store
+
+
+class SupplyController_Speculator(SupplyController):
+    """
+    This class models a speculative behavior where a portion of transactions is assumed to be speculative in each iteration.
+    Speculative tokens are removed from the circulating supply and stored with the bid price.
+    These tokens are sold at a later time based on specific price conditions, following a "buy and hold" strategy.
+    The speculator will sell tokens only when the price reaches certain profit or loss thresholds.
+    """
+
+    def __init__(
+        self,
+        speculation_distribution: scipy.stats = uniform,
+        speculation_dist_parameters: Dict[str, Any] = {"loc": 0, "scale": 0.1},
+        take_profit: float = 1.1,
+        stop_loss: float = 0.9,
+        max_prop_to_supply: float = 0.9,
+    ):
+        """
+        Initializes the SupplyController_AdaptiveStochastic class.
+
+        Parameters
+        ----------
+        speculation_distribution : scipy.stats distribution, optional
+            A distribution that determines the percentage of supply removed from circulation in each iteration.
+            The distribution must return values in the range [0,1]. Default is uniform.
+
+        speculation_dist_parameters : dict, optional
+            Parameters for the removal distribution. Default is {'loc': 0, 'scale': 0.1}.
+
+        take_profit : float, optional
+            Speculators choose to sell when the ratio of the market price to the bid price exceeds this ratio.
+
+        stop_loss : float, optional
+            Speculators choose to sell when the ratio of the market price to the bid price is lower than this ratio.
+
+        max_prop_to_supply : float, optional
+            The maximum proportion of the circulating supply that the speculator can hold at any time. Default is 0.1.
+        """
+        super(SupplyController_Speculator, self).__init__()
+
+        self.dependencies = {TokenEconomy: None}
+
+        self._speculation_distribution = speculation_distribution
+        self._speculation_dist_parameters = speculation_dist_parameters
+
+        self.speculation_list = [] # record of all speculations
+        self.supply = 0 # token held by speculators
+
+        self.take_profit = take_profit
+        self.stop_loss = stop_loss
+
+        self.max_prop_to_supply = max_prop_to_supply
+
+    def execute(self) -> None:
+        """
+        Steps:
+        1. Read transaction volume in tokens and current price from the token economy.
+        2. Check the list of previous bought tokens if their selling conditions are met. If so, sell them, and add the circulating supply.
+        3. The speculator will buy a number of tokens in a iteration, this number, along with the buying price, will be stored.
+        4. Check if the speculator can hold this amount of tokens.
+        5. The token number will be removed from the circulating supply.
+        6. Return the supply change.
+        """
+        # Step 1: Read transaction volume in tokens and current price from the token economy.
+        tokeneconomy = self.dependencies[TokenEconomy]
+        price = tokeneconomy.price
+        max_speculation_token = tokeneconomy.supply * self.max_prop_to_supply
+        transactions_value_in_fiat = tokeneconomy.transactions_value_in_fiat
+
+        # Step 2: Check the list of previous bought tokens if their selling conditions are met. If so, sell them, and add the circulating supply.
+        for speculation in self.speculation_list:
+            if (
+                price > speculation["upper_price_bond"]
+                or price < speculation["lower_price_bond"]
+            ):
+                self.supply += speculation["number_token_speculation"]
+                speculation["number_token_speculation"] = 0
+
+        # Step 3: The speculator will buy a number of tokens in a iteration, this number, along with the buying price, will be stored.
+        seed = int(time.time() * np.random.rand())
+        percentage_speculation = self._speculation_distribution.rvs(
+            size=1, **self._speculation_dist_parameters, random_state=seed
+        )[0]
+        number_token_speculation = (
+            transactions_value_in_fiat * percentage_speculation / price
+        )
+        # Step 4: Check if the speculator can hold this amount of tokens.
+        if np.abs(self.supply - number_token_speculation) > max_speculation_token:
+            number_token_speculation = max_speculation_token + self.supply
+
+        speculation_dict = {
+            "number_token_speculation": number_token_speculation,
+            "price": price,
+            "iteration": tokeneconomy.iteration,
+            "upper_price_bond": price * self.take_profit,
+            "lower_price_bond": price * self.stop_loss,
+        }
+        self.speculation_list.append((speculation_dict))
+
+        # Step 5: The token number will be removed from the circulating supply.
+        self.supply -= number_token_speculation
+
+        # Step 6: Return the supply change.
+        return self.supply
