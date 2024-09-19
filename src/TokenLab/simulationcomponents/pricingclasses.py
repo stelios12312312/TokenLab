@@ -178,7 +178,7 @@ class HoldingTime_Adaptive(HoldingTimeController):
 
         holding_time = (
             tokeneconomy.price
-            * tokeneconomy.transactions_volume_in_tokens
+            * tokeneconomy.supply
             / (tokeneconomy.transactions_value_in_fiat + +0.000000001)
         )
 

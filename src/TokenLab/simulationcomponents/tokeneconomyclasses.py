@@ -339,25 +339,30 @@ class TokenEconomy_Basic(TokenEconomy):
 
         self.supply = 0
         self.initialised = True
-
+     
     def change_supply(self, currency_type: str, value: float) -> None:
+        """
+        Modifies the supply of the token based on the transaction volume or other factors.
+        
+        Ensures the supply remains within valid bounds and updates it accordingly.
+        
+        Parameters:
+        - currency_type: The type of currency (should be the token of the economy).
+        - value: The amount to change the supply by. Positive values increase the supply, negative values decrease it.
+        """
         if currency_type == self.token:
-            if value >= 0:
-                if not value + self.supply > self.max_supply:
-                    self.supply += value
-                else:
-                    self.supply = self.max_supply
-            elif value <= self.supply + value and value <= 0:
-                self.supply += value
-            else:
-                self.supply = 0
-                print(
-                    "Warning! Invalid supply change in tokeneconomy {2}. Supply {0} and value {1}. Setting supply to 0.".format(
-                        self.supply, value, self.name
+            new_supply = self.supply + value
+            
+            if value > 0:
+                self.supply = min(new_supply, self.max_supply)
+            elif value < 0:
+                self.supply = max(new_supply, 0)
+                if self.supply == 0:
+                    print(
+                        f"Warning! Invalid supply change in tokeneconomy {self.name}. Supply set to 0 after adjustment."
                     )
-                )
         else:
-            print("Currency {0} is not the economy's token!".format(currency_type))
+            print(f"Currency {currency_type} is not the economy's token!")
 
     def execute(self) -> bool:
         """
@@ -410,31 +415,6 @@ class TokenEconomy_Basic(TokenEconomy):
                 self.supply += self._supply.get_supply()
             else:
                 self.supply = self._supply.get_supply()
-        # Mutiple supply pools
-        for supplypool in self._supply_pools + self._temp_supply_pools:
-            supplypool.execute()
-            self.change_supply(self.token, supplypool.get_supply())
-            # if self.supply_is_added==False:
-            #     warnings.warn("""Warning! There are supply pools affecting total supply, but supply_is_added=False. This means that
-            #                   in the next iteration, the effect of the supply pools will disappear!
-            #                   Please make sure that this is really the intended behaviour.""")
-        # Check if supply is not negative or zero
-        if self.supply == 0:
-            dummy = "Warning! Supply reached 0! Iteration number {0}".format(
-                self.iteration
-            )
-            warnings.warn(dummy)
-
-        if self.supply < 0:
-            warnings.warn(
-                "Warning! Supply reached BELOW 0! Iteration number {0}".format(
-                    self.iteration
-                )
-            )
-            supply = 0
-            return False
-
-        self.previous_supply = self.supply
 
         # Get the holding time
         self.holding_time = self._holding_time_controller.get_holding_time()
@@ -503,7 +483,32 @@ class TokenEconomy_Basic(TokenEconomy):
                 # Calculate price and the new holding time
                 self._price_function.execute()
                 self.price = self._price_function.get_price()
+        
+        # Mutiple supply pools
+        for supplypool in self._supply_pools + self._temp_supply_pools:
+            supplypool.execute()
+            self.change_supply(self.token, supplypool.get_supply())
+            # if self.supply_is_added==False:
+            #     warnings.warn("""Warning! There are supply pools affecting total supply, but supply_is_added=False. This means that
+            #                   in the next iteration, the effect of the supply pools will disappear!
+            #                   Please make sure that this is really the intended behaviour.""")
+        # Check if supply is not negative or zero
+        if self.supply == 0:
+            dummy = "Warning! Supply reached 0! Iteration number {0}".format(
+                self.iteration
+            )
+            warnings.warn(dummy)
 
+        if self.supply < 0:
+            warnings.warn(
+                "Warning! Supply reached BELOW 0! Iteration number {0}".format(
+                    self.iteration
+                )
+            )
+            supply = 0
+            return False
+
+        self.previous_supply = self.supply
         if not self.dynamic_price:
             # Calculate price and the new holding time
             self._price_function.execute(use_previous_supply=False)
