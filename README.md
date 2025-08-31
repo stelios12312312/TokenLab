@@ -1,5 +1,5 @@
 
-# TokenLab: Advanced Economic Systems Simulation Platform
+# TokenLab: Advanced Economic Systems Simulation Library
 <a href="https://tesseract.academy"><img src="https://thedatascientist.com/wp-content/uploads/2024/01/tokenlab_logo.jpeg" alt="Tesseract Academy" /></a>
 
 A Python library for modeling complex economic systems, agent behaviors, and incentive mechanisms across traditional and digital economies. Developed by Dr. Stylianos Kampakis (PhD, CStat) and the research team at Tesseract Academy.
