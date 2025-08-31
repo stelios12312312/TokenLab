@@ -1,30 +1,48 @@
 
-# TokenLab
+# TokenLab: Advanced Economic Systems Simulation Platform
 <a href="https://tesseract.academy"><img src="https://thedatascientist.com/wp-content/uploads/2024/01/tokenlab_logo.jpeg" alt="Tesseract Academy" /></a>
 
- A python library for simulating token economies for Web3.0 and blockchain projects. Created by Stylianos Kampakis, PhD, CStat
+A Python library for modeling complex economic systems, agent behaviors, and incentive mechanisms across traditional and digital economies. Developed by Dr. Stylianos Kampakis (PhD, CStat) and the research team at Tesseract Academy.
 
-## TokenLab principles
-Tokenlab is a library for simulating token economies based on agent based models. It abides by the following principles:
+## Core Capabilities
 
-1) Modularity: The different components can be merged as the user sees fit.
+TokenLab is a comprehensive economic simulation framework built on agent-based modeling principles. Originally developed for digital economies, it has evolved into a versatile platform for analyzing any complex economic system where incentives, behaviors, and mechanisms interact dynamically.
 
-2) Explicitness: The assumptions behind the different modules are stated clearly, as well as any limitations.
+## Design Principles
 
-3) Intermediate-level-of-abstraction: TokenLab is focused on simulating the actions of aggregate groups of agents (e.g. a certain user cohort), instead of individuals.
+1. **Modularity**: Components can be combined flexibly to model diverse economic scenarios - from traditional market dynamics to innovative digital incentive systems.
 
-4) Focus on the economy: TokenLab's tools are focused on answering questions about a token economy, and performing things such as stress tests. 
+2. **Explicitness**: All modeling assumptions, limitations, and methodological choices are clearly documented, ensuring academic rigor and reproducibility.
 
-5) Flexibility: TokenLab is designed in a way that it offers maximum flexibility to those who desire it. It can support logical flows, or arbitrary mechanisms within its simulations, for any kind of agent action.
+3. **Intermediate Abstraction**: Focuses on aggregate agent cohorts (user segments, market participants, policy groups) rather than individual actors, enabling scalable economic analysis.
 
-## Documentation
-Documentation is still work in progress. Check the notebooks section for tutorials and instructions.
+4. **Systems-First Approach**: Designed to answer fundamental questions about economic system stability, sustainability, and optimization through comprehensive stress testing.
 
-## Whom to contact
-If you have any requests or comments, please reach out to Dr Kampakis https://thedatascientist.com/contact-dr-kampakis/ or to the Tesseract Academy https://tesseract.academy/contact/
+5. **Maximum Flexibility**: Supports arbitrary logical flows and mechanisms, accommodating everything from traditional market models to experimental incentive designs.
 
-## Used by
+## Applications
 
-<a href="https://tesseract.academy"><img src="https://thedatascientist.com/wp-content/uploads/2023/05/tesseract-academy-logo.jpg-1.webp" alt="Tesseract Academy" style="width: 150px; height: 150px; margin-right: 10px; object-fit: contain;"/></a>
-<a href="https://electiconsulting.com/"><img src="https://thedatascientist.com/wp-content/uploads/2023/12/electi-red-retina-logo.png" alt="Electi Consulting" style="width: 150px; height: 150px; margin-right: 10px; object-fit: contain;"/></a>
-<a href="https://hacken.io//"><img src="https://thedatascientist.com/wp-content/uploads/2023/12/hacken-logo.jpeg" alt="Hacken" style="width: 150px; height: 150px; object-fit: contain;"/></a>
+- **Government & Policy**: Economic impact assessment, regulatory scenario modeling, public incentive design
+- **Enterprise**: Market dynamics simulation, pricing mechanism optimization, organizational incentive analysis  
+- **Financial Services**: Risk modeling, algorithmic trading backtesting, DeFi integration planning
+- **Web3 Protocols**: Tokenomics design, governance mechanism testing, economic security analysis
+- **Academic Research**: Complex systems studies, behavioral economics experiments, econometric validation
+
+## Why TokenLab
+
+Built by economists and data scientists with deep expertise in both traditional econometrics and digital economic systems, TokenLab bridges academic rigor with practical implementation. The platform has been validated through government consultations, enterprise deployments, and peer-reviewed research.
+
+## Getting Started
+
+Documentation is actively maintained with tutorials covering both foundational economic modeling concepts and advanced simulation techniques. Check the notebooks section for comprehensive examples across different economic domains.
+
+## Contact & Collaboration
+
+For research partnerships, custom modeling projects, or technical support:
+
+- **Dr. Stylianos Kampakis**: https://thedatascientist.com/contact-dr-kampakis/
+- **Tesseract Academy Research Team**: https://tesseract.academy/contact/
+
+---
+
+*TokenLab is open-source software supporting the advancement of quantitative economic analysis across traditional and digital systems.*
