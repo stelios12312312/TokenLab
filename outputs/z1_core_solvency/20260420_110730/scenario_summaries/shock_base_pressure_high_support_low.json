@@ -1,0 +1,18 @@
+{
+    "final_ar_ratio": 0.0010534963413151967,
+    "min_ar_ratio": 0.0010534963413151967,
+    "final_treasury": 0.0,
+    "min_treasury": 0.0,
+    "max_settlement_queue_z1u": 15876420.54497982,
+    "avg_settlement_pressure_ratio": 170.3184841203411,
+    "max_settlement_pressure_ratio": 317.5284108995964,
+    "total_utility_spend": 1672274.4118465383,
+    "total_treasury_fees": 83613.72059232692,
+    "total_provider_payments": 1505046.9706618846,
+    "total_burn": 83613.72059232692,
+    "total_brand_inflow": 104000.0,
+    "throttle_epochs": 76,
+    "ar_floor_breach_epochs": 76,
+    "classification": "collapse",
+    "scenario": "shock_base_pressure_high_support_low"
+}
