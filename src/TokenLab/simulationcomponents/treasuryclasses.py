@@ -7,13 +7,13 @@ Created on Fri Dec  8 13:27:18 2023
 """
 
 from typing import List, Dict, Union
-from baseclasses import *
-from usergrowthclasses import UserGrowth, UserGrowth_Constant
-from transactionclasses import TransactionManagement, TransactionManagement_Constant
-from supplyclasses import SupplyStaker
+from .baseclasses import *
+from .usergrowthclasses import UserGrowth, UserGrowth_Constant
+from .transactionclasses import TransactionManagement, TransactionManagement_Constant
+from .supplyclasses import SupplyStaker
 import copy
 from typing import TypedDict, Tuple
-from addons import Condition
+from .addons import Condition
 
 
 class TreasuryBasic(Controller):

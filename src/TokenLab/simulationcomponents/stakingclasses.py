@@ -7,7 +7,7 @@ Created on Tue Jun  6 10:46:51 2023
 """
 
 from typing import List, Dict, Union
-from baseclasses import *
+from .baseclasses import *
 from TokenLab.utils.helpers import log_saturated_space
 import scipy
 from scipy import stats
