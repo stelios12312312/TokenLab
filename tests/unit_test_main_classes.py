@@ -110,7 +110,7 @@ class TestMainClasses(unittest.TestCase):
         
         
             
-    def test_condition2(self):
+    def test_condition2_false(self):
         
         usm_fiat=UserGrowth_Spaced(100,54000,100,log_saturated_space)
         ap_fiat=AgentPool_Basic(users_controller=usm_fiat,transactions_controller=100,currency='$')

@@ -37,8 +37,7 @@ class Velocity_HoldingTime_Sampler():
         return samples
     
     
-
-vel = Velocity_HoldingTime_Sampler()
-
-print(vel.get_velocity())
-print(vel.get_holdingtime())
+if __name__ == '__main__':
+    vel = Velocity_HoldingTime_Sampler()
+    print(vel.get_velocity())
+    print(vel.get_holdingtime())
