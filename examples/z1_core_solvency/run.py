@@ -39,18 +39,103 @@ if __name__ == "__main__":
     import datetime
     from .scenarios import get_scenario_config, generate_stress_grid
     from .metrics import summarize_run
-    from .plots import create_single_scenario_plots
+    from .plots import create_single_scenario_plots, create_grid_plots
     from .report import generate_report
+    from .html_report import generate_html_report
     
     parser = argparse.ArgumentParser()
-    parser.add_argument('--scenario', type=str, default='baseline', help='Run a specific scenario, or "grid" for full stress test')
+    parser.add_argument('--scenario', type=str, default='baseline', help='Run a specific scenario, "grid" for full stress test, or "full" for everything')
     args = parser.parse_args()
     
     run_id = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
     outputs_dir = os.path.join("outputs", "z1_core_solvency", run_id)
     os.makedirs(outputs_dir, exist_ok=True)
     
-    if args.scenario != 'grid':
+    if args.scenario == 'full':
+        # ── FULL MODE: baseline + collapse + stable + 27-grid + report ──
+        print("=" * 60)
+        print("Z1 M1 Core Solvency Model — FULL RUN")
+        print("=" * 60)
+        
+        all_summaries = {}
+        
+        # 1. Run named scenarios
+        named_scenarios = ['baseline', 'collapse_case', 'stable_case']
+        for scenario_name in named_scenarios:
+            print(f"\n▶ Running named scenario: {scenario_name}")
+            config = get_scenario_config(scenario_name)
+            history = run_simulation(config)
+            df = pd.DataFrame(history)
+            summary = summarize_run(df)
+            
+            # Save per-epoch
+            scenario_dir = os.path.join(outputs_dir, "named_scenarios")
+            os.makedirs(scenario_dir, exist_ok=True)
+            df.to_csv(os.path.join(scenario_dir, f"{scenario_name}_metrics.csv"), index=False)
+            
+            # Save summary
+            with open(os.path.join(scenario_dir, f"{scenario_name}_summary.json"), 'w') as f:
+                json.dump(summary, f, indent=4)
+            
+            # Generate plots
+            plot_dir = os.path.join(outputs_dir, "plots", scenario_name)
+            create_single_scenario_plots(df, scenario_name, plot_dir)
+            
+            all_summaries[scenario_name] = summary
+            print(f"  Classification: {summary['classification']}")
+            print(f"  Final AR Ratio: {summary['final_ar_ratio']:.2f}")
+        
+        # 2. Run 27-scenario grid
+        print(f"\n▶ Running 27-scenario stress grid...")
+        os.makedirs(os.path.join(outputs_dir, "scenario_summaries"), exist_ok=True)
+        os.makedirs(os.path.join(outputs_dir, "per_epoch"), exist_ok=True)
+        
+        grid = generate_stress_grid()
+        grid_summaries = []
+        per_epoch_dfs = {}
+        
+        for name, config in grid:
+            df = pd.DataFrame(run_simulation(config))
+            summary = summarize_run(df)
+            summary['scenario'] = name
+            
+            df.to_csv(os.path.join(outputs_dir, "per_epoch", f"{name}.csv"), index=False)
+            with open(os.path.join(outputs_dir, "scenario_summaries", f"{name}.json"), 'w') as f:
+                json.dump(summary, f, indent=4)
+            
+            grid_summaries.append(summary)
+            all_summaries[name] = summary
+            per_epoch_dfs[name] = df
+        
+        grid_df = pd.DataFrame(grid_summaries)
+        grid_df.to_csv(os.path.join(outputs_dir, "grid_summary.csv"), index=False)
+        
+        # 3. Generate grid-level plots
+        print(f"\n▶ Generating grid-level plots...")
+        grid_plot_dir = os.path.join(outputs_dir, "plots", "grid")
+        create_grid_plots(grid_df, per_epoch_dfs, grid_plot_dir)
+        
+        # 4. Generate full report
+        print(f"\n▶ Generating M1 report...")
+        report_path = generate_report(outputs_dir, all_summaries, grid_summary_df=grid_df)
+        html_path = generate_html_report(outputs_dir, all_summaries, grid_summary_df=grid_df)
+        
+        # Summary
+        collapse_count = sum(1 for s in grid_summaries if s['classification'] == 'collapse')
+        stressed_count = sum(1 for s in grid_summaries if s['classification'] == 'stressed')
+        stable_count = sum(1 for s in grid_summaries if s['classification'] == 'stable')
+        
+        print("\n" + "=" * 60)
+        print("FULL RUN COMPLETE")
+        print("=" * 60)
+        print(f"Named scenarios: {len(named_scenarios)}")
+        print(f"Grid scenarios:  {len(grid)} (🔴 {collapse_count} collapse, 🟡 {stressed_count} stressed, 🟢 {stable_count} stable)")
+        print(f"Outputs:         {outputs_dir}")
+        print(f"Report (MD):     {report_path}")
+        print(f"Report (HTML):   {html_path}")
+        print("=" * 60)
+    
+    elif args.scenario != 'grid':
         print(f"Running M1 Core Solvency Model - Scenario: {args.scenario}")
         config = get_scenario_config(args.scenario)
         
@@ -72,6 +157,7 @@ if __name__ == "__main__":
         # Generate report
         report_data = {args.scenario: summary}
         generate_report(outputs_dir, report_data)
+        generate_html_report(outputs_dir, report_data)
         
         print(f"Simulation completed. {len(df)} epochs.")
         print(f"Classification: {summary['classification']}")
@@ -86,6 +172,7 @@ if __name__ == "__main__":
         grid = generate_stress_grid()
         grid_summaries = []
         report_data = {}
+        per_epoch_dfs = {}
         
         for name, config in grid:
             df = pd.DataFrame(run_simulation(config))
@@ -98,11 +185,17 @@ if __name__ == "__main__":
                 
             grid_summaries.append(summary)
             report_data[name] = summary
+            per_epoch_dfs[name] = df
             
         grid_df = pd.DataFrame(grid_summaries)
         grid_df.to_csv(os.path.join(outputs_dir, "grid_summary.csv"), index=False)
         
-        generate_report(outputs_dir, report_data)
+        # Generate grid-level plots
+        grid_plot_dir = os.path.join(outputs_dir, "plots", "grid")
+        create_grid_plots(grid_df, per_epoch_dfs, grid_plot_dir)
+        
+        generate_report(outputs_dir, report_data, grid_summary_df=grid_df)
+        generate_html_report(outputs_dir, report_data, grid_summary_df=grid_df)
         
         print(f"Grid execution complete. Scenarios run: {len(grid)}")
         print(f"Results sorted into {outputs_dir}")
