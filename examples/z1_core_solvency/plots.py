@@ -56,10 +56,16 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
     _apply_z1_theme()
 
     epochs = df['epoch']
+    # For multi-rep data, compute per-epoch means for fill_between
+    if 'run_id' in df.columns:
+        epoch_means = df.groupby('epoch').mean(numeric_only=True).reset_index()
+    else:
+        epoch_means = df
+    ep = epoch_means['epoch']
 
     # ── 1. AR Ratio ──────────────────────────────────────────────────
     fig, ax = plt.subplots()
-    ax.fill_between(epochs, 0, 0.3, color=_Z1_PALETTE['danger'], alpha=0.5, label='Danger zone (< 0.3)')
+    ax.fill_between(ep, 0, 0.3, color=_Z1_PALETTE['danger'], alpha=0.5, label='Danger zone (< 0.3)')
     sns.lineplot(data=df, x='epoch', y='ar_ratio', color=_Z1_PALETTE['ar'],
                  linewidth=2, errorbar=('ci', 95), ax=ax)
     ax.axhline(0.3, color=_Z1_PALETTE['pressure'], linestyle='--', linewidth=1, alpha=0.8)
@@ -76,7 +82,7 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
     fig, ax = plt.subplots()
     sns.lineplot(data=df, x='epoch', y='treasury', color=_Z1_PALETTE['treasury'],
                  linewidth=2, errorbar=('ci', 95), ax=ax)
-    ax.fill_between(epochs, 0, df['treasury'], color=_Z1_PALETTE['treasury'], alpha=0.15)
+    ax.fill_between(ep, 0, epoch_means['treasury'], color=_Z1_PALETTE['treasury'], alpha=0.15)
     ax.set_title(f'[{scenario_name}] Treasury Balance')
     ax.set_xlabel('Epoch')
     ax.set_ylabel('Z1U')
@@ -88,7 +94,7 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
 
     # ── 3. Settlement Queue ──────────────────────────────────────────
     fig, ax = plt.subplots()
-    ax.fill_between(epochs, 0, df['settlement_queue_z1u'],
+    ax.fill_between(ep, 0, epoch_means['settlement_queue_z1u'],
                     color=_Z1_PALETTE['queue'], alpha=0.3)
     sns.lineplot(data=df, x='epoch', y='settlement_queue_z1u',
                  color=_Z1_PALETTE['queue'], linewidth=2, errorbar=('ci', 95), ax=ax)
@@ -103,13 +109,13 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
 
     # ── 4. Settlement Pressure Ratio ─────────────────────────────────
     fig, ax = plt.subplots()
-    pressure = df['settlement_pressure_ratio']
-    ax.fill_between(epochs, 0, pressure,
+    pressure = epoch_means['settlement_pressure_ratio']
+    ax.fill_between(ep, 0, pressure,
                     where=(pressure <= 1.0), color=_Z1_PALETTE['safe'], alpha=0.5, label='Normal')
-    ax.fill_between(epochs, 0, pressure,
+    ax.fill_between(ep, 0, pressure,
                     where=((pressure > 1.0) & (pressure <= 3.0)),
                     color=_Z1_PALETTE['warn'], alpha=0.5, label='Elevated')
-    ax.fill_between(epochs, 0, pressure,
+    ax.fill_between(ep, 0, pressure,
                     where=(pressure > 3.0), color=_Z1_PALETTE['danger'], alpha=0.5, label='Critical')
     sns.lineplot(data=df, x='epoch', y='settlement_pressure_ratio',
                  color=_Z1_PALETTE['pressure'], linewidth=2, errorbar=('ci', 95), ax=ax)
@@ -124,7 +130,7 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
 
     # ── 5. Utility Spend per Epoch ───────────────────────────────────
     fig, ax = plt.subplots()
-    ax.bar(epochs, df['utility_spend_epoch'], color=_Z1_PALETTE['utility'],
+    ax.bar(ep, epoch_means['utility_spend_epoch'], color=_Z1_PALETTE['utility'],
            alpha=0.7, width=0.8, edgecolor=_Z1_PALETTE['utility'], linewidth=0.3)
     ax.set_title(f'[{scenario_name}] Utility Spend Per Epoch')
     ax.set_xlabel('Epoch')
@@ -136,9 +142,9 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
 
     # ── 6. Cumulative Burn ───────────────────────────────────────────
     fig, ax = plt.subplots()
-    ax.fill_between(epochs, 0, df['cumulative_z1u_burned'],
+    ax.fill_between(ep, 0, epoch_means['cumulative_z1u_burned'],
                     color=_Z1_PALETTE['burn'], alpha=0.15, step='mid')
-    ax.step(epochs, df['cumulative_z1u_burned'], where='mid',
+    ax.step(ep, epoch_means['cumulative_z1u_burned'], where='mid',
             color=_Z1_PALETTE['burn'], linewidth=2)
     ax.set_title(f'[{scenario_name}] Cumulative Burn')
     ax.set_xlabel('Epoch')
@@ -151,12 +157,12 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
 
     # ── 7. Throttle Multiplier ───────────────────────────────────────
     fig, ax = plt.subplots()
-    throttle = df['throttle_multiplier']
-    ax.fill_between(epochs, throttle, 1.0,
+    throttle = epoch_means['throttle_multiplier']
+    ax.fill_between(ep, throttle, 1.0,
                     where=(throttle < 1.0),
                     color=_Z1_PALETTE['danger'], alpha=0.4, step='mid',
                     label='Throttled')
-    ax.step(epochs, throttle, where='mid',
+    ax.step(ep, throttle, where='mid',
             color=_Z1_PALETTE['throttle'], linewidth=2)
     ax.axhline(1.0, color='grey', linestyle=':', linewidth=1)
     ax.set_title(f'[{scenario_name}] Throttle Multiplier')

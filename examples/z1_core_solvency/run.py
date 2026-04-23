@@ -1,34 +1,74 @@
 import random
-from typing import Dict, Any
+import copy
+import numpy as np
+from typing import Dict, Any, List
 from .config import SolvencyConfig, COHORT_NAMES
 from .economy import TokenEconomy_Z1
 from .pools import AgentPool_Z1
 from TokenLab.simulationcomponents.tokeneconomyclasses import TokenMetaSimulator
 
 
+def _jitter_config(config: SolvencyConfig, rng: np.random.Generator, noise_pct: float = 0.05) -> SolvencyConfig:
+    """Create a jittered copy of config with ±noise_pct uniform noise on key rates."""
+    cfg = copy.deepcopy(config)
+    
+    def _jitter_dict(d, lo=0.0, hi=1.0):
+        return {k: float(np.clip(v * rng.uniform(1 - noise_pct, 1 + noise_pct), lo, hi))
+                for k, v in d.items()}
+    
+    cfg.claim_rate_by_cohort = _jitter_dict(cfg.claim_rate_by_cohort)
+    cfg.verification_pass_rate_by_cohort = _jitter_dict(cfg.verification_pass_rate_by_cohort)
+    cfg.settle_propensity_by_cohort = _jitter_dict(cfg.settle_propensity_by_cohort)
+    cfg.utility_spend_rate_by_cohort = _jitter_dict(cfg.utility_spend_rate_by_cohort)
+    cfg.settlement_ratio = float(np.clip(
+        cfg.settlement_ratio * rng.uniform(1 - noise_pct, 1 + noise_pct), 0.01, 10.0))
+    cfg.brand_inflow_per_epoch = float(np.clip(
+        cfg.brand_inflow_per_epoch * rng.uniform(1 - noise_pct, 1 + noise_pct), 0, 1e9))
+    cfg.utility_fee_share = float(np.clip(
+        cfg.utility_fee_share * rng.uniform(1 - noise_pct, 1 + noise_pct), 0, 0.95 - cfg.utility_burn_share))
+    
+    return cfg
 
 
-def run_simulation(config: SolvencyConfig) -> list[Dict[str, Any]]:
-    # Initialize TokenLab Native Economy
+def _run_single(config: SolvencyConfig) -> list[Dict[str, Any]]:
+    """Run a single deterministic simulation and return epoch records."""
     config.validate()
-    
     economy = TokenEconomy_Z1(config)
-    
-    # Register TokenLab Native Pools
     for name in COHORT_NAMES:
         pool = AgentPool_Z1(name, config)
         economy.add_agent_pool(pool)
-        
-    # We can run it directly, or use TokenMetaSimulator.
-    # Because M1 is fully deterministic, 1 repetition is sufficient to prove the framework integration.
     simulator = TokenMetaSimulator(token_economy=economy)
-    
-    # TokenMetaSimulator execute() returns the dataframe dynamically pulled from economy.get_data()
-    # It loops `iterations` times.
     df = simulator.execute(iterations=config.n_epochs, repetitions=1)
-    
-    # Return it as a dict sequence to retain compatibility with grid reporting downstream
     return df.to_dict('records')
+
+
+def run_simulation(config: SolvencyConfig) -> list[Dict[str, Any]]:
+    """
+    Run simulation with optional multi-repetition jitter for CIs.
+    
+    When config.repetitions > 1:
+      - Each repetition jitters rates by ±5% (uniform)
+      - Returns concatenated records with 'run_id' column
+      - seaborn's errorbar=('ci', 95) will produce CIs automatically
+    
+    When config.repetitions == 1:
+      - Single deterministic run (no jitter)
+    """
+    if config.repetitions <= 1:
+        return _run_single(config)
+    
+    rng = np.random.default_rng(config.random_seed)
+    all_records = []
+    
+    for rep in range(config.repetitions):
+        jittered = _jitter_config(config, rng)
+        records = _run_single(jittered)
+        for r in records:
+            r['run_id'] = rep
+        all_records.extend(records)
+    
+    return all_records
+
 
 
 if __name__ == "__main__":
@@ -45,6 +85,7 @@ if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--scenario', type=str, default='baseline', help='Run a specific scenario, "grid" for full stress test, or "full" for everything')
+    parser.add_argument('--repetitions', '-r', type=int, default=10, help='Repetitions per named scenario for CI (default 10, grid always uses 1)')
     args = parser.parse_args()
     
     run_id = datetime.datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -62,8 +103,9 @@ if __name__ == "__main__":
         # 1. Run named scenarios
         named_scenarios = ['baseline', 'collapse_case', 'stable_case']
         for scenario_name in named_scenarios:
-            print(f"\n▶ Running named scenario: {scenario_name}")
+            print(f"\n▶ Running named scenario: {scenario_name} ({args.repetitions} reps)")
             config = get_scenario_config(scenario_name)
+            config.repetitions = args.repetitions
             history = run_simulation(config)
             df = pd.DataFrame(history)
             summary = summarize_run(df)

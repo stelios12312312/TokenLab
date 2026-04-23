@@ -9,6 +9,7 @@ class SolvencyConfig:
     # Run parameters
     n_epochs: int = 104
     random_seed: int = 42
+    repetitions: int = 1  # >1 enables parameter jitter and CI on plots
 
     # Audience & Claiming mechanics
     initial_viewers: int = 1_000_000
@@ -35,20 +36,20 @@ class SolvencyConfig:
 
     # Settlement dynamics
     settle_propensity_by_cohort: Dict[str, float] = field(
-        default_factory=lambda: {"passive_viewers": 0.8, "active_viewers": 0.5, "power_users": 0.2}
+        default_factory=lambda: {"passive_viewers": 0.4, "active_viewers": 0.3, "power_users": 0.15}
     )
-    settlement_ratio: float = 1.0
+    settlement_ratio: float = 0.5
     settlement_cap_per_epoch: float = 50_000.0
 
     # Utility spend dynamics
     utility_spend_rate_by_cohort: Dict[str, float] = field(
         default_factory=lambda: {"passive_viewers": 0.1, "active_viewers": 0.4, "power_users": 0.8}
     )
-    utility_fee_share: float = 0.05
+    utility_fee_share: float = 0.20
     utility_burn_share: float = 0.05
 
     # Ecosystem health parameters
-    brand_inflow_per_epoch: float = 10_000.0
+    brand_inflow_per_epoch: float = 25_000.0
     treasury_topup_threshold_ratio: float = 0.5
     treasury_topup_target_ratio: float = 1.0
     throttle_threshold_ratio: float = 0.3
