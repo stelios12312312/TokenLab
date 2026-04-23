@@ -126,6 +126,11 @@ if __name__ == "__main__":
             all_summaries[scenario_name] = summary
             print(f"  Classification: {summary['classification']}")
             print(f"  Final AR Ratio: {summary['final_ar_ratio']:.2f}")
+            print(f"  Solvency Ratio: {config.compute_solvency_ratio():.3f}")
+            locks = config.check_solvency_locks()
+            for lock in locks:
+                icon = '✅' if lock['status'] == 'PASS' else ('⚠️' if lock['status'] == 'WARN' else '❌')
+                print(f"  {icon} [{lock['lock']}] {lock['message']}")
         
         # 2. Run 27-scenario grid
         print(f"\n▶ Running 27-scenario stress grid...")

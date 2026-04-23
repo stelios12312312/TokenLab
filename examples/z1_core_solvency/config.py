@@ -83,3 +83,113 @@ class SolvencyConfig:
         assert self.audience_reserve_initial >= 0, "Initial AR must be positive"
         assert self.treasury_initial >= 0, "Initial Treasury must be positive"
 
+    def compute_solvency_ratio(self) -> float:
+        """
+        Compute the master solvency invariant (outflow/inflow ratio).
+        
+        < 0.8  → structurally stable
+        0.8–1.0 → boundary (fragile)
+        > 1.0  → likely collapse
+        
+        Formula:
+            outflow = Σ(claim_rates) × Σ(settle_propensity) × settlement_ratio
+            inflow  = Σ(utility_spend_rates) × utility_fee_share + brand_inflow / AR_initial
+        """
+        outflow = (sum(self.claim_rate_by_cohort.values())
+                   * sum(self.settle_propensity_by_cohort.values())
+                   * self.settlement_ratio)
+        inflow = (sum(self.utility_spend_rate_by_cohort.values()) * self.utility_fee_share
+                  + (self.brand_inflow_per_epoch / self.audience_reserve_initial
+                     if self.audience_reserve_initial > 0 else 0))
+        return outflow / inflow if inflow > 0 else float('inf')
+
+    def check_solvency_locks(self) -> list[dict]:
+        """
+        Check parameter lock constraints. Returns a list of diagnostics.
+        
+        Locks:
+            L1 (HARD): Solvency floor — outflow/inflow < 0.8
+            L2 (SOFT): settlement_ratio ≤ 2 × utility_fee_share
+            L3 (HARD): brand_inflow ≥ 1% of AR_initial per epoch
+            L4 (SOFT): settle_propensity ≤ 0.5 × utility_spend_rate (per cohort)
+            L5 (SOFT): treasury_topup_target × AR ≤ feasible funding
+        """
+        diagnostics = []
+        
+        # L1: Master solvency invariant
+        ratio = self.compute_solvency_ratio()
+        if ratio >= 1.0:
+            diagnostics.append({
+                'lock': 'L1', 'severity': 'HARD', 'status': 'FAIL',
+                'message': f'Solvency ratio = {ratio:.3f} (≥1.0 → likely collapse)',
+                'value': ratio, 'threshold': 0.8,
+            })
+        elif ratio >= 0.8:
+            diagnostics.append({
+                'lock': 'L1', 'severity': 'HARD', 'status': 'WARN',
+                'message': f'Solvency ratio = {ratio:.3f} (0.8–1.0 → boundary, fragile)',
+                'value': ratio, 'threshold': 0.8,
+            })
+        else:
+            diagnostics.append({
+                'lock': 'L1', 'severity': 'HARD', 'status': 'PASS',
+                'message': f'Solvency ratio = {ratio:.3f} (<0.8 → structurally stable)',
+                'value': ratio, 'threshold': 0.8,
+            })
+
+        # L2: Settlement-fee ratio
+        if self.settlement_ratio > 2 * self.utility_fee_share:
+            diagnostics.append({
+                'lock': 'L2', 'severity': 'SOFT', 'status': 'FAIL',
+                'message': f'settlement_ratio ({self.settlement_ratio:.2f}) > 2 × fee_share ({2*self.utility_fee_share:.2f})',
+                'value': self.settlement_ratio, 'threshold': 2 * self.utility_fee_share,
+            })
+        else:
+            diagnostics.append({
+                'lock': 'L2', 'severity': 'SOFT', 'status': 'PASS',
+                'message': f'settlement_ratio ({self.settlement_ratio:.2f}) ≤ 2 × fee_share ({2*self.utility_fee_share:.2f})',
+                'value': self.settlement_ratio, 'threshold': 2 * self.utility_fee_share,
+            })
+
+        # L3: Brand inflow floor
+        inflow_pct = (self.brand_inflow_per_epoch / self.audience_reserve_initial * 100
+                      if self.audience_reserve_initial > 0 else 0)
+        if inflow_pct < 1.0:
+            diagnostics.append({
+                'lock': 'L3', 'severity': 'HARD', 'status': 'FAIL',
+                'message': f'Brand inflow = {inflow_pct:.2f}% of AR (<1% → collapse in all observed cases)',
+                'value': inflow_pct, 'threshold': 1.0,
+            })
+        else:
+            diagnostics.append({
+                'lock': 'L3', 'severity': 'HARD', 'status': 'PASS',
+                'message': f'Brand inflow = {inflow_pct:.2f}% of AR (≥1%)',
+                'value': inflow_pct, 'threshold': 1.0,
+            })
+
+        # L4: Per-cohort net-drain check
+        for cohort in COHORT_NAMES:
+            settle = self.settle_propensity_by_cohort.get(cohort, 0)
+            spend = self.utility_spend_rate_by_cohort.get(cohort, 0)
+            if spend > 0 and settle > 0.5 * spend:
+                diagnostics.append({
+                    'lock': 'L4', 'severity': 'SOFT', 'status': 'WARN',
+                    'message': f'{cohort}: settle ({settle:.2f}) > 0.5 × spend ({0.5*spend:.2f}) — net extractor',
+                    'value': settle / spend if spend > 0 else float('inf'),
+                    'threshold': 0.5,
+                })
+
+        # L5: Treasury funding feasibility (simple epoch-count check)
+        topup_budget = self.treasury_topup_target_ratio * self.audience_reserve_initial
+        projected_inflow = (self.brand_inflow_per_epoch + 
+                           sum(self.utility_spend_rate_by_cohort.values()) * self.utility_fee_share * 1000) * self.n_epochs
+        if topup_budget > projected_inflow:
+            diagnostics.append({
+                'lock': 'L5', 'severity': 'SOFT', 'status': 'WARN',
+                'message': f'Topup target ({topup_budget:,.0f}) may exceed projected inflows ({projected_inflow:,.0f})',
+                'value': topup_budget, 'threshold': projected_inflow,
+            })
+
+        return diagnostics
+
+
