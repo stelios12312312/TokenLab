@@ -114,7 +114,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
         threshold_ar = 0.3
         if median_final_ar < threshold_ar:
             classification = "collapse"
-        elif median_throttle > 0 or median_max_queue > 500000:
+        elif median_throttle > 0 or median_max_queue > 10_000_000_000:
             classification = "stressed"
         else:
             classification = "stable"
@@ -125,7 +125,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
         threshold_ar = 0.3
         if final['ar_ratio'] < threshold_ar:
             classification = "collapse"
-        elif final['throttle_active'] == 1 or final['settlement_queue_z1u'] > 500000:
+        elif final['throttle_active'] == 1 or final['settlement_queue_z1u'] > 10_000_000_000:
             classification = "stressed"
         else:
             classification = "stable"

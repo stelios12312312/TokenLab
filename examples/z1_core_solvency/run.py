@@ -77,7 +77,7 @@ if __name__ == "__main__":
     import json
     import os
     import datetime
-    from .scenarios import get_scenario_config, generate_stress_grid
+    from .scenarios import get_scenario_config, generate_stress_grid, get_dev_fast_run_set
     from .metrics import summarize_run
     from .plots import create_single_scenario_plots, create_grid_plots
     from .report import generate_report
@@ -182,6 +182,45 @@ if __name__ == "__main__":
         print(f"Report (HTML):   {html_path}")
         print("=" * 60)
     
+    elif args.scenario == 'dev_fast_numbers_test':
+        print("=" * 60)
+        print("Z1 M1 Core Solvency Model — DEV FAST NUMBERS TEST")
+        print("=" * 60)
+        
+        run_set = get_dev_fast_run_set()
+        all_summaries = {}
+        report_data = {}
+        
+        for name in run_set:
+            print(f"\n▶ Running fast test scenario: {name} ({args.repetitions} reps)")
+            config = get_scenario_config(name)
+            config.repetitions = args.repetitions
+            history = run_simulation(config)
+            df = pd.DataFrame(history)
+            summary = summarize_run(df)
+            summary['scenario'] = name
+            
+            # Save per-epoch
+            df.to_csv(os.path.join(outputs_dir, f"{name}_metrics.csv"), index=False)
+            
+            # Save summary
+            with open(os.path.join(outputs_dir, f"{name}_summary.json"), 'w') as f:
+                json.dump(summary, f, indent=4)
+                
+            report_data[name] = summary
+            all_summaries[name] = summary
+            print(f"  Classification: {summary['classification']}")
+            print(f"  Final AR Ratio: {summary['final_ar_ratio']:.2f}")
+
+        # Summary csv
+        df_summary = pd.DataFrame(list(all_summaries.values()))
+        df_summary.to_csv(os.path.join(outputs_dir, "combined_summary.csv"), index=False)
+
+        # Markdown report
+        report_path = generate_report(outputs_dir, report_data)
+        print(f"\nFast test complete. Reports saved to {outputs_dir}")
+        print(f"Report (MD):     {report_path}")
+
     elif args.scenario != 'grid':
         print(f"Running M1 Core Solvency Model - Scenario: {args.scenario}")
         config = get_scenario_config(args.scenario)

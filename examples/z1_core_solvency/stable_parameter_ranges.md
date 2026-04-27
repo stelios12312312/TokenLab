@@ -1,42 +1,30 @@
 # Z1 M1 Core Solvency: Stable Parameter Ranges Analysis
 
-Based on a 200-iteration Monte Carlo random search across a wide continuous parameter space, the system identified the bounds of stability for the token economy. 
+This document outlines the bounds of stability for the Z1 M1 Core Solvency Model at the **1 Trillion Z1U Supply Scale**, using the **Reasonable Defaults** established in April 2026.
 
-Out of the 200 random configurations:
-- **45** were classified as "stable"
-- **112** as "stressed"
-- **43** resulted in a complete "collapse"
+## 📊 Summary of Random Search
+Based on a 100-iteration Monte Carlo random search across the canonical M1 parameter space:
+- **100%** of scenarios remained **Stable** or **Stressed** (within 104 epochs).
+- **0%** resulted in **Collapse** (AR ratio < 30%).
 
-Here are the numerical ranges where the model was able to maintain stability (maintaining a healthy treasury and Auto-Refill ratio):
+This high stability rate is primarily due to the large **300B Z1U Audience Reserve** providing a significant buffer against initial settlement pressure, combined with the **26-epoch vesting lag** which delays the onset of supply-side shocks.
 
-## 🟢 Good Ranges for Stable Parameters
+## 🟢 Recommended Ranges for Solvency
 
-| Parameter | Stable Range | Stable Mean | Impact on Stability |
+| Parameter | Recommended Range | Impact on Stability | Rationale |
 | :--- | :--- | :--- | :--- |
-| **Brand Inflow** | `2,750` – `100,000` | `~51,176` | **Highly Positive (+0.68)** |
-| **Utility Fee Share** | `5.0%` – `39.8%` | `~25.8%` | **Positive (+0.18)** |
-| **Settlement Ratio** | `0.10` – `1.98` | `~0.51` | **Negative (-0.15)** |
-| **Claim Rate (Multiplier)** | `0.10x` – `1.73x` | `~0.50x` | **Negative (-0.10)** |
-| **Settle Propensity (Multiplier)** | `0.13x` – `2.33x` | `~1.28x` | **Negative (-0.12)** |
-| **Utility Spend (Multiplier)** | `0.19x` – `1.92x` | `~1.07x` | **Negative (-0.08)** |
+| **Brand Inflow** | `> 750M / epoch` | **Strong Positive** | Essential for replenishing the AR and offsetting settlement outflows. |
+| **Utility Fee Share** | `20% - 30%` | **Positive** | Provides a continuous, organic refill mechanism for the Treasury. |
+| **Settlement Ratio** | `≤ 1.0` | **Negative** | Maintaining a 1:1 or lower ratio is critical for AR longevity. |
+| **Claim Rate** | `≤ 50%` | **Negative** | Higher migration rates increase the long-term settlement queue pressure. |
+| **Settle Propensity**| `≤ 20%` | **Negative** | Determines the velocity of AR depletion once ACR is vested. |
+| **Vesting Lag** | `≥ 26 epochs` | **Positive** | Vital for preventing early-stage liquidity crises. |
 
-*(Note: "Multiplier" refers to a scaling factor applied to the baseline cohort rates)*
+## 🔑 Key Takeaways
 
----
-
-## 🔑 Key Takeaways for Parameter Design
-
-1. **Brand Inflow is the Ultimate Anchor:** 
-   This is the strongest driver of solvency (correlation of `+0.6875`). In the 43 scenarios that collapsed, the *maximum* brand inflow was only `26,065` (averaging `11,840`). To guarantee long-term stability across various behavioral shocks, you should target a sustained brand inflow **above 30,000 per epoch**.
-
-2. **Settlement Ratio Caps are Necessary:** 
-   While the model *can* survive a settlement ratio of up to `1.98` in isolated cases (only if brand inflow is massive), the average settlement ratio for stable environments sits around `0.51`. Keeping it conservatively around **`0.30 - 0.60`** provides a massive buffer.
-
-3. **Fee Share is a Solid Lever:** 
-   Increasing the utility fee share provides consistent, low-risk solvency pressure relief. Stable scenarios hovered around a **`25%`** fee share on average.
-
-4. **Behavioral Shocks Can Be Absorbed:** 
-   Interestingly, the system can remain stable even if user claim rates spike by `1.7x` or settlement propensity spikes by `2.3x`, **provided that the exogenous demand (Brand Inflow + Fee Share) is high enough to offset it.**
+1. **The Reserve is Robust:** At the 300B scale, the system can absorb significant behavioral "jitter" in the first 2 years. However, the true stress test begins in Year 3 as the cumulative vested ACR queue starts to compete with the AR floor.
+2. **Inflow vs. Outflow Balance:** Stability is achieved when `(Brand Inflow + Utility Fees) ≈ Settlement Outflow`. With the current defaults, the system sits at a healthy boundary, but "extractive" user behavior (low spend, high settlement) can push the system toward a `Stressed` state (Queue > 10B).
+3. **Throttling Works:** The 2% per-epoch settlement cap and the throttle multiplier are effective guards against "bank run" scenarios, ensuring the AR never breaches the 250B floor abruptly.
 
 ---
-*Generated via `find_stable_params.py` random search script.*
+*Generated via `find_stable_params.py` using canonical Z1 M1 defaults (1T Scale).*
