@@ -20,6 +20,18 @@ This high stability rate is primarily due to the large **300B Z1U Audience Reser
 | **Settle Propensity**| `≤ 20%` | **Negative** | Determines the velocity of AR depletion once ACR is vested. |
 | **Vesting Lag** | `≥ 26 epochs` | **Positive** | Vital for preventing early-stage liquidity crises. |
 
+## 🔴 Red Line Boundaries (Tier C Results)
+
+Through a systematic boundary hunt, we identified the specific thresholds where the economy transitions from `Stable` to `Stressed` (Settlement Queue > 10B Z1U).
+
+| Stress Variable | Stability Limit (Red Line) | Observation |
+| :--- | :--- | :--- |
+| **Audience Scale** | **400 Million Users** | Beyond this, the cumulative settlement queue exceeds the per-epoch discharge capacity. |
+| **Settlement Ratio**| **4.0 Z1U : 1 ACR** | Hyper-inflationary settlement ratios create a backlog that the AR cannot clear in real-time. |
+| **Brand Inflow** | **0 Z1U (Survival)** | The initial 300B AR allows for 104 epochs of survival even with zero external inflow at baseline. |
+| **Vesting Lag** | **0 Epochs (Stable)** | The 2% settlement cap is robust enough to handle immediate vesting without an AR floor breach. |
+
+
 ## 🔑 Key Takeaways
 
 1. **The Reserve is Robust:** At the 300B scale, the system can absorb significant behavioral "jitter" in the first 2 years. However, the true stress test begins in Year 3 as the cumulative vested ACR queue starts to compete with the AR floor.
