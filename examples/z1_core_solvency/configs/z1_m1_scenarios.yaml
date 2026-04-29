@@ -65,6 +65,36 @@ starter_scenarios:
     cohort_shares: behavioral_fallback
     use_default_economics: true
 
+  m1_optimal_calibration:
+    description: High-stability configuration passing all hard and soft solvency locks.
+    initial_viewers: 220_000_000
+    claim_rate: 0.50
+    verification_pass_rate: 0.94
+    cohort_shares: profile_tier_mapping
+    override:
+      treasury:
+        initial_balance: 150_000_000_000
+        brand_inflow_per_epoch: 6_720_000_000
+      acr:
+        settlement_ratio: 0.105
+        weekly_acr_issue_rate_per_verified_user:
+          passive_viewers: 20
+          active_viewers: 50
+          power_users: 100
+      settlement:
+        settlement_propensity_per_epoch:
+          passive_viewers: 0.005
+          active_viewers: 0.010
+          power_users: 0.020
+      utility_spend:
+        spend_rate_per_epoch:
+          passive_viewers: 0.046
+          active_viewers: 0.182
+          power_users: 0.456
+        utility_fee_share: 0.339
+        utility_burn_share: 0.05
+
+
 stable_case_overrides:
   claim_rate: 0.50
   treasury:
