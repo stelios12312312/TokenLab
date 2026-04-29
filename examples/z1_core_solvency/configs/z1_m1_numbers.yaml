@@ -1,0 +1,125 @@
+source_anchors:
+  n_epochs: 104
+  epoch_days: 7
+  cohorts: 3
+
+  total_z1u_supply_cap: 1_000_000_000_000
+
+  audience_reserve:
+    initial_ratio_of_supply: 0.30
+    initial_balance: 300_000_000_000
+    floor_ratio_of_supply: 0.25
+    floor_balance: 250_000_000_000
+
+  identity_conversion:
+    otp_verification_rate: 0.94
+    registration_conversion_rate: 0.67
+    active_registered_ratio: 0.5278
+
+  audience_numbers:
+    gold_profiles: 45_000_000
+    silver_profiles: 75_000_000
+    bronze_profiles: 100_000_000
+    zee5_monthly_active_users: 95_000_000
+    zee5_registered_users: 180_000_000
+    cdp_unified_user_ids: 220_000_000
+    international_cumulative_audience: 400_000_000
+    domestic_cumulative_audience: 1_050_000_000
+    full_historical_cumulative_audience: 1_450_000_000
+
+  cohort_shares_from_profile_tiers:
+    passive_viewers: 0.4546
+    active_viewers: 0.3409
+    power_users: 0.2045
+
+  cohort_shares_behavioral_fallback:
+    passive_viewers: 0.60
+    active_viewers: 0.30
+    power_users: 0.10
+
+m1_default_economics:
+  supply:
+    total_z1u_supply_cap: 1_000_000_000_000
+    audience_reserve_initial: 300_000_000_000
+    audience_reserve_floor: 250_000_000_000
+
+  treasury:
+    initial_balance: 150_000_000_000
+    brand_inflow_per_epoch: 750_000_000
+    topup_threshold_ar_ratio_of_supply: 0.27
+    topup_target_ar_ratio_of_supply: 0.30
+
+  vesting:
+    vesting_lag_epochs: 26
+    vesting_mode: staggered_cliff
+    stagger_window_epochs: 8
+
+  acr:
+    settlement_ratio: 1.0
+    weekly_acr_issue_rate_per_verified_user:
+      passive_viewers: 20
+      active_viewers: 50
+      power_users: 100
+
+  settlement:
+    settlement_propensity_per_epoch:
+      passive_viewers: 0.05
+      active_viewers: 0.10
+      power_users: 0.20
+    settlement_cap_ratio_to_current_ar: 0.02
+
+  utility_spend:
+    spend_rate_per_epoch:
+      passive_viewers: 0.005
+      active_viewers: 0.020
+      power_users: 0.050
+    utility_fee_share: 0.20
+    utility_burn_share: 0.05
+    provider_share: 0.75
+
+  throttle:
+    throttle_threshold_ar_ratio_of_supply: 0.25
+    throttle_multiplier_when_stressed: 0.50
+
+cohort_behavior_templates:
+  balanced:
+    acr_issue_rate:
+      passive_viewers: 20
+      active_viewers: 50
+      power_users: 100
+    settlement_propensity:
+      passive_viewers: 0.05
+      active_viewers: 0.10
+      power_users: 0.20
+    spend_rate:
+      passive_viewers: 0.005
+      active_viewers: 0.020
+      power_users: 0.050
+
+  extractive:
+    acr_issue_rate:
+      passive_viewers: 30
+      active_viewers: 75
+      power_users: 150
+    settlement_propensity:
+      passive_viewers: 0.15
+      active_viewers: 0.30
+      power_users: 0.60
+    spend_rate:
+      passive_viewers: 0.002
+      active_viewers: 0.006
+      power_users: 0.010
+
+  spend_heavy:
+    acr_issue_rate:
+      passive_viewers: 20
+      active_viewers: 50
+      power_users: 100
+    settlement_propensity:
+      passive_viewers: 0.02
+      active_viewers: 0.05
+      power_users: 0.10
+    spend_rate:
+      passive_viewers: 0.010
+      active_viewers: 0.040
+      power_users: 0.080
