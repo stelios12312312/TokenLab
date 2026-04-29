@@ -27,20 +27,23 @@ def check_invariants(state: GlobalState) -> list[str]:
     if not math.isclose(state.total_acr_issued, total_cohort_acr, rel_tol=1e-5, abs_tol=1e-5):
         errors.append(f"ACR leak detected! Issued: {state.total_acr_issued}, Found: {total_cohort_acr}")
         
-    # 3. Z1U Flow Accounting
+    # 3. Z1U Flow Accounting (F4)
     total_cohort_z1u = sum(c.z1u_balance for c in state.cohorts.values())
-    modeled_initial_z1u = state.audience_reserve_initial + sum(c.z1u_balance for c in state.cohorts.values() if state.epoch == 0) 
-    # M1 spec explicitly says: 
-    # initial_AR + initial_Treasury + cumulative_brand_inflow 
-    # = AR + Treasury + sum(cohort.z1u_balance) + cumulative_provider_payments + total_z1u_burned
+    lhs = state.audience_reserve_initial + state.treasury_initial + state.cumulative_brand_inflow
+    rhs = (state.audience_reserve + state.treasury 
+           + total_cohort_z1u 
+           + state.cumulative_provider_payments 
+           + state.total_z1u_burned)
     
-    # Wait, initial cohort Z1u is 0, so ignore in LHS.
-    # We must look up the config or pass it. 
-    # Actually, we track everything in state.
-    # LHS: initial AR (tracked) + initial Treasury (need to infer from epoch 0 or assume current treasury - fees + topups?, better yet just trust the definition for the exact math)
-    # Actually, let's just make a hard invariant:
-    # "All Z1U created equals all Z1U existing + burned + externalized"
-    
+    if not math.isclose(lhs, rhs, rel_tol=1e-5, abs_tol=1e-5):
+        errors.append(f"Z1U Conservation leak! Expected: {lhs}, Found: {rhs}")
+        
+    # 4. Burn Consistency Invariant (F5)
+    live_supply = state.audience_reserve + state.treasury + total_cohort_z1u + state.cumulative_provider_payments
+    total_minted = state.audience_reserve_initial + state.treasury_initial + state.cumulative_brand_inflow
+    if not math.isclose(total_minted - state.total_z1u_burned, live_supply, rel_tol=1e-5, abs_tol=1e-5):
+        errors.append(f"Burn Consistency mismatch! Live supply: {live_supply}, Minted-Burned: {total_minted - state.total_z1u_burned}")
+
     # 5. Queue Consistency
     total_queued = sum(c.acr_queued_for_settlement for c in state.cohorts.values())
     if not math.isclose(state.settlement_queue_acr, total_queued, rel_tol=1e-5, abs_tol=1e-5):

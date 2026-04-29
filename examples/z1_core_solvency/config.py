@@ -92,15 +92,13 @@ class SolvencyConfig:
         > 1.0  → likely collapse
         
         Formula:
-            outflow = Σ(claim_rates) × Σ(settle_propensity) × settlement_ratio
-            inflow  = Σ(utility_spend_rates) × utility_fee_share + brand_inflow / AR_initial
+            outflow = Σ(share[c] × claim[c] × settle[c]) × SR
+            inflow  = Σ(share[c] × spend[c]) × fee_share + brand / AR
         """
-        outflow = (sum(self.claim_rate_by_cohort.values())
-                   * sum(self.settle_propensity_by_cohort.values())
-                   * self.settlement_ratio)
-        inflow = (sum(self.utility_spend_rate_by_cohort.values()) * self.utility_fee_share
-                  + (self.brand_inflow_per_epoch / self.audience_reserve_initial
-                     if self.audience_reserve_initial > 0 else 0))
+        outflow = sum(self.cohort_population_shares[c] * self.claim_rate_by_cohort.get(c, 0) * self.settle_propensity_by_cohort.get(c, 0) for c in COHORT_NAMES) * self.settlement_ratio
+        
+        inflow = sum(self.cohort_population_shares[c] * self.utility_spend_rate_by_cohort.get(c, 0) for c in COHORT_NAMES) * self.utility_fee_share + (self.brand_inflow_per_epoch / self.audience_reserve_initial if self.audience_reserve_initial > 0 else 0)
+        
         return outflow / inflow if inflow > 0 else float('inf')
 
     def check_solvency_locks(self) -> list[dict]:

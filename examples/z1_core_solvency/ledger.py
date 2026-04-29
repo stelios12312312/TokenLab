@@ -54,17 +54,15 @@ def execute_settlement(state: GlobalState, cohort_name: str, acr_amount: float, 
     
     cohort = state.cohorts[cohort_name]
     
-    # Strict limits
-    actual_acr = min(acr_amount, cohort.acr_queued_for_settlement)
+    # Calculate settlement ratio used in this request
+    settlement_ratio = z1u_amount / acr_amount if acr_amount > 0 else 0
     
-    # Determine safe z1u ratio based on actual ACR resolved vs requested
-    if acr_amount > 0:
-        ratio = actual_acr / acr_amount
-        actual_z1u = z1u_amount * ratio
-    else:
-        actual_z1u = 0.0
-        
-    actual_z1u = min(actual_z1u, state.audience_reserve)
+    max_z1u = state.audience_reserve
+    max_acr = max_z1u / settlement_ratio if settlement_ratio > 0 else 0
+    
+    # Actual ACR is constrained by request, queued amount, AND available AR
+    actual_acr = min(acr_amount, cohort.acr_queued_for_settlement, max_acr)
+    actual_z1u = actual_acr * settlement_ratio
     
     # Mutate LEDGER
     cohort.acr_queued_for_settlement -= actual_acr

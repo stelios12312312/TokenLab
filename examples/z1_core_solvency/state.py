@@ -15,7 +15,6 @@ class CohortState:
     acr_issue_rate: float = 0.0
     settle_propensity: float = 0.0
     utility_spend_rate: float = 0.0
-    churn_sensitivity: float = 0.0
     
     # Balances
     acr_vesting_buckets: List[float] = field(default_factory=list) # Index = epochs remaining until available
@@ -35,6 +34,7 @@ class GlobalState:
     audience_reserve_initial: float = 0.0
     audience_reserve_floor_ratio: float = 0.0
     treasury: float = 0.0
+    treasury_initial: float = 0.0
     
     # Tracking
     total_acr_issued: float = 0.0
@@ -76,5 +76,6 @@ def initialize_state(config: SolvencyConfig) -> GlobalState:
         audience_reserve=config.audience_reserve_initial,
         audience_reserve_initial=config.audience_reserve_initial,
         treasury=config.treasury_initial,
+        treasury_initial=config.treasury_initial,
         cohorts=cohorts
     )

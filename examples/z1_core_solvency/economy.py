@@ -40,6 +40,7 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         self.audience_reserve = config.audience_reserve_initial
         self.audience_reserve_initial = config.audience_reserve_initial
         self.treasury = config.treasury_initial
+        self.treasury_initial = config.treasury_initial
         
         self.total_acr_issued = 0.0
         self.settlement_queue_acr = 0.0
@@ -57,9 +58,13 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         # M1 metrics array bypassing the scattershot native stores
         self._z1_metrics_history = []
         
-        # Random number generator using config seed
-        self.rng = random.Random(config.random_seed)
-
+        # Setup initial cohorts for Epoch 0 metrics
+        from .state import initialize_state
+        self.cohorts = initialize_state(config).cohorts
+        
+        # Capture epoch 0 baseline
+        metrics = extract_epoch_metrics(self, self.config)
+        self._z1_metrics_history.append(metrics)
     def execute(self) -> bool:
         """
         Orchestrates the 5-step M1 loop over registered AgentPool_Z1 instances.
@@ -71,7 +76,26 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         self.per_epoch_counters.clear()
         
         receive_brand_inflow(self, self.config.brand_inflow_per_epoch)
-        claimed_this_epoch = self.config.initial_viewers / self.config.n_epochs
+        
+        # F6: Adoption Curves
+        if self.config.adoption_profile == "front_loaded":
+            # 60% of users arrive in first 20% of epochs, 40% in remaining 80%
+            threshold_epoch = max(1, int(self.config.n_epochs * 0.2))
+            if self.epoch <= threshold_epoch:
+                claimed_this_epoch = (self.config.initial_viewers * 0.6) / threshold_epoch
+            else:
+                remaining_epochs = self.config.n_epochs - threshold_epoch
+                claimed_this_epoch = (self.config.initial_viewers * 0.4) / remaining_epochs if remaining_epochs > 0 else 0
+        elif self.config.adoption_profile == "back_loaded":
+            # 20% of users in first 80% of epochs, 80% in remaining 20%
+            threshold_epoch = max(1, int(self.config.n_epochs * 0.8))
+            if self.epoch <= threshold_epoch:
+                claimed_this_epoch = (self.config.initial_viewers * 0.2) / threshold_epoch
+            else:
+                remaining_epochs = self.config.n_epochs - threshold_epoch
+                claimed_this_epoch = (self.config.initial_viewers * 0.8) / remaining_epochs if remaining_epochs > 0 else 0
+        else: # linear
+            claimed_this_epoch = self.config.initial_viewers / self.config.n_epochs
         
         # We leverage the native `_agent_pools` registry from TokenLab
         cohort_pools = {pool.name: pool for pool in self._agent_pools}
@@ -104,9 +128,14 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         if total_requested_z1u > self.config.settlement_cap_per_epoch:
             cap_ratio = self.config.settlement_cap_per_epoch / total_requested_z1u
             
+        # F2: AR fairness
+        total_z1u_after_cap = sum(pool.acr_queued_for_settlement * cap_ratio * self.config.settlement_ratio for pool in cohort_pools.values())
+        ar_ratio_fairness = self.audience_reserve / total_z1u_after_cap if total_z1u_after_cap > 0 else 1.0
+        effective_cap = cap_ratio * min(1.0, ar_ratio_fairness)
+            
         for name, pool in cohort_pools.items():
             if pool.acr_queued_for_settlement > 0:
-                exec_acr = pool.acr_queued_for_settlement * cap_ratio
+                exec_acr = pool.acr_queued_for_settlement * effective_cap
                 exec_z1u = exec_acr * self.config.settlement_ratio
                 execute_settlement(self, name, exec_acr, exec_z1u)
                 
@@ -121,16 +150,30 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
             pool.transactions = spend
             
         # STEP 5: Top up + Check
-        ar_ratio = self.audience_reserve / self.audience_reserve_initial if self.audience_reserve_initial > 0 else 0
+        # F3: Use circulating Z1U for denominator
+        z1u_circulating = sum(pool.z1u_balance for pool in cohort_pools.values())
+        # Early epochs have 0 circulating, handle gracefully
+        ar_ratio = self.audience_reserve / z1u_circulating if z1u_circulating > 0 else float('inf')
+        
         if ar_ratio < self.config.treasury_topup_threshold_ratio:
-            deficit = self.audience_reserve_initial * self.config.treasury_topup_target_ratio - self.audience_reserve
+            target_ar = z1u_circulating * self.config.treasury_topup_target_ratio if z1u_circulating > 0 else self.audience_reserve_initial
+            deficit = target_ar - self.audience_reserve
             if deficit > 0:
                 treasury_topup_ar(self, deficit)
                 
-        ar_ratio = self.audience_reserve / self.audience_reserve_initial if self.audience_reserve_initial > 0 else 0
+        # Re-eval ar_ratio in case of top-up
+        ar_ratio = self.audience_reserve / z1u_circulating if z1u_circulating > 0 else float('inf')
+        
+        # F7: Throttle Trigger Signal with graduated decay
         if ar_ratio < self.config.throttle_threshold_ratio:
             self.ar_floor_breach_count += 1
-            self.throttle_multiplier = self.config.throttle_multiplier_when_stressed
+            floor_halt = 0.6 * self.config.throttle_threshold_ratio
+            if ar_ratio < floor_halt:
+                self.throttle_multiplier = 0.0
+            else:
+                # Linear decay between 100% and 60% of throttle_threshold_ratio
+                ratio_in_range = (ar_ratio - floor_halt) / (self.config.throttle_threshold_ratio - floor_halt)
+                self.throttle_multiplier = ratio_in_range
         else:
             self.throttle_multiplier = 1.0
             
