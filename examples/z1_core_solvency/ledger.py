@@ -15,22 +15,27 @@ def issue_acr_to_vesting(state: GlobalState, cohort_name: str, amount: float):
     state.total_acr_issued += amount
 
 
-def vest_acr(state: GlobalState, cohort_name: str):
-    """Matures ACR whose vesting lag has elapsed into available balance."""
+def vest_acr(state: GlobalState, cohort_name: str, throttle_multiplier: float = 1.0):
+    """
+    Matures ACR whose vesting lag has elapsed into available balance.
+    Slowing down the shift represents 'Vesting Extension' under stress.
+    """
     cohort = state.cohorts[cohort_name]
     if len(cohort.acr_vesting_buckets) == 0:
         return
     
     # Bucket 0 drops into available
-    matured = cohort.acr_vesting_buckets[0]
+    matured = cohort.acr_vesting_buckets[0] * throttle_multiplier
     cohort.acr_available += matured
+    cohort.acr_vesting_buckets[0] -= matured
     
-    # Shift all buckets down by 1
+    # Shift buckets by throttle_multiplier
+    # If multiplier < 1.0, a portion of the older bucket remains, 
+    # effectively slowing down the conveyor belt.
     for i in range(len(cohort.acr_vesting_buckets) - 1):
-        cohort.acr_vesting_buckets[i] = cohort.acr_vesting_buckets[i + 1]
-    
-    # Clear the newest bucket
-    cohort.acr_vesting_buckets[-1] = 0.0
+        transfer = cohort.acr_vesting_buckets[i + 1] * throttle_multiplier
+        cohort.acr_vesting_buckets[i] += transfer
+        cohort.acr_vesting_buckets[i + 1] -= transfer
 
 
 def queue_settlement_request(state: GlobalState, cohort_name: str, acr_amount: float, z1u_requested: float):

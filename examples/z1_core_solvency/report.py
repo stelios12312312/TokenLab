@@ -222,32 +222,42 @@ The following are **intentionally excluded** from M1 and belong to M2/M3/M4:
 
     md += "---\n\n"
 
-    # ── Section 8: Sensitivity Findings ──────────────────────────────
-    md += """## 8. Sensitivity Findings
+    # ── Section 8: Sensitivity Findings & Solvency Drivers ──────────
+    md += "## 8. Sensitivity Findings & Solvency Drivers\n\n"
+    
+    # Load sensitivity results if available
+    oat_path = os.path.join("outputs", "oat_sensitivity.csv")
+    if os.path.exists(oat_path):
+        try:
+            df_oat = pd.read_csv(oat_path)
+            md += "### Top 5 Solvency Drivers (OAT Elasticity)\n\n"
+            md += "Elasticity measures the sensitivity of the final AR Ratio to a 1% change in the parameter.\n\n"
+            md += "| Rank | Parameter | AR Elasticity | Influence |\n"
+            md += "|------|-----------|--------------|-----------|\n"
+            
+            # Ensure Abs Elasticity exists
+            if 'AR Elasticity' in df_oat.columns:
+                df_oat['Abs Elasticity'] = df_oat['AR Elasticity'].abs()
+                df_oat = df_oat.sort_values('Abs Elasticity', ascending=False)
+                for i, (_, row) in enumerate(df_oat.head(5).iterrows()):
+                    infl = "🟢 RECOVERY" if row['AR Elasticity'] > 0 else "🔴 DRAIN"
+                    md += f"| {i+1} | `{row['Parameter']}` | {row['AR Elasticity']:.3f} | {infl} |\n"
+            md += "\n"
+        except Exception as e:
+            md += f"*Error loading sensitivity data: {e}*\n\n"
+    else:
+        md += "> **Status:** OAT sensitivity ranking not yet executed. Run `sensitivity.py` to identify drivers.\n\n"
 
-> **Status:** First-pass sensitivity screening has not yet been executed in this run.
-
-The M1 spec (Prompt 10) identifies the following candidate parameters for Morris screening:
-
-| Parameter | Expected Influence |
-|-----------|-------------------|
-| `claim_rate` | High — directly drives ACR issuance volume |
-| `settle_propensity` | High — controls settlement demand |
-| `settlement_cap_per_epoch` | High — the primary queue-control lever |
-| `brand_inflow_per_epoch` | High — only external Z1U source |
-| `utility_spend_rate` | Medium — drives fee/burn recycling |
-| `acr_issue_rate` | Medium — scales ACR per verified user |
-| `vesting_lag_epochs` | Medium — delays settlement pressure onset |
-| `settlement_ratio` | Medium — Z1U per ACR settled |
-| `utility_fee_share` | Low-Medium — Treasury recycling fraction |
-| `treasury_topup_threshold_ratio` | Low — controls when top-ups trigger |
-| `throttle_threshold_ratio` | Low — controls when issuance throttles |
-
-*Full Morris/OAT screening is recommended before M2.*
-
----
-
-"""
+    md += "### The Five Parameter Locks (Structural Laws)\n\n"
+    md += "The following laws govern the structural solvency of the Z1 loop:\n\n"
+    md += "| ID | Lock | Definition | Threshold | Status |\n"
+    md += "|----|------|------------|-----------|--------|\n"
+    md += "| L1 | **Solvency Floor** | Outflow / Inflow | < 0.8 | HARD |\n"
+    md += "| L2 | **Settlement-Fee** | settlement_ratio / fee_share | <= 2.0 | SOFT |\n"
+    md += "| L3 | **Brand Inflow Floor** | brand_inflow / AR_initial | >= 1% | HARD |\n"
+    md += "| L4 | **Cohort Net-Drain** | settle / spend (per cohort) | <= 0.5 | SOFT |\n"
+    md += "| L6 | **Constitutional Floor** | AR / Circulating Supply | >= 25% | HARD |\n"
+    md += "\n---\n\n"
 
     # ── Section 9: Risk Thresholds Observed ──────────────────────────
     md += "## 9. Risk Thresholds Observed\n\n"
