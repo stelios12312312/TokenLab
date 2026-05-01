@@ -43,7 +43,7 @@ def run_sweep(name, param_name, values, base_config):
     return results
 
 def main():
-    base_cfg = load_m1_scenario('m1_cdp_baseline')
+    base_cfg = load_m1_scenario('m1_optimal_calibration')
     grids = load_yaml('z1_m1_grids.yaml')
     
     all_results = []
