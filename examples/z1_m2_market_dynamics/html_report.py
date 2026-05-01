@@ -93,7 +93,7 @@ def generate_html_report(
 
     # ── Section 1–3: Purpose, Scope, Deferred ────────────────────────
     report.add_blockquote(
-        "M1 is a directional solvency model. It tests core structure, not final calibration."
+        "M2 adds endogenous market pricing and adversarial behavior to the M1 structural core."
     )
 
     report.add_text_section("1. Purpose", (
@@ -179,7 +179,8 @@ def generate_html_report(
     report.add_heading("8. Parameter Solvency Locks")
     report.add_text_section("", (
         "<p>The <strong>Solvency Ratio</strong> is the master structural invariant that "
-        "predicts system outcome with ~95% accuracy across all 27 stress scenarios.</p>"
+        "provides a structural sanity check for any parameter set. "
+        "If the ratio exceeds 0.8, the system is structurally fragile.</p>"
         "<p><strong>Formula:</strong> <code>outflow / inflow</code>, where:</p>"
         "<ul>"
         "<li><code>outflow = Σ(claim_rates) × Σ(settle_propensity) × settlement_ratio</code></li>"

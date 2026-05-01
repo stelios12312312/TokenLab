@@ -126,7 +126,7 @@ IF claim_rates > 1.5× baseline:
 
 | # | Lock | Formula | Type | Rationale |
 |---|---|---|---|---|
-| L1 | **Solvency Floor** | `outflow/inflow < 0.8` | **HARD** | Master invariant — predicts collapse with ~95% accuracy |
+| L1 | **Solvency Floor** | `outflow/inflow < 0.8` | **HARD** | Master structural invariant — sanity check for parameter viability |
 | L2 | **Settlement-Fee Ratio** | `settlement_ratio ≤ 2 × fee_share` | SOFT | Prevents structural drain |
 | L3 | **Brand Inflow Floor** | `brand_inflow ≥ 1% × AR` | **HARD** | Zero stable outcomes below this |
 | L4 | **Cohort Net-Drain Check** | `settle[c] ≤ 0.5 × spend[c]` | SOFT | Per-cohort contributor check |
