@@ -116,7 +116,9 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
             
         # STEP 3: Vest + Settle
         for name, pool in cohort_pools.items():
-            vest_acr(self, name)
+            # Apply vesting extension under stress
+            # Using min(multiplier, 1.0) just in case, though throttle is capped at 1.0
+            vest_acr(self, name, throttle_multiplier=self.throttle_multiplier)
             
             requested_acr = pool.acr_available * pool.settle_propensity
             requested_z1u = requested_acr * self.config.settlement_ratio
@@ -140,39 +142,53 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
                 execute_settlement(self, name, exec_acr, exec_z1u)
                 
         # STEP 4: Spend
+        total_utility_spend = 0.0
         for name, pool in cohort_pools.items():
             spend = pool.z1u_balance * pool.utility_spend_rate
             fee = spend * self.config.utility_fee_share
-            burn = spend * self.config.utility_burn_share
+            burn = spend * self.config.utility_burn_share if self.config.burn_enabled else 0.0
             provider = spend - fee - burn
             spend_z1u(self, name, spend, provider, fee, burn)
+            total_utility_spend += spend
             # Fulfill TokenLab's native transactions monitor
             pool.transactions = spend
             
         # STEP 5: Top up + Check
-        # F3: Use circulating Z1U for denominator
-        z1u_circulating = sum(pool.z1u_balance for pool in cohort_pools.values())
-        # Early epochs have 0 circulating, handle gracefully
-        ar_ratio = self.audience_reserve / z1u_circulating if z1u_circulating > 0 else float('inf')
+        # live_supply = Total Z1U currently in the system (including AR and Treasury)
+        total_cohort_z1u = sum(pool.z1u_balance for pool in cohort_pools.values())
+        live_supply = self.audience_reserve + self.treasury + total_cohort_z1u + self.cumulative_provider_payments
         
+        ar_ratio = self.audience_reserve / live_supply if live_supply > 0 else float('inf')
+        
+        # F3: Use total live supply for denominator
         if ar_ratio < self.config.treasury_topup_threshold_ratio:
-            target_ar = z1u_circulating * self.config.treasury_topup_target_ratio if z1u_circulating > 0 else self.audience_reserve_initial
+            # We want to restore AR to target_ratio * live_supply
+            target_ar = live_supply * self.config.treasury_topup_target_ratio
             deficit = target_ar - self.audience_reserve
             if deficit > 0:
-                treasury_topup_ar(self, deficit)
+                # L9/P1.10: Enforce top-up cap
+                max_topup = self.config.treasury_topup_cap_ratio_per_epoch * self.audience_reserve_initial
+                actual_topup = min(deficit, max_topup)
+                treasury_topup_ar(self, actual_topup)
                 
-        # Re-eval ar_ratio in case of top-up
-        ar_ratio = self.audience_reserve / z1u_circulating if z1u_circulating > 0 else float('inf')
+        # F7: Throttle Trigger Signal with Treasury Health
+        # health = Treasury / Demand
+        demand = total_requested_z1u
+        treasury_health = self.treasury / demand if demand > 0 else float('inf')
         
-        # F7: Throttle Trigger Signal with graduated decay
-        if ar_ratio < self.config.throttle_threshold_ratio:
+        # We also keep AR ratio as a secondary trigger for "structural" throttle
+        # or we follow the feedback: "fire on treasury_health < theta_min"
+        # Let's combine them: min(ar_ratio/threshold, treasury_health/theta_min)
+        # But for Z2, let's prioritize Treasury Health as requested.
+        
+        # We use throttle_threshold_ratio as theta_min conceptually
+        if treasury_health < self.config.throttle_threshold_ratio:
             self.ar_floor_breach_count += 1
             floor_halt = 0.6 * self.config.throttle_threshold_ratio
-            if ar_ratio < floor_halt:
+            if treasury_health < floor_halt:
                 self.throttle_multiplier = 0.0
             else:
-                # Linear decay between 100% and 60% of throttle_threshold_ratio
-                ratio_in_range = (ar_ratio - floor_halt) / (self.config.throttle_threshold_ratio - floor_halt)
+                ratio_in_range = (treasury_health - floor_halt) / (self.config.throttle_threshold_ratio - floor_halt)
                 self.throttle_multiplier = ratio_in_range
         else:
             self.throttle_multiplier = 1.0

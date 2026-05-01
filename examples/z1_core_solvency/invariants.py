@@ -44,7 +44,12 @@ def check_invariants(state: GlobalState) -> list[str]:
     if not math.isclose(total_minted - state.total_z1u_burned, live_supply, rel_tol=1e-5, abs_tol=1e-5):
         errors.append(f"Burn Consistency mismatch! Live supply: {live_supply}, Minted-Burned: {total_minted - state.total_z1u_burned}")
 
-    # 5. Queue Consistency
+    # 5. L6 Constitutional AR Floor (P1.17)
+    # AR(t) >= 0.25 * Z1U_Circulating(t)
+    if live_supply > 0 and (state.audience_reserve / live_supply) < 0.25 - 1e-6:
+         errors.append(f"L6 Constitutional AR Floor Violation! AR Ratio: {state.audience_reserve / live_supply:.3f} (< 0.25)")
+
+    # 6. Queue Consistency
     total_queued = sum(c.acr_queued_for_settlement for c in state.cohorts.values())
     if not math.isclose(state.settlement_queue_acr, total_queued, rel_tol=1e-5, abs_tol=1e-5):
         errors.append(f"Queue mismatch! Global: {state.settlement_queue_acr}, Cohorts: {total_queued}")

@@ -26,6 +26,8 @@ class AgentPool_Z1(AgentPool_Basic):
         self.acr_available = 0.0
         self.acr_queued_for_settlement = 0.0
         self.acr_settled = 0.0
+        self.acr_held = 0.0
+        self.acr_voided = 0.0
         self.z1u_balance = 0.0
         
         # To maintain compatibility with TokenLab's AgentPool metrics:

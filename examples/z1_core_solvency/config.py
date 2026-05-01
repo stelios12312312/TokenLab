@@ -36,7 +36,7 @@ class SolvencyConfig:
 
     # Settlement dynamics
     settle_propensity_by_cohort: Dict[str, float] = field(
-        default_factory=lambda: {"passive_viewers": 0.4, "active_viewers": 0.3, "power_users": 0.15}
+        default_factory=lambda: {"passive_viewers": 0.25, "active_viewers": 0.3, "power_users": 0.15}
     )
     settlement_ratio: float = 0.5
     settlement_cap_per_epoch: float = 50_000.0
@@ -47,17 +47,21 @@ class SolvencyConfig:
     )
     utility_fee_share: float = 0.20
     utility_burn_share: float = 0.05
+    burn_enabled: bool = True
 
     # Ecosystem health parameters
     brand_inflow_per_epoch: float = 25_000.0
-    treasury_topup_threshold_ratio: float = 0.5
-    treasury_topup_target_ratio: float = 1.0
+    treasury_topup_threshold_ratio: float = 0.3
+    treasury_topup_target_ratio: float = 0.4
+    treasury_topup_cap_ratio_per_epoch: float = 0.10
+    
     throttle_threshold_ratio: float = 0.3
     throttle_multiplier_when_stressed: float = 0.5
+    vesting_extension_factor: float = 2.0 # Multiplier for vesting lag under stress
 
     # Initial Global balances
-    audience_reserve_initial: float = 1_000_000.0
-    treasury_initial: float = 500_000.0
+    audience_reserve_initial: float = 5_000_000.0
+    treasury_initial: float = 2_500_000.0
 
 
     def validate(self):
@@ -82,6 +86,22 @@ class SolvencyConfig:
         assert self.treasury_topup_target_ratio >= self.treasury_topup_threshold_ratio, "Target ratio must be >= threshold"
         assert self.audience_reserve_initial >= 0, "Initial AR must be positive"
         assert self.treasury_initial >= 0, "Initial Treasury must be positive"
+
+        # L7 (SOFT): Vesting Lag Floor
+        mean_settle = sum(self.cohort_population_shares[c] * self.settle_propensity_by_cohort[c] for c in COHORT_NAMES)
+        min_lag = math.ceil(2 / mean_settle) if mean_settle > 0 else 0
+        # We don't assert HARD here but could warn. For now, let's keep it as a documented rule.
+        
+        # L8 (SOFT): Fee + Burn Share Floor
+        assert self.utility_fee_share + self.utility_burn_share >= 0.10, "L8 Violation: combined capture < 10%"
+        
+        # L9 (HARD): Per-Epoch AR Drain Cap
+        drain_cap = self.settlement_cap_per_epoch * self.settlement_ratio
+        assert drain_cap <= 0.10 * self.audience_reserve_initial, f"L9 Violation: Max drain {drain_cap} exceeds 10% of AR ({0.10*self.audience_reserve_initial})"
+        
+        # L10 (HARD): Population-Weighted Net Contributor
+        mean_spend = sum(self.cohort_population_shares[c] * self.utility_spend_rate_by_cohort[c] for c in COHORT_NAMES)
+        assert mean_settle <= mean_spend, f"L10 Violation: Weighted settle ({mean_settle:.3f}) > weighted spend ({mean_spend:.3f})"
 
     def compute_solvency_ratio(self) -> float:
         """

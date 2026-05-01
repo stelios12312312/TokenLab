@@ -21,6 +21,8 @@ class CohortState:
     acr_available: float = 0.0
     acr_queued_for_settlement: float = 0.0
     acr_settled: float = 0.0
+    acr_held: float = 0.0
+    acr_voided: float = 0.0
     
     z1u_balance: float = 0.0
 
