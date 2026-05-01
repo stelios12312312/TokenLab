@@ -119,7 +119,7 @@ def generate_html_report(
     ))
 
     # ── Sections 4–6: Named Scenarios (tabbed) ───────────────────────
-    named = ["baseline", "collapse_case", "stable_case"]
+    named = ["baseline", "bank_run", "collapse_case", "stable_case"]
     present = [n for n in named if n in summaries]
 
     if present:
@@ -319,13 +319,59 @@ def generate_html_report(
         style="info",
     )
 
-    # ── Sections 9–12: Sensitivity, Risk, Limitations, Extensions ────
-    report.add_text_section("9. Sensitivity Findings", "")
+    # ── Sections 9–12: Sensitivity, Risk, Findings, Limitations, Extensions ────
+    report.add_table_section("9. Top Solvency Drivers (OAT Elasticity)",
+        ["Rank", "Parameter", "AR Elasticity", "Meaning"],
+        [
+            ["1", "treasury_topup_threshold_ratio", "+2.98", "Most powerful lever — controls when Treasury recapitalises AR"],
+            ["2", "audience_reserve_initial", "−0.77", "Bigger starting AR inflates denominator — makes topups less effective"],
+            ["3", "brand_inflow_per_epoch", "+0.42", "External revenue — without it, nothing works"],
+            ["4-12", "All others", "< 0.05", "Settlement cap, vesting, fees, burn, throttle — near-zero impact"],
+        ],
+    )
+
+    # ── Key Findings section ─────────────────────────────────────────
+    report.add_heading("9b. Key Findings & Minimum Sustainability Thresholds")
+
+    report.add_table_section("Hard Constraints (Violate = Collapse)",
+        ["Lock", "Rule", "Minimum Threshold"],
+        [
+            ["L1", "Solvency Ratio (outflow/inflow)", "< 0.8"],
+            ["L3", "Brand Inflow / AR per epoch", "≥ 1%"],
+            ["L6", "AR / Circulating Supply", "≥ 25%"],
+            ["L9", "Max single-epoch AR drain", "≤ 10% of initial AR"],
+        ],
+    )
+
+    report.add_table_section("Optimal Parameter Set (Monte Carlo calibration)",
+        ["Parameter", "Optimal Value", "Safe Range"],
+        [
+            ["Solvency Ratio", "0.006", "< 0.8"],
+            ["Settlement Ratio", "0.10", "0.05 – 0.75"],
+            ["Utility Fee Share", "34%", "6% – 40%"],
+            ["Brand Inflow", "2.24% of AR", "≥ 1% (absolute min)"],
+            ["Campaign Fee", "25%", "≥ 15% for AR floor defense"],
+        ],
+    )
+
     report.add_callout(
-        "<strong>Status:</strong> First-pass sensitivity screening not yet executed. "
-        "Top candidates: <code>claim_rate</code>, <code>settle_propensity</code>, "
-        "<code>settlement_cap_per_epoch</code>, <code>brand_inflow_per_epoch</code>.",
+        "<strong>Passive Viewer Problem:</strong> Passive viewers are net extractors "
+        "(settle/spend ratio: 2.50x vs target ≤ 0.5x). The system survives because "
+        "power users subsidise them and brand inflow covers the gap. "
+        "If the cohort mix shifts toward extractors, the system breaks.",
         style="warn",
+    )
+
+    report.add_callout(
+        "<strong>Design Rules:</strong>"
+        "<ol>"
+        "<li>Set the topup trigger aggressively — sensitivity to <em>when</em> you recapitalise is 3x higher than to inflow amount.</li>"
+        "<li>Don't over-capitalise the AR at launch — a giant starting reserve creates a false sense of security.</li>"
+        "<li>Brand inflow is the oxygen — below 1% of AR per epoch, every scenario collapsed. No exceptions.</li>"
+        "<li>Constitutional 25% AR floor must be enforced mechanically — don't trust governance.</li>"
+        "<li>Monitor passive viewer cohort share — if extractors grow, raise settlement friction.</li>"
+        "</ol>",
+        style="info",
     )
 
     report.add_heading("10. Risk Thresholds Observed")

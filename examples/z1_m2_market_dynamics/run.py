@@ -221,6 +221,37 @@ if __name__ == "__main__":
         print(f"\nFast test complete. Reports saved to {outputs_dir}")
         print(f"Report (MD):     {report_path}")
 
+    elif args.scenario == 'm2':
+        # ── M2 MODE: baseline + bank_run with combined report ────────
+        print("=" * 60)
+        print("Z1 M2 Market Dynamics — Combined Report")
+        print("=" * 60)
+
+        report_data = {}
+        for scenario_name in ['baseline', 'bank_run']:
+            print(f"\n▶ Running scenario: {scenario_name}")
+            config = get_scenario_config(scenario_name)
+            history = run_simulation(config)
+            df = pd.DataFrame(history)
+            summary = summarize_run(df)
+
+            df.to_csv(os.path.join(outputs_dir, f"{scenario_name}_metrics.csv"), index=False)
+            with open(os.path.join(outputs_dir, f"{scenario_name}_summary.json"), 'w') as f:
+                json.dump(summary, f, indent=4)
+
+            create_single_scenario_plots(df, scenario_name, os.path.join(outputs_dir, "plots", scenario_name))
+            report_data[scenario_name] = summary
+
+            print(f"  Classification: {summary['classification']}")
+            print(f"  Final AR Ratio: {summary['final_ar_ratio']:.2f}")
+
+        md_path = generate_report(outputs_dir, report_data)
+        html_path = generate_html_report(outputs_dir, report_data)
+        print(f"\nM2 combined report generated.")
+        print(f"  MD:   {md_path}")
+        print(f"  HTML: {html_path}")
+        print(f"Outputs saved to {outputs_dir}")
+
     elif args.scenario != 'grid':
         print(f"Running M1 Core Solvency Model - Scenario: {args.scenario}")
         config = get_scenario_config(args.scenario)

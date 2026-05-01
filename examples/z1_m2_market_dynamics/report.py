@@ -146,7 +146,7 @@ The following belong to M3/M4+:
 """
 
     # ── Sections 4–6: Named Scenarios ────────────────────────────────
-    named_scenarios = ['baseline', 'collapse_case', 'stable_case']
+    named_scenarios = ['baseline', 'bank_run', 'collapse_case', 'stable_case']
     section_num = 4
     for name in named_scenarios:
         if name in summaries:
@@ -292,6 +292,56 @@ The following belong to M3/M4+:
         md += "*Grid data not available — risk thresholds cannot be derived.*\n\n"
 
     md += "---\n\n"
+
+    # ── Section 9b: Key Findings & Minimum Sustainability Thresholds ─
+    md += """## 9b. Key Findings & Minimum Sustainability Thresholds
+
+### The Three Parameters That Drive Survival
+
+OAT sensitivity screening ranked 12 parameters. **Only three have meaningful elasticity:**
+
+| Rank | Parameter | AR Elasticity | Meaning |
+|------|-----------|:---:|---------|
+| 1 | `treasury_topup_threshold_ratio` | **+2.98** | Most powerful lever. Controls *when* Treasury recapitalises the AR. |
+| 2 | `audience_reserve_initial` | **−0.77** | Bigger starting AR inflates the denominator — makes topups less effective. |
+| 3 | `brand_inflow_per_epoch` | **+0.42** | External revenue. Without it, nothing works. |
+
+All other parameters (settlement cap, vesting lag, fee share, burn share, throttle) have **near-zero elasticity** (< 0.05).
+
+### Hard Constraints (Violate = Collapse)
+
+| Lock | Rule | Minimum Threshold |
+|------|------|:---:|
+| **L1** | Solvency Ratio (`outflow/inflow`) | **< 0.8** |
+| **L3** | Brand Inflow / AR per epoch | **≥ 1%** |
+| **L6** | AR / Circulating Supply | **≥ 25%** |
+| **L9** | Max single-epoch AR drain | **≤ 10% of initial AR** |
+
+### Optimal Parameter Set (from Monte Carlo calibration)
+
+| Parameter | Optimal Value | Safe Range |
+|-----------|:---:|:---:|
+| Solvency Ratio | **0.006** | < 0.8 |
+| Settlement Ratio | **0.10** | 0.05 – 0.75 |
+| Utility Fee Share | **34%** | 6% – 40% |
+| Brand Inflow | **2.24% of AR** | ≥ 1% (absolute minimum) |
+| Campaign Fee | **25%** | ≥ 15% for AR floor defense |
+
+### The Passive Viewer Problem
+
+Passive viewers are **net extractors** (settle/spend ratio: 2.50x vs target ≤ 0.5x). The system survives because power users subsidise them and brand inflow covers the gap. If the cohort mix shifts toward extractors, the system breaks.
+
+### Design Rules
+
+1. **Set the topup trigger aggressively** — the system is far more sensitive to *when* you recapitalise than to how much money flows in.
+2. **Don't over-capitalise the AR at launch** — a giant starting reserve creates a false sense of security.
+3. **Brand inflow is the oxygen** — below 1% of AR per epoch, the system collapses in every observed case.
+4. **Constitutional 25% AR floor must be enforced mechanically** — don't trust governance to maintain it.
+5. **Monitor passive viewer cohort share** — if extractors grow, raise their settlement friction.
+
+---
+
+"""
 
     # ── Section 10: Known Limitations ────────────────────────────────
     md += """## 10. Known Limitations
