@@ -40,6 +40,12 @@ def _set_slide_bg(slide, color=BG_DARK):
     fill.fore_color.rgb = color
 
 
+def _set_notes(slide, text):
+    """Set speaker notes on a slide."""
+    notes_slide = slide.notes_slide
+    notes_slide.notes_text_frame.text = text
+
+
 def _add_textbox(slide, left, top, width, height, text, font_size=18,
                  bold=False, color=TEXT_MAIN, alignment=PP_ALIGN.LEFT, font_name="Calibri"):
     """Helper: add a styled textbox."""
@@ -149,6 +155,12 @@ def generate_pptx(run_dir: str, output_path: str = None):
                  "Endogenous Pricing & Adversarial Solvency Model", font_size=24, color=ACCENT)
     _add_textbox(slide, Inches(1), Inches(5), Inches(11), Inches(0.5),
                  "TokenLab Simulation Report", font_size=16, color=MUTED)
+    _set_notes(slide,
+        "M2 is the second generation of our solvency model. "
+        "M1 tested pure structural integrity with static assumptions. "
+        "M2 introduces endogenous market pricing via an AMM, adversarial agent behavior (panic selling), "
+        "and a campaign escrow engine. The goal is to answer: can the system survive when price is determined "
+        "by the market and agents act against the protocol's interest?")
 
     # ═══════════════════════════════════════════════════════════════════
     # SLIDE 2: What M2 Models
@@ -172,6 +184,13 @@ def generate_pptx(run_dir: str, output_path: str = None):
                    ["Health Throttle", "Reduces ACR issuance when AR ratio < 0.3"],
                    ["Invariants", "Full conservation including AMM reserves and Escrow balances"],
                ])
+    _set_notes(slide,
+        "Key upgrade from M1: price is no longer an input — it emerges from a constant-product AMM pool. "
+        "When users settle their ACR rewards for Z1U and sell on the AMM, the price drops. "
+        "If the price drops more than 10%, a panic trigger fires and settlement demand surges 10x. "
+        "The L6 floor guard is our constitutional defense: settlement is dynamically capped so the "
+        "Audience Reserve never falls below 25% of circulating supply. "
+        "The escrow engine means brand deposits don't go directly to users — 25% is captured as a Treasury fee upfront.")
 
     # ═══════════════════════════════════════════════════════════════════
     # SLIDE 3: Scenario Results (one per scenario)
@@ -225,6 +244,30 @@ def generate_pptx(run_dir: str, output_path: str = None):
                         pass
                 break
 
+        # Speaker notes for scenario slides
+        if classification == 'collapse':
+            notes = (
+                f"The {name} scenario demonstrates a structural failure. "
+                f"The AR ratio fell to {_fmt(summary.get('min_ar_ratio'))}, below the collapse threshold. "
+                f"The throttle engaged for {summary.get('throttle_epochs', 0)} of 104 epochs but couldn't save it. "
+                f"Key takeaway: the inflow was insufficient to sustain the outflow pressure."
+            )
+        elif classification == 'stressed':
+            notes = (
+                f"The {name} scenario shows the system under heavy pressure but surviving. "
+                f"AR ratio bottomed at {_fmt(summary.get('min_ar_ratio'))} and recovered to {_fmt(summary.get('final_ar_ratio'))}. "
+                f"The throttle was active for {summary.get('throttle_epochs', 0)} of 104 epochs — this is the system's immune response. "
+                f"Settlement queue peaked at {_fmt(summary.get('max_settlement_queue_z1u'), ',.0f')} Z1U. "
+                f"The Treasury went to zero but the AR floor held, proving the constitutional guard works."
+            )
+        else:
+            notes = (
+                f"The {name} scenario shows healthy loop dynamics. "
+                f"Utility spend, brand inflows, and Treasury fees sustain the AR at {_fmt(summary.get('final_ar_ratio'))}. "
+                f"No throttle was needed. This is the target operating state."
+            )
+        _set_notes(slide, notes)
+
     # ═══════════════════════════════════════════════════════════════════
     # SLIDE: Comparison (if multiple scenarios)
     # ═══════════════════════════════════════════════════════════════════
@@ -258,6 +301,13 @@ def generate_pptx(run_dir: str, output_path: str = None):
 
         _add_table(slide, Inches(0.8), Inches(1.5), Inches(11.5), Inches(4.5),
                    headers, rows)
+        _set_notes(slide,
+            "This side-by-side comparison reveals the system's resilience envelope. "
+            "Notice the bank run scenario has 50x less brand inflow but the AR only drops from 1.17 to 0.88. "
+            "The settlement queue is 3x larger under bank run conditions, yet the system holds. "
+            "This proves the throttle-and-cap mechanism works. "
+            "The key insight: it's not the size of the attack that matters, "
+            "it's whether the constitutional floor is mechanically enforced.")
 
     # ═══════════════════════════════════════════════════════════════════
     # SLIDE: Top Solvency Drivers
@@ -278,6 +328,14 @@ def generate_pptx(run_dir: str, output_path: str = None):
                    ["3", "brand_inflow_per_epoch", "+0.42", "External revenue — the oxygen of the system"],
                    ["4–12", "All others", "< 0.05", "Settlement cap, vesting, fees, burn, throttle — near-zero impact"],
                ])
+    _set_notes(slide,
+        "We ran One-At-a-Time sensitivity screening across 12 parameters, perturbing each by ±20%. "
+        "The result is striking: only 3 parameters materially affect the final AR ratio. "
+        "The topup threshold has 3x the elasticity of brand inflow — meaning WHEN you start recapitalising "
+        "the AR matters far more than how much money flows in. "
+        "The counterintuitive finding: a bigger starting AR actually hurts the ratio because it inflates "
+        "the denominator, making each topup proportionally smaller. "
+        "Everything else — settlement caps, vesting periods, fee percentages, burn rates — is noise.")
 
     # ═══════════════════════════════════════════════════════════════════
     # SLIDE: Hard Constraints
@@ -308,6 +366,13 @@ def generate_pptx(run_dir: str, output_path: str = None):
                    ["Brand Inflow", "2.24% of AR", "≥ 1% (absolute minimum)"],
                    ["Campaign Fee", "25%", "≥ 15% for AR floor defense"],
                ])
+    _set_notes(slide,
+        "These are the hard lines from the simulation. L1 is the master invariant: if outflow/inflow exceeds 0.8, "
+        "you're in fragile territory. Above 1.0, collapse is guaranteed in every observed case. "
+        "L3 is the survival floor: below 1% brand inflow per epoch relative to AR, not a single scenario survived. "
+        "L6 is constitutional: the 25% AR floor must be enforced by code, not by governance vote. "
+        "The optimal calibration from our Monte Carlo search shows the safe operating ranges. "
+        "Note the settlement ratio optimum is 0.10 — much lower than the 0.5 default many assume.")
 
     # ═══════════════════════════════════════════════════════════════════
     # SLIDE: Design Rules
@@ -324,6 +389,15 @@ def generate_pptx(run_dir: str, output_path: str = None):
         "4. Constitutional 25% AR floor must be enforced mechanically — don't trust governance to maintain it",
         "5. Monitor passive viewer cohort share — if extractors grow, raise their settlement friction",
     ], font_size=18)
+    _set_notes(slide,
+        "These five rules are the practical output of the M2 simulation. "
+        "Rule 1 is the most important and most counterintuitive: it's not about how much money you have, "
+        "it's about how early you trigger the recapitalisation mechanism. A 1% change in the trigger threshold "
+        "produces a 3% change in the final AR ratio. "
+        "Rule 2 challenges the instinct to launch with a massive reserve — the math works against you. "
+        "Rule 3 is non-negotiable: without external revenue, the system is a Ponzi by construction. "
+        "Rule 4 is about trust minimisation: if the floor can be changed by governance, it will be under attack. "
+        "Rule 5 flags the cohort composition risk — growth strategies that attract extractors are system-hostile.")
 
     # ═══════════════════════════════════════════════════════════════════
     # SLIDE: Passive Viewer Problem
@@ -349,6 +423,14 @@ def generate_pptx(run_dir: str, output_path: str = None):
         "Brand inflow covers the remaining gap",
         "If passive viewer share grows (e.g. referral campaigns), the system breaks",
     ], font_size=16, color=TEXT_MAIN)
+    _set_notes(slide,
+        "This is the uncomfortable finding. Passive viewers extract 2.5x more value than they contribute. "
+        "The L4 target says settle/spend should be below 0.5x — passive viewers are at 2.5x, five times over. "
+        "The system only works because: (a) power users are massive net contributors at 0.19x, "
+        "(b) brand inflow subsidises the gap, and (c) the 60/30/10 population split means passive viewers "
+        "are individually small. But any growth strategy that shifts this mix — referral bonuses, airdrops, "
+        "gamification that attracts speculators — is structurally dangerous. "
+        "The recommendation: tie settlement friction to cohort behaviour, not just global caps.")
 
     # ═══════════════════════════════════════════════════════════════════
     # SLIDE: M3 Roadmap
@@ -368,6 +450,14 @@ def generate_pptx(run_dir: str, output_path: str = None):
                    ["P2", "Governance & Delegation", "Model attack vectors on Treasury and Protocol parameters"],
                    ["P3", "Prediction Market Sink", "Integrate secondary utility sinks for Z1U"],
                ])
+    _set_notes(slide,
+        "M3 priorities are driven by the gaps M2 exposed. "
+        "P0 items address the biggest structural weakness: there's no sink for Z1U sell pressure other than utility spend. "
+        "Z1P staking would give users a reason to hold rather than sell. Dynamic LP would make the AMM more realistic. "
+        "P1 items expand the agent taxonomy — creators and validators are currently missing from the economy. "
+        "P2 governance modeling is critical because the constitutional floor (L6) is only as strong as the "
+        "governance mechanism that protects it. If an attacker can vote to lower the floor, the system is vulnerable. "
+        "P3 prediction markets are a secondary utility sink — nice to have, not essential.")
 
     # ═══════════════════════════════════════════════════════════════════
     # Save
