@@ -215,10 +215,14 @@ This is a **market-aware cohort agent-based model (ABM)** built to answer:
 
 > *Can the Z1 system maintain solvency when pricing is endogenous and agents are adversarial?*
 
+In this M2 release, we specifically set out to address key structural and behavioral gaps identified in the prior iteration:
+- **Structural Accuracy (Phase 1):** We introduced **Productivity/Contribution Scoring (PCS)** to intelligently route newly issued tokens toward active, tenure-heavy users rather than flat static cohorts. We also implemented **Baseline Activity Score (BAS) Gating**, which severely throttles the settlement bandwidth of churned/passive users, preventing lazy value extraction. Finally, we deployed a **Dynamic Settlement Ratio** that shrinks the protocol's exchange rate based on global demand, protecting the Audience Reserve mathematically.
+- **Behavioral Realism (Phase 2):** We instituted a **Tier Ratchet System** (Bronze to Platinum) that modulates the exchange rate for loyal users. To prevent dangerous settlement spikes, we implemented **Hash-Based Vesting Stagger**, which distributes token unlocks across multiple sub-phases. We also modeled explicit deflation by introducing **Campaign Fee Burn Channels**, ensuring that brand deposits mathematically reduce the total token supply.
+
 The core economic loop under test is:
 
 ```
-Issuance → Vesting → Settlement → Market (AMM) → Price Discovery → Panic Feedback → Utility Recap
+Issuance (PCS) → Vesting (Staggered) → Settlement (BAS/Tier Gated) → Market (AMM) → Price Discovery → Panic Feedback → Utility Recap (Burn)
 ```
 
 M2 targets three new research questions:
