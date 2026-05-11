@@ -9,6 +9,7 @@ class AutomatedMarketMaker:
         self.k = z1u_reserve * usd_reserve
         self.fee_rate = fee_rate
         self.total_volume_usd = 0.0
+        self.initial_spot_price = self.spot_price
 
     @property
     def spot_price(self) -> float:
@@ -65,11 +66,15 @@ class AutomatedMarketMaker:
         self.total_volume_usd += usd_amount
         return z1u_out
 
-    def compute_settlement_ratio(self, base_ratio: float, panic_factor: float = 1.0) -> float:
+    def compute_settlement_ratio(self, base_ratio: float) -> float:
         """
         Compute dynamic settlement ratio based on AMM health or price action.
-        If price drops, the ratio might worsen to protect the AR.
+        If price drops, the ratio drops to protect the AR (dynamic slippage/peg defense).
         """
-        # For M2, the settlement_ratio dynamically adjusts based on spot price relative to a target.
-        # Alternatively, it could just be a function of the liquidity pool depth.
-        return base_ratio * panic_factor
+        if self.initial_spot_price > 0:
+            price_health = self.spot_price / self.initial_spot_price
+        else:
+            price_health = 1.0
+            
+        # M2 Dynamic Policy: cap at base_ratio, penalize if price < initial
+        return base_ratio * min(1.0, price_health)

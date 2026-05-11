@@ -15,6 +15,14 @@ class CohortState:
     acr_issue_rate: float = 0.0
     settle_propensity: float = 0.0
     utility_spend_rate: float = 0.0
+
+    # PCS & BAS (GAP-01, GAP-02, GAP-04)
+    tenure_epochs: int = 0
+    activity_score: float = 0.0 
+    pcs_score: float = 0.0
+    bas_score: float = 0.0
+    cumulative_pcs: float = 0.0
+    tier: str = "Bronze"
     
     # Balances
     acr_vesting_buckets: List[float] = field(default_factory=list) # Index = epochs remaining until available
@@ -49,6 +57,9 @@ class GlobalState:
     cumulative_utility_spend: float = 0.0
     cumulative_treasury_fees: float = 0.0
     cumulative_provider_payments: float = 0.0
+    cumulative_cip_funding: float = 0.0
+    cumulative_ops_costs: float = 0.0
+    cumulative_rwa_yield: float = 0.0
     
     # Health and metrics
     throttle_multiplier: float = 1.0
@@ -70,7 +81,7 @@ def initialize_state(config: SolvencyConfig) -> GlobalState:
             acr_issue_rate=config.acr_issue_rate_by_cohort[name],
             settle_propensity=config.settle_propensity_by_cohort[name],
             utility_spend_rate=config.utility_spend_rate_by_cohort[name],
-            acr_vesting_buckets=[0.0] * config.vesting_lag_epochs
+            acr_vesting_buckets=[0.0] * (config.vesting_lag_epochs + getattr(config, 'vesting_sub_cohort_phases', 1) - 1)
         )
         cohorts[name] = c
     

@@ -123,23 +123,24 @@ def get_scenario_config(scenario_name: str) -> SolvencyConfig:
     if scenario_name == 'baseline':
         pass
     elif scenario_name == 'collapse_case':
-        config.claim_rate_by_cohort = {"passive_viewers": 0.4, "active_viewers": 0.8, "power_users": 1.0}
-        config.settle_propensity_by_cohort = {"passive_viewers": 0.9, "active_viewers": 0.9, "power_users": 0.9}
+        config.claim_rate_by_cohort = {"passive_viewers": 0.4, "active_viewers": 0.8, "power_users": 1.0, "adversarial_whales": 1.0}
+        config.settle_propensity_by_cohort = {"passive_viewers": 0.9, "active_viewers": 0.9, "power_users": 0.9, "adversarial_whales": 1.0}
         config.settlement_ratio = 1.5
-        config.utility_spend_rate_by_cohort = {"passive_viewers": 0.05, "active_viewers": 0.1, "power_users": 0.2}
+        config.utility_spend_rate_by_cohort = {"passive_viewers": 0.05, "active_viewers": 0.1, "power_users": 0.2, "adversarial_whales": 0.0}
         config.utility_fee_share = 0.05
         config.brand_inflow_per_epoch = 1_000.0
     elif scenario_name == 'stable_case':
-        config.claim_rate_by_cohort = {"passive_viewers": 0.05, "active_viewers": 0.15, "power_users": 0.4}
-        config.settle_propensity_by_cohort = {"passive_viewers": 0.15, "active_viewers": 0.10, "power_users": 0.05}
+        config.claim_rate_by_cohort = {"passive_viewers": 0.05, "active_viewers": 0.15, "power_users": 0.4, "adversarial_whales": 0.5}
+        config.settle_propensity_by_cohort = {"passive_viewers": 0.15, "active_viewers": 0.10, "power_users": 0.05, "adversarial_whales": 0.2}
         config.settlement_ratio = 0.3
-        config.utility_spend_rate_by_cohort = {"passive_viewers": 0.3, "active_viewers": 0.6, "power_users": 0.9}
+        config.utility_spend_rate_by_cohort = {"passive_viewers": 0.3, "active_viewers": 0.6, "power_users": 0.9, "adversarial_whales": 0.0}
         config.utility_fee_share = 0.25
         config.campaign_deposit_per_epoch = 50_000.0
     elif scenario_name == 'bank_run':
-        config.claim_rate_by_cohort = {"passive_viewers": 0.8, "active_viewers": 0.9, "power_users": 1.0}
-        config.settle_propensity_by_cohort = {"passive_viewers": 0.5, "active_viewers": 0.6, "power_users": 0.8}
+        config.claim_rate_by_cohort = {"passive_viewers": 0.8, "active_viewers": 0.9, "power_users": 1.0, "adversarial_whales": 1.0}
+        config.settle_propensity_by_cohort = {"passive_viewers": 0.5, "active_viewers": 0.6, "power_users": 0.8, "adversarial_whales": 1.0}
         config.settlement_ratio = 1.0
+        config.utility_spend_rate_by_cohort = {"passive_viewers": 0.1, "active_viewers": 0.2, "power_users": 0.3, "adversarial_whales": 0.0}
         # Low brand inflow to make it harder to recover
         config.campaign_deposit_per_epoch = 1_000.0
         # Initial small price drop forced by high settlement
@@ -160,8 +161,12 @@ def generate_stress_grid() -> list[tuple[str, SolvencyConfig]]:
                 name = f"shock_{shock}_pressure_{pressure}_support_{support}"
                 if shock == 'low':
                     cfg.claim_rate_by_cohort = {k: v*0.4 for k,v in cfg.claim_rate_by_cohort.items()}
+                    cfg.operational_cost_per_epoch = 1_000.0
+                    cfg.cip_replenishment_per_epoch = 2_000.0
                 elif shock == 'high':
                     cfg.claim_rate_by_cohort = {k: min(1.0, v*2.0) for k,v in cfg.claim_rate_by_cohort.items()}
+                    cfg.operational_cost_per_epoch = 25_000.0
+                    cfg.cip_replenishment_per_epoch = 25_000.0
                 if pressure == 'low':
                     cfg.settle_propensity_by_cohort = {k: v*0.4 for k,v in cfg.settle_propensity_by_cohort.items()}
                     cfg.settlement_ratio = 0.25
@@ -172,9 +177,13 @@ def generate_stress_grid() -> list[tuple[str, SolvencyConfig]]:
                     cfg.utility_spend_rate_by_cohort = {k: v*0.4 for k,v in cfg.utility_spend_rate_by_cohort.items()}
                     cfg.brand_inflow_per_epoch = 2_000.0
                     cfg.utility_fee_share = 0.08
+                    cfg.rwa_yield_per_epoch = 0.0
+                    cfg.treasury_buyback_ratio = 0.0
                 elif support == 'high':
                     cfg.utility_spend_rate_by_cohort = {k: min(1.0, v*1.8) for k,v in cfg.utility_spend_rate_by_cohort.items()}
                     cfg.brand_inflow_per_epoch = 75_000.0
                     cfg.utility_fee_share = 0.30
+                    cfg.rwa_yield_per_epoch = 15_000.0
+                    cfg.treasury_buyback_ratio = 0.50
                 scenarios.append((name, cfg))
     return scenarios

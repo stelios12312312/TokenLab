@@ -177,4 +177,5 @@ outputs/
 examples/z1_core_solvency/z1_simulation_kb/*.csv
 # Pycache
 __pycache__/
-
+*.ppt
+*.pptx

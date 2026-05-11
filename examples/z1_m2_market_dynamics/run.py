@@ -8,7 +8,7 @@ from .pools import AgentPool_Z1
 from TokenLab.simulationcomponents.tokeneconomyclasses import TokenMetaSimulator
 
 
-def _jitter_config(config: SolvencyConfig, rng: np.random.Generator, noise_pct: float = 0.05) -> SolvencyConfig:
+def _jitter_config(config: SolvencyConfig, rng: np.random.Generator, noise_pct: float = 0.15) -> SolvencyConfig:
     """Create a jittered copy of config with ±noise_pct uniform noise on key rates."""
     cfg = copy.deepcopy(config)
     
@@ -228,9 +228,12 @@ if __name__ == "__main__":
         print("=" * 60)
 
         report_data = {}
+        per_epoch_dfs = {}
+        
         for scenario_name in ['baseline', 'bank_run']:
-            print(f"\n▶ Running scenario: {scenario_name}")
+            print(f"\n▶ Running scenario: {scenario_name} ({args.repetitions} reps)")
             config = get_scenario_config(scenario_name)
+            config.repetitions = args.repetitions
             history = run_simulation(config)
             df = pd.DataFrame(history)
             summary = summarize_run(df)
@@ -241,12 +244,49 @@ if __name__ == "__main__":
 
             create_single_scenario_plots(df, scenario_name, os.path.join(outputs_dir, "plots", scenario_name))
             report_data[scenario_name] = summary
+            per_epoch_dfs[scenario_name] = df
 
             print(f"  Classification: {summary['classification']}")
             print(f"  Final AR Ratio: {summary['final_ar_ratio']:.2f}")
+            locks = config.check_solvency_locks() + config.check_m2_locks()
+            for lock in locks:
+                icon = '✅' if lock['status'] == 'PASS' else ('⚠️' if lock['status'] == 'WARN' else '🔴')
+                print(f"  {icon} [{lock['lock']}] {lock['message']}")
 
-        md_path = generate_report(outputs_dir, report_data)
-        html_path = generate_html_report(outputs_dir, report_data)
+        # 2. Run 27-scenario grid for M2
+        print(f"\n▶ Running 27-scenario stress grid for M2...")
+        os.makedirs(os.path.join(outputs_dir, "scenario_summaries"), exist_ok=True)
+        os.makedirs(os.path.join(outputs_dir, "per_epoch"), exist_ok=True)
+        
+        grid = generate_stress_grid()
+        grid_summaries = []
+        grid_per_epoch_dfs = {}
+        
+        for name, config in grid:
+            # Grid scenarios use 1 repetition for speed
+            df = pd.DataFrame(run_simulation(config))
+            summary = summarize_run(df)
+            summary['scenario'] = name
+            
+            df.to_csv(os.path.join(outputs_dir, "per_epoch", f"{name}.csv"), index=False)
+            with open(os.path.join(outputs_dir, "scenario_summaries", f"{name}.json"), 'w') as f:
+                json.dump(summary, f, indent=4)
+            
+            grid_summaries.append(summary)
+            report_data[name] = summary
+            per_epoch_dfs[name] = df
+            grid_per_epoch_dfs[name] = df
+        
+        grid_df = pd.DataFrame(grid_summaries)
+        grid_df.to_csv(os.path.join(outputs_dir, "grid_summary.csv"), index=False)
+        
+        # 3. Generate grid-level plots
+        print(f"\n▶ Generating grid-level plots...")
+        grid_plot_dir = os.path.join(outputs_dir, "plots", "grid")
+        create_grid_plots(grid_df, grid_per_epoch_dfs, grid_plot_dir)
+
+        md_path = generate_report(outputs_dir, report_data, grid_summary_df=grid_df)
+        html_path = generate_html_report(outputs_dir, report_data, grid_summary_df=grid_df)
         print(f"\nM2 combined report generated.")
         print(f"  MD:   {md_path}")
         print(f"  HTML: {html_path}")

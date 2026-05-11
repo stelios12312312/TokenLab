@@ -67,7 +67,7 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
     fig, ax = plt.subplots()
     ax.fill_between(ep, 0, 0.3, color=_Z1_PALETTE['danger'], alpha=0.5, label='Danger zone (< 0.3)')
     sns.lineplot(data=df, x='epoch', y='ar_ratio', color=_Z1_PALETTE['ar'],
-                 linewidth=2, errorbar=('ci', 95), ax=ax)
+                 linewidth=2, errorbar=('pi', 100), ax=ax)
     ax.axhline(0.3, color=_Z1_PALETTE['pressure'], linestyle='--', linewidth=1, alpha=0.8)
     ax.set_title(f'[{scenario_name}] Audience Reserve Ratio')
     ax.set_xlabel('Epoch')
@@ -81,7 +81,7 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
     # ── 2. Treasury Balance ──────────────────────────────────────────
     fig, ax = plt.subplots()
     sns.lineplot(data=df, x='epoch', y='treasury', color=_Z1_PALETTE['treasury'],
-                 linewidth=2, errorbar=('ci', 95), ax=ax)
+                 linewidth=2, errorbar=('pi', 100), ax=ax)
     ax.fill_between(ep, 0, epoch_means['treasury'], color=_Z1_PALETTE['treasury'], alpha=0.15)
     ax.set_title(f'[{scenario_name}] Treasury Balance')
     ax.set_xlabel('Epoch')
@@ -97,7 +97,7 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
     ax.fill_between(ep, 0, epoch_means['settlement_queue_z1u'],
                     color=_Z1_PALETTE['queue'], alpha=0.3)
     sns.lineplot(data=df, x='epoch', y='settlement_queue_z1u',
-                 color=_Z1_PALETTE['queue'], linewidth=2, errorbar=('ci', 95), ax=ax)
+                 color=_Z1_PALETTE['queue'], linewidth=2, errorbar=('pi', 100), ax=ax)
     ax.set_title(f'[{scenario_name}] Settlement Queue (Z1U)')
     ax.set_xlabel('Epoch')
     ax.set_ylabel('Requested Z1U')
@@ -118,7 +118,7 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
     ax.fill_between(ep, 0, pressure,
                     where=(pressure > 3.0), color=_Z1_PALETTE['danger'], alpha=0.5, label='Critical')
     sns.lineplot(data=df, x='epoch', y='settlement_pressure_ratio',
-                 color=_Z1_PALETTE['pressure'], linewidth=2, errorbar=('ci', 95), ax=ax)
+                 color=_Z1_PALETTE['pressure'], linewidth=2, errorbar=('pi', 100), ax=ax)
     ax.axhline(1.0, color='grey', linestyle=':', linewidth=1)
     ax.set_title(f'[{scenario_name}] Settlement Pressure Ratio')
     ax.set_xlabel('Epoch')
@@ -172,6 +172,70 @@ def create_single_scenario_plots(df: pd.DataFrame, scenario_name: str, out_dir: 
     ax.legend(loc='lower right', framealpha=0.9)
     fig.tight_layout()
     fig.savefig(os.path.join(out_dir, '7_throttle.png'))
+    plt.close(fig)
+
+    # ═══════════════════════════════════════════════════════════════════════
+    #  M2 BENCHMARKING PLOTS
+    # ═══════════════════════════════════════════════════════════════════════
+
+    # ── 8. M2 Endogenous Pricing & Dynamic Ratios ────────────────────
+    fig, ax1 = plt.subplots()
+    ax2 = ax1.twinx()
+    sns.lineplot(data=df, x='epoch', y='z1u_price', color=_Z1_PALETTE['ar'], ax=ax1, linewidth=2, errorbar=('pi', 100), label='AMM Spot Price')
+    sns.lineplot(data=df, x='epoch', y='dynamic_settlement_ratio', color=_Z1_PALETTE['queue'], ax=ax2, linewidth=2, errorbar=('pi', 100), label='Settlement Ratio')
+    ax1.set_title(f'[{scenario_name}] Endogenous Pricing & Settlement Ratio')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Spot Price (USD)', color=_Z1_PALETTE['ar'])
+    ax2.set_ylabel('Dynamic Settlement Ratio', color=_Z1_PALETTE['queue'])
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, '8_m2_pricing.png'))
+    plt.close(fig)
+
+    # ── 9. M2 Adversarial Panic Cascades ─────────────────────────────
+    # Plot settlement queue vs Z1U Price
+    fig, ax1 = plt.subplots()
+    ax2 = ax1.twinx()
+    ax1.fill_between(ep, 0, epoch_means['settlement_queue_z1u'], color=_Z1_PALETTE['queue'], alpha=0.3)
+    sns.lineplot(data=df, x='epoch', y='settlement_queue_z1u', color=_Z1_PALETTE['queue'], ax=ax1, linewidth=2, errorbar=('pi', 100), label='Queue')
+    sns.lineplot(data=df, x='epoch', y='z1u_price', color=_Z1_PALETTE['pressure'], ax=ax2, linewidth=2, errorbar=('pi', 100), label='Z1U Price', linestyle='--')
+    ax1.set_title(f'[{scenario_name}] Panic Cascade (Queue vs Price)')
+    ax1.set_xlabel('Epoch')
+    ax1.set_ylabel('Settlement Queue (Z1U)', color=_Z1_PALETTE['queue'])
+    ax2.set_ylabel('Z1U Price', color=_Z1_PALETTE['pressure'])
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, '9_m2_panic_cascade.png'))
+    plt.close(fig)
+
+    # ── 10. M2 Treasury Burn vs Yield ────────────────────────────────
+    if 'cumulative_cip_funding' in df.columns:
+        fig, ax = plt.subplots()
+        sns.lineplot(data=df, x='epoch', y='cumulative_cip_funding', color=_Z1_PALETTE['pressure'], linewidth=2, errorbar=('pi', 100), label='CIP Outflow')
+        sns.lineplot(data=df, x='epoch', y='cumulative_ops_costs', color=_Z1_PALETTE['burn'], linewidth=2, errorbar=('pi', 100), label='Ops Outflow')
+        sns.lineplot(data=df, x='epoch', y='cumulative_rwa_yield', color=_Z1_PALETTE['treasury'], linewidth=2, errorbar=('pi', 100), label='RWA Yield')
+        if 'cumulative_treasury_fees' in df.columns:
+            sns.lineplot(data=df, x='epoch', y='cumulative_treasury_fees', color=_Z1_PALETTE['utility'], linewidth=2, errorbar=('pi', 100), label='Utility Fees')
+        ax.set_title(f'[{scenario_name}] Treasury Flow (Burn vs Yield)')
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel('Cumulative Z1U')
+        ax.yaxis.set_major_formatter(mticker.FuncFormatter(lambda x, _: f'{x:,.0f}'))
+        ax.legend()
+        fig.tight_layout()
+        fig.savefig(os.path.join(out_dir, '10_m2_treasury_flows.png'))
+        plt.close(fig)
+
+    # ── 11. M2 Circuit Breaker Floor Resilience ──────────────────────
+    fig, ax = plt.subplots()
+    sns.lineplot(data=df, x='epoch', y='ar_ratio', color=_Z1_PALETTE['ar'], linewidth=2, errorbar=('pi', 100), ax=ax)
+    # The M2 floor is mathematically exactly 0.25 (or 0.275 with buffer)
+    ax.axhline(0.25, color='black', linestyle='-', linewidth=2, label='Constitutional Floor (0.25)')
+    ax.axhline(0.275, color=_Z1_PALETTE['pressure'], linestyle='--', linewidth=1, label='Settlement Lock Buffer (0.275)')
+    ax.set_title(f'[{scenario_name}] Circuit Breaker Resilience')
+    ax.set_xlabel('Epoch')
+    ax.set_ylabel('AR / Live Supply Ratio')
+    ax.set_ylim(0.2, max(0.35, df['ar_ratio'].max() * 1.05))
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir, '11_m2_circuit_breaker.png'))
     plt.close(fig)
 
 
@@ -237,7 +301,7 @@ def create_grid_plots(grid_summary_df: pd.DataFrame, per_epoch_dfs: dict, out_di
         else:
             ax.set_ylabel('')
 
-    fig.suptitle('Z1 M1 — 27-Scenario Classification Grid', fontsize=14, fontweight='bold', y=1.02)
+    fig.suptitle('Z1 M2 — 27-Scenario Classification Grid', fontsize=14, fontweight='bold', y=1.02)
     fig.tight_layout()
     fig.savefig(os.path.join(out_dir, 'grid_1_classification_heatmap.png'), bbox_inches='tight')
     plt.close(fig)
@@ -287,7 +351,7 @@ def create_grid_plots(grid_summary_df: pd.DataFrame, per_epoch_dfs: dict, out_di
 
         ax.axhline(0.3, color=_Z1_PALETTE['pressure'], linestyle='--',
                    linewidth=1.5, label='Collapse threshold (0.3)')
-        ax.fill_between(range(0, 110), 0, 0.3,
+        ax.fill_between(range(0, 300), 0, 0.3,
                         color=_Z1_PALETTE['danger'], alpha=0.2)
 
         # Legend entries
@@ -299,10 +363,10 @@ def create_grid_plots(grid_summary_df: pd.DataFrame, per_epoch_dfs: dict, out_di
             Line2D([0], [0], color=_Z1_PALETTE['pressure'], lw=1.5, linestyle='--', label='Threshold'),
         ]
         ax.legend(handles=legend_elements, loc='upper right', framealpha=0.9)
-        ax.set_title('Z1 M1 — AR Ratio Trajectories (27 Scenarios)')
+        ax.set_title('Z1 M2 — AR Ratio Trajectories (27 Scenarios)')
         ax.set_xlabel('Epoch')
         ax.set_ylabel('AR / Initial AR')
-        ax.set_ylim(-0.02, 1.15)
+        # Allow y-axis to auto-scale because M2 inflation pushes AR far above 1.15
         fig.tight_layout()
         fig.savefig(os.path.join(out_dir, 'grid_4_ar_trajectories.png'))
         plt.close(fig)

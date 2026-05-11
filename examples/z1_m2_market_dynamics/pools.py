@@ -22,7 +22,15 @@ class AgentPool_Z1(AgentPool_Basic):
         # M1 Specific State
         self.cumulative_claimed_population = 0
         self.cumulative_verified_population = 0
-        self.acr_vesting_buckets: List[float] = [0.0] * config.vesting_lag_epochs
+        self.acr_vesting_buckets: List[float] = [0.0] * (config.vesting_lag_epochs + getattr(config, 'vesting_sub_cohort_phases', 1) - 1)
+        
+        # PCS & BAS (GAP-01, GAP-02, GAP-04)
+        self.tenure_epochs = 0
+        self.activity_score = 0.0
+        self.pcs_score = 0.0
+        self.bas_score = 0.0
+        self.cumulative_pcs = 0.0
+        self.tier = "Bronze"
         self.acr_available = 0.0
         self.acr_queued_for_settlement = 0.0
         self.acr_settled = 0.0

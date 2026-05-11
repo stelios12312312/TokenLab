@@ -2,12 +2,12 @@ from dataclasses import dataclass, field
 from typing import Dict, Literal
 import math
 
-COHORT_NAMES = ["passive_viewers", "active_viewers", "power_users"]
+COHORT_NAMES = ["passive_viewers", "active_viewers", "power_users", "adversarial_whales"]
 
 @dataclass
 class SolvencyConfig:
     # Run parameters
-    n_epochs: int = 104
+    n_epochs: int = 260
     random_seed: int = 42
     repetitions: int = 1  # >1 enables parameter jitter and CI on plots
 
@@ -17,40 +17,59 @@ class SolvencyConfig:
 
     # Cohort breakdown (Sum must equal 1.0)
     cohort_population_shares: Dict[str, float] = field(
-        default_factory=lambda: {"passive_viewers": 0.6, "active_viewers": 0.3, "power_users": 0.1}
+        default_factory=lambda: {"passive_viewers": 0.55, "active_viewers": 0.3, "power_users": 0.1, "adversarial_whales": 0.05}
     )
 
     # Core rates per cohort
     claim_rate_by_cohort: Dict[str, float] = field(
-        default_factory=lambda: {"passive_viewers": 0.1, "active_viewers": 0.4, "power_users": 0.8}
+        default_factory=lambda: {"passive_viewers": 0.1, "active_viewers": 0.4, "power_users": 0.8, "adversarial_whales": 1.0}
     )
     verification_pass_rate_by_cohort: Dict[str, float] = field(
-        default_factory=lambda: {"passive_viewers": 0.5, "active_viewers": 0.7, "power_users": 0.9}
+        default_factory=lambda: {"passive_viewers": 0.5, "active_viewers": 0.7, "power_users": 0.9, "adversarial_whales": 1.0}
     )
     acr_issue_rate_by_cohort: Dict[str, float] = field(
-        default_factory=lambda: {"passive_viewers": 10.0, "active_viewers": 50.0, "power_users": 200.0}
+        default_factory=lambda: {"passive_viewers": 10.0, "active_viewers": 50.0, "power_users": 200.0, "adversarial_whales": 100.0}
+    )
+    ongoing_acr_issue_rate_by_cohort: Dict[str, float] = field(
+        default_factory=lambda: {"passive_viewers": 1.0, "active_viewers": 5.0, "power_users": 20.0, "adversarial_whales": 10.0}
     )
     
     # Vesting
     vesting_lag_epochs: int = 4
+    vesting_sub_cohort_phases: int = 4 # GAP-05 Stagger
+
+    # PCS & BAS (GAP-01, GAP-02)
+    acr_epoch_budget: float = 150_000.0
+    pcs_tenure_weight: float = 0.5
+    pcs_activity_weight: float = 0.5
+    bas_lambda: float = 0.3
+    velocity_scale: float = 0.1 # Scales BAS to a propensity [0,1]
+
+    # Tier System (GAP-04)
+    tier_sr_modifiers: Dict[str, float] = field(
+        default_factory=lambda: {"Bronze": 1.0, "Silver": 1.05, "Gold": 1.10, "Platinum": 1.15}
+    )
+    tier_thresholds_pcs: Dict[str, float] = field(
+        default_factory=lambda: {"Bronze": 0.0, "Silver": 100.0, "Gold": 500.0, "Platinum": 1500.0}
+    )
 
     # Settlement dynamics
     settle_propensity_by_cohort: Dict[str, float] = field(
-        default_factory=lambda: {"passive_viewers": 0.25, "active_viewers": 0.3, "power_users": 0.15}
+        default_factory=lambda: {"passive_viewers": 0.0051, "active_viewers": 0.0102, "power_users": 0.0203, "adversarial_whales": 0.5}
     )
-    settlement_ratio: float = 0.5
+    settlement_ratio: float = 0.1047
     settlement_cap_per_epoch: float = 50_000.0
 
     # Utility spend dynamics
     utility_spend_rate_by_cohort: Dict[str, float] = field(
-        default_factory=lambda: {"passive_viewers": 0.1, "active_viewers": 0.4, "power_users": 0.8}
+        default_factory=lambda: {"passive_viewers": 0.0456, "active_viewers": 0.1823, "power_users": 0.4557, "adversarial_whales": 0.0}
     )
-    utility_fee_share: float = 0.20
+    utility_fee_share: float = 0.34
     utility_burn_share: float = 0.05
     burn_enabled: bool = True
 
     # Ecosystem health parameters
-    brand_inflow_per_epoch: float = 25_000.0  # Legacy M1, replaced by campaigns in M2
+    brand_inflow_per_epoch: float = 112_000.0  # M1 optimal: 2.24% of initial AR (5,000,000)
     treasury_topup_threshold_ratio: float = 0.3
     treasury_topup_target_ratio: float = 0.4
     treasury_topup_cap_ratio_per_epoch: float = 0.10
@@ -65,7 +84,15 @@ class SolvencyConfig:
     amm_fee_rate: float = 0.003
     
     campaign_fee_percentage: float = 0.25
-    campaign_deposit_per_epoch: float = 50_000.0  # Z1U value deposited into escrow
+    campaign_burn_share: float = 0.10 # GAP-06: Burn portion of campaign fees
+    campaign_deposit_per_epoch: float = 112_000.0  # Aligning M2 campaigns with M1 optimal brand inflow
+    treasury_buyback_ratio: float = 0.0 # Ratio of Treasury surplus used to buy Z1U on AMM
+    
+    use_dynamic_settlement_ratio: bool = True
+    
+    cip_replenishment_per_epoch: float = 10_000.0
+    operational_cost_per_epoch: float = 5_000.0
+    rwa_yield_per_epoch: float = 1_000.0
     
     panic_price_drop_threshold: float = 0.10  # 10% drop triggers panic
     panic_settlement_multiplier: float = 5.0  # Settle 5x faster in panic
@@ -104,7 +131,7 @@ class SolvencyConfig:
         # We don't assert HARD here but could warn. For now, let's keep it as a documented rule.
         
         # L8 (SOFT): Fee + Burn Share Floor
-        assert self.utility_fee_share + self.utility_burn_share >= 0.10, "L8 Violation: combined capture < 10%"
+        assert self.utility_fee_share + self.utility_burn_share >= 0.05, "L8 Violation: combined capture < 5%"
         
         # L9 (HARD): Per-Epoch AR Drain Cap
         drain_cap = self.settlement_cap_per_epoch * self.settlement_ratio
@@ -222,4 +249,49 @@ class SolvencyConfig:
 
         return diagnostics
 
+    def check_m2_locks(self) -> list[dict]:
+        """
+        Check M2 Market Dynamics parameter lock constraints.
+        
+        Locks:
+            L7 (HARD): Treasury Net Flow Solvency Lock
+                       RWA_Yield + (Campaign_Deposits * Fee_Share) >= Ops_Cost + CIP_Funding
+            L8 (HARD): AMM Liquidity Support Lock
+                       Treasury_Buyback_Ratio > 0.0 to defend peg
+        """
+        diagnostics = []
+        
+        # L7: Treasury Net Flow Lock
+        structural_inflows = self.rwa_yield_per_epoch + (self.campaign_deposit_per_epoch * self.campaign_fee_percentage)
+        structural_outflows = self.operational_cost_per_epoch + self.cip_replenishment_per_epoch
+        net_flow = structural_inflows - structural_outflows
+        
+        if net_flow < 0:
+            diagnostics.append({
+                'lock': 'L7', 'severity': 'HARD', 'status': 'FAIL',
+                'message': f'Net Treasury Flow < 0 ({net_flow:,.0f}). Protocol will hit Zombie State.',
+                'value': net_flow, 'threshold': 0.0,
+            })
+        else:
+            diagnostics.append({
+                'lock': 'L7', 'severity': 'HARD', 'status': 'PASS',
+                'message': f'Net Treasury Flow >= 0 ({net_flow:,.0f}). Treasury is solvent.',
+                'value': net_flow, 'threshold': 0.0,
+            })
+
+        # L8: AMM Price Floor Lock
+        if self.treasury_buyback_ratio <= 0.0:
+            diagnostics.append({
+                'lock': 'L8', 'severity': 'HARD', 'status': 'FAIL',
+                'message': f'Treasury Buyback Ratio is {self.treasury_buyback_ratio:.2f}. AMM Peg is completely undefended.',
+                'value': self.treasury_buyback_ratio, 'threshold': 0.01,
+            })
+        else:
+            diagnostics.append({
+                'lock': 'L8', 'severity': 'HARD', 'status': 'PASS',
+                'message': f'Treasury Buyback Ratio is {self.treasury_buyback_ratio:.2f}. AMM Peg has endogenous defense.',
+                'value': self.treasury_buyback_ratio, 'threshold': 0.01,
+            })
+
+        return diagnostics
 

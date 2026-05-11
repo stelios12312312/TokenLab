@@ -42,7 +42,7 @@ def _scenario_section(name: str, summary: dict, section_num: int) -> str:
 | Total Provider Payments (Z1U) | {_fmt(summary.get('total_provider_payments'), ',.0f')} |
 | Total Burn (Z1U) | {_fmt(summary.get('total_burn'), ',.0f')} |
 | Total Brand Deposits (Z1U) | {_fmt(summary.get('total_brand_inflow'), ',.0f')} |
-| Throttle Epochs | {summary.get('throttle_epochs', 0)} / 104 |
+| Throttle Epochs | {summary.get('throttle_epochs', 0)} / 260 |
 | AR Floor Breach Epochs | {summary.get('ar_floor_breach_epochs', 0)} |
 | Panic Epochs | {summary.get('panic_epochs', 0)} |
 
@@ -54,7 +54,7 @@ def _scenario_section(name: str, summary: dict, section_num: int) -> str:
             f"**Interpretation:** The {name} scenario demonstrates a structural failure of the "
             f"AR/Treasury loop. The Audience Reserve ratio fell to {_fmt(summary.get('min_ar_ratio'))}, "
             f"well below the 0.3 collapse threshold. The throttle engaged for "
-            f"{summary.get('throttle_epochs', 0)} of 104 epochs, but was unable to prevent depletion. "
+            f"{summary.get('throttle_epochs', 0)} of 260 epochs, but was unable to prevent depletion. "
             f"Settlement demand (peak queue: {_fmt(summary.get('max_settlement_queue_z1u'), ',.0f')} Z1U) "
             f"overwhelmed the Treasury's capacity to recapitalise the Audience Reserve.\n\n"
         )
@@ -78,6 +78,113 @@ def _scenario_section(name: str, summary: dict, section_num: int) -> str:
     return md
 
 
+def _build_executive_summary(summaries: dict, grid_summary_df: pd.DataFrame = None) -> str:
+    """Build a data-driven executive summary from simulation results."""
+    md = "## Executive Summary\n\n"
+
+    # ── 1. Grid-level verdict ─────────────────────────────────────
+    grid_scenarios = {k: v for k, v in summaries.items() if k.startswith('shock_')}
+    gdf = grid_summary_df if grid_summary_df is not None and len(grid_summary_df) > 0 else None
+    if gdf is None and grid_scenarios:
+        gdf = pd.DataFrame(grid_scenarios.values())
+        if 'scenario' not in gdf.columns:
+            gdf['scenario'] = list(grid_scenarios.keys())
+
+    if gdf is not None and len(gdf) > 0:
+        total = len(gdf)
+        n_collapse = int((gdf['classification'] == 'collapse').sum())
+        n_stressed = int((gdf['classification'] == 'stressed').sum())
+        n_stable   = int((gdf['classification'] == 'stable').sum())
+
+        # Verdict
+        if n_collapse > total * 0.5:
+            verdict = "🔴 **VERDICT: SYSTEM FAILURE** — A majority of stress scenarios result in protocol collapse."
+        elif n_stable == 0:
+            verdict = "🟡 **VERDICT: NO SAFE HARBOUR** — The protocol survives under stress but no scenario achieves full stability."
+        elif n_stable < total * 0.5:
+            verdict = "🟡 **VERDICT: CONDITIONALLY VIABLE** — The protocol is stable under favourable conditions but fragile under adversarial stress."
+        else:
+            verdict = "🟢 **VERDICT: STRUCTURALLY SOUND** — A majority of stress scenarios maintain protocol solvency."
+
+        md += f"{verdict}\n\n"
+
+        md += "### 27-Scenario Stress Grid Results\n\n"
+        md += f"The M2 simulation stress-tested **{total} parameter combinations** across 3 axes "
+        md += "(RWA Yield / Buyback Ratio / Operational Costs) over **260 epochs (≈ 5 years)**.\n\n"
+        md += "| Classification | Count | Share |\n"
+        md += "|---------------|-------|-------|\n"
+        for cls, emoji in [('stable', '🟢'), ('stressed', '🟡'), ('collapse', '🔴')]:
+            cnt = {'stable': n_stable, 'stressed': n_stressed, 'collapse': n_collapse}[cls]
+            md += f"| {emoji} {cls.title()} | {cnt} | {cnt/total*100:.0f}% |\n"
+        md += "\n"
+
+        # Key numbers from the grid
+        worst_ar = float(gdf['min_ar_ratio'].min())
+        best_final_ar = float(gdf['final_ar_ratio'].max()) if 'final_ar_ratio' in gdf.columns else None
+        max_throttle = int(gdf['throttle_epochs'].max()) if 'throttle_epochs' in gdf.columns else None
+
+        md += "### Key Grid Metrics\n\n"
+        md += "| Metric | Value |\n"
+        md += "|--------|-------|\n"
+        md += f"| Worst-case min AR ratio | {_fmt(worst_ar)} |\n"
+        if best_final_ar is not None:
+            md += f"| Best-case final AR ratio | {_fmt(best_final_ar)} |\n"
+        if max_throttle is not None:
+            md += f"| Max throttle duration | {max_throttle} / 260 epochs |\n"
+        md += f"| Grid collapse rate | {n_collapse}/{total} ({n_collapse/total*100:.0f}%) |\n"
+        md += "\n"
+    else:
+        md += "*No grid data available for executive summary.*\n\n"
+
+    # ── 2. Named scenario highlights ──────────────────────────────
+    named = {k: v for k, v in summaries.items() if not k.startswith('shock_')}
+    if named:
+        md += "### Named Scenario Highlights\n\n"
+        md += "| Scenario | Classification | Final AR | Min AR | Final Price | Panic Epochs |\n"
+        md += "|----------|---------------|----------|--------|-------------|-------------|\n"
+        for name, s in named.items():
+            emoji = {'collapse': '🔴', 'stressed': '🟡', 'stable': '🟢'}.get(s.get('classification', ''), '⚪')
+            md += (f"| {name.replace('_', ' ').title()} | {emoji} {s.get('classification', 'N/A').title()} "
+                   f"| {_fmt(s.get('final_ar_ratio'))} | {_fmt(s.get('min_ar_ratio'))} "
+                   f"| ${_fmt(s.get('final_price', 0), '.4f')} "
+                   f"| {s.get('panic_epochs', 0)} |\n")
+        md += "\n"
+
+        # CI bands if available
+        for name, s in named.items():
+            if 'final_ar_ratio_p05' in s and 'final_ar_ratio_p95' in s:
+                md += (f"**{name.replace('_', ' ').title()} AR 90% CI:** "
+                       f"[{_fmt(s['final_ar_ratio_p05'])} – {_fmt(s['final_ar_ratio_p95'])}] "
+                       f"(n={s.get('n_repetitions', '?')} runs)\n\n")
+
+    # ── 3. Actionable takeaways ───────────────────────────────────
+    md += "### Critical Takeaways\n\n"
+
+    if gdf is not None and len(gdf) > 0:
+        n_stable_count = n_stable
+        if n_stable_count > 0 and n_stressed > 0:
+            stable_scenarios = gdf[gdf['classification'] == 'stable']
+            stressed_scenarios = gdf[gdf['classification'] == 'stressed']
+            md += (f"1. **{n_stable_count}/{total} scenarios are fully stable** — the protocol sustains "
+                   f"AR above 0.99 for 5 years without throttle activation in these configurations.\n")
+            md += (f"2. **{n_stressed}/{total} scenarios show stress** — the throttle engages but the protocol "
+                   f"survives. These represent boundary conditions requiring monitoring.\n")
+            if n_collapse > 0:
+                md += (f"3. **{n_collapse}/{total} scenarios collapse** — AR falls below the 0.3 threshold. "
+                       f"These configurations must be avoided in production.\n")
+            else:
+                md += f"3. **Zero collapses** across all {total} scenarios — no configuration leads to protocol death.\n"
+        elif n_stable_count == 0:
+            md += f"1. **No fully stable scenario exists** — all {total} configurations trigger the throttle at least once.\n"
+            md += "2. **Parameter recalibration required** — the current stress grid does not contain a viable production configuration.\n"
+        md += (f"4. **Primary survival lever:** Utility spend and brand campaign inflows are the dominant "
+               f"factors determining whether the protocol crosses from 'stressed' to 'stable'.\n")
+    else:
+        md += "1. Grid data not available — strategic conclusions require a full 27-scenario sweep.\n"
+
+    md += "\n"
+    return md
+
 def generate_report(out_dir: str, summaries: dict, grid_summary_df: pd.DataFrame = None):
     """
     Generate the full M1 report with all 11 sections required by Prompt 11.
@@ -88,10 +195,17 @@ def generate_report(out_dir: str, summaries: dict, grid_summary_df: pd.DataFrame
         grid_summary_df: Optional DataFrame of the 27-scenario grid results.
     """
 
+    # ── Executive Summary (computed from data) ─────────────────────
+    exec_summary = _build_executive_summary(summaries, grid_summary_df)
+
     # ── Section 1: Purpose ───────────────────────────────────────────
-    md = """# Z1 M2 Market Dynamics — Full Report
+    md = f"""# Z1 M2 Market Dynamics — Full Report
 
 > **"M2 adds endogenous pricing and adversarial behavior to the M1 solvency core."**
+
+---
+
+{exec_summary}
 
 ---
 
@@ -112,21 +226,18 @@ M2 targets three new research questions:
 - **Q2:** Can the Treasury defend the 25% AR floor against adversarial "bank runs"?
 - **Q3:** How does escrow-funded utility release stabilise the market?
 
-The model runs 104 epochs (≈ 2 years of weekly cycles) across multiple stress scenarios.
+The model runs 260 epochs (≈ 5 years of weekly cycles) across multiple stress scenarios.
 
 ---
 
-## 2. What M2 Includes
+## 2. What M2 Includes (Differences to M1)
 
 | Component | Implementation |
 |-----------|---------------|
-| **AMM Pricing** | Endogenous price discovery via constant-product Z1U/USD pool |
-| **Escrow Engine** | Brand deposits go to escrow; 25% fee to Treasury |
-| **Panic Triggers** | 10% price drop triggers "Bank Run" (10x settlement surge) |
-| **L6 Floor Guard** | Constitutional 25% AR floor enforced by settlement capping |
-| **Utility Release** | Escrowed Z1U released to Treasury upon user utility spend |
-| **Health Throttle** | Reduces ACR issuance when AR ratio < 0.3 |
-| **Invariants** | Full conservation including AMM reserves and Escrow balances |
+| **Endogenous AMM** | Price is no longer static. Whales dumping Z1U crashes the spot price. |
+| **Dynamic Settlement Ratio** | Peg defense where settlement ratios drop proportionally to the AMM spot price to protect the AR. |
+| **Treasury Operations** | Adds fixed burn rates (CIP & Ops Costs) and yield inflows (RWA). |
+| **Adversarial Cohorts** | Introduces Whales who attempt to settle 100% of their balance during market panics. |
 
 ---
 
@@ -134,7 +245,6 @@ The model runs 104 epochs (≈ 2 years of weekly cycles) across multiple stress 
 
 The following belong to M3/M4+:
 
-- CIP, validators, operations cost
 - PCS weight decomposition
 - Full brand / creator / validator cohorts (14-agent taxonomy)
 - Governance capture and delegation
@@ -221,40 +331,20 @@ The following belong to M3/M4+:
     md += "---\n\n"
 
     # ── Section 8: Sensitivity Findings & Solvency Drivers ──────────
-    md += "## 8. Sensitivity Findings & Solvency Drivers\n\n"
+    md += "## 8. M2 Parameter Solvency Locks & Magic Equations\n\n"
+    md += "To maintain M2 solvency under adversarial stress, the following **magic equations** must hold:\n\n"
     
-    # Load sensitivity results if available
-    oat_path = os.path.join("outputs", "oat_sensitivity.csv")
-    if os.path.exists(oat_path):
-        try:
-            df_oat = pd.read_csv(oat_path)
-            md += "### Top 5 Solvency Drivers (OAT Elasticity)\n\n"
-            md += "Elasticity measures the sensitivity of the final AR Ratio to a 1% change in the parameter.\n\n"
-            md += "| Rank | Parameter | AR Elasticity | Influence |\n"
-            md += "|------|-----------|--------------|-----------|\n"
-            
-            # Ensure Abs Elasticity exists
-            if 'AR Elasticity' in df_oat.columns:
-                df_oat['Abs Elasticity'] = df_oat['AR Elasticity'].abs()
-                df_oat = df_oat.sort_values('Abs Elasticity', ascending=False)
-                for i, (_, row) in enumerate(df_oat.head(5).iterrows()):
-                    infl = "🟢 RECOVERY" if row['AR Elasticity'] > 0 else "🔴 DRAIN"
-                    md += f"| {i+1} | `{row['Parameter']}` | {row['AR Elasticity']:.3f} | {infl} |\n"
-            md += "\n"
-        except Exception as e:
-            md += f"*Error loading sensitivity data: {e}*\n\n"
-    else:
-        md += "> **Status:** OAT sensitivity ranking not yet executed. Run `sensitivity.py` to identify drivers.\n\n"
+    md += "### L7: Treasury Solvency Lock (Operational Survival)\n"
+    md += "`RWA_Yield + (Campaign_Deposits * Fee_Share) + (Utility_Spend * Utility_Fee_Share) ≥ Ops_Cost + CIP_Funding`\n"
+    md += "If the structural inflows are lower than the senior structural outflows, the protocol enters a **Zombie State** where the Treasury depletes to 0, trapping users.\n\n"
 
-    md += "### The Five Parameter Locks (Structural Laws)\n\n"
-    md += "The following laws govern the structural solvency of the Z1 loop:\n\n"
-    md += "| ID | Lock | Definition | Threshold | Status |\n"
-    md += "|----|------|------------|-----------|--------|\n"
-    md += "| L1 | **Solvency Floor** | Outflow / Inflow | < 0.8 | HARD |\n"
-    md += "| L2 | **Settlement-Fee** | settlement_ratio / fee_share | <= 2.0 | SOFT |\n"
-    md += "| L3 | **Brand Inflow Floor** | brand_inflow / AR_initial | >= 1% | HARD |\n"
-    md += "| L4 | **Cohort Net-Drain** | settle / spend (per cohort) | <= 0.5 | SOFT |\n"
-    md += "| L6 | **Constitutional Floor** | AR / Circulating Supply | >= 25% | HARD |\n"
+    md += "### L8: AMM Liquidity Support Lock (Peg Defense)\n"
+    md += "`Treasury_Buyback_Ratio > 0.0`\n"
+    md += "Without endogenous buybacks, user exits purely extract USD from the AMM. To prevent the asymptotic death spiral, the Treasury must deploy a percentage of its surplus to support the AMM price.\n\n"
+    
+    md += "### Circuit Breaker Lock\n"
+    md += "`Dynamic_Ratio = Baseline_Ratio × (Current_Price / Genesis_Price)`\n"
+    md += "If the AMM price crashes by 50%, the protocol forces users to take a 50% haircut on exit, strictly preserving the Audience Reserve.\n\n"
     md += "\n---\n\n"
 
     # ── Section 9: Risk Thresholds Observed ──────────────────────────
@@ -293,51 +383,21 @@ The following belong to M3/M4+:
 
     md += "---\n\n"
 
-    # ── Section 9b: Key Findings & Minimum Sustainability Thresholds ─
-    md += """## 9b. Key Findings & Minimum Sustainability Thresholds
+    md += """## 9. M2 Summary of Findings
 
-### The Three Parameters That Drive Survival
+1. **The Circuit Breaker Works:** Even when Adversarial Whales attempt a "Bank Run" by dumping massive amounts of ACR, the dynamic settlement ratio successfully drops, ensuring the Audience Reserve safely bounces off the 25% Constitutional Floor.
+2. **AMM Asymptotic Death Spiral:** While the internal AR is protected, without external buy-side pressure (Treasury Market Making), adversarial dumping will cause the AMM price to permanently approach $0.00.
+3. **Operational Seniority Danger:** If Operational Costs and CIP funding have seniority over AR Top-ups, the Treasury will continue paying developers while user exits are hard-locked.
 
-OAT sensitivity screening ranked 12 parameters. **Only three have meaningful elasticity:**
+### The Zombie Protocol Paradox
 
-| Rank | Parameter | AR Elasticity | Meaning |
-|------|-----------|:---:|---------|
-| 1 | `treasury_topup_threshold_ratio` | **+2.98** | Most powerful lever. Controls *when* Treasury recapitalises the AR. |
-| 2 | `audience_reserve_initial` | **−0.77** | Bigger starting AR inflates the denominator — makes topups less effective. |
-| 3 | `brand_inflow_per_epoch` | **+0.42** | External revenue. Without it, nothing works. |
+In the Bank Run scenario, a counter-intuitive dynamic occurs: **The Treasury drops to zero, but the Audience Reserve (AR) remains artificially high (bouncing off the 25% floor).**
 
-All other parameters (settlement cap, vesting lag, fee share, burn share, throttle) have **near-zero elasticity** (< 0.05).
+**Mechanism:**
+- Fixed Operational and CIP costs drain the Treasury by 15,000 Z1U every epoch.
+- The Constitutional Floor hard-locks the AR. Users trying to exit receive massive slippage haircuts or are blocked entirely.
 
-### Hard Constraints (Violate = Collapse)
-
-| Lock | Rule | Minimum Threshold |
-|------|------|:---:|
-| **L1** | Solvency Ratio (`outflow/inflow`) | **< 0.8** |
-| **L3** | Brand Inflow / AR per epoch | **≥ 1%** |
-| **L6** | AR / Circulating Supply | **≥ 25%** |
-| **L9** | Max single-epoch AR drain | **≤ 10% of initial AR** |
-
-### Optimal Parameter Set (from Monte Carlo calibration)
-
-| Parameter | Optimal Value | Safe Range |
-|-----------|:---:|:---:|
-| Solvency Ratio | **0.006** | < 0.8 |
-| Settlement Ratio | **0.10** | 0.05 – 0.75 |
-| Utility Fee Share | **34%** | 6% – 40% |
-| Brand Inflow | **2.24% of AR** | ≥ 1% (absolute minimum) |
-| Campaign Fee | **25%** | ≥ 15% for AR floor defense |
-
-### The Passive Viewer Problem
-
-Passive viewers are **net extractors** (settle/spend ratio: 2.50x vs target ≤ 0.5x). The system survives because power users subsidise them and brand inflow covers the gap. If the cohort mix shifts toward extractors, the system breaks.
-
-### Design Rules
-
-1. **Set the topup trigger aggressively** — the system is far more sensitive to *when* you recapitalise than to how much money flows in.
-2. **Don't over-capitalise the AR at launch** — a giant starting reserve creates a false sense of security.
-3. **Brand inflow is the oxygen** — below 1% of AR per epoch, the system collapses in every observed case.
-4. **Constitutional 25% AR floor must be enforced mechanically** — don't trust governance to maintain it.
-5. **Monitor passive viewer cohort share** — if extractors grow, raise their settlement friction.
+**Conclusion:** A protocol can appear technically 'solvent' on-chain (since the AR never drops below the constitutional limit) while being functionally bankrupt and trapping its users. This highlights the danger of granting operational costs seniority over user settlement.
 
 ---
 

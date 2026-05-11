@@ -4,10 +4,16 @@ def issue_acr_to_vesting(state: GlobalState, cohort_name: str, amount: float):
     if amount <= 0: return
     cohort = state.cohorts[cohort_name]
     
-    # It enters the highest vesting bucket (bucket index = epochs remaining)
-    # The last bucket is index len(acr_vesting_buckets) - 1
+    phases = getattr(state.config, 'vesting_sub_cohort_phases', 1) if hasattr(state, 'config') else 1
+    
     if len(cohort.acr_vesting_buckets) > 0:
-        cohort.acr_vesting_buckets[-1] += amount
+        base_idx = len(cohort.acr_vesting_buckets) - phases
+        base_idx = max(0, base_idx)
+        per_phase = amount / phases
+        for i in range(phases):
+            idx = base_idx + i
+            if idx < len(cohort.acr_vesting_buckets):
+                cohort.acr_vesting_buckets[idx] += per_phase
     else:
         # If 0 vesting lag, immediately available
         cohort.acr_available += amount

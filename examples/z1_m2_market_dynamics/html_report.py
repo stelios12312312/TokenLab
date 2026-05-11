@@ -37,8 +37,8 @@ def _metrics_rows(summary: dict) -> list:
         ["Total Utility Spend", _fmt(summary.get("total_utility_spend"), ",.0f") + " Z1U"],
         ["Total Burn", _fmt(summary.get("total_burn"), ",.0f") + " Z1U"],
         ["Total Brand Deposits", _fmt(summary.get("total_brand_inflow"), ",.0f") + " Z1U"],
-        ["Throttle Epochs", f"{summary.get('throttle_epochs', 0)} / 104"],
-        ["Panic Epochs", f"{summary.get('panic_epochs', 0)} / 104"],
+        ["Throttle Epochs", f"{summary.get('throttle_epochs', 0)} / 260"],
+        ["Panic Epochs", f"{summary.get('panic_epochs', 0)} / 260"],
     ]
 
 
@@ -62,6 +62,127 @@ def _scenario_tab_html(summary: dict, plot_dir: str, report: ReportBuilder) -> s
                 html += f'<div><img class="plot" src="{b64}" alt="{name}"><p style="text-align:center;color:var(--muted);font-size:0.85em;">{name}</p></div>'
             html += "</div>"
     return html
+
+
+def _add_html_executive_summary(report, summaries: dict, grid_summary_df, plots_dir: str):
+    """Add executive summary section to the HTML report."""
+    report.add_heading("Executive Summary")
+
+    # Build grid data
+    grid_scenarios = {k: v for k, v in summaries.items() if k.startswith("shock_")}
+    gdf = grid_summary_df if grid_summary_df is not None and len(grid_summary_df) > 0 else None
+    if gdf is None and grid_scenarios:
+        gdf = pd.DataFrame(grid_scenarios.values())
+        if "scenario" not in gdf.columns:
+            gdf["scenario"] = list(grid_scenarios.keys())
+
+    if gdf is not None and len(gdf) > 0:
+        total = len(gdf)
+        n_collapse = int((gdf["classification"] == "collapse").sum())
+        n_stressed = int((gdf["classification"] == "stressed").sum())
+        n_stable = int((gdf["classification"] == "stable").sum())
+
+        # Verdict
+        if n_collapse > total * 0.5:
+            verdict_text = "SYSTEM FAILURE — A majority of stress scenarios result in protocol collapse."
+            verdict_color = "#DC2626"
+        elif n_stable == 0:
+            verdict_text = "NO SAFE HARBOUR — The protocol survives under stress but no scenario achieves full stability."
+            verdict_color = "#F59E0B"
+        elif n_stable < total * 0.5:
+            verdict_text = "CONDITIONALLY VIABLE — The protocol is stable under favourable conditions but fragile under adversarial stress."
+            verdict_color = "#F59E0B"
+        else:
+            verdict_text = "STRUCTURALLY SOUND — A majority of stress scenarios maintain protocol solvency."
+            verdict_color = "#16A34A"
+
+        report.add_card_row([
+            {"value": verdict_text, "label": "VERDICT", "color": verdict_color},
+        ])
+
+        report.add_card_row([
+            {"value": str(n_stable), "label": f"Stable ({n_stable/total*100:.0f}%)", "color": "#16A34A"},
+            {"value": str(n_stressed), "label": f"Stressed ({n_stressed/total*100:.0f}%)", "color": "#F59E0B"},
+            {"value": str(n_collapse), "label": f"Collapse ({n_collapse/total*100:.0f}%)", "color": "#DC2626"},
+        ])
+
+        # Key metrics
+        worst_ar = float(gdf["min_ar_ratio"].min())
+        best_final_ar = float(gdf["final_ar_ratio"].max()) if "final_ar_ratio" in gdf.columns else None
+        max_throttle = int(gdf["throttle_epochs"].max()) if "throttle_epochs" in gdf.columns else None
+        key_rows = [
+            ["Worst-case min AR ratio", _fmt(worst_ar)],
+        ]
+        if best_final_ar is not None:
+            key_rows.append(["Best-case final AR ratio", _fmt(best_final_ar)])
+        if max_throttle is not None:
+            key_rows.append(["Max throttle duration", f"{max_throttle} / 260 epochs"])
+        key_rows.append(["Grid collapse rate", f"{n_collapse}/{total} ({n_collapse/total*100:.0f}%)"])
+        report.add_table_section("Key Grid Metrics", ["Metric", "Value"], key_rows)
+
+    # Named scenario highlights
+    named = {k: v for k, v in summaries.items() if not k.startswith("shock_")}
+    if named:
+        rows = []
+        for name, s in named.items():
+            cls = s.get("classification", "N/A")
+            badge = report.badge(cls.upper(), _CLASS_COLORS.get(cls, "#888"))
+            rows.append([
+                name.replace("_", " ").title(),
+                badge,
+                _fmt(s.get("final_ar_ratio")),
+                _fmt(s.get("min_ar_ratio")),
+                "$" + _fmt(s.get("final_price", 0), ".4f"),
+                str(s.get("panic_epochs", 0)),
+            ])
+        report.add_table_section(
+            "Named Scenario Highlights",
+            ["Scenario", "Classification", "Final AR", "Min AR", "Final Price", "Panic Epochs"],
+            rows,
+        )
+
+        # CI bands
+        ci_html = ""
+        for name, s in named.items():
+            if "final_ar_ratio_p05" in s and "final_ar_ratio_p95" in s:
+                ci_html += (
+                    f"<p><strong>{name.replace('_', ' ').title()} AR 90% CI:</strong> "
+                    f"[{_fmt(s['final_ar_ratio_p05'])} – {_fmt(s['final_ar_ratio_p95'])}] "
+                    f"(n={s.get('n_repetitions', '?')} runs)</p>"
+                )
+        if ci_html:
+            report.add_text_section("", ci_html)
+
+    # Takeaways
+    if gdf is not None and len(gdf) > 0:
+        takeaways = "<ol>"
+        if n_stable > 0 and n_stressed > 0:
+            takeaways += (
+                f"<li><strong>{n_stable}/{total} scenarios are fully stable</strong> — the protocol sustains "
+                f"AR above 0.99 for 5 years without throttle activation.</li>"
+            )
+            takeaways += (
+                f"<li><strong>{n_stressed}/{total} scenarios show stress</strong> — the throttle engages but the protocol "
+                f"survives. These are boundary conditions requiring monitoring.</li>"
+            )
+            if n_collapse > 0:
+                takeaways += (
+                    f"<li><strong>{n_collapse}/{total} scenarios collapse</strong> — AR falls below the 0.3 threshold. "
+                    f"These configurations must be avoided in production.</li>"
+                )
+            else:
+                takeaways += f"<li><strong>Zero collapses</strong> across all {total} scenarios.</li>"
+        elif n_stable == 0:
+            takeaways += (
+                f"<li><strong>No fully stable scenario exists</strong> — all {total} configurations trigger the throttle.</li>"
+                "<li><strong>Parameter recalibration required.</strong></li>"
+            )
+        takeaways += (
+            "<li><strong>Primary survival lever:</strong> Utility spend and brand campaign inflows are the dominant "
+            "factors determining whether the protocol crosses from 'stressed' to 'stable'.</li>"
+        )
+        takeaways += "</ol>"
+        report.add_text_section("Critical Takeaways", takeaways)
 
 
 def generate_html_report(
@@ -96,25 +217,27 @@ def generate_html_report(
         "M2 adds endogenous market pricing and adversarial behavior to the M1 structural core."
     )
 
-    report.add_text_section("1. Purpose", (
-        "<p>This <strong>market-aware cohort ABM</strong> answers: "
-        "<em>Can the Z1 system maintain solvency when pricing is endogenous and agents are adversarial?</em></p>"
-        "<p>Core loop: Issuance → Vesting → Settlement → AMM (Price) → Panic Feedback → Utility Recap.</p>"
-        "<p>104 epochs (≈ 2 years weekly) across multiple stress scenarios.</p>"
+    # ── Executive Summary ─────────────────────────────────────────────
+    _add_html_executive_summary(report, summaries, grid_summary_df, plots_dir)
+
+    report.add_text_section("1. Differences from M1 to M2", (
+        "<ul>"
+        "<li><strong>Endogenous AMM:</strong> Price is no longer static. Whales dumping Z1U on the AMM crashes the spot price.</li>"
+        "<li><strong>Dynamic Settlement Ratio:</strong> Peg defense mechanism where settlement ratios drop proportionally to the AMM spot price to protect the AR.</li>"
+        "<li><strong>Treasury Operations:</strong> Adds fixed burn rates (CIP & Ops Costs) and yield inflows (RWA).</li>"
+        "<li><strong>Adversarial Cohorts:</strong> Introduces Whales who attempt to settle 100% of their balance during market panics.</li>"
+        "</ul>"
     ))
 
     report.add_table_section("2. What M2 Includes", ["Component", "Implementation"], [
         ["AMM Pricing", "Endogenous price discovery via constant-product Z1U/USD pool"],
-        ["Escrow Engine", "Brand deposits go to escrow; 25% fee to Treasury"],
-        ["Panic Triggers", "10% price drop triggers 'Bank Run' (10x settlement surge)"],
-        ["L6 Floor Guard", "Constitutional 25% AR floor enforced by settlement capping"],
-        ["Utility Release", "Escrowed Z1U released to Treasury upon user utility spend"],
-        ["Health Throttle", "Reduces ACR issuance when AR ratio < 0.3"],
-        ["Invariants", "Full conservation including AMM reserves and Escrow balances"],
+        ["Adversarial Agents", "Bank Run simulation with 100% exit propensities"],
+        ["Dynamic Ratio", "Settlement haircut mathematically tied to AMM health"],
+        ["Treasury Flows", "Fixed CIP funding, Operational Costs, and RWA yield modeling"],
     ])
 
     report.add_text_section("3. Deferred Scope", (
-        "<p>CIP, validators, operations cost, PCS weight decomposition, prediction markets, "
+        "<p>PCS weight decomposition, prediction markets, "
         "and multi-token staking (Z1P/Z1U) loops are deferred to M3+.</p>"
     ))
 
@@ -176,28 +299,15 @@ def generate_html_report(
         )
 
     # ── Section 8: Parameter Lock Analysis ──────────────────────────
-    report.add_heading("8. Parameter Solvency Locks")
+    report.add_heading("8. M2 Parameter Solvency Locks & Magic Equations")
     report.add_text_section("", (
-        "<p>The <strong>Solvency Ratio</strong> is the master structural invariant that "
-        "provides a structural sanity check for any parameter set. "
-        "If the ratio exceeds 0.8, the system is structurally fragile.</p>"
-        "<p><strong>Formula:</strong> <code>outflow / inflow</code>, where:</p>"
+        "<p>To maintain M2 solvency under adversarial stress, the following <strong>magic equations</strong> must hold:</p>"
         "<ul>"
-        "<li><code>outflow = Σ(claim_rates) × Σ(settle_propensity) × settlement_ratio</code></li>"
-        "<li><code>inflow = Σ(utility_spend_rates) × utility_fee_share + brand_inflow / AR_initial</code></li>"
+        "<li><strong>Treasury Survival (Operational Lock):</strong><br><code>RWA_Yield + (Utility_Spend * Treasury_Fee) ≥ CIP_Cost + Ops_Cost</code><br>If the structural burn exceeds yield, the Treasury depletes and cannot defend the AR.</li>"
+        "<li><strong>Circuit Breaker Lock (Peg Defense):</strong><br><code>Dynamic_Ratio = Baseline_Ratio × (Current_Price / Genesis_Price)</code><br>If the AMM price crashes by 50%, the protocol forces users to take a 50% haircut on exit, strictly preserving the Audience Reserve.</li>"
+        "<li><strong>AMM Liquidity Lock:</strong><br><code>Total_Settlement_Volume_per_Epoch &lt; 0.10 × AMM_Z1U_Reserve</code><br>If a single epoch's settlement dump exceeds 10% of the AMM depth, slippage causes a recursive price collapse.</li>"
         "</ul>"
     ))
-
-    # Solvency ratio boundary table
-    report.add_table_section("Solvency Ratio Interpretation",
-        ["Ratio Range", "Predicted Outcome", "Confidence"],
-        [
-            ["< 0.8", report.badge("STABLE", "#16A34A"), "100% of observed cases"],
-            ["0.8 – 1.0", report.badge("BOUNDARY", "#F59E0B"), "Sensitive to parameter jitter"],
-            ["1.0 – 3.0", report.badge("STRESSED/COLLAPSE", "#EA580C"), "Support-dependent"],
-            ["> 3.0", report.badge("COLLAPSE", "#DC2626"), "100% of observed cases"],
-        ]
-    )
 
     # Per-scenario lock diagnostics
     from .config import SolvencyConfig
@@ -319,60 +429,27 @@ def generate_html_report(
         style="info",
     )
 
-    # ── Sections 9–12: Sensitivity, Risk, Findings, Limitations, Extensions ────
-    report.add_table_section("9. Top Solvency Drivers (OAT Elasticity)",
-        ["Rank", "Parameter", "AR Elasticity", "Meaning"],
-        [
-            ["1", "treasury_topup_threshold_ratio", "+2.98", "Most powerful lever — controls when Treasury recapitalises AR"],
-            ["2", "audience_reserve_initial", "−0.77", "Bigger starting AR inflates denominator — makes topups less effective"],
-            ["3", "brand_inflow_per_epoch", "+0.42", "External revenue — without it, nothing works"],
-            ["4-12", "All others", "< 0.05", "Settlement cap, vesting, fees, burn, throttle — near-zero impact"],
-        ],
-    )
-
-    # ── Key Findings section ─────────────────────────────────────────
-    report.add_heading("9b. Key Findings & Minimum Sustainability Thresholds")
-
-    report.add_table_section("Hard Constraints (Violate = Collapse)",
-        ["Lock", "Rule", "Minimum Threshold"],
-        [
-            ["L1", "Solvency Ratio (outflow/inflow)", "< 0.8"],
-            ["L3", "Brand Inflow / AR per epoch", "≥ 1%"],
-            ["L6", "AR / Circulating Supply", "≥ 25%"],
-            ["L9", "Max single-epoch AR drain", "≤ 10% of initial AR"],
-        ],
-    )
-
-    report.add_table_section("Optimal Parameter Set (Monte Carlo calibration)",
-        ["Parameter", "Optimal Value", "Safe Range"],
-        [
-            ["Solvency Ratio", "0.006", "< 0.8"],
-            ["Settlement Ratio", "0.10", "0.05 – 0.75"],
-            ["Utility Fee Share", "34%", "6% – 40%"],
-            ["Brand Inflow", "2.24% of AR", "≥ 1% (absolute min)"],
-            ["Campaign Fee", "25%", "≥ 15% for AR floor defense"],
-        ],
-    )
-
+    report.add_heading("9. M2 Summary of Findings")
     report.add_callout(
-        "<strong>Passive Viewer Problem:</strong> Passive viewers are net extractors "
-        "(settle/spend ratio: 2.50x vs target ≤ 0.5x). The system survives because "
-        "power users subsidise them and brand inflow covers the gap. "
-        "If the cohort mix shifts toward extractors, the system breaks.",
-        style="warn",
-    )
-
-    report.add_callout(
-        "<strong>Design Rules:</strong>"
+        "<strong>Key M2 Findings:</strong>"
         "<ol>"
-        "<li>Set the topup trigger aggressively — sensitivity to <em>when</em> you recapitalise is 3x higher than to inflow amount.</li>"
-        "<li>Don't over-capitalise the AR at launch — a giant starting reserve creates a false sense of security.</li>"
-        "<li>Brand inflow is the oxygen — below 1% of AR per epoch, every scenario collapsed. No exceptions.</li>"
-        "<li>Constitutional 25% AR floor must be enforced mechanically — don't trust governance.</li>"
-        "<li>Monitor passive viewer cohort share — if extractors grow, raise settlement friction.</li>"
+        "<li><strong>The Circuit Breaker Works:</strong> Even when Adversarial Whales attempt a 'Bank Run' by dumping massive amounts of ACR, the dynamic settlement ratio successfully drops, ensuring the Audience Reserve safely bounces off the 25% Constitutional Floor.</li>"
+        "<li><strong>AMM Asymptotic Death Spiral:</strong> While the internal AR is protected, without external buy-side pressure (Treasury Market Making), adversarial dumping will cause the AMM price to permanently approach $0.00.</li>"
+        "<li><strong>Operational Seniority Danger:</strong> If Operational Costs and CIP funding have seniority over AR Top-ups, the Treasury will continue paying developers while user exits are hard-locked.</li>"
         "</ol>",
         style="info",
     )
+
+    report.add_heading("The Zombie Protocol Paradox")
+    report.add_text_section("", (
+        "<p>In the Bank Run scenario, a counter-intuitive dynamic occurs: <strong>The Treasury drops to zero, but the Audience Reserve (AR) remains artificially high (bouncing off the 25% floor).</strong></p>"
+        "<p><strong>Mechanism:</strong></p>"
+        "<ul>"
+        "<li>Fixed Operational and CIP costs drain the Treasury by 15,000 Z1U every epoch.</li>"
+        "<li>The Constitutional Floor hard-locks the AR. Users trying to exit receive massive slippage haircuts or are blocked entirely.</li>"
+        "</ul>"
+        "<p><strong>Conclusion:</strong> A protocol can appear technically 'solvent' on-chain (since the AR never drops below the constitutional limit) while being functionally bankrupt and trapping its users. This highlights the danger of granting operational costs seniority over user settlement.</p>"
+    ))
 
     report.add_heading("10. Risk Thresholds Observed")
     if gdf is not None and len(gdf) > 0:

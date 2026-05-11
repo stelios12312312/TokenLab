@@ -52,9 +52,13 @@ def extract_epoch_metrics(state: GlobalState, config: SolvencyConfig) -> Dict[st
         'throttle_multiplier': state.throttle_multiplier,
         'throttle_active': 1 if state.throttle_multiplier < 1.0 else 0,
         'ar_floor_breach': 1 if state.ar_floor_breach_count > 0 else 0,
-        'z1u_price': getattr(state.amm, 'price', 1.0) if hasattr(state, 'amm') else 1.0,
+        'z1u_price': getattr(state.amm, 'spot_price', 1.0) if hasattr(state, 'amm') else 1.0,
         'escrow_balance': getattr(state.campaigns, 'escrow_balance_z1u', 0.0) if hasattr(state, 'campaigns') else 0.0,
         'is_panicking': 1 if getattr(state, 'is_panicking', False) else 0,
+        'cumulative_cip_funding': getattr(state, 'cumulative_cip_funding', 0.0),
+        'cumulative_ops_costs': getattr(state, 'cumulative_ops_costs', 0.0),
+        'cumulative_rwa_yield': getattr(state, 'cumulative_rwa_yield', 0.0),
+        'dynamic_settlement_ratio': getattr(state, 'current_settlement_ratio', config.settlement_ratio),
     }
 
 
@@ -127,6 +131,8 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             classification = "collapse"
         elif median_throttle > 0 or median_max_queue > 10_000_000_000:
             classification = "stressed"
+        elif median_final_ar < 0.99:
+            classification = "stressed"
         else:
             classification = "stable"
         
@@ -137,6 +143,8 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
         if final['ar_ratio'] < threshold_ar:
             classification = "collapse"
         elif final['throttle_active'] == 1 or final['settlement_queue_z1u'] > 10_000_000_000:
+            classification = "stressed"
+        elif final['ar_ratio'] < 0.99:
             classification = "stressed"
         else:
             classification = "stable"
