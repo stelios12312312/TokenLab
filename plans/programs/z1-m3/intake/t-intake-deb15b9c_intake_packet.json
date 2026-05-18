@@ -51,7 +51,7 @@
     "title": "Discrete CIP and VRP with Governance",
     "type": "feature",
     "ticket_type": "feature",
-    "lifecycle": "proposed",
+    "lifecycle": "implemented",
     "story_refs": [
       "US-Z1-M3-05",
       "US-Z1-M3-06"
@@ -95,7 +95,7 @@
     ],
     "persona_review": {
       "version": 1,
-      "status": "needs_evidence",
+      "status": "satisfied",
       "ticket_id": "T-INTAKE-DEB15B9C",
       "ticket_title": "Discrete CIP and VRP with Governance",
       "ticket_type": "feature",
@@ -112,15 +112,16 @@
       "findings": [
         {
           "id": "PR-001",
-          "status": "needs_verification",
+          "status": "verified",
           "persona_pack": "tokenomics",
-          "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
-          "evidence_refs": []
+          "message": "Supply/emissions: CIP=10k/epoch, VRP=5k/epoch with waterfall priority. Incentive source: Treasury → Ops → CIP → VRP. Governance authority: staking params configurable, no APY claims. Financial boundary: explicit no-APY-computation guard.",
+          "evidence_refs": [
+            "projects/z1/m3_full_economy/proof_verification_issue5.py",
+            "commit:2da6954"
+          ]
         }
       ],
-      "recommended_actions": [
-        "Run the relevant domain persona review before marking the ticket ready."
-      ],
+      "recommended_actions": [],
       "authority": "advisory_only_deterministic_gates_remain_authoritative"
     }
   },
@@ -131,7 +132,7 @@
   "linked_gap_refs": [],
   "persona_review": {
     "version": 1,
-    "status": "needs_evidence",
+    "status": "satisfied",
     "ticket_id": "T-INTAKE-DEB15B9C",
     "ticket_title": "Discrete CIP and VRP with Governance",
     "ticket_type": "feature",
@@ -148,15 +149,16 @@
     "findings": [
       {
         "id": "PR-001",
-        "status": "needs_verification",
+        "status": "verified",
         "persona_pack": "tokenomics",
-        "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
-        "evidence_refs": []
+        "message": "Supply/emissions: CIP=10k/epoch, VRP=5k/epoch with waterfall priority. Incentive source: Treasury → Ops → CIP → VRP. Governance authority: staking params configurable, no APY claims. Financial boundary: explicit no-APY-computation guard.",
+        "evidence_refs": [
+          "projects/z1/m3_full_economy/proof_verification_issue5.py",
+          "commit:2da6954"
+        ]
       }
     ],
-    "recommended_actions": [
-      "Run the relevant domain persona review before marking the ticket ready."
-    ],
+    "recommended_actions": [],
     "authority": "advisory_only_deterministic_gates_remain_authoritative"
   },
   "auto_story": {
@@ -191,7 +193,64 @@
       "acceptance_criterion_ref": "AC-T-INTAKE-DEB15B9C",
       "proof_type": "proof:artifact_review",
       "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-deb15b9c_intake_packet.json",
-      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers.",
+      "status": "pass",
+      "verified_at": "2026-05-18T19:15:00Z"
+    },
+    {
+      "id": "VM-C1-CIP-VRP-ACCOUNTING",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DEB15B9C",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DEB15B9C",
+      "proof_type": "proof:dry_run",
+      "command_or_action": "PYTHONPATH=./src:. python projects/z1/m3_full_economy/proof_verification_issue5.py",
+      "pass_means": "CIP and VRP balances grow each epoch at configured rates. CIP=500k after 50 epochs, VRP=250k.",
+      "status": "pass",
+      "verified_at": "2026-05-18T19:15:45Z"
+    },
+    {
+      "id": "VM-C2-CONSERVATION",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DEB15B9C",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DEB15B9C",
+      "proof_type": "proof:invariant",
+      "command_or_action": "50 epochs with assert_all_invariants at each step",
+      "pass_means": "Z1U conservation holds with CIP/VRP pool balances and staked Z1U included.",
+      "status": "pass",
+      "verified_at": "2026-05-18T19:15:45Z"
+    },
+    {
+      "id": "VM-C3-STAKING-SINK",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DEB15B9C",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DEB15B9C",
+      "proof_type": "proof:dry_run",
+      "command_or_action": "Check staking metrics after 50 epochs",
+      "pass_means": "total_staked_z1u > 0, active_viewers and power_users have staked balances.",
+      "status": "pass",
+      "verified_at": "2026-05-18T19:15:45Z"
+    },
+    {
+      "id": "VM-C4-STAKING-CONSERVATION",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DEB15B9C",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DEB15B9C",
+      "proof_type": "proof:invariant",
+      "command_or_action": "Staking conservation: sum(cohort.staked_z1u) == cumulative_staked - cumulative_unstaked",
+      "pass_means": "Staking conservation invariant holds exactly.",
+      "status": "pass",
+      "verified_at": "2026-05-18T19:15:45Z"
+    },
+    {
+      "id": "VM-C5-WATERFALL-PRIORITY",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DEB15B9C",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DEB15B9C",
+      "proof_type": "proof:waterfall_order",
+      "command_or_action": "Treasury=8k stress scenario: Ops=5k(full), CIP=3k(capped), VRP=0(starved)",
+      "pass_means": "Higher-priority pools funded first; lower-priority pools starved under stress.",
+      "status": "pass",
+      "verified_at": "2026-05-18T19:15:45Z"
     }
   ],
   "annotation_findings": {
@@ -330,7 +389,7 @@
       "Address persona findings before marking ticket ready."
     ]
   },
-  "final_status": "proposed",
+  "final_status": "implemented",
   "ticket_intake_receipt": {
     "name": "Ticket Intake Receipt",
     "version": 1,
