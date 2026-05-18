@@ -90,9 +90,19 @@ class M3EconomyConfig:
     
     use_dynamic_settlement_ratio: bool = True
     
-    cip_replenishment_per_epoch: float = 10_000.0
+    # M3 Discrete Pool Accounting (replaces legacy cip_replenishment_per_epoch)
+    cip_budget_per_epoch: float = 10_000.0       # Creator Incentive Pool funding
+    vrp_budget_per_epoch: float = 5_000.0        # Validator Reward Pool funding
+    cip_replenishment_per_epoch: float = 10_000.0  # Legacy alias — kept for M2 parity
     operational_cost_per_epoch: float = 5_000.0
     rwa_yield_per_epoch: float = 1_000.0
+    
+    # M3 Governance Staking (US-Z1-M3-06)
+    governance_staking_enabled: bool = True
+    staking_lock_epochs: int = 12                # Minimum lock period before unstaking
+    staking_rate_by_cohort: Dict[str, float] = field(
+        default_factory=lambda: {"passive_viewers": 0.0, "active_viewers": 0.05, "power_users": 0.30, "adversarial_whales": 0.0}
+    )
     
     panic_price_drop_threshold: float = 0.10  # 10% drop triggers panic
     panic_settlement_multiplier: float = 5.0  # Settle 5x faster in panic

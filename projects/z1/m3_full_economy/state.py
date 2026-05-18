@@ -33,6 +33,10 @@ class CohortState:
     acr_voided: float = 0.0
     
     z1u_balance: float = 0.0
+    
+    # Governance Staking (US-Z1-M3-06)
+    staked_z1u: float = 0.0
+    staking_buckets: List[float] = field(default_factory=list)  # FIFO queue, length = staking_lock_epochs
 
 @dataclass
 class GlobalState:
@@ -61,6 +65,16 @@ class GlobalState:
     cumulative_ops_costs: float = 0.0
     cumulative_rwa_yield: float = 0.0
     
+    # M3 Discrete Pool Balances (US-Z1-M3-05)
+    cip_pool_balance: float = 0.0
+    vrp_pool_balance: float = 0.0
+    cumulative_cip_pool_funded: float = 0.0
+    cumulative_vrp_pool_funded: float = 0.0
+    
+    # M3 Governance Staking (US-Z1-M3-06)
+    cumulative_staked_z1u: float = 0.0
+    cumulative_unstaked_z1u: float = 0.0
+    
     # Health and metrics
     throttle_multiplier: float = 1.0
     ar_floor_breach_count: int = 0
@@ -81,7 +95,8 @@ def initialize_state(config: M3EconomyConfig) -> GlobalState:
             acr_issue_rate=config.acr_issue_rate_by_cohort[name],
             settle_propensity=config.settle_propensity_by_cohort[name],
             utility_spend_rate=config.utility_spend_rate_by_cohort[name],
-            acr_vesting_buckets=[0.0] * (config.vesting_lag_epochs + getattr(config, 'vesting_sub_cohort_phases', 1) - 1)
+            acr_vesting_buckets=[0.0] * (config.vesting_lag_epochs + getattr(config, 'vesting_sub_cohort_phases', 1) - 1),
+            staking_buckets=[0.0] * config.staking_lock_epochs if config.governance_staking_enabled else []
         )
         cohorts[name] = c
     

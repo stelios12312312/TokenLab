@@ -38,6 +38,10 @@ class AgentPool_Z1(AgentPool_Basic):
         self.acr_voided = 0.0
         self.z1u_balance = 0.0
         
+        # M3 Governance Staking (US-Z1-M3-06)
+        self.staked_z1u = 0.0
+        self.staking_buckets = [0.0] * getattr(config, 'staking_lock_epochs', 12) if getattr(config, 'governance_staking_enabled', False) else []
+        
         # To maintain compatibility with TokenLab's AgentPool metrics:
         # num_users tracks cumulative claimed users for TokenLab metrics tracking.
         self.num_users = 0

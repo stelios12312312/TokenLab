@@ -11,7 +11,10 @@ from .ledger import (
     spend_z1u,
     receive_brand_inflow,
     treasury_topup_ar,
-    execute_genesis_unlock
+    execute_genesis_unlock,
+    fund_pools_waterfall,
+    stake_z1u,
+    unstake_z1u
 )
 from .config import M3EconomyConfig
 from .amm import AutomatedMarketMaker
@@ -71,6 +74,16 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         self.cumulative_rwa_yield = 0.0
         self.current_settlement_ratio = config.settlement_ratio
         
+        # M3 Discrete Pool Balances (US-Z1-M3-05)
+        self.cip_pool_balance = 0.0
+        self.vrp_pool_balance = 0.0
+        self.cumulative_cip_pool_funded = 0.0
+        self.cumulative_vrp_pool_funded = 0.0
+        
+        # M3 Governance Staking (US-Z1-M3-06)
+        self.cumulative_staked_z1u = 0.0
+        self.cumulative_unstaked_z1u = 0.0
+        
         self.throttle_multiplier = 1.0
         self.ar_floor_breach_count = 0
         self.per_epoch_counters = {}
@@ -117,21 +130,15 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         panic_multiplier = self.config.panic_settlement_multiplier if self.is_panicking else 1.0
         
         # ==================================================
-        # M3 Phase 2: AR-Top-up
+        # M3 Phase 2: Treasury Waterfall + AR-Top-up
         # ==================================================
-        cip_cost = getattr(self.config, 'cip_replenishment_per_epoch', 0.0)
-        ops_cost = getattr(self.config, 'operational_cost_per_epoch', 0.0)
+        # RWA yield into Treasury
         rwa_yield = getattr(self.config, 'rwa_yield_per_epoch', 0.0)
-        
         self.treasury += rwa_yield
-        actual_cip = min(cip_cost, self.treasury)
-        self.treasury -= actual_cip
-        actual_ops = min(ops_cost, self.treasury)
-        self.treasury -= actual_ops
-        
-        self.cumulative_cip_funding += actual_cip
-        self.cumulative_ops_costs += actual_ops
         self.cumulative_rwa_yield += rwa_yield
+        
+        # US-Z1-M3-05: Waterfall funding (Ops → CIP → VRP)
+        fund_pools_waterfall(self)
 
         total_cohort_z1u = sum(pool.z1u_balance for pool in cohort_pools.values())
         live_supply_pre = (self.audience_reserve + self.treasury + total_cohort_z1u + 
@@ -271,6 +278,11 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
             spend_z1u(self, name, spend, provider, fee, burn)
             total_utility_spend += spend
             pool.transactions = spend
+        
+        # US-Z1-M3-06: Governance Staking (after spend, before buybacks)
+        for name, pool in cohort_pools.items():
+            unstake_z1u(self, name)  # Release matured stakes first
+            stake_z1u(self, name)    # Then stake new Z1U
             
         # Treasury AMM Buybacks (L8)
         buyback_ratio = getattr(self.config, 'treasury_buyback_ratio', 0.0)

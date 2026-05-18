@@ -16,6 +16,7 @@ def check_invariants(state: GlobalState) -> list[str]:
         if c.acr_queued_for_settlement < -1e-9: errors.append(f"Cohort {name} ACR queued is negative.")
         if c.acr_settled < -1e-9: errors.append(f"Cohort {name} ACR settled is negative.")
         if c.z1u_balance < -1e-9: errors.append(f"Cohort {name} Z1U balance is negative.")
+        if getattr(c, 'staked_z1u', 0.0) < -1e-9: errors.append(f"Cohort {name} staked Z1U is negative.")
         for v in c.acr_vesting_buckets:
             if v < -1e-9: errors.append(f"Cohort {name} has negative vesting bucket.")
             
@@ -27,8 +28,8 @@ def check_invariants(state: GlobalState) -> list[str]:
     if not math.isclose(state.total_acr_issued, total_cohort_acr, rel_tol=1e-5, abs_tol=1e-5):
         errors.append(f"ACR leak detected! Issued: {state.total_acr_issued}, Found: {total_cohort_acr}")
         
-    # 3. Z1U Flow Accounting (F4)
-    total_cohort_z1u = sum(c.z1u_balance for c in state.cohorts.values())
+    # 3. Z1U Flow Accounting (F4) — includes CIP/VRP pool balances and staked Z1U
+    total_cohort_z1u = sum(c.z1u_balance + getattr(c, 'staked_z1u', 0.0) for c in state.cohorts.values())
     lhs = (state.audience_reserve_initial + state.treasury_initial + state.cumulative_brand_inflow + state.config.amm_initial_z1u
            + (state.campaigns.cumulative_net_deposits if hasattr(state, 'campaigns') else 0)
            + getattr(state, 'cumulative_campaign_burn', 0.0)
@@ -42,13 +43,15 @@ def check_invariants(state: GlobalState) -> list[str]:
            + getattr(state, 'cumulative_ops_costs', 0)
            + state.total_z1u_burned
            + (state.amm.z1u_reserve if hasattr(state, 'amm') else 0)
-           + (state.campaigns.escrow_balance_z1u if hasattr(state, 'campaigns') else 0))
+           + (state.campaigns.escrow_balance_z1u if hasattr(state, 'campaigns') else 0)
+           + getattr(state, 'cip_pool_balance', 0.0)
+           + getattr(state, 'vrp_pool_balance', 0.0))
     
     if not math.isclose(lhs, rhs, rel_tol=1e-5, abs_tol=1e-5):
         errors.append(f"Z1U Conservation leak! Expected: {lhs}, Found: {rhs}")
         
-    # 4. Burn Consistency Invariant (F5)
-    live_supply = state.audience_reserve + state.treasury + total_cohort_z1u + state.cumulative_provider_payments + getattr(state, 'cumulative_recirculated_provider_z1u', 0.0) + getattr(state, 'cumulative_cip_funding', 0) + getattr(state, 'cumulative_ops_costs', 0) + (state.amm.z1u_reserve if hasattr(state, 'amm') else 0) + (state.campaigns.escrow_balance_z1u if hasattr(state, 'campaigns') else 0)
+    # 4. Burn Consistency Invariant (F5) — includes CIP/VRP pool balances and staked Z1U
+    live_supply = state.audience_reserve + state.treasury + total_cohort_z1u + state.cumulative_provider_payments + getattr(state, 'cumulative_recirculated_provider_z1u', 0.0) + getattr(state, 'cumulative_cip_funding', 0) + getattr(state, 'cumulative_ops_costs', 0) + (state.amm.z1u_reserve if hasattr(state, 'amm') else 0) + (state.campaigns.escrow_balance_z1u if hasattr(state, 'campaigns') else 0) + getattr(state, 'cip_pool_balance', 0.0) + getattr(state, 'vrp_pool_balance', 0.0)
     total_minted = (state.audience_reserve_initial + state.treasury_initial + state.cumulative_brand_inflow + (state.config.amm_initial_z1u if hasattr(state, 'amm') else 0)
                     + (state.campaigns.cumulative_net_deposits if hasattr(state, 'campaigns') else 0)
                     + getattr(state, 'cumulative_campaign_burn', 0.0)
@@ -73,6 +76,16 @@ def check_invariants(state: GlobalState) -> list[str]:
     if hasattr(state, 'amm'):
         if not math.isclose(state.amm.z1u_reserve * state.amm.usd_reserve, state.amm.k, rel_tol=1e-5, abs_tol=1e-5):
             errors.append(f"AMM Invariant Broken! Expected k={state.amm.k}, got {state.amm.z1u_reserve * state.amm.usd_reserve}")
+
+    # 8. CIP/VRP Non-negativity (US-Z1-M3-05)
+    if getattr(state, 'cip_pool_balance', 0.0) < -1e-9: errors.append("CIP pool balance is negative.")
+    if getattr(state, 'vrp_pool_balance', 0.0) < -1e-9: errors.append("VRP pool balance is negative.")
+
+    # 9. Staking Conservation (US-Z1-M3-06)
+    total_staked = sum(getattr(c, 'staked_z1u', 0.0) for c in state.cohorts.values())
+    net_staked = getattr(state, 'cumulative_staked_z1u', 0.0) - getattr(state, 'cumulative_unstaked_z1u', 0.0)
+    if not math.isclose(total_staked, net_staked, rel_tol=1e-5, abs_tol=1e-5):
+        errors.append(f"Staking Conservation leak! Cohort staked: {total_staked}, Net flow: {net_staked}")
 
     return errors
 

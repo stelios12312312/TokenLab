@@ -59,6 +59,15 @@ def extract_epoch_metrics(state: GlobalState, config: M3EconomyConfig) -> Dict[s
         'cumulative_ops_costs': getattr(state, 'cumulative_ops_costs', 0.0),
         'cumulative_rwa_yield': getattr(state, 'cumulative_rwa_yield', 0.0),
         'dynamic_settlement_ratio': getattr(state, 'current_settlement_ratio', config.settlement_ratio),
+        # M3 Discrete Pool Metrics (US-Z1-M3-05)
+        'cip_pool_balance': getattr(state, 'cip_pool_balance', 0.0),
+        'vrp_pool_balance': getattr(state, 'vrp_pool_balance', 0.0),
+        'cip_funded_epoch': state.per_epoch_counters.get('cip_funded', 0.0),
+        'vrp_funded_epoch': state.per_epoch_counters.get('vrp_funded', 0.0),
+        # M3 Governance Staking Metrics (US-Z1-M3-06)
+        'total_staked_z1u': sum(getattr(c, 'staked_z1u', 0.0) for c in state.cohorts.values()),
+        'staked_epoch': state.per_epoch_counters.get('staked_z1u', 0.0),
+        'unstaked_epoch': state.per_epoch_counters.get('unstaked_z1u', 0.0),
     }
 
 

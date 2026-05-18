@@ -178,3 +178,95 @@ def execute_genesis_unlock(state: GlobalState):
             else:
                 state.treasury += to_unlock
 
+
+def fund_pools_waterfall(state: GlobalState):
+    """
+    US-Z1-M3-05: Treasury waterfall funding for discrete CIP/VRP pools.
+    
+    Priority order: Ops Costs → CIP → VRP
+    Each step is capped by remaining Treasury balance.
+    AR top-up and buybacks happen separately in their existing pipeline steps.
+    """
+    config = state.config
+    
+    # Step 1: Operational costs (highest priority)
+    ops_amount = min(config.operational_cost_per_epoch, state.treasury)
+    state.treasury -= ops_amount
+    state.cumulative_ops_costs += ops_amount
+    state.per_epoch_counters['ops_costs'] = ops_amount
+    
+    # Step 2: CIP funding
+    cip_amount = min(config.cip_budget_per_epoch, state.treasury)
+    state.treasury -= cip_amount
+    state.cip_pool_balance += cip_amount
+    state.cumulative_cip_pool_funded += cip_amount
+    state.per_epoch_counters['cip_funded'] = cip_amount
+    
+    # Step 3: VRP funding
+    vrp_amount = min(config.vrp_budget_per_epoch, state.treasury)
+    state.treasury -= vrp_amount
+    state.vrp_pool_balance += vrp_amount
+    state.cumulative_vrp_pool_funded += vrp_amount
+    state.per_epoch_counters['vrp_funded'] = vrp_amount
+
+
+def stake_z1u(state: GlobalState, cohort_name: str):
+    """
+    US-Z1-M3-06: Governance staking — move Z1U from liquid balance into staking lock.
+    
+    Staked Z1U is removed from circulating supply, acting as a sink.
+    Uses a FIFO bucket queue: new stakes enter the last bucket and shift forward
+    each epoch, unlocking from bucket[0] after staking_lock_epochs.
+    """
+    config = state.config
+    if not config.governance_staking_enabled:
+        return
+    
+    cohort = state.cohorts[cohort_name]
+    stake_rate = config.staking_rate_by_cohort.get(cohort_name, 0.0)
+    
+    if stake_rate <= 0 or cohort.z1u_balance <= 0:
+        return
+    
+    stake_amount = cohort.z1u_balance * stake_rate
+    cohort.z1u_balance -= stake_amount
+    cohort.staked_z1u += stake_amount
+    state.cumulative_staked_z1u += stake_amount
+    
+    # Enter FIFO queue at the end (will take staking_lock_epochs to mature)
+    if len(cohort.staking_buckets) > 0:
+        cohort.staking_buckets[-1] += stake_amount
+    
+    state.per_epoch_counters['staked_z1u'] = state.per_epoch_counters.get('staked_z1u', 0.0) + stake_amount
+
+
+def unstake_z1u(state: GlobalState, cohort_name: str):
+    """
+    US-Z1-M3-06: Unstaking — release Z1U from staking lock after the lock period.
+    
+    FIFO bucket[0] matures each epoch: its contents are released back to liquid balance.
+    Then all buckets shift forward by one position.
+    """
+    config = state.config
+    if not config.governance_staking_enabled:
+        return
+    
+    cohort = state.cohorts[cohort_name]
+    
+    if len(cohort.staking_buckets) == 0:
+        return
+    
+    # Bucket[0] has matured — release back to liquid balance
+    matured = cohort.staking_buckets[0]
+    if matured > 0:
+        cohort.z1u_balance += matured
+        cohort.staked_z1u -= matured
+        state.cumulative_unstaked_z1u += matured
+        state.per_epoch_counters['unstaked_z1u'] = state.per_epoch_counters.get('unstaked_z1u', 0.0) + matured
+    
+    # Shift buckets forward (FIFO conveyor)
+    for i in range(len(cohort.staking_buckets) - 1):
+        cohort.staking_buckets[i] = cohort.staking_buckets[i + 1]
+    cohort.staking_buckets[-1] = 0.0
+
+
