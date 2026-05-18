@@ -3,7 +3,7 @@
     {
       "id": "US-Z1-M3-01",
       "title": "Genesis unlock with 7 buckets",
-      "status": "NOT_IMPLEMENTED",
+      "status": "IMPLEMENTED",
       "priority": "high",
       "source": "dialogue",
       "annotation_refs": [],
@@ -14,7 +14,7 @@
     {
       "id": "US-Z1-M3-02",
       "title": "Provider recirculation rate",
-      "status": "NOT_IMPLEMENTED",
+      "status": "IMPLEMENTED",
       "priority": "high",
       "source": "dialogue",
       "annotation_refs": [],
@@ -25,7 +25,7 @@
     {
       "id": "US-Z1-M3-03",
       "title": "Full composite SR formula",
-      "status": "NOT_IMPLEMENTED",
+      "status": "IMPLEMENTED",
       "priority": "high",
       "source": "dialogue",
       "annotation_refs": [],
@@ -36,7 +36,7 @@
     {
       "id": "US-Z1-M3-04",
       "title": "Epoch pipeline reordering (AR top-up before settlement)",
-      "status": "NOT_IMPLEMENTED",
+      "status": "IMPLEMENTED",
       "priority": "high",
       "source": "dialogue",
       "annotation_refs": [],

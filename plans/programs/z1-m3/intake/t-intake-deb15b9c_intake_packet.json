@@ -1,0 +1,387 @@
+{
+  "version": 1,
+  "generated_at": "2026-05-18T17:56:07.299Z",
+  "source": {
+    "kind": "text",
+    "title": "Discrete CIP and VRP with Governance",
+    "ticket_title": "Discrete CIP and VRP with Governance",
+    "title_source": "llm_summary",
+    "title_summary": {
+      "status": "summarized",
+      "source": "provider",
+      "original_title": "P1 Discrete Liquidity Pools: CIP and VRP with waterfall priority and governance staking sink. Implement discrete CIP (Creator Incentive Pool) and VRP (Validator Reward Pool) as separate ledger accounts with waterfall-priority funding from Treasury. Add governance staking as a Z1U sink mechanism. Tokenomics persona obligations: supply/emissions impact on CIP/VRP funding rates, incentive source traceability (which pool funds which agent class), liquidity/treasury/governance authority (who controls...[truncated 128 chars]",
+      "title": "Discrete CIP and VRP with Governance",
+      "config": {
+        "configured": true,
+        "model": "deepseek-chat",
+        "base_url": "https://api.deepseek.com",
+        "endpoint": "https://api.deepseek.com/chat/completions",
+        "phases": [
+          "gate",
+          "post_task"
+        ],
+        "write_mode": "safe_apply",
+        "timeout_ms": 20000,
+        "local_env_loaded": false,
+        "using_deepseek_alias": false,
+        "missing": []
+      }
+    },
+    "ticket_type": "feature",
+    "base_ticket_type": "feature",
+    "persona_review_enabled": true,
+    "persona_packs": [
+      "tokenomics",
+      "assumptions_challenger",
+      "wiring_auditor",
+      "traceability"
+    ],
+    "text": "P1 Discrete Liquidity Pools: CIP and VRP with waterfall priority and governance staking sink. Implement discrete CIP (Creator Incentive Pool) and VRP (Validator Reward Pool) as separate ledger accounts with waterfall-priority funding from Treasury. Add governance staking as a Z1U sink mechanism. Tokenomics persona obligations: supply/emissions impact on CIP/VRP funding rates, incentive source traceability (which pool funds which agent class), liquidity/treasury/governance authority (who controls pool parameters), financial advisory boundary (staking APY claims require qualified review). Stories: US-Z1-M3-05, US-Z1-M3-06.",
+    "external": null
+  },
+  "program": {
+    "id": "z1-m3",
+    "title": "Z1 M3 Full Economy",
+    "status": "design",
+    "packet_path": "plans/programs/z1-m3/program_packet.json"
+  },
+  "candidate_ticket": {
+    "id": "T-INTAKE-DEB15B9C",
+    "epic_id": "EP-INTAKE",
+    "title": "Discrete CIP and VRP with Governance",
+    "type": "feature",
+    "ticket_type": "feature",
+    "lifecycle": "proposed",
+    "story_refs": [
+      "US-Z1-M3-05",
+      "US-Z1-M3-06"
+    ],
+    "defect_refs": [],
+    "gap_refs": [],
+    "depends_on": [],
+    "acceptance_criteria": [
+      "AC-T-INTAKE-DEB15B9C"
+    ],
+    "child_plan": {
+      "policy": "required",
+      "plan_dir": null,
+      "reason": "Executable intake ticket requires a child iterative plan before implementation."
+    },
+    "compatibility_contract_refs": [],
+    "migration_boundary_refs": [],
+    "deletion_move_census_refs": [],
+    "verification_refs": [
+      "VM-T-INTAKE-DEB15B9C"
+    ],
+    "external_refs": [
+      {
+        "kind": "local_text",
+        "source_hash": "8e996325e3f55bbb",
+        "synced_at": "2026-05-18T17:56:07.299Z"
+      }
+    ],
+    "review_artifacts": [
+      {
+        "path": "plans/programs/z1-m3/intake/t-intake-deb15b9c_intake_packet.json",
+        "kind": "program_intake_packet",
+        "generated_at": "2026-05-18T17:56:07.299Z"
+      }
+    ],
+    "persona_packs": [
+      "tokenomics",
+      "assumptions_challenger",
+      "wiring_auditor",
+      "traceability"
+    ],
+    "persona_review": {
+      "version": 1,
+      "status": "needs_evidence",
+      "ticket_id": "T-INTAKE-DEB15B9C",
+      "ticket_title": "Discrete CIP and VRP with Governance",
+      "ticket_type": "feature",
+      "base_ticket_type": "feature",
+      "persona_packs": [
+        "tokenomics",
+        "assumptions_challenger",
+        "wiring_auditor",
+        "traceability"
+      ],
+      "required_evidence": [
+        "story linkage, acceptance criteria, verification proof, and explicit assumptions"
+      ],
+      "findings": [
+        {
+          "id": "PR-001",
+          "status": "needs_verification",
+          "persona_pack": "tokenomics",
+          "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
+          "evidence_refs": []
+        }
+      ],
+      "recommended_actions": [
+        "Run the relevant domain persona review before marking the ticket ready."
+      ],
+      "authority": "advisory_only_deterministic_gates_remain_authoritative"
+    }
+  },
+  "linked_story_refs": [
+    "US-Z1-M3-05",
+    "US-Z1-M3-06"
+  ],
+  "linked_gap_refs": [],
+  "persona_review": {
+    "version": 1,
+    "status": "needs_evidence",
+    "ticket_id": "T-INTAKE-DEB15B9C",
+    "ticket_title": "Discrete CIP and VRP with Governance",
+    "ticket_type": "feature",
+    "base_ticket_type": "feature",
+    "persona_packs": [
+      "tokenomics",
+      "assumptions_challenger",
+      "wiring_auditor",
+      "traceability"
+    ],
+    "required_evidence": [
+      "story linkage, acceptance criteria, verification proof, and explicit assumptions"
+    ],
+    "findings": [
+      {
+        "id": "PR-001",
+        "status": "needs_verification",
+        "persona_pack": "tokenomics",
+        "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
+        "evidence_refs": []
+      }
+    ],
+    "recommended_actions": [
+      "Run the relevant domain persona review before marking the ticket ready."
+    ],
+    "authority": "advisory_only_deterministic_gates_remain_authoritative"
+  },
+  "auto_story": {
+    "enabled": false,
+    "status": "not_requested",
+    "registry_path": null,
+    "story_refs": [],
+    "generated_count": 0,
+    "reused_count": 0,
+    "stories": [],
+    "advisory": null
+  },
+  "persona_obligations": [],
+  "acceptance_criteria": [
+    {
+      "id": "AC-T-INTAKE-DEB15B9C",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DEB15B9C",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06"
+      ],
+      "maintenance_rationale": null
+    }
+  ],
+  "verification_rows": [
+    {
+      "id": "VM-T-INTAKE-DEB15B9C",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DEB15B9C",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DEB15B9C",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-deb15b9c_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+    }
+  ],
+  "annotation_findings": {
+    "status": "not_run",
+    "summary": "Run annotation validation during ticket review or child-plan execution."
+  },
+  "ontology_findings": {
+    "violations": [],
+    "warnings": []
+  },
+  "retro_recurrence_check": {
+    "version": 1,
+    "status": "not_applicable",
+    "summary": {
+      "blocking_count": 0,
+      "advisory_count": 0,
+      "match_count": 0,
+      "source_count": 3,
+      "trusted_count": 0,
+      "derived_count": 0
+    },
+    "matches": [],
+    "warnings": []
+  },
+  "quant_persona_gate": {
+    "version": "1.0.0",
+    "required": false,
+    "status": "not_applicable",
+    "reason": "no_quant_scope",
+    "matched_signals": [],
+    "summary": {
+      "matched_signal_count": 0,
+      "required_guard_count": 0,
+      "satisfied_guard_count": 0,
+      "missing_guard_count": 0
+    },
+    "required_guards": []
+  },
+  "deterministic": {
+    "program_packet_validation": {
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "counts": {
+        "epics": 1,
+        "tickets": 2,
+        "acceptance_criteria": 2,
+        "verification_rows": 2,
+        "decisions": 0
+      }
+    },
+    "ontology": {
+      "violations": [],
+      "warnings": []
+    },
+    "blockers": [],
+    "retro_recurrence_check": {
+      "version": 1,
+      "status": "not_applicable",
+      "summary": {
+        "blocking_count": 0,
+        "advisory_count": 0,
+        "match_count": 0,
+        "source_count": 3,
+        "trusted_count": 0,
+        "derived_count": 0
+      },
+      "matches": [],
+      "warnings": []
+    },
+    "quant_persona_gate": {
+      "version": "1.0.0",
+      "required": false,
+      "status": "not_applicable",
+      "reason": "no_quant_scope",
+      "matched_signals": [],
+      "summary": {
+        "matched_signal_count": 0,
+        "required_guard_count": 0,
+        "satisfied_guard_count": 0,
+        "missing_guard_count": 0
+      },
+      "required_guards": []
+    }
+  },
+  "deepseek_advisory": {
+    "available": true,
+    "config": {
+      "configured": true,
+      "model": "deepseek-chat",
+      "base_url": "https://api.deepseek.com",
+      "endpoint": "https://api.deepseek.com/chat/completions",
+      "phases": [
+        "gate",
+        "post_task"
+      ],
+      "write_mode": "safe_apply",
+      "timeout_ms": 20000,
+      "local_env_loaded": false,
+      "using_deepseek_alias": false,
+      "missing": []
+    },
+    "source": "provider",
+    "raw_excerpt": "{\n  \"status\": \"needs_verification\",\n  \"summary\": \"The ticket proposes discrete CIP and VRP accounts with governance staking. Deterministic checks pass, but persona review is incomplete (needs_evidence). The quant_persona_gate is not required, so no blocking. However, the persona review findings require verification before the ticket can proceed.\",\n  \"findings\": [\n    \"Persona review status is 'needs_evidence' with required evidence: story linkage, acceptance criteria, verification proof, and explicit assumptions.\",\n    \"Tokenomics persona finding PR-001 is 'needs_verification'.\",\n    \"Annotation validation not run.\",\n    \"No deterministic blockers or ontology violations.\"\n  ],\n  \"recommended_actions\": [\n    \"Run the relevant domain persona review (tokenomics, assumptions_challenger, wiring_auditor, traceability) to satisfy evidence requirements.\",\n    \"Run annotation validation.\",\n    \"Address persona findings before marking ticket ready.\"\n  ]\n}",
+    "status": "needs_verification",
+    "summary": "The ticket proposes discrete CIP and VRP accounts with governance staking. Deterministic checks pass, but persona review is incomplete (needs_evidence). The quant_persona_gate is not required, so no blocking. However, the persona review findings require verification before the ticket can proceed.",
+    "findings": [
+      {
+        "id": "DS-001",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-002",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-003",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-004",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      }
+    ],
+    "recommended_actions": [
+      "Run the relevant domain persona review (tokenomics, assumptions_challenger, wiring_auditor, traceability) to satisfy evidence requirements.",
+      "Run annotation validation.",
+      "Address persona findings before marking ticket ready."
+    ]
+  },
+  "final_status": "proposed",
+  "ticket_intake_receipt": {
+    "name": "Ticket Intake Receipt",
+    "version": 1,
+    "action": "intake",
+    "front_door": "/program-manager",
+    "source": {
+      "kind": "text",
+      "title": "Discrete CIP and VRP with Governance",
+      "external_kind": null
+    },
+    "program_packet_path": "plans/programs/z1-m3/program_packet.json",
+    "intake_artifact_path": "plans/programs/z1-m3/intake/t-intake-deb15b9c_intake_packet.json",
+    "ticket_id": "T-INTAKE-DEB15B9C",
+    "ticket_title": "Discrete CIP and VRP with Governance",
+    "ticket_type": "feature",
+    "base_ticket_type": "feature",
+    "ticket_lifecycle": "proposed",
+    "persona_review_status": "needs_evidence",
+    "persona_packs": [
+      "tokenomics",
+      "assumptions_challenger",
+      "wiring_auditor",
+      "traceability"
+    ],
+    "story_refs": [
+      "US-Z1-M3-05",
+      "US-Z1-M3-06"
+    ],
+    "gap_refs": [],
+    "defect_refs": [],
+    "acceptance_criteria_refs": [
+      "AC-T-INTAKE-DEB15B9C"
+    ],
+    "verification_refs": [
+      "VM-T-INTAKE-DEB15B9C"
+    ],
+    "deterministic_status": "proposed",
+    "deterministic_blocker_count": 0,
+    "deterministic_blockers": [],
+    "retro_recurrence_status": "not_applicable",
+    "retro_recurrence_blocking_count": 0,
+    "retro_recurrence_advisory_count": 0,
+    "quant_persona_gate_status": "not_applicable",
+    "quant_persona_gate_required": false,
+    "quant_persona_gate_missing_count": 0,
+    "deepseek_advisory_status": "needs_verification",
+    "deepseek_advisory_block": "<<<DEEPSEEK_VERDICT_BEGIN>>>\nStatus: needs_verification\nSummary: The ticket proposes discrete CIP and VRP accounts with governance staking. Deterministic checks pass, but persona review is incomplete (needs_evidence). The quant_persona_gate is not required, so no blocking. However, the persona review findings require verification before the ticket can proceed.\nFindings:\n- DS-001 (status=fresh)\n- DS-002 (status=fresh)\n- DS-003 (status=fresh)\n- DS-004 (status=fresh)\nRecommended actions:\n- Run the relevant domain persona review (tokenomics, assumptions_challenger, wiring_auditor, traceability) to satisfy evidence requirements.\n- Run annotation validation.\n- Address persona findings before marking ticket ready.\n<<<DEEPSEEK_VERDICT_END>>>",
+    "verbatim_reproduction_contract": "Primary agents must reproduce deepseek_advisory_block verbatim in their reply to the user; paraphrase is forbidden. The DEEPSEEK_VERDICT_BEGIN/END delimiters are part of the contract — quote them as written.",
+    "direct_github_creation_allowed": false,
+    "github_publication": "explicit_publish_required",
+    "next_required_command": "node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program plans/programs/z1-m3/program_packet.json --json",
+    "publish_command": "node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs publish --program plans/programs/z1-m3/program_packet.json --ticket T-INTAKE-DEB15B9C --repo owner/name --json"
+  }
+}

@@ -20,7 +20,10 @@
         "US-Z1-M3-09"
       ],
       "ticket_refs": [
-        "T-INTAKE-58A7D18D"
+        "T-INTAKE-58A7D18D",
+        "T-INTAKE-DEB15B9C",
+        "T-INTAKE-8685AC30",
+        "T-INTAKE-DDE5D6DF"
       ]
     }
   ],
@@ -93,6 +96,294 @@
           "reason": "No project requested"
         }
       }
+    },
+    {
+      "id": "T-INTAKE-DEB15B9C",
+      "epic_id": "EP-INTAKE",
+      "title": "Discrete CIP and VRP with Governance",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "proposed",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-INTAKE-DEB15B9C"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": null,
+        "reason": "Executable intake ticket requires a child iterative plan before implementation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-INTAKE-DEB15B9C"
+      ],
+      "external_refs": [
+        {
+          "kind": "local_text",
+          "source_hash": "8e996325e3f55bbb",
+          "synced_at": "2026-05-18T17:56:07.299Z"
+        },
+        {
+          "kind": "github_issue",
+          "repo": "stelios12312312/TokenLab",
+          "issue_number": 5,
+          "title": "Discrete CIP and VRP with Governance",
+          "state": "open",
+          "url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/5",
+          "synced_at": "2026-05-18T17:56:49.213Z"
+        }
+      ],
+      "review_artifacts": [
+        {
+          "path": "plans/programs/z1-m3/intake/t-intake-deb15b9c_intake_packet.json",
+          "kind": "program_intake_packet",
+          "generated_at": "2026-05-18T17:56:07.299Z"
+        }
+      ],
+      "persona_packs": [
+        "tokenomics",
+        "assumptions_challenger",
+        "wiring_auditor",
+        "traceability"
+      ],
+      "persona_review": {
+        "version": 1,
+        "status": "needs_evidence",
+        "ticket_id": "T-INTAKE-DEB15B9C",
+        "ticket_title": "Discrete CIP and VRP with Governance",
+        "ticket_type": "feature",
+        "base_ticket_type": "feature",
+        "persona_packs": [
+          "tokenomics",
+          "assumptions_challenger",
+          "wiring_auditor",
+          "traceability"
+        ],
+        "required_evidence": [
+          "story linkage, acceptance criteria, verification proof, and explicit assumptions"
+        ],
+        "findings": [
+          {
+            "id": "PR-001",
+            "status": "needs_verification",
+            "persona_pack": "tokenomics",
+            "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
+            "evidence_refs": []
+          }
+        ],
+        "recommended_actions": [
+          "Run the relevant domain persona review before marking the ticket ready."
+        ],
+        "authority": "advisory_only_deterministic_gates_remain_authoritative"
+      },
+      "github_sync": {
+        "last_synced_at": "2026-05-18T17:56:49.213Z",
+        "last_issue_url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/5",
+        "published_issue_number": 5,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        }
+      }
+    },
+    {
+      "id": "T-INTAKE-8685AC30",
+      "epic_id": "EP-INTAKE",
+      "title": "Agent Expansion with CIP and VRP",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "proposed",
+      "story_refs": [
+        "US-Z1-M3-07",
+        "US-Z1-M3-08"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-INTAKE-8685AC30"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": null,
+        "reason": "Executable intake ticket requires a child iterative plan before implementation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-INTAKE-8685AC30"
+      ],
+      "external_refs": [
+        {
+          "kind": "local_text",
+          "source_hash": "15eb7e9f1a108d57",
+          "synced_at": "2026-05-18T17:56:22.288Z"
+        },
+        {
+          "kind": "github_issue",
+          "repo": "stelios12312312/TokenLab",
+          "issue_number": 6,
+          "title": "Agent Expansion with CIP and VRP",
+          "state": "open",
+          "url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/6",
+          "synced_at": "2026-05-18T17:56:53.600Z"
+        }
+      ],
+      "review_artifacts": [
+        {
+          "path": "plans/programs/z1-m3/intake/t-intake-8685ac30_intake_packet.json",
+          "kind": "program_intake_packet",
+          "generated_at": "2026-05-18T17:56:22.288Z"
+        }
+      ],
+      "persona_packs": [
+        "tokenomics",
+        "assumptions_challenger",
+        "wiring_auditor",
+        "traceability"
+      ],
+      "persona_review": {
+        "version": 1,
+        "status": "needs_evidence",
+        "ticket_id": "T-INTAKE-8685AC30",
+        "ticket_title": "Agent Expansion with CIP and VRP",
+        "ticket_type": "feature",
+        "base_ticket_type": "feature",
+        "persona_packs": [
+          "tokenomics",
+          "assumptions_challenger",
+          "wiring_auditor",
+          "traceability"
+        ],
+        "required_evidence": [
+          "story linkage, acceptance criteria, verification proof, and explicit assumptions"
+        ],
+        "findings": [
+          {
+            "id": "PR-001",
+            "status": "needs_verification",
+            "persona_pack": "tokenomics",
+            "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
+            "evidence_refs": []
+          }
+        ],
+        "recommended_actions": [
+          "Run the relevant domain persona review before marking the ticket ready."
+        ],
+        "authority": "advisory_only_deterministic_gates_remain_authoritative"
+      },
+      "github_sync": {
+        "last_synced_at": "2026-05-18T17:56:53.600Z",
+        "last_issue_url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/6",
+        "published_issue_number": 6,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        }
+      }
+    },
+    {
+      "id": "T-INTAKE-DDE5D6DF",
+      "epic_id": "EP-INTAKE",
+      "title": "4-Stage PCS Epoch Budget Design",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "proposed",
+      "story_refs": [
+        "US-Z1-M3-09"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-INTAKE-DDE5D6DF"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": null,
+        "reason": "Executable intake ticket requires a child iterative plan before implementation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-INTAKE-DDE5D6DF"
+      ],
+      "external_refs": [
+        {
+          "kind": "local_text",
+          "source_hash": "9b84cf3c42b41a21",
+          "synced_at": "2026-05-18T17:56:38.056Z"
+        },
+        {
+          "kind": "github_issue",
+          "repo": "stelios12312312/TokenLab",
+          "issue_number": 7,
+          "title": "4-Stage PCS Epoch Budget Design",
+          "state": "open",
+          "url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/7",
+          "synced_at": "2026-05-18T17:56:58.304Z"
+        }
+      ],
+      "review_artifacts": [
+        {
+          "path": "plans/programs/z1-m3/intake/t-intake-dde5d6df_intake_packet.json",
+          "kind": "program_intake_packet",
+          "generated_at": "2026-05-18T17:56:38.056Z"
+        }
+      ],
+      "persona_packs": [
+        "tokenomics",
+        "assumptions_challenger",
+        "traceability"
+      ],
+      "persona_review": {
+        "version": 1,
+        "status": "needs_evidence",
+        "ticket_id": "T-INTAKE-DDE5D6DF",
+        "ticket_title": "4-Stage PCS Epoch Budget Design",
+        "ticket_type": "feature",
+        "base_ticket_type": "feature",
+        "persona_packs": [
+          "tokenomics",
+          "assumptions_challenger",
+          "traceability"
+        ],
+        "required_evidence": [
+          "story linkage, acceptance criteria, verification proof, and explicit assumptions"
+        ],
+        "findings": [
+          {
+            "id": "PR-001",
+            "status": "needs_verification",
+            "persona_pack": "tokenomics",
+            "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
+            "evidence_refs": []
+          }
+        ],
+        "recommended_actions": [
+          "Run the relevant domain persona review before marking the ticket ready."
+        ],
+        "authority": "advisory_only_deterministic_gates_remain_authoritative"
+      },
+      "github_sync": {
+        "last_synced_at": "2026-05-18T17:56:58.304Z",
+        "last_issue_url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/7",
+        "published_issue_number": 7,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        }
+      }
     }
   ],
   "acceptance_criteria": [
@@ -113,6 +404,38 @@
         "US-Z1-M3-09"
       ],
       "maintenance_rationale": "Draft intake gap requires story linkage before ready."
+    },
+    {
+      "id": "AC-T-INTAKE-DEB15B9C",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DEB15B9C",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-T-INTAKE-8685AC30",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-8685AC30",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [
+        "US-Z1-M3-07",
+        "US-Z1-M3-08"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-T-INTAKE-DDE5D6DF",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DDE5D6DF",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [
+        "US-Z1-M3-09"
+      ],
+      "maintenance_rationale": null
     }
   ],
   "dependencies": [],
@@ -127,6 +450,33 @@
       "acceptance_criterion_ref": "AC-T-INTAKE-58A7D18D",
       "proof_type": "proof:artifact_review",
       "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-58a7d18d_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+    },
+    {
+      "id": "VM-T-INTAKE-DEB15B9C",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DEB15B9C",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DEB15B9C",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-deb15b9c_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+    },
+    {
+      "id": "VM-T-INTAKE-8685AC30",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-8685AC30",
+      "acceptance_criterion_ref": "AC-T-INTAKE-8685AC30",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-8685ac30_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+    },
+    {
+      "id": "VM-T-INTAKE-DDE5D6DF",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DDE5D6DF",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DDE5D6DF",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-dde5d6df_intake_packet.json",
       "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
     }
   ],
