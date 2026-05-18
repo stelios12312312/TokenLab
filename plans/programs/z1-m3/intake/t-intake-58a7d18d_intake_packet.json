@@ -1,0 +1,263 @@
+{
+  "version": 1,
+  "generated_at": "2026-05-18T10:09:59.968Z",
+  "source": {
+    "kind": "text",
+    "title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with 7 buckets, Provider recirculation rate, Full composite Settlement Ratio (SR) formula, and Epoch pipeline reordering (AR top-up before settlement). P1 Fidelity changes: Discrete VRP + CIP pools with waterfall priority, Governance staking as Z1U sink, Creator cohort with CIP distribution and recirculation, Validator cohort with VRP rewards, 4-stage PCS with epoch budget. P2 Completeness: Dormancy and churn tracking, ACR hold/void states, Vesting modes (cliff_then_linear, staggered), Formal sensitivity analysis.",
+    "text": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with 7 buckets, Provider recirculation rate, Full composite Settlement Ratio (SR) formula, and Epoch pipeline reordering (AR top-up before settlement). P1 Fidelity changes: Discrete VRP + CIP pools with waterfall priority, Governance staking as Z1U sink, Creator cohort with CIP distribution and recirculation, Validator cohort with VRP rewards, 4-stage PCS with epoch budget. P2 Completeness: Dormancy and churn tracking, ACR hold/void states, Vesting modes (cliff_then_linear, staggered), Formal sensitivity analysis.",
+    "external": null
+  },
+  "program": {
+    "id": "z1-m3",
+    "title": "Z1 M3 Full Economy",
+    "status": "design",
+    "packet_path": "plans/programs/z1-m3/program_packet.json"
+  },
+  "candidate_ticket": {
+    "id": "T-INTAKE-58A7D18D",
+    "epic_id": "EP-INTAKE",
+    "title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with ...[truncated 514 chars]",
+    "type": "feature",
+    "lifecycle": "proposed",
+    "story_refs": [],
+    "defect_refs": [],
+    "gap_refs": [
+      "GAP-INTAKE-58A7D18D"
+    ],
+    "depends_on": [],
+    "acceptance_criteria": [
+      "AC-T-INTAKE-58A7D18D"
+    ],
+    "child_plan": {
+      "policy": "required",
+      "plan_dir": null,
+      "reason": "Executable intake ticket requires a child iterative plan before implementation."
+    },
+    "compatibility_contract_refs": [],
+    "migration_boundary_refs": [],
+    "deletion_move_census_refs": [],
+    "verification_refs": [
+      "VM-T-INTAKE-58A7D18D"
+    ],
+    "external_refs": [
+      {
+        "kind": "local_text",
+        "source_hash": "95a97c5c8200706f",
+        "synced_at": "2026-05-18T10:09:59.968Z"
+      }
+    ],
+    "review_artifacts": [
+      {
+        "path": "plans/programs/z1-m3/intake/t-intake-58a7d18d_intake_packet.json",
+        "kind": "program_intake_packet",
+        "generated_at": "2026-05-18T10:09:59.968Z"
+      }
+    ]
+  },
+  "linked_story_refs": [],
+  "linked_gap_refs": [
+    "GAP-INTAKE-58A7D18D"
+  ],
+  "persona_obligations": [],
+  "acceptance_criteria": [
+    {
+      "id": "AC-T-INTAKE-58A7D18D",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-58A7D18D",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [],
+      "maintenance_rationale": "Draft intake gap requires story linkage before ready."
+    }
+  ],
+  "verification_rows": [
+    {
+      "id": "VM-T-INTAKE-58A7D18D",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-58A7D18D",
+      "acceptance_criterion_ref": "AC-T-INTAKE-58A7D18D",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-58a7d18d_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+    }
+  ],
+  "annotation_findings": {
+    "status": "not_run",
+    "summary": "Run annotation validation during ticket review or child-plan execution."
+  },
+  "ontology_findings": {
+    "violations": [],
+    "warnings": []
+  },
+  "retro_recurrence_check": {
+    "version": 1,
+    "status": "not_applicable",
+    "summary": {
+      "blocking_count": 0,
+      "advisory_count": 0,
+      "match_count": 0,
+      "source_count": 3,
+      "trusted_count": 0,
+      "derived_count": 0
+    },
+    "matches": [],
+    "warnings": []
+  },
+  "quant_persona_gate": {
+    "version": "1.0.0",
+    "required": false,
+    "status": "not_applicable",
+    "reason": "no_quant_scope",
+    "matched_signals": [],
+    "summary": {
+      "matched_signal_count": 0,
+      "required_guard_count": 0,
+      "satisfied_guard_count": 0,
+      "missing_guard_count": 0
+    },
+    "required_guards": []
+  },
+  "deterministic": {
+    "program_packet_validation": {
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "counts": {
+        "epics": 1,
+        "tickets": 1,
+        "acceptance_criteria": 1,
+        "verification_rows": 1,
+        "decisions": 0
+      }
+    },
+    "ontology": {
+      "violations": [],
+      "warnings": []
+    },
+    "blockers": [],
+    "retro_recurrence_check": {
+      "version": 1,
+      "status": "not_applicable",
+      "summary": {
+        "blocking_count": 0,
+        "advisory_count": 0,
+        "match_count": 0,
+        "source_count": 3,
+        "trusted_count": 0,
+        "derived_count": 0
+      },
+      "matches": [],
+      "warnings": []
+    },
+    "quant_persona_gate": {
+      "version": "1.0.0",
+      "required": false,
+      "status": "not_applicable",
+      "reason": "no_quant_scope",
+      "matched_signals": [],
+      "summary": {
+        "matched_signal_count": 0,
+        "required_guard_count": 0,
+        "satisfied_guard_count": 0,
+        "missing_guard_count": 0
+      },
+      "required_guards": []
+    }
+  },
+  "deepseek_advisory": {
+    "available": true,
+    "config": {
+      "configured": true,
+      "model": "deepseek-chat",
+      "base_url": "https://api.deepseek.com",
+      "endpoint": "https://api.deepseek.com/chat/completions",
+      "phases": [
+        "gate",
+        "post_task"
+      ],
+      "write_mode": "safe_apply",
+      "timeout_ms": 20000,
+      "local_env_loaded": false,
+      "using_deepseek_alias": false,
+      "missing": []
+    },
+    "source": "provider",
+    "raw_excerpt": "{\n  \"status\": \"needs_story\",\n  \"summary\": \"Ticket is proposed with a gap reference but no linked stories. Acceptance criteria require story linkage before ready. Deterministic checks pass, quant_persona_gate not required.\",\n  \"findings\": [\n    \"No story_refs linked to the ticket.\",\n    \"Acceptance criterion AC-T-INTAKE-58A7D18D requires story linkage.\",\n    \"Annotation validation not yet run.\",\n    \"No ontology violations or blockers.\"\n  ],\n  \"recommended_actions\": [\n    \"Link one or more stories to the ticket via story_refs.\",\n    \"Run annotation validation.\",\n    \"Ensure child plan is created before implementation.\"\n  ]\n}",
+    "status": "needs_story",
+    "summary": "Ticket is proposed with a gap reference but no linked stories. Acceptance criteria require story linkage before ready. Deterministic checks pass, quant_persona_gate not required.",
+    "findings": [
+      {
+        "id": "DS-001",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-002",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-003",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-004",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      }
+    ],
+    "recommended_actions": [
+      "Link one or more stories to the ticket via story_refs.",
+      "Run annotation validation.",
+      "Ensure child plan is created before implementation."
+    ]
+  },
+  "final_status": "proposed",
+  "ticket_intake_receipt": {
+    "name": "Ticket Intake Receipt",
+    "version": 1,
+    "action": "intake",
+    "front_door": "/program-manager",
+    "source": {
+      "kind": "text",
+      "title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with 7 buckets, Provider recirculation rate, Full composite Settlement Ratio (SR) formula, and Epoch pipeline reordering (AR top-up before settlement). P1 Fidelity changes: Discrete VRP + CIP pools with waterfall priority, Governance staking as Z1U sink, Creator cohort with CIP distribution and recirculation, Validator cohort with VRP rewards, 4-stage PCS with epoch budget. P2 Completeness: Dormancy and churn tracking, ACR hold/void states, Vesting modes (cliff_then_linear, staggered), Formal sensitivity analysis.",
+      "external_kind": null
+    },
+    "program_packet_path": "plans/programs/z1-m3/program_packet.json",
+    "intake_artifact_path": "plans/programs/z1-m3/intake/t-intake-58a7d18d_intake_packet.json",
+    "ticket_id": "T-INTAKE-58A7D18D",
+    "ticket_title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with ...[truncated 514 chars]",
+    "ticket_lifecycle": "proposed",
+    "story_refs": [],
+    "gap_refs": [
+      "GAP-INTAKE-58A7D18D"
+    ],
+    "defect_refs": [],
+    "acceptance_criteria_refs": [
+      "AC-T-INTAKE-58A7D18D"
+    ],
+    "verification_refs": [
+      "VM-T-INTAKE-58A7D18D"
+    ],
+    "deterministic_status": "proposed",
+    "deterministic_blocker_count": 0,
+    "deterministic_blockers": [],
+    "retro_recurrence_status": "not_applicable",
+    "retro_recurrence_blocking_count": 0,
+    "retro_recurrence_advisory_count": 0,
+    "quant_persona_gate_status": "not_applicable",
+    "quant_persona_gate_required": false,
+    "quant_persona_gate_missing_count": 0,
+    "deepseek_advisory_status": "needs_story",
+    "deepseek_advisory_block": "<<<DEEPSEEK_VERDICT_BEGIN>>>\nStatus: needs_story\nSummary: Ticket is proposed with a gap reference but no linked stories. Acceptance criteria require story linkage before ready. Deterministic checks pass, quant_persona_gate not required.\nFindings:\n- DS-001 (status=fresh)\n- DS-002 (status=fresh)\n- DS-003 (status=fresh)\n- DS-004 (status=fresh)\nRecommended actions:\n- Link one or more stories to the ticket via story_refs.\n- Run annotation validation.\n- Ensure child plan is created before implementation.\n<<<DEEPSEEK_VERDICT_END>>>",
+    "verbatim_reproduction_contract": "Primary agents must reproduce deepseek_advisory_block verbatim in their reply to the user; paraphrase is forbidden. The DEEPSEEK_VERDICT_BEGIN/END delimiters are part of the contract — quote them as written.",
+    "direct_github_creation_allowed": false,
+    "github_publication": "explicit_publish_required",
+    "next_required_command": "node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program plans/programs/z1-m3/program_packet.json --json",
+    "publish_command": "node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs publish --program plans/programs/z1-m3/program_packet.json --ticket T-INTAKE-58A7D18D --repo owner/name --json"
+  }
+}

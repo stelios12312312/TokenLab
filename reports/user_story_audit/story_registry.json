@@ -1,0 +1,105 @@
+{
+  "stories": [
+    {
+      "id": "US-Z1-M3-01",
+      "title": "Genesis unlock with 7 buckets",
+      "status": "NOT_IMPLEMENTED",
+      "priority": "high",
+      "source": "dialogue",
+      "annotation_refs": [],
+      "capability_refs": [],
+      "test_story_ref": null,
+      "notes": "P0 Structural change"
+    },
+    {
+      "id": "US-Z1-M3-02",
+      "title": "Provider recirculation rate",
+      "status": "NOT_IMPLEMENTED",
+      "priority": "high",
+      "source": "dialogue",
+      "annotation_refs": [],
+      "capability_refs": [],
+      "test_story_ref": null,
+      "notes": "P0 Structural change"
+    },
+    {
+      "id": "US-Z1-M3-03",
+      "title": "Full composite SR formula",
+      "status": "NOT_IMPLEMENTED",
+      "priority": "high",
+      "source": "dialogue",
+      "annotation_refs": [],
+      "capability_refs": [],
+      "test_story_ref": null,
+      "notes": "P0 Structural change"
+    },
+    {
+      "id": "US-Z1-M3-04",
+      "title": "Epoch pipeline reordering (AR top-up before settlement)",
+      "status": "NOT_IMPLEMENTED",
+      "priority": "high",
+      "source": "dialogue",
+      "annotation_refs": [],
+      "capability_refs": [],
+      "test_story_ref": null,
+      "notes": "P0 Structural change"
+    },
+    {
+      "id": "US-Z1-M3-05",
+      "title": "Discrete VRP + CIP pools with waterfall priority",
+      "status": "NOT_IMPLEMENTED",
+      "priority": "medium",
+      "source": "dialogue",
+      "annotation_refs": [],
+      "capability_refs": [],
+      "test_story_ref": null,
+      "notes": "P1 Fidelity change"
+    },
+    {
+      "id": "US-Z1-M3-06",
+      "title": "Governance staking as Z1U sink",
+      "status": "NOT_IMPLEMENTED",
+      "priority": "medium",
+      "source": "dialogue",
+      "annotation_refs": [],
+      "capability_refs": [],
+      "test_story_ref": null,
+      "notes": "P1 Fidelity change"
+    },
+    {
+      "id": "US-Z1-M3-07",
+      "title": "Creator cohort with CIP distribution and recirculation",
+      "status": "NOT_IMPLEMENTED",
+      "priority": "medium",
+      "source": "dialogue",
+      "annotation_refs": [],
+      "capability_refs": [],
+      "test_story_ref": null,
+      "notes": "P1 Fidelity change"
+    },
+    {
+      "id": "US-Z1-M3-08",
+      "title": "Validator cohort with VRP rewards",
+      "status": "NOT_IMPLEMENTED",
+      "priority": "medium",
+      "source": "dialogue",
+      "annotation_refs": [],
+      "capability_refs": [],
+      "test_story_ref": null,
+      "notes": "P1 Fidelity change"
+    },
+    {
+      "id": "US-Z1-M3-09",
+      "title": "4-stage PCS with epoch budget",
+      "status": "NOT_IMPLEMENTED",
+      "priority": "medium",
+      "source": "dialogue",
+      "annotation_refs": [],
+      "capability_refs": [],
+      "test_story_ref": null,
+      "notes": "P1 Fidelity change"
+    }
+  ],
+  "generated_at": "2026-05-18T13:00:00.000Z",
+  "source": "story_registry_bootstrap.mjs"
+}

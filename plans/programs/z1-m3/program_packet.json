@@ -1,0 +1,145 @@
+{
+  "version": 1,
+  "id": "z1-m3",
+  "title": "Z1 M3 Full Economy",
+  "status": "design",
+  "goal": "Implement M3 mechanisms and agent expansions for full Z1 token economy based on Vault-to-Code Gap Analysis.",
+  "epics": [
+    {
+      "id": "EP-INTAKE",
+      "title": "Idea intake",
+      "story_refs": [
+        "US-Z1-M3-01",
+        "US-Z1-M3-02",
+        "US-Z1-M3-03",
+        "US-Z1-M3-04",
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-07",
+        "US-Z1-M3-08",
+        "US-Z1-M3-09"
+      ],
+      "ticket_refs": [
+        "T-INTAKE-58A7D18D"
+      ]
+    }
+  ],
+  "tickets": [
+    {
+      "id": "T-INTAKE-58A7D18D",
+      "epic_id": "EP-INTAKE",
+      "title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with ...[truncated 514 chars]",
+      "type": "feature",
+      "lifecycle": "proposed",
+      "story_refs": [
+        "US-Z1-M3-01",
+        "US-Z1-M3-02",
+        "US-Z1-M3-03",
+        "US-Z1-M3-04",
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-07",
+        "US-Z1-M3-08",
+        "US-Z1-M3-09"
+      ],
+      "defect_refs": [],
+      "gap_refs": [
+        "GAP-INTAKE-58A7D18D"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-INTAKE-58A7D18D"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": null,
+        "reason": "Executable intake ticket requires a child iterative plan before implementation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-INTAKE-58A7D18D"
+      ],
+      "external_refs": [
+        {
+          "kind": "local_text",
+          "source_hash": "95a97c5c8200706f",
+          "synced_at": "2026-05-18T10:09:59.968Z"
+        },
+        {
+          "kind": "github_issue",
+          "repo": "stelios12312312/TokenLab",
+          "issue_number": 3,
+          "title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with ...[truncated 514 chars]",
+          "state": "open",
+          "url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/3",
+          "synced_at": "2026-05-18T13:11:30.422Z"
+        }
+      ],
+      "review_artifacts": [
+        {
+          "path": "plans/programs/z1-m3/intake/t-intake-58a7d18d_intake_packet.json",
+          "kind": "program_intake_packet",
+          "generated_at": "2026-05-18T10:09:59.968Z"
+        }
+      ],
+      "github_sync": {
+        "last_synced_at": "2026-05-18T13:11:30.422Z",
+        "last_issue_url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/3",
+        "published_issue_number": 3,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        }
+      }
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-T-INTAKE-58A7D18D",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-58A7D18D",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [
+        "US-Z1-M3-01",
+        "US-Z1-M3-02",
+        "US-Z1-M3-03",
+        "US-Z1-M3-04",
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-07",
+        "US-Z1-M3-08",
+        "US-Z1-M3-09"
+      ],
+      "maintenance_rationale": "Draft intake gap requires story linkage before ready."
+    }
+  ],
+  "dependencies": [],
+  "compatibility_contracts": [],
+  "migration_boundaries": [],
+  "deletion_move_census": [],
+  "verification_matrix": [
+    {
+      "id": "VM-T-INTAKE-58A7D18D",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-58A7D18D",
+      "acceptance_criterion_ref": "AC-T-INTAKE-58A7D18D",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-58a7d18d_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+    }
+  ],
+  "decisions": [],
+  "story_refs": [
+    "US-Z1-M3-01",
+    "US-Z1-M3-02",
+    "US-Z1-M3-03",
+    "US-Z1-M3-04",
+    "US-Z1-M3-05",
+    "US-Z1-M3-06",
+    "US-Z1-M3-07",
+    "US-Z1-M3-08",
+    "US-Z1-M3-09"
+  ]
+}
