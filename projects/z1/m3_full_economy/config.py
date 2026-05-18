@@ -15,6 +15,12 @@ class M3EconomyConfig:
     initial_viewers: int = 1_000_000
     adoption_profile: Literal["front_loaded", "linear", "back_loaded"] = "linear"
 
+    # M3 Agent Cohorts
+    creator_population: int = 5_000
+    validator_population: int = 100
+    creator_sell_propensity: float = 0.50
+    validator_sell_propensity: float = 0.20
+
     # Cohort breakdown (Sum must equal 1.0)
     cohort_population_shares: Dict[str, float] = field(
         default_factory=lambda: {"passive_viewers": 0.55, "active_viewers": 0.3, "power_users": 0.1, "adversarial_whales": 0.05}

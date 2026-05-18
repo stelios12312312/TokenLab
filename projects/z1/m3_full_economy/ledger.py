@@ -270,3 +270,39 @@ def unstake_z1u(state: GlobalState, cohort_name: str):
     cohort.staking_buckets[-1] = 0.0
 
 
+
+def distribute_cip_to_creators(state: GlobalState):
+    """
+    Distributes the entire CIP pool balance to the Creator cohort's liquid Z1U balance.
+    """
+    if "creators" not in state.cohorts:
+        return
+    
+    amount = state.cip_pool_balance
+    if amount <= 0:
+        return
+        
+    cohort = state.cohorts["creators"]
+    cohort.z1u_balance += amount
+    state.cip_pool_balance = 0.0
+    
+    state.per_epoch_counters['cip_distributed'] = state.per_epoch_counters.get('cip_distributed', 0.0) + amount
+
+
+def distribute_vrp_to_validators(state: GlobalState):
+    """
+    Distributes the entire VRP pool balance to the Validator cohort's liquid Z1U balance.
+    """
+    if "validators" not in state.cohorts:
+        return
+        
+    amount = state.vrp_pool_balance
+    if amount <= 0:
+        return
+        
+    cohort = state.cohorts["validators"]
+    cohort.z1u_balance += amount
+    state.vrp_pool_balance = 0.0
+    
+    state.per_epoch_counters['vrp_distributed'] = state.per_epoch_counters.get('vrp_distributed', 0.0) + amount
+

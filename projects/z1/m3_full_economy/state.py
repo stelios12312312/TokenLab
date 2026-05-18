@@ -100,6 +100,21 @@ def initialize_state(config: M3EconomyConfig) -> GlobalState:
         )
         cohorts[name] = c
     
+    # M3 Creators & Validators
+    creators = CohortState(
+        name="creators",
+        population=getattr(config, 'creator_population', 0),
+        settle_propensity=getattr(config, 'creator_sell_propensity', 0.0),
+        staking_buckets=[0.0] * config.staking_lock_epochs if config.governance_staking_enabled else []
+    )
+    validators = CohortState(
+        name="validators",
+        population=getattr(config, 'validator_population', 0),
+        settle_propensity=getattr(config, 'validator_sell_propensity', 0.0),
+        staking_buckets=[0.0] * config.staking_lock_epochs if config.governance_staking_enabled else []
+    )
+    cohorts["creators"] = creators
+    cohorts["validators"] = validators
     return GlobalState(
         audience_reserve=config.audience_reserve_initial,
         audience_reserve_initial=config.audience_reserve_initial,

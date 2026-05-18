@@ -12,12 +12,27 @@ class AgentPool_Z1(AgentPool_Basic):
         super().__init__(users_controller=0, transactions_controller=0, name=name, currency="Z1U")
         
         # Load Z1 configurations
-        self.population = int(config.initial_viewers * config.cohort_population_shares[name])
-        self.claim_rate = config.claim_rate_by_cohort[name]
-        self.verification_pass_rate = config.verification_pass_rate_by_cohort[name]
-        self.acr_issue_rate = config.acr_issue_rate_by_cohort[name]
-        self.settle_propensity = config.settle_propensity_by_cohort[name]
-        self.utility_spend_rate = config.utility_spend_rate_by_cohort[name]
+        if name == "creators":
+            self.population = getattr(config, 'creator_population', 0)
+            self.claim_rate = 0.0
+            self.verification_pass_rate = 0.0
+            self.acr_issue_rate = 0.0
+            self.settle_propensity = getattr(config, 'creator_sell_propensity', 0.0)
+            self.utility_spend_rate = 0.0
+        elif name == "validators":
+            self.population = getattr(config, 'validator_population', 0)
+            self.claim_rate = 0.0
+            self.verification_pass_rate = 0.0
+            self.acr_issue_rate = 0.0
+            self.settle_propensity = getattr(config, 'validator_sell_propensity', 0.0)
+            self.utility_spend_rate = 0.0
+        else:
+            self.population = int(config.initial_viewers * config.cohort_population_shares[name])
+            self.claim_rate = config.claim_rate_by_cohort[name]
+            self.verification_pass_rate = config.verification_pass_rate_by_cohort[name]
+            self.acr_issue_rate = config.acr_issue_rate_by_cohort[name]
+            self.settle_propensity = config.settle_propensity_by_cohort[name]
+            self.utility_spend_rate = config.utility_spend_rate_by_cohort[name]
         
         # M1 Specific State
         self.cumulative_claimed_population = 0

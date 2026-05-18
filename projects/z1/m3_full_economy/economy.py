@@ -14,7 +14,9 @@ from .ledger import (
     execute_genesis_unlock,
     fund_pools_waterfall,
     stake_z1u,
-    unstake_z1u
+    unstake_z1u,
+    distribute_cip_to_creators,
+    distribute_vrp_to_validators
 )
 from .config import M3EconomyConfig
 from .amm import AutomatedMarketMaker
@@ -139,6 +141,10 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         
         # US-Z1-M3-05: Waterfall funding (Ops → CIP → VRP)
         fund_pools_waterfall(self)
+        
+        # M3 Agent Expansion: distribute pools to creators/validators
+        distribute_cip_to_creators(self)
+        distribute_vrp_to_validators(self)
 
         total_cohort_z1u = sum(pool.z1u_balance for pool in cohort_pools.values())
         live_supply_pre = (self.audience_reserve + self.treasury + total_cohort_z1u + 
@@ -179,6 +185,7 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
 
         total_pcs = 0.0
         for name, pool in cohort_pools.items():
+            if name not in getattr(self.config, 'cohort_population_shares', {}).keys(): continue
             pool.tenure_epochs += 1
             pool.activity_score = pool.claim_rate * pool.utility_spend_rate
             pool.pcs_score = (pool.tenure_epochs * self.config.pcs_tenure_weight) + (pool.activity_score * self.config.pcs_activity_weight)
@@ -191,6 +198,7 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
                     break
 
         for name, pool in cohort_pools.items():
+            if name not in getattr(self.config, 'cohort_population_shares', {}).keys(): continue
             base_claimers = claimed_this_epoch * self.config.cohort_population_shares[name]
             claimed = base_claimers * pool.claim_rate
             verified = claimed * pool.verification_pass_rate
@@ -218,6 +226,7 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         self.current_settlement_ratio = base_sr * self.throttle_multiplier
 
         for name, pool in cohort_pools.items():
+            if name not in getattr(self.config, 'cohort_population_shares', {}).keys(): continue
             pool.bas_score = (self.config.bas_lambda * pool.pcs_score) + ((1 - self.config.bas_lambda) * pool.bas_score)
             effective_settle_fraction = pool.bas_score * self.config.velocity_scale
             
@@ -249,11 +258,20 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         ar_min = 0.275 * current_live_supply
         max_settleable_z1u = max(0.0, self.audience_reserve - ar_min)
         
-        total_z1u_theoretical = sum(pool.acr_queued_for_settlement * (pool._temp_sr * demand_modifier) for pool in cohort_pools.values())
+        total_z1u_theoretical = sum(pool.acr_queued_for_settlement * (getattr(pool, '_temp_sr', 0.0) * demand_modifier) for pool in cohort_pools.values())
         ar_ratio_fairness = max_settleable_z1u / total_z1u_theoretical if total_z1u_theoretical > 0 else 1.0
         effective_fairness_cap = min(1.0, ar_ratio_fairness)
             
         for name, pool in cohort_pools.items():
+            if name not in getattr(self.config, 'cohort_population_shares', {}).keys():
+                # Creators/Validators sell directly on AMM
+                sell_ratio = 1.0 if self.is_panicking else pool.settle_propensity
+                z1u_to_sell = pool.z1u_balance * sell_ratio
+                if z1u_to_sell > 0:
+                    pool.z1u_balance -= z1u_to_sell
+                    self.amm.sell_z1u(z1u_to_sell)
+                continue
+                
             if pool.acr_queued_for_settlement > 0:
                 exec_acr = pool.acr_queued_for_settlement * effective_fairness_cap
                 effective_sr = pool._temp_sr * demand_modifier
@@ -268,6 +286,7 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         # Spend & Recirculate
         total_utility_spend = 0.0
         for name, pool in cohort_pools.items():
+            if name not in getattr(self.config, 'cohort_population_shares', {}).keys(): continue
             spend = pool.z1u_balance * pool.utility_spend_rate
             escrow_released = self.campaigns.release_funds_for_utility(spend)
             self.treasury += escrow_released

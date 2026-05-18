@@ -1,6 +1,7 @@
 """
 Proof script for C3 (migration_parity) and C4 (dry_run token circulation).
 Produces concrete evidence for the planner's verification matrix.
+Covers: US-Z1-M3-01, US-Z1-M3-02, US-Z1-M3-03, US-Z1-M3-04
 """
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', '..'))
