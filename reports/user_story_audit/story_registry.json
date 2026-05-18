@@ -47,7 +47,7 @@
     {
       "id": "US-Z1-M3-05",
       "title": "Discrete VRP + CIP pools with waterfall priority",
-      "status": "NOT_IMPLEMENTED",
+      "status": "IMPLEMENTED",
       "priority": "medium",
       "source": "dialogue",
       "annotation_refs": [],
@@ -58,7 +58,7 @@
     {
       "id": "US-Z1-M3-06",
       "title": "Governance staking as Z1U sink",
-      "status": "NOT_IMPLEMENTED",
+      "status": "IMPLEMENTED",
       "priority": "medium",
       "source": "dialogue",
       "annotation_refs": [],
