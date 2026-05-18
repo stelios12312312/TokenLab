@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "description": "Per-phase tool trace coverage rules. Defines what the agent MUST read/do in each phase.",
+
+  "rules": {
+    "EXPLORE": {
+      "required_reads": [
+        {
+          "pattern": "plans/knowledge/*.md",
+          "description": "Knowledge base files",
+          "severity": "fail",
+          "code": "GATE-TRC-002"
+        }
+      ],
+      "min_discovery_calls": {
+        "tools": ["Grep", "Glob"],
+        "minimum": 5,
+        "description": "Codebase discovery activity (Grep/Glob)",
+        "severity": "warn",
+        "code": "GATE-TRC-003"
+      }
+    },
+
+    "PLAN": {
+      "required_reads": [
+        {
+          "pattern": "{plan-dir}/findings.md",
+          "description": "Own findings before planning",
+          "severity": "fail",
+          "code": "GATE-TRC-006"
+        }
+      ]
+    },
+
+    "EXECUTE": {
+      "reread_rules": [
+        {
+          "file": "{plan-dir}/plan.md",
+          "max_interval": 15,
+          "description": "Re-read plan.md every 15 tool calls to prevent drift",
+          "severity": "fail",
+          "code": "GATE-TRC-004"
+        }
+      ],
+      "scope_check": {
+        "enabled": true,
+        "source": "{plan-dir}/plan.md",
+        "section_pattern": "## Files|## Files to Modify",
+        "description": "Writes should target files listed in plan.md",
+        "severity": "warn",
+        "code": "GATE-TRC-005"
+      }
+    },
+
+    "REFLECT": {
+      "required_reads": [
+        {
+          "pattern": "{plan-dir}/reflection.md",
+          "description": "Reflection verdicts",
+          "severity": "fail",
+          "code": "GATE-TRC-007"
+        }
+      ]
+    },
+
+    "VALIDATE": {
+      "required_reads": [
+        {
+          "pattern": "{plan-dir}/verification.md",
+          "description": "Verification results",
+          "severity": "fail",
+          "code": "GATE-TRC-007"
+        }
+      ],
+      "required_tool_types": [
+        {
+          "tools": ["Bash"],
+          "minimum": 1,
+          "description": "Test execution evidence",
+          "severity": "warn",
+          "code": "GATE-TRC-008"
+        }
+      ]
+    }
+  },
+
+  "coverage_threshold": {
+    "minimum_pct": 60,
+    "description": "Minimum percentage of rules that must be satisfied to pass trace audit"
+  }
+}

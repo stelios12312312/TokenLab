@@ -1,0 +1,533 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "version": "1.0.0",
+  "description": "Stable failure code registry. Each gate failure has a unique, stable code for automation.",
+  "codes": {
+    "GATE-EXP-001": {
+      "gate": "explore-to-plan",
+      "check": "findings_minimum",
+      "message": "Fewer than 3 indexed findings in findings.md"
+    },
+    "GATE-EXP-002": {
+      "gate": "explore-to-plan",
+      "check": "root_cause",
+      "message": "No root cause analysis found in findings \u2014 add 'Root Cause: N/A' if feature work"
+    },
+    "GATE-EXP-003": {
+      "gate": "explore-to-plan",
+      "check": "kb_exists",
+      "message": "Knowledge base file missing",
+      "severity": "warn"
+    },
+    "GATE-EXP-004": {
+      "gate": "explore-to-plan",
+      "check": "adjacency_discovery",
+      "message": "No adjacency discovery markers \u2014 add 'Adjacency: N/A' if single-file change"
+    },
+    "GATE-EXP-005": {
+      "gate": "explore-to-plan",
+      "check": "health_report",
+      "message": "Health report missing or stale"
+    },
+    "GATE-EXP-006": {
+      "gate": "explore-to-plan",
+      "check": "health_freshness",
+      "message": "Health report older than 2 hours",
+      "severity": "warn"
+    },
+    "GATE-EXP-009": {
+      "gate": "explore-to-plan",
+      "check": "findings_depth",
+      "message": "Findings are shallow \u2014 headings without substance (RT-005)"
+    },
+    "GATE-EXP-010": {
+      "gate": "explore-to-plan",
+      "check": "kb_read_proof",
+      "message": "KB read proof missing \u2014 [KB_DIGEST:<hash>] not found in findings.md (RT-003)"
+    },
+    "GATE-EXP-011": {
+      "gate": "explore-to-plan",
+      "check": "story_elicitation",
+      "message": "Story Candidates section missing for new-feature plan \u2014 run story elicitation sub-gate 5",
+      "severity": "warn"
+    },
+    "GATE-EXP-012": {
+      "gate": "explore-to-plan",
+      "check": "findings_reference_goal",
+      "message": "Findings do not appear to address the plan goal \u2014 verify findings relate to the stated problem",
+      "severity": "warn"
+    },
+    "GATE-EXP-014": {
+      "gate": "explore-to-plan",
+      "check": "intent_contract",
+      "message": "User-facing or deliverable-heavy goals require a meaningful intent_contract.json with user, JTBD, outcomes, and required deliverables"
+    },
+    "GATE-PLN-001": {
+      "gate": "plan-to-execute",
+      "check": "problem_statement",
+      "message": "Problem statement missing or still template"
+    },
+    "GATE-PLN-002": {
+      "gate": "plan-to-execute",
+      "check": "files_listed",
+      "message": "Files to modify not listed or still template"
+    },
+    "GATE-PLN-003": {
+      "gate": "plan-to-execute",
+      "check": "steps_defined",
+      "message": "Execution steps missing or still template"
+    },
+    "GATE-PLN-004": {
+      "gate": "plan-to-execute",
+      "check": "verification_strategy",
+      "message": "Verification strategy section missing or template"
+    },
+    "GATE-PLN-005": {
+      "gate": "plan-to-execute",
+      "check": "success_criteria",
+      "message": "Success criteria section missing",
+      "severity": "warn"
+    },
+    "GATE-PLN-006": {
+      "gate": "plan-to-execute",
+      "check": "fix_classification",
+      "message": "Fix classification not present",
+      "severity": "warn"
+    },
+    "GATE-PLN-007": {
+      "gate": "plan-to-execute",
+      "check": "decision_logged",
+      "message": "No decisions logged in decisions.md",
+      "severity": "warn"
+    },
+    "GATE-PLN-008": {
+      "gate": "plan-to-execute",
+      "check": "approval_nonce",
+      "message": "User approval nonce not found \u2014 add [APPROVED:<nonce>] to decisions.md (RT-002)"
+    },
+    "GATE-PLN-009": {
+      "gate": "plan-to-execute",
+      "check": "orphan_feature_resolved",
+      "message": "Unresolved [ORPHAN_FEATURE] in plan.md \u2014 add [STORY_CREATED: US-NNN] or [MAPPED_TO: US-NNN]",
+      "severity": "warn"
+    },
+    "GATE-PLN-012": {
+      "gate": "plan-to-execute",
+      "check": "intent_contract_valid",
+      "message": "Required goals must keep a valid intent_contract.json through PLAN"
+    },
+    "GATE-PLN-013": {
+      "gate": "plan-to-execute",
+      "check": "deliverable_quality_contract",
+      "message": "Required deliverables need explicit purpose plus quality/anti-goal contract"
+    },
+    "GATE-PLN-014": {
+      "gate": "plan-to-execute",
+      "check": "deliverable_plan_mapping",
+      "message": "Required deliverables must be referenced in the plan and verification story"
+    },
+    "GATE-PLN-015": {
+      "gate": "plan-to-execute",
+      "check": "anti_goal_coverage",
+      "message": "Intent contract must record false-green / anti-goal coverage for required goals"
+    },
+    "GATE-PLN-016": {
+      "gate": "plan-to-execute",
+      "check": "criterion_story_traceability",
+      "message": "Plans with success criteria and story_registry.json must map each criterion to explicit story IDs in Verification Strategy"
+    },
+    "GATE-PLN-017": {
+      "gate": "plan-to-execute",
+      "check": "context_sensitive_verification_matrix",
+      "message": "Recipe/orchestration/integration-style plans must use a context-sensitive verification matrix instead of generic wrapper-proof planning. Diagnose parsing with: node .agent/skills/iterative-planner/scripts/verification_matrix.mjs lint --plan <plan-dir> --json"
+    },
+    "GATE-PLN-018": {
+      "gate": "plan-to-execute",
+      "check": "verification_obligation_synthesis",
+      "message": "Relevant plans must document verification obligation synthesis so ontology/persona/boundary signals explicitly shape verification expectations"
+    },
+    "GATE-PLN-019": {
+      "gate": "plan-to-execute",
+      "check": "semantic_upkeep_contract_presence",
+      "message": "plan.md must include a Semantic Upkeep Contract section for task profile, semantic upkeep, validation bundle, and strictness"
+    },
+    "GATE-PLN-020": {
+      "gate": "plan-to-execute",
+      "check": "semantic_upkeep_contract_complete",
+      "message": "Semantic Upkeep Contract must be filled with concrete task profile, ontology/story actions, validation bundle, strictness, and close-blocker detail"
+    },
+    "GATE-PLN-032": {
+      "gate": "plan-to-execute",
+      "check": "quant_persona_gate",
+      "message": "Quant-shaped work must satisfy the hard quant persona gate before EXECUTE: what happened, target/outcome, data lineage, temporal/leakage handling, controls, and quant verification proof"
+    },
+    "GATE-ETR-001": {
+      "gate": "execute-to-reflect",
+      "check": "red_team_notes_exist",
+      "message": "red_team_notes.md artifact missing \u2014 document 3 attack vectors before REFLECT"
+    },
+    "GATE-ETR-002": {
+      "gate": "execute-to-reflect",
+      "check": "red_team_notes_not_empty",
+      "message": "red_team_notes.md is empty \u2014 must contain adversarial analysis"
+    },
+    "GATE-ETR-003": {
+      "gate": "execute-to-reflect",
+      "check": "red_team_min_vectors",
+      "message": "Fewer than 3 attack vectors documented in red_team_notes.md"
+    },
+    "GATE-ETR-004": {
+      "gate": "execute-to-reflect",
+      "check": "red_team_mitigations",
+      "message": "No mitigation documentation for attack vectors \u2014 each vector must have a Mitigation section"
+    },
+    "GATE-ETR-008": {
+      "gate": "execute-to-reflect",
+      "check": "red_team_depth",
+      "message": "Red-team vectors are shallow \u2014 each must have Attack, Impact, and Mitigation content (RT-006)"
+    },
+    "GATE-ETR-005": {
+      "gate": "execute-to-reflect",
+      "check": "progress_completed",
+      "message": "No completed items in progress.md",
+      "severity": "warn"
+    },
+    "GATE-ETR-009": {
+      "gate": "execute-to-reflect",
+      "check": "test_drift_documented",
+      "message": "Test drift scan not documented \u2014 add '## Test Drift Scan' to verification.md or write 'N/A \u2014 no tests'",
+      "severity": "warn"
+    },
+    "GATE-ETR-010": {
+      "gate": "execute-to-reflect",
+      "check": "semantic_substrate_advisory",
+      "message": "Semantic substrate needs operator review before REFLECT; resolve task-relevant gaps and note any degraded scope or weak relevance hints before close",
+      "severity": "warn"
+    },
+    "GATE-ETR-011": {
+      "gate": "execute-to-reflect",
+      "check": "quant_persona_gate",
+      "message": "Quant-shaped work must preserve the hard quant persona gate before REFLECT"
+    },
+    "GATE-ETR-006": {
+      "gate": "execute-to-reflect",
+      "check": "persona_audit_config",
+      "message": "audit.config.json not found \u2014 persona audit is compulsory at this gate"
+    },
+    "GATE-ETR-007": {
+      "gate": "execute-to-reflect",
+      "check": "persona_audit_findings",
+      "message": "Persona audit findings exceed fail_on threshold"
+    },
+    "GATE-REF-001": {
+      "gate": "reflect-to-validate",
+      "check": "reflection_results",
+      "message": "Reflection verdict artifact missing or still template"
+    },
+    "GATE-REF-002": {
+      "gate": "reflect-to-validate",
+      "check": "reflection_readiness",
+      "message": "Reflection verdicts or next move do not support advancing to VALIDATE"
+    },
+    "GATE-REF-003": {
+      "gate": "reflect-to-validate",
+      "check": "progress_complete",
+      "message": "Uncompleted items remain in progress.md before VALIDATE"
+    },
+    "GATE-REF-004": {
+      "gate": "reflect-to-validate",
+      "check": "kb_updated",
+      "message": "Knowledge base/semantic record not updated before VALIDATE"
+    },
+    "GATE-REF-016": {
+      "gate": "reflect-to-validate",
+      "check": "semantic_substrate",
+      "message": "Task-relevant semantic substrate gaps must be resolved before VALIDATE"
+    },
+    "GATE-REF-017": {
+      "gate": "reflect-to-validate",
+      "check": "quant_results_validation",
+      "message": "Quant/model/betting result claims require a satisfied quant_results_validation.json close signal before VALIDATE"
+    },
+    "GATE-REF-018": {
+      "gate": "reflect-to-validate",
+      "check": "quant_persona_gate",
+      "message": "Quant-shaped work must preserve the hard quant persona gate before VALIDATE"
+    },
+    "GATE-REF-006": {
+      "gate": "reflect-to-validate",
+      "check": "health_delta",
+      "message": "New health failures introduced since baseline during reflect/validate handoff"
+    },
+    "GATE-REF-007": {
+      "gate": "reflect-to-validate",
+      "check": "persona_audit_config",
+      "message": "audit.config.json not found \u2014 persona audit is compulsory at this gate"
+    },
+    "GATE-REF-008": {
+      "gate": "reflect-to-validate",
+      "check": "persona_audit_findings",
+      "message": "Persona audit findings exceed fail_on threshold"
+    },
+    "GATE-VAL-001": {
+      "gate": "validate-to-close",
+      "check": "verification_results",
+      "message": "Verification results not recorded or still template"
+    },
+    "GATE-VAL-002": {
+      "gate": "validate-to-close",
+      "check": "proof_of_work",
+      "message": "No proof of work (command output or UNVERIFIED marker)"
+    },
+    "GATE-VAL-005": {
+      "gate": "validate-to-close",
+      "check": "test_baseline",
+      "message": "Test baseline captured",
+      "severity": "warn"
+    },
+    "GATE-VAL-006": {
+      "gate": "validate-to-close",
+      "check": "health_delta",
+      "message": "New health failures introduced since baseline"
+    },
+    "GATE-VAL-007": {
+      "gate": "validate-to-close",
+      "check": "persona_audit_config",
+      "message": "audit.config.json not found \u2014 persona audit is compulsory at this gate"
+    },
+    "GATE-VAL-008": {
+      "gate": "validate-to-close",
+      "check": "persona_audit_findings",
+      "message": "Persona audit findings exceed fail_on threshold"
+    },
+    "GATE-VAL-009": {
+      "gate": "validate-to-close",
+      "check": "regression_audit_evidence",
+      "message": "Regression audit not documented \u2014 add '## Regression Audit' to verification.md or write 'N/A \u2014 no baseline'",
+      "severity": "warn"
+    },
+    "GATE-VAL-010": {
+      "gate": "validate-to-close",
+      "check": "planner_core_self_proof",
+      "message": "Planner-core changes need both migration smoke and a planner journey PASS before close"
+    },
+    "GATE-VAL-011": {
+      "gate": "validate-to-close",
+      "check": "test_evidence",
+      "message": "Code changes need planned test-file coverage plus passing test execution, use the static-UI intent/manual path, or carry an approved structured waiver"
+    },
+    "GATE-VAL-012": {
+      "gate": "validate-to-close",
+      "check": "intent_evidence",
+      "message": "Required deliverables need substantive verification evidence or an approved structured waiver before close"
+    },
+    "GATE-VAL-013": {
+      "gate": "validate-to-close",
+      "check": "anti_recurrence",
+      "message": "Remediation-style work needs an Anti-Recurrence Guard (test, ontology, annotation, KB) or an approved structured waiver before close"
+    },
+    "GATE-VAL-014": {
+      "gate": "validate-to-close",
+      "check": "learned_obligations",
+      "message": "Active learned verification obligations need structured evidence, markdown fallback proof, or an approved waiver before close"
+    },
+    "GATE-VAL-015": {
+      "gate": "validate-to-close",
+      "check": "verification_obligation_synthesis_reporting",
+      "message": "Synthesized verification obligations need explicit systems-exercised, residual-risk, and sufficiency reporting before close"
+    },
+    "GATE-VAL-016": {
+      "gate": "validate-to-close",
+      "check": "quant_results_validation",
+      "message": "Quant/model/betting result claims require a satisfied quant_results_validation.json close signal before close"
+    },
+    "GATE-VAL-017": {
+      "gate": "validate-to-close",
+      "check": "quant_persona_gate",
+      "message": "Quant-shaped work must preserve the hard quant persona gate before close"
+    },
+    "GATE-NTF-001": {
+      "gate": "notify-user",
+      "check": "kb_notification",
+      "message": "KB notification gate not satisfied"
+    },
+    "GATE-NTF-002": {
+      "gate": "notify-user",
+      "check": "summary_written",
+      "message": "Summary not written",
+      "severity": "warn"
+    },
+    "GATE-NTF-003": {
+      "gate": "notify-user",
+      "check": "state_close",
+      "message": "Plan state not CLOSE or VALIDATE",
+      "severity": "warn"
+    },
+    "GATE-CHK-001": {
+      "gate": "checklist",
+      "check": "file_exists",
+      "message": "Required file missing"
+    },
+    "GATE-CHK-002": {
+      "gate": "checklist",
+      "check": "file_not_empty",
+      "message": "File empty or only boilerplate"
+    },
+    "GATE-CHK-003": {
+      "gate": "checklist",
+      "check": "min_headings",
+      "message": "Insufficient markdown headings"
+    },
+    "GATE-CHK-004": {
+      "gate": "checklist",
+      "check": "contains_string",
+      "message": "Required string not found in file"
+    },
+    "GATE-CHK-005": {
+      "gate": "checklist",
+      "check": "not_contains_string",
+      "message": "Template text still present"
+    },
+    "GATE-CHK-006": {
+      "gate": "checklist",
+      "check": "min_lines",
+      "message": "Insufficient content lines"
+    },
+    "GATE-CHK-007": {
+      "gate": "checklist",
+      "check": "json_field",
+      "message": "Required JSON field missing"
+    },
+    "GATE-CHK-008": {
+      "gate": "checklist",
+      "check": "command_succeeds",
+      "message": "Command check failed"
+    },
+    "GATE-SEM-001": {
+      "gate": "semantic",
+      "check": "transition_blocked",
+      "message": "Prolog semantic transition check blocked"
+    },
+    "GATE-SEM-002": {
+      "gate": "semantic",
+      "check": "invariant_violation",
+      "message": "Story invariant violation detected",
+      "severity": "warn"
+    },
+    "GATE-HLT-001": {
+      "gate": "health",
+      "check": "scan_failed",
+      "message": "Health scan failed to produce a report"
+    },
+    "GATE-HLT-002": {
+      "gate": "health",
+      "check": "fail_findings",
+      "message": "FAIL-level health findings detected"
+    },
+    "GATE-HLT-003": {
+      "gate": "health",
+      "check": "new_failures",
+      "message": "New health failures introduced since baseline"
+    },
+    "GATE-SRC-001": {
+      "gate": "source-state",
+      "check": "state_mismatch",
+      "message": "Current state does not match expected gate source",
+      "severity": "warn"
+    },
+    "GATE-SRC-002": {
+      "gate": "source-state",
+      "check": "nonce_invalid",
+      "message": "Transition nonce missing or invalid \u2014 state.json may have been modified directly (RT-001)"
+    },
+    "GATE-CHN-001": {
+      "gate": "chain",
+      "check": "gate_chain_broken",
+      "message": "Required predecessor gate was not run \u2014 gate chain integrity violated (I-015)"
+    },
+    "GATE-TRC-001": {
+      "gate": "trace-audit",
+      "check": "trace_file_exists",
+      "message": "tool_trace.jsonl missing \u2014 trace capture may not be configured"
+    },
+    "GATE-TRC-002": {
+      "gate": "trace-audit",
+      "check": "kb_read_coverage",
+      "message": "Knowledge base files not read during EXPLORE \u2014 agent may have skipped KB"
+    },
+    "GATE-TRC-003": {
+      "gate": "trace-audit",
+      "check": "discovery_activity",
+      "message": "Insufficient Grep/Glob calls during EXPLORE \u2014 agent may not have explored the codebase",
+      "severity": "warn"
+    },
+    "GATE-TRC-004": {
+      "gate": "trace-audit",
+      "check": "plan_reread",
+      "message": "plan.md not re-read within 15 tool calls during EXECUTE \u2014 agent may be drifting"
+    },
+    "GATE-TRC-005": {
+      "gate": "trace-audit",
+      "check": "scope_creep",
+      "message": "Writes detected to files not listed in plan.md \u2014 possible scope creep",
+      "severity": "warn"
+    },
+    "GATE-TRC-006": {
+      "gate": "trace-audit",
+      "check": "findings_read",
+      "message": "findings.md not read during PLAN phase \u2014 agent planned without reviewing findings"
+    },
+    "GATE-TRC-007": {
+      "gate": "trace-audit",
+      "check": "verification_read",
+      "message": "verification.md not read during REFLECT \u2014 agent reflected without checking results"
+    },
+    "GATE-TRC-008": {
+      "gate": "trace-audit",
+      "check": "test_execution",
+      "message": "No Bash calls during REFLECT \u2014 no evidence of test execution",
+      "severity": "warn"
+    },
+    "GATE-TRC-009": {
+      "gate": "trace-audit",
+      "check": "ide_unsupported",
+      "message": "IDE does not support tool trace capture \u2014 trace audit results may be incomplete",
+      "severity": "warn"
+    },
+    "GATE-CTX-001": {
+      "gate": "guard",
+      "check": "non_active_plan_edit",
+      "message": "Recent edits targeted a non-active plans/plan_* directory \u2014 open plans/ACTIVE_PLAN.md and switch back before running a gate"
+    },
+    "GATE-CTX-002": {
+      "gate": "guard",
+      "check": "non_active_plan_read",
+      "message": "Recent reads targeted a non-active plans/plan_* directory \u2014 verify the active plan via plans/ACTIVE_PLAN.md before continuing",
+      "severity": "warn"
+    },
+    "GATE-GAR-001": {
+      "gate": "guard",
+      "check": "post_close_blocked",
+      "message": "Plan is already CLOSED \u2014 no further transitions allowed. Create a new plan with bootstrap.mjs new.",
+      "exit_code": 2
+    },
+    "GATE-GAR-002": {
+      "gate": "guard",
+      "check": "circuit_breaker_open",
+      "message": "Gate has exceeded total failure threshold (10). Fix the underlying issue then reset with: node bootstrap.mjs reset-circuit-breaker <gate>",
+      "exit_code": 2
+    },
+    "GATE-PTE-012": {
+      "gate": "plan-to-execute",
+      "severity": "warn",
+      "description": "mistakes-consulted: no M-0NN reference found in findings.md \u2014 agent did not cross-reference past mistakes before planning",
+      "remediation": "Add at least one M-NNN reference from plans/knowledge/mistakes.md to findings.md, or write M-000: N/A if no past mistakes are relevant"
+    },
+    "GATE-ETR-011": {
+      "gate": "execute-to-reflect",
+      "severity": "warn",
+      "description": "parity-check-documented: no Parity section in verification.md \u2014 agent did not verify paired implementation files are in sync",
+      "remediation": "Run /parity-audit and document results under ## Parity Check in verification.md, or write Parity: N/A if project has no parity-registry.md"
+    }
+  }
+}

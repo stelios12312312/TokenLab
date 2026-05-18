@@ -1,0 +1,18 @@
+{
+  "description": "Edge case: REFLECT → CLOSE with no proof of work",
+  "gate": "reflect-to-close",
+  "edge_case": true,
+  "input": {
+    "state_md": "# Current State: REFLECT\n## Iteration: 2",
+    "verification_md": "# Verification Results\nAll tests PASS.\nNo command output pasted.",
+    "progress_md": "# Progress\n- [x] Step 1\n- [x] Step 2",
+    "kb_updated": false,
+    "summary_md": null
+  },
+  "expected_checks": [
+    { "name": "Verification results recorded", "status": "PASS", "code": "GATE-REF-001" },
+    { "name": "Proof of Work present", "status": "FAIL", "code": "GATE-REF-002" },
+    { "name": "Knowledge base updated (or 'no new learnings' noted)", "status": "FAIL", "code": "GATE-REF-004" }
+  ],
+  "expected_result": "FAIL"
+}

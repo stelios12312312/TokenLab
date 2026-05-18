@@ -1,0 +1,57 @@
+name: "Regression Gate Checklist"
+
+items:
+  - id: test-suite-passed
+    check: contains_string
+    path: "{plan-dir}/verification.md"
+    string: "pass"
+    severity: fail
+    description: "Full test suite executed and passing (output pasted, not just stated)"
+
+  - id: baseline-delta-verified
+    check: file_exists
+    path: "{plan-dir}/baseline.json"
+    severity: fail
+    description: "Test baseline captured and delta verified (test count >= baseline)"
+
+  - id: no-new-failures
+    check: contains_string
+    path: "{plan-dir}/verification.md"
+    string: "0 new"
+    severity: fail
+    description: "Zero new test failures introduced"
+
+  - id: blast-radius-scanned
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "blast"
+    severity: warn
+    description: "Blast radius scan completed for all changed files"
+
+  - id: parity-check
+    check: contains_string
+    path: "{plan-dir}/verification.md"
+    string: "parity"
+    severity: warn
+    description: "Parity check completed (same pattern applied consistently across all sites)"
+
+  - id: generalize-complete
+    check: contains_string
+    path: "{plan-dir}/verification.md"
+    string: "generalize"
+    severity: warn
+    description: "GENERALIZE phase completed (all instances of fixed pattern found and addressed)"
+
+  - id: prolog-invariants-pass
+    check: contains_string
+    path: "{plan-dir}/verification.md"
+    string: "invariant"
+    severity: warn
+    description: "Prolog invariant check results recorded (rule_engine.mjs check-invariants output)"
+
+  - id: prolog-no-new-violations
+    check: not_contains_string
+    path: "{plan-dir}/verification.md"
+    string: "invariant_violated"
+    severity: fail
+    description: "No new Prolog invariant violations introduced by changes"

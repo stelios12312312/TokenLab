@@ -1,0 +1,30 @@
+name: "Simulation/Game Domain Checklist"
+
+items:
+  - id: schema-validation
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "schema"
+    severity: warn
+    description: "Scenario/entity schema validation checked"
+
+  - id: entity-lifecycle
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "lifecycle"
+    severity: warn
+    description: "Entity lifecycle management verified (create/update/destroy)"
+
+  - id: visual-correctness
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "visual"
+    severity: warn
+    description: "Visual rendering correctness assessed (no ghost entities)"
+
+  - id: state-sync
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "state"
+    severity: warn
+    description: "State synchronization verified (store ↔ renderer ↔ backend)"

@@ -1,0 +1,101 @@
+name: "Logic Hole Scan"
+type: grep_patterns
+severity: warn
+scan_paths:
+  - "src/**"
+  - "lib/**"
+  - "scripts/**"
+exclude_paths:
+  - "node_modules/**"
+  - "*.min.js"
+  - "dist/**"
+  - ".git/**"
+  - "vendor/**"
+  - "__pycache__/**"
+patterns:
+  - pattern: "catch\\s*\\([^)]*\\)\\s*\\{\\s*\\}"
+    label: "Empty catch block"
+    severity: warn
+    include:
+      - "*.js"
+      - "*.ts"
+      - "*.mjs"
+
+  - pattern: "//\\s*(TODO|FIXME|HACK|XXX)\\b"
+    label: "Unfinished work marker"
+    severity: info
+    include:
+      - "*.js"
+      - "*.ts"
+      - "*.py"
+      - "*.php"
+      - "*.mjs"
+
+  - pattern: "#\\s*(TODO|FIXME|HACK|XXX)\\b"
+    label: "Unfinished work marker (Python/Shell)"
+    severity: info
+    include:
+      - "*.py"
+      - "*.sh"
+
+  - pattern: ":\\s*any\\b"
+    label: "TypeScript 'any' type usage"
+    severity: warn
+    include:
+      - "*.ts"
+      - "*.tsx"
+
+  - pattern: "except:\\s*$"
+    label: "Bare except clause (Python)"
+    severity: warn
+    include:
+      - "*.py"
+
+  - pattern: "except\\s+Exception\\s*:"
+    label: "Broad exception catch (Python)"
+    severity: info
+    include:
+      - "*.py"
+
+  - pattern: "\\beval\\s*\\("
+    label: "eval() usage — potential security risk"
+    severity: fail
+    include:
+      - "*.js"
+      - "*.ts"
+      - "*.py"
+      - "*.php"
+
+  - pattern: "console\\.log\\("
+    label: "console.log left in code"
+    severity: info
+    include:
+      - "*.js"
+      - "*.ts"
+      - "*.mjs"
+    exclude:
+      - "*test*"
+      - "*spec*"
+      - "scripts/**"
+
+  - pattern: "password|secret|api_key|apikey|private_key"
+    label: "Potential hardcoded credential"
+    severity: fail
+    include:
+      - "*.js"
+      - "*.ts"
+      - "*.py"
+      - "*.php"
+    exclude:
+      - "*.md"
+      - "*.yaml"
+      - "*.yml"
+      - "*.json"
+      - "*test*"
+      - "*.env.example"
+    context_exclude:
+      - "process.env"
+      - "os.environ"
+      - "getenv"
+      - "config."
+      - "settings."

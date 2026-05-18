@@ -1,0 +1,213 @@
+{
+  "version": 1,
+  "mistakes": [
+    {
+      "id": "M-UI-001",
+      "title": "Responsive UI work closed without explicit mobile proof",
+      "summary": "Responsive or mobile-facing UI work should record explicit mobile/responsive verification instead of relying on generic completion signals.",
+      "family": "ui_responsiveness",
+      "retro_refs": [
+        "R-2026-04-08-001"
+      ],
+      "query_tags": [
+        "responsive",
+        "mobile",
+        "viewport",
+        "landing_page",
+        "manual_observation"
+      ],
+      "triggers": {
+        "file_globs": [
+          "**/*.css",
+          "**/*.scss",
+          "**/*.html",
+          "**/*.tsx",
+          "**/*.jsx"
+        ],
+        "plan_terms": [
+          "landing page",
+          "responsive",
+          "mobile",
+          "viewport"
+        ],
+        "deliverable_kinds": [
+          "ui"
+        ]
+      },
+      "required_guards": [
+        "mobile_responsiveness"
+      ],
+      "recommended_annotations": [
+        "proves",
+        "story"
+      ],
+      "symmetry_scan": {
+        "queries": [
+          "responsive",
+          "mobile",
+          "viewport",
+          "manual observation"
+        ],
+        "scope": [
+          "src/",
+          "components/",
+          "templates/"
+        ],
+        "guard": "advisory"
+      },
+      "verification_hooks": [
+        "verification_ledger:manual_observation",
+        "verification.md:Learned Obligations"
+      ],
+      "required_evidence": [
+        "manual_mobile_observation",
+        "verification_ledger:manual_observation"
+      ],
+      "obligation_ids": [
+        "responsive_ui_mobile"
+      ],
+      "minimum_trigger_families": 2,
+      "supersedes": []
+    },
+    {
+      "id": "M-001",
+      "title": "Incomplete ripple-through on behavioural changes",
+      "summary": "Planner-core behavioural changes must update code, ontology, docs, and regression surfaces together or drift will reappear in a different layer.",
+      "family": "planner_core",
+      "kb_refs": [
+        "plans/knowledge/mistakes.md#M-001"
+      ],
+      "retro_refs": [
+        "R-2026-03-24-001"
+      ],
+      "query_tags": [
+        "planner",
+        "gate",
+        "transition",
+        "migration",
+        "ontology",
+        "workflow",
+        "ripple"
+      ],
+      "triggers": {
+        "file_globs": [
+          ".agent/skills/iterative-planner/**",
+          ".agent/workflows/**/*.md"
+        ],
+        "plan_terms": [
+          "planner",
+          "gate",
+          "transition",
+          "migration",
+          "ontology",
+          "workflow",
+          "checklist"
+        ],
+        "story_tags": [
+          "ontology",
+          "traceability"
+        ]
+      },
+      "required_guards": [
+        "ripple_through",
+        "migration_smoke"
+      ],
+      "recommended_annotations": [
+        "story"
+      ],
+      "symmetry_scan": {
+        "queries": [
+          "authority_profile",
+          "recommended_path",
+          "audit_posture",
+          "planner_preflight",
+          "planner_findings",
+          "knowledge_resolver",
+          "planner_hygiene"
+        ],
+        "scope": [
+          ".agent/skills/iterative-planner/scripts/",
+          ".agent/workflows/",
+          ".agent/skills/iterative-planner/config/"
+        ],
+        "guard": "requires_red_team"
+      },
+      "verification_hooks": [
+        "ripple_check",
+        "test_migration"
+      ],
+      "required_evidence": [
+        "ripple_check",
+        "test_migration"
+      ],
+      "minimum_trigger_families": 2,
+      "supersedes": []
+    },
+    {
+      "id": "M-CMS-001",
+      "title": "Missing-content incidents escalated to backend changes before render-path triage",
+      "summary": "WordPress/CMS missing-content reports must prove turbulence context, raw HTML/DOM truth, and entity preservation before backend rewrites or migrations are treated as legitimate.",
+      "family": "cms_missing_content",
+      "query_tags": [
+        "wordpress",
+        "cms",
+        "missing_content",
+        "empty_page",
+        "raw_html",
+        "dom_probe"
+      ],
+      "triggers": {
+        "plan_terms": [
+          "wordpress missing content",
+          "wordpress page looks empty",
+          "wordpress content is missing",
+          "cms missing content",
+          "cms page looks empty",
+          "cms content is missing",
+          "custom post type missing",
+          "custom post types missing",
+          "content not showing",
+          "data disappeared"
+        ],
+        "file_globs": [
+          "**/wp-content/**",
+          "**/wp-includes/**",
+          "**/wp-admin/**",
+          "**/wordpress/**",
+          "wp-config.php",
+          "**/plugins/*/wp-*",
+          "**/themes/**/*.php"
+        ],
+        "story_tags": [
+          "diagnostics",
+          "routing",
+          "preflight"
+        ]
+      },
+      "required_guards": [
+        "site_turbulence",
+        "raw_html_dom_probe",
+        "entity_preservation"
+      ],
+      "recommended_annotations": [
+        "proves",
+        "story"
+      ],
+      "verification_hooks": [
+        "verification_ledger:artifact_review",
+        "verification.md:Learned Obligations"
+      ],
+      "required_evidence": [
+        "verification_ledger:artifact_review",
+        "verification.md:Learned Obligations"
+      ],
+      "obligation_ids": [
+        "cms_missing_content_turbulence",
+        "cms_missing_content_dom_probe",
+        "cms_missing_content_entity_preservation"
+      ],
+      "minimum_trigger_families": 2,
+      "supersedes": []
+    }
+  ]
+}

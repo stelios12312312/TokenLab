@@ -1,0 +1,117 @@
+name: "EXPLORE → PLAN Gate"
+
+# v7.3.0: shape-conditional gating. Items declare `required_for_shapes` to
+# apply only to plans whose detected shape needs them. Without that field, an
+# item applies to every shape (the legacy default). Plan shape is detected
+# from goal text + planned files + intent_contract via lib/plan_shape.mjs.
+
+items:
+  - id: findings-populated
+    check: findings_effective_populated
+    description: "Findings have been populated (not still template)"
+
+  # Minimum findings is shape-dependent. The high-bar 3-finding requirement
+  # applies only to broad-impact shapes (planner-core, migration, regression,
+  # bug-fix, scientific). Feature, integration, refactor, and docs plans transition with
+  # a single honest finding — three padded ones don't help the planner.
+  - id: findings-have-entries-broad
+    check: findings_effective_min_count
+    min: 3
+    required_for_shapes: ["bug-fix", "regression", "migration", "planner-core", "scientific", "unknown"]
+    description: "At least 3 findings (required for broad-impact shapes)"
+
+  - id: findings-have-entries-narrow
+    check: findings_effective_min_count
+    min: 1
+    required_for_shapes: ["feature", "integration", "refactor", "docs"]
+    description: "At least 1 finding (narrow-impact shapes need just one honest finding)"
+
+  - id: kb-index-exists
+    check: file_exists
+    path: "{knowledge}/index.md"
+    description: "Knowledge base index.md exists (FAIL — cannot skip KB read)"
+
+  - id: kb-mistakes-exists
+    check: file_exists
+    path: "{knowledge}/mistakes.md"
+    description: "Knowledge base mistakes.md exists (FAIL — cannot skip KB read)"
+
+  - id: kb-patterns-exists
+    check: file_exists
+    path: "{knowledge}/patterns.md"
+    description: "Knowledge base patterns.md exists (FAIL — cannot skip KB read)"
+
+  - id: kb-gotchas-exists
+    check: file_exists
+    path: "{knowledge}/gotchas.md"
+    description: "Knowledge base gotchas.md exists (FAIL — cannot skip KB read)"
+
+  # Root cause analysis is required for plans whose shape implies a known bad
+  # state to diagnose. Feature / integration / refactor / docs plans are not
+  # diagnosing anything — root cause is not their shape, and demanding "Root
+  # Cause: N/A" is pure ritual.
+  - id: root-cause-present
+    check: findings_effective_field
+    field: "root_cause"
+    required_for_shapes: ["bug-fix", "regression", "migration", "planner-core", "unknown"]
+    description: "Root cause analysis present in findings (required for diagnosis-shaped plans)"
+
+  # Adjacency discovery is required when the change touches a surface where
+  # ripple-through is plausible. Single-file feature work and integration
+  # plans don't need to enumerate sibling files.
+  - id: adjacency-discovery
+    check: findings_effective_field
+    field: "adjacency"
+    required_for_shapes: ["bug-fix", "regression", "migration", "planner-core", "refactor", "unknown"]
+    description: "Adjacency discovery performed (required for shapes with plausible ripple-through)"
+
+  # Assumption ledger is required when the plan makes claims about external
+  # systems (webhooks, APIs, integrations) or stateful workflows that need
+  # probe verification. Pure-internal feature work and docs don't need it.
+  - id: assumption-ledger-present
+    check: findings_effective_field
+    field: "assumption_ledger"
+    required_for_shapes: ["integration", "regression", "migration", "planner-core", "scientific"]
+    description: "Assumption Ledger section present (required for external-claim shapes)"
+
+  - id: assumption-probes-recorded
+    check: findings_effective_field
+    field: "assumption_probe"
+    required_for_shapes: ["integration", "regression", "migration", "planner-core", "scientific"]
+    description: "At least one assumption probe result recorded (VERIFIED or VIOLATED)"
+
+  - id: health-scan-completed
+    check: file_exists
+    path: "{plan-dir}/health_report.md"
+    description: "Project health scan completed (health_report.md exists in plan dir)"
+
+  # v7.3.0: this is now an advisory check (severity: warn). Health-report
+  # FAILs are repo-level findings unrelated to the current plan; surfacing
+  # them as gate FAILs caused agents to spend significant time creating
+  # registries / scripts to clear unrelated warnings.
+  - id: health-no-critical-fails
+    check: not_contains_string
+    path: "{plan-dir}/health_report.md"
+    string: "❌ Failures"
+    severity: warn
+    description: "No FAIL-level findings in health report (advisory — see /advisor or /housekeeping)"
+
+  - id: prolog-self-test
+    check: command_succeeds
+    command: "node .agent/skills/iterative-planner/scripts/rule_engine.mjs --self-test"
+    severity: warn
+    description: "Prolog rule engine self-test passes (ensures invariant layer is functional)"
+
+  - id: story-elicitation-candidates
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "## Story Candidates"
+    severity: warn
+    description: "Story Candidates section present for new-feature plans (WARN — run sub-gate 5 if goal introduces new functionality and story_registry.json exists)"
+
+  - id: findings-reference-goal
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "goal"
+    severity: warn
+    description: "Findings should reference the plan goal — verify findings address the stated problem"

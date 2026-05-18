@@ -1,0 +1,66 @@
+{
+  "version": 1,
+  "id": "PGM-TEST",
+  "title": "Generic Capability Rollout",
+  "status": "ready",
+  "goal": "Deliver a reusable capability across multiple work units.",
+  "story_refs": ["US-001"],
+  "epics": [
+    {
+      "id": "EP-001",
+      "title": "Prepare foundation",
+      "story_refs": ["US-001"],
+      "ticket_refs": ["T-001"]
+    }
+  ],
+  "tickets": [
+    {
+      "id": "T-001",
+      "epic_id": "EP-001",
+      "title": "Add reusable workflow contract",
+      "type": "feature",
+      "lifecycle": "ready",
+      "story_refs": ["US-001"],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": ["AC-001"],
+      "child_plan": {
+        "policy": "not_required",
+        "plan_dir": null,
+        "reason": "Artifact-only fixture"
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": ["VM-001"]
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-001",
+      "scope": "ticket",
+      "subject_ref": "T-001",
+      "text": "Workflow contract is represented in a Program Packet.",
+      "story_refs": ["US-001"],
+      "maintenance_rationale": null
+    }
+  ],
+  "dependencies": [],
+  "compatibility_contracts": [],
+  "migration_boundaries": [],
+  "deletion_move_census": [],
+  "verification_matrix": [
+    {
+      "id": "VM-001",
+      "scope": "ticket",
+      "subject_ref": "T-001",
+      "acceptance_criterion_ref": "AC-001",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review Program Packet fixture",
+      "pass_means": "Packet validator passes",
+      "residual_risk": "No child implementation in fixture"
+    }
+  ],
+  "decisions": []
+}

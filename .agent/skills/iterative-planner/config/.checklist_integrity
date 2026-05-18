@@ -1,0 +1,11 @@
+{
+  "execute-to-reflect": "7b6a553cb65aba9e4a3bd2c6bf3df51c",
+  "explore-to-plan": "5e60845af51d23ba6e7d3e32357db9d1",
+  "notify-user": "0d4bb729eff4080b499133dac53e7ec0",
+  "plan-to-execute": "232fde5ad25d6ae58c3b9b179c777c1b",
+  "reflect-to-close": "8bb8795d1009f2842c53484da5880c49",
+  "reflect-to-validate": "fbec23487408e4543cd91e9bb5501d92",
+  "regression-gate": "944f14dbb512af0488b7af32c879aa8f",
+  "smoke-test": "365cfdfc549a6ebcda34746287df2b5e",
+  "validate-to-close": "d26eb0a1bb9e08e770ca05d90af4bf98"
+}

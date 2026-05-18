@@ -1,0 +1,17 @@
+#!/bin/sh
+# iterative-planner managed pre-commit hook
+# pre-commit hook — runs ripple-through check before every commit.
+# Install: node .agent/skills/iterative-planner/scripts/hooks/install.mjs
+#
+# The policy helper decides whether staged planner changes should block or
+# defer hard ripple gaps into a local advisory ledger under plans/.
+
+SKILL_DIR=".agent/skills/iterative-planner"
+RUN_NODE="$SKILL_DIR/scripts/hooks/run-node.sh"
+
+if [ -f "$RUN_NODE" ]; then
+  sh "$RUN_NODE" "${SKILL_DIR}/scripts/pre_commit_policy.mjs" pre-commit
+else
+  node "${SKILL_DIR}/scripts/pre_commit_policy.mjs" pre-commit
+fi
+exit $?

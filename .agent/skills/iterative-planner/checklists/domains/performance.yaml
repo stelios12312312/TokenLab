@@ -1,0 +1,44 @@
+name: "Performance Domain Checklist"
+
+items:
+  - id: n-plus-one
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "N+1"
+    severity: warn
+    description: "N+1 query patterns investigated in affected code paths"
+
+  - id: pagination-limits
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "pagination"
+    severity: warn
+    description: "Unbounded list endpoints checked for pagination limits"
+
+  - id: memory-leak
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "memory"
+    severity: warn
+    description: "Memory leak patterns assessed (unbounded caches, event listeners, closures)"
+
+  - id: cache-invalidation
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "cache"
+    severity: warn
+    description: "Cache invalidation correctness verified (stale reads, thundering herd)"
+
+  - id: index-coverage
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "index"
+    severity: warn
+    description: "Database index coverage assessed for new/changed queries"
+
+  - id: prolog-perf-invariants
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "I-026"
+    severity: warn
+    description: "Prolog performance invariants checked (I-026: perf_critical stories have benchmarks, I-027: list endpoints have pagination)"

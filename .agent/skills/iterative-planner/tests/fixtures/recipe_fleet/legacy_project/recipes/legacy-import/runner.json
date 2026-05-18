@@ -1,0 +1,11 @@
+{
+  "recipe_id": "legacy-import",
+  "title": "Legacy Import",
+  "runner": "python scripts/legacy_import.py",
+  "parameters": {
+    "source": {
+      "required": true
+    }
+  },
+  "skills_used": ["legacy-import"]
+}

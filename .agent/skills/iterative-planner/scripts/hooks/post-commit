@@ -1,0 +1,44 @@
+#!/bin/sh
+# post-commit: iterative-planner advisor session-review trigger
+# Checks whether a periodic advisor review is due after this commit.
+# Non-blocking — always exits 0. Only prints to interactive terminals.
+#
+# --- iterative-planner advisor-check hook ---
+
+# Find the skill directory relative to git root
+GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+SKILL_DIR="${ITERATIVE_PLANNER_SKILL_DIR:-$GIT_ROOT/.agent/skills/iterative-planner}"
+ESCALATION_SCRIPT="$SKILL_DIR/scripts/escalation_check.mjs"
+RUN_NODE="$SKILL_DIR/scripts/hooks/run-node.sh"
+
+run_node() {
+  if [ -f "$RUN_NODE" ]; then
+    sh "$RUN_NODE" "$@"
+  else
+    node "$@"
+  fi
+}
+
+# Only run if escalation_check exists and stdout is a TTY (interactive)
+[ -f "$ESCALATION_SCRIPT" ] || exit 0
+[ -t 1 ] || [ "${ITERATIVE_PLANNER_FORCE_TTY:-}" = "1" ] || exit 0
+
+run_node "$ESCALATION_SCRIPT" --json 2>/dev/null | run_node --input-type=module -e "
+let raw = '';
+process.stdin.on('data', chunk => raw += chunk);
+process.stdin.on('end', () => {
+  try {
+    const data = JSON.parse(raw);
+    const adv = (data.escalations || []).find(e => e.type === 'advisor-review');
+    if (adv) {
+      process.stdout.write(
+        '\n\u26a0\ufe0f  Planner advisor: ' + adv.reason + '\n' +
+        (adv.auto_launch_marker ? '   ' + adv.auto_launch_marker + '\n' : '') +
+        '   Run /advisor to capture session lessons and check codebase health.\n\n'
+      );
+    }
+  } catch { /* ignore parse errors */ }
+});
+"
+
+exit 0

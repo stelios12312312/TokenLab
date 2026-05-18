@@ -1,0 +1,606 @@
+{
+  "version": 1,
+  "workflows": [
+    {
+      "id": "/advisor",
+      "purpose": "Triage the current planner/project state and recommend one exact next move.",
+      "trigger_tags": [
+        "advisor",
+        "triage",
+        "orient",
+        "orientation",
+        "next move",
+        "next step",
+        "ci",
+        "stuck"
+      ],
+      "route_tags": [
+        "diagnose",
+        "triage",
+        "orient",
+        "recovery"
+      ],
+      "search_tier": "tier0",
+      "dispatch_targets": [
+        "/safe-change",
+        "/safe-change-power",
+        "/program-manager",
+        "/ticket-traceability-repair",
+        "/steward",
+        "/recipe-discovery",
+        "/recipe-tidy",
+        "/recipe-bootstrap",
+        "/sme-improvement"
+      ],
+      "skill_hints": [
+        "planner_preflight",
+        "knowledge_resolver",
+        "project_health",
+        "rule_engine"
+      ],
+      "preferred_personas": [],
+      "recipe_affinity": "low",
+      "required_inputs": [
+        "goal",
+        "planner_preflight",
+        "project_state"
+      ],
+      "canonical_outputs": [
+        "situation_report",
+        "recommended_next_move"
+      ],
+      "related_failure_codes": [
+        "GATE-GAR-001",
+        "GATE-GAR-002"
+      ]
+    },
+    {
+      "id": "/safe-change",
+      "purpose": "Plan and execute an ordinary change with regression protection.",
+      "trigger_tags": [
+        "safe change",
+        "regression",
+        "ordinary change",
+        "implementation",
+        "feature",
+        "bug fix"
+      ],
+      "route_tags": [
+        "code",
+        "change",
+        "regression-safe"
+      ],
+      "search_tier": "tier1",
+      "dispatch_targets": [
+        "/safe-change-power",
+        "/regression-audit",
+        "/advisor"
+      ],
+      "skill_hints": [
+        "planner_preflight",
+        "knowledge_resolver"
+      ],
+      "preferred_personas": [
+        "ux_ui",
+        "traceability"
+      ],
+      "recipe_affinity": "medium",
+      "required_inputs": [
+        "goal",
+        "planned_files",
+        "verification_strategy"
+      ],
+      "canonical_outputs": [
+        "task.md",
+        "implementation_plan.md",
+        "walkthrough.md"
+      ],
+      "related_failure_codes": [
+        "GATE-REF-011",
+        "GATE-REF-012"
+      ]
+    },
+    {
+      "id": "/safe-plan",
+      "purpose": "Produce a fast, audit-backed, implementation-ready plan that accounts for risks, retros, exact tests, story traceability, personas, and red-team review, but stops before code changes.",
+      "trigger_tags": [
+        "safe plan",
+        "plan only",
+        "planning only",
+        "detailed plan",
+        "implementation plan",
+        "think through",
+        "think this through first",
+        "no code",
+        "code later"
+      ],
+      "route_tags": [
+        "plan",
+        "planning",
+        "strategy",
+        "planning-only",
+        "no code",
+        "implementation-plan"
+      ],
+      "search_tier": "tier1",
+      "dispatch_targets": [
+        "/safe-change",
+        "/safe-change-power",
+        "/program-manager",
+        "/recipe-discovery",
+        "/recipe-tidy",
+        "/advisor"
+      ],
+      "skill_hints": [
+        "planner_preflight",
+        "knowledge_resolver",
+        "intent_contract_bootstrap"
+      ],
+      "preferred_personas": [
+        "traceability",
+        "assumptions_challenger",
+        "wiring_auditor",
+        "ux_ui"
+      ],
+      "recipe_affinity": "medium",
+      "required_inputs": [
+        "goal",
+        "project_context",
+        "verification_strategy"
+      ],
+      "canonical_outputs": [
+        "implementation_plan.md",
+        "plan.md",
+        "planning_handoff",
+        "plan_audit_handoff"
+      ],
+      "related_failure_codes": [
+        "GATE-PLN-021",
+        "GATE-PLN-022",
+        "GATE-PLN-023",
+        "GATE-PLN-024",
+        "GATE-PLN-025",
+        "GATE-PLN-026"
+      ]
+    },
+    {
+      "id": "/safe-change-power",
+      "purpose": "Handle high-risk, planner-core, or cross-system changes with stronger guardrails.",
+      "trigger_tags": [
+        "planner core",
+        "cross system",
+        "migration",
+        "ontology",
+        "workflow refactor",
+        "high risk"
+      ],
+      "route_tags": [
+        "planner",
+        "migration",
+        "shared surface",
+        "high risk"
+      ],
+      "search_tier": "tier1",
+      "dispatch_targets": [
+        "/regression-audit",
+        "/consolidate-annotations",
+        "/program-manager",
+        "/steward"
+      ],
+      "skill_hints": [
+        "planner_preflight",
+        "knowledge_resolver",
+        "ripple_check"
+      ],
+      "preferred_personas": [
+        "ux_ui",
+        "traceability",
+        "wiring_auditor",
+        "config_integrity",
+        "assumptions_challenger"
+      ],
+      "recipe_affinity": "low",
+      "required_inputs": [
+        "goal",
+        "planned_files",
+        "story_registry",
+        "verification_strategy"
+      ],
+      "canonical_outputs": [
+        "full_plan",
+        "verification_artifacts",
+        "anti_recurrence_guard"
+      ],
+      "related_failure_codes": [
+        "GATE-REF-010",
+        "GATE-REF-013",
+        "GATE-REF-014"
+      ]
+    },
+    {
+      "id": "/steward",
+      "purpose": "Consolidate drift across docs, ontology, personas, annotations, stories, and user intent.",
+      "trigger_tags": [
+        "steward",
+        "consolidation",
+        "drift",
+        "ontology",
+        "annotations",
+        "personas",
+        "stories",
+        "intent"
+      ],
+      "route_tags": [
+        "consolidate",
+        "stewardship",
+        "multi-surface",
+        "drift"
+      ],
+      "search_tier": "tier2",
+      "dispatch_targets": [
+        "/consolidate-annotations",
+        "/story-bootstrap",
+        "/program-manager",
+        "/advisor"
+      ],
+      "skill_hints": [
+        "knowledge_resolver",
+        "semantic_map",
+        "ontology_serializer"
+      ],
+      "preferred_personas": [
+        "traceability",
+        "wiring_auditor",
+        "ux_ui",
+        "quant",
+        "assumptions_challenger",
+        "config_integrity"
+      ],
+      "recipe_affinity": "low",
+      "required_inputs": [
+        "goal",
+        "story_registry",
+        "persona_outputs",
+        "semantic_map"
+      ],
+      "canonical_outputs": [
+        "opportunity_queue",
+        "dispatch_recommendations",
+        "stewardship_report"
+      ],
+      "related_failure_codes": [
+        "GATE-EXP-012",
+        "GATE-PLN-016"
+      ]
+    },
+    {
+      "id": "/program-manager",
+      "purpose": "Transform broad roadmaps into validated Program Packets with epics, tickets, dependencies, child plans, compatibility contracts, migration boundaries, deletion/move census records, traceability, and program-close criteria.",
+      "trigger_tags": [
+        "program manager",
+        "program management",
+        "roadmap",
+        "roadmap steward",
+        "idea-to-ticket",
+        "backlog intake",
+        "ticket generation",
+        "issue intake",
+        "github project intake",
+        "multi epic",
+        "program packet",
+        "child plans",
+        "compatibility contract",
+        "migration boundary",
+        "ticket lifecycle"
+      ],
+      "route_tags": [
+        "program",
+        "roadmap",
+        "idea-intake",
+        "backlog-intake",
+        "ticket-generation",
+        "orchestration",
+        "multi-plan",
+        "program-packet"
+      ],
+      "search_tier": "tier1",
+      "dispatch_targets": [
+        "/safe-plan",
+        "/safe-change",
+        "/safe-change-power",
+        "/steward",
+        "/advisor"
+      ],
+      "skill_hints": [
+        "program_manager",
+        "story_registry",
+        "rule_engine",
+        "verification_matrix"
+      ],
+      "preferred_personas": [
+        "traceability",
+        "wiring_auditor",
+        "config_integrity",
+        "assumptions_challenger"
+      ],
+      "recipe_affinity": "low",
+      "required_inputs": [
+        "roadmap_or_goal",
+        "story_registry",
+        "program_packet"
+      ],
+      "canonical_outputs": [
+        "program_packet.json",
+        "program.md",
+        "child_plan_dispatch_queue"
+      ],
+      "related_failure_codes": [
+        "GATE-PLN-021",
+        "GATE-PLN-023"
+      ]
+    },
+    {
+      "id": "/ticket-traceability-repair",
+      "purpose": "Repair Program Packet tickets blocked by missing story traceability before child-plan implementation.",
+      "trigger_tags": [
+        "ticket traceability repair",
+        "needs_story",
+        "ticket_without_traceability",
+        "story_refs missing",
+        "missing story refs",
+        "gap reference but no linked stories",
+        "deepseek needs_story",
+        "program packet ticket story linkage"
+      ],
+      "route_tags": [
+        "program",
+        "ticket",
+        "story-linkage",
+        "traceability",
+        "program-packet",
+        "advisory-repair"
+      ],
+      "search_tier": "tier1",
+      "dispatch_targets": [
+        "/program-manager",
+        "/story-registry-bootstrap",
+        "/story-bootstrap",
+        "/safe-change",
+        "/safe-change-power",
+        "/advisor"
+      ],
+      "skill_hints": [
+        "program_manager",
+        "story_registry",
+        "rule_engine",
+        "annotation_parser",
+        "verification_matrix"
+      ],
+      "preferred_personas": [
+        "traceability",
+        "wiring_auditor",
+        "assumptions_challenger",
+        "config_integrity"
+      ],
+      "recipe_affinity": "low",
+      "required_inputs": [
+        "program_packet",
+        "ticket_id",
+        "ticket_intake_receipt_or_review_packet",
+        "deepseek_advisory_block"
+      ],
+      "canonical_outputs": [
+        "repaired_program_packet",
+        "traceability_repair_summary",
+        "program_manager_gate_results",
+        "next_child_plan_command"
+      ],
+      "related_failure_codes": [
+        "needs_story",
+        "ticket_without_traceability",
+        "program_ready_ticket_missing_story",
+        "program_ready_acceptance_criterion_missing_story"
+      ]
+    },
+    {
+      "id": "/roadmap-steward",
+      "purpose": "Alias for /program-manager for operator discoverability when the prompt names roadmap stewardship.",
+      "trigger_tags": [
+        "roadmap steward",
+        "roadmap stewardship",
+        "roadmap management",
+        "program roadmap"
+      ],
+      "route_tags": [
+        "program",
+        "roadmap",
+        "alias"
+      ],
+      "search_tier": "tier1",
+      "dispatch_targets": [
+        "/program-manager"
+      ],
+      "skill_hints": [
+        "program_manager"
+      ],
+      "preferred_personas": [
+        "traceability",
+        "wiring_auditor"
+      ],
+      "recipe_affinity": "low",
+      "required_inputs": [
+        "roadmap_or_goal"
+      ],
+      "canonical_outputs": [
+        "program_manager_handoff"
+      ],
+      "related_failure_codes": []
+    },
+    {
+      "id": "/recipe-discovery",
+      "purpose": "Propose and review reusable operational recipes from a concrete prompt or request before bootstrapping concrete recipe folders.",
+      "trigger_tags": [
+        "recipe discovery",
+        "propose a recipe",
+        "recipe proposal",
+        "recent prompt",
+        "recent request",
+        "operational flow",
+        "reusable process",
+        "automation flow"
+      ],
+      "route_tags": [
+        "recipe-discovery",
+        "prompt-to-recipe",
+        "request-to-recipe",
+        "operational",
+        "reusable"
+      ],
+      "search_tier": "tier0",
+      "dispatch_targets": [
+        "/recipe-bootstrap",
+        "/recipe-tidy"
+      ],
+      "skill_hints": [
+        "recipe_resolver",
+        "knowledge_resolver"
+      ],
+      "preferred_personas": [],
+      "recipe_affinity": "high",
+      "required_inputs": [
+        "goal",
+        "recipe_resolution"
+      ],
+      "canonical_outputs": [
+        "discovery_report",
+        "approved_candidates"
+      ],
+      "related_failure_codes": []
+    },
+    {
+      "id": "/recipe-tidy",
+      "purpose": "Normalize messy recipe-shaped requests into deterministic recipe execution or cleanup steps.",
+      "trigger_tags": [
+        "recipe tidy",
+        "known recipe",
+        "runner contract",
+        "parameter capture"
+      ],
+      "route_tags": [
+        "recipe-tidy",
+        "execute-known-recipe",
+        "recipe-candidate"
+      ],
+      "search_tier": "tier0",
+      "dispatch_targets": [
+        "/recipe-bootstrap",
+        "/safe-change"
+      ],
+      "skill_hints": [
+        "recipe_resolver",
+        "knowledge_resolver"
+      ],
+      "preferred_personas": [],
+      "recipe_affinity": "high",
+      "required_inputs": [
+        "goal",
+        "recipe_resolution"
+      ],
+      "canonical_outputs": [
+        "normalized_recipe_request",
+        "runner_decision"
+      ],
+      "related_failure_codes": []
+    },
+    {
+      "id": "/recipe-bootstrap",
+      "purpose": "Bootstrap deterministic recipe folders, registries, and runner contracts from approved discovery outputs.",
+      "trigger_tags": [
+        "recipe bootstrap",
+        "bootstrap recipe",
+        "runner contract",
+        "recipe registry"
+      ],
+      "route_tags": [
+        "recipe-bootstrap",
+        "bootstrap"
+      ],
+      "search_tier": "tier1",
+      "dispatch_targets": [
+        "/recipe-discovery",
+        "/recipe-tidy"
+      ],
+      "skill_hints": [
+        "recipe_resolver",
+        "knowledge_resolver"
+      ],
+      "preferred_personas": [],
+      "recipe_affinity": "high",
+      "required_inputs": [
+        "approved_candidates",
+        "recipe_registry"
+      ],
+      "canonical_outputs": [
+        "recipe_folder",
+        "recipe_registry_updates",
+        "runner_contract"
+      ],
+      "related_failure_codes": []
+    },
+    {
+      "id": "/sme-improvement",
+      "purpose": "Surface high-leverage strategic, research, validation, and process improvements when the project is functioning but underpowered.",
+      "trigger_tags": [
+        "sme improvement",
+        "improve strategy",
+        "improve validation",
+        "research design",
+        "better process",
+        "increase edge",
+        "capital allocation",
+        "trustworthiness"
+      ],
+      "route_tags": [
+        "upside",
+        "improvement",
+        "strategy",
+        "validation",
+        "research"
+      ],
+      "search_tier": "tier2",
+      "dispatch_targets": [
+        "/safe-change-power",
+        "/consolidate-annotations",
+        "/steward",
+        "/housekeeping"
+      ],
+      "skill_hints": [
+        "knowledge_resolver",
+        "audit_runner",
+        "semantic_map"
+      ],
+      "preferred_personas": [
+        "quant",
+        "assumptions_challenger",
+        "traceability",
+        "wiring_auditor"
+      ],
+      "recipe_affinity": "low",
+      "required_inputs": [
+        "goal",
+        "persona_outputs",
+        "story_registry",
+        "intent_contract"
+      ],
+      "canonical_outputs": [
+        "opportunity_queue",
+        "recommendation_report",
+        "recommended_next_experiment"
+      ],
+      "related_failure_codes": [
+        "GATE-EXP-012",
+        "GATE-PLN-016"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "capabilities": [
+    {
+      "id": "daily_runner",
+      "title": "Daily Runner"
+    }
+  ]
+}

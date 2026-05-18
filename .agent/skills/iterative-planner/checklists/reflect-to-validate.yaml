@@ -1,0 +1,65 @@
+name: "REFLECT -> VALIDATE Gate"
+
+items:
+  - id: reflection-exists
+    check: file_exists
+    path: "{plan-dir}/reflection.md"
+    description: "reflection.md exists before entering VALIDATE"
+
+  - id: reflection-not-template
+    check: not_contains_string
+    path: "{plan-dir}/reflection.md"
+    string: "To be populated during REFLECT"
+    description: "reflection.md is not still template content"
+
+  - id: reflection-solution-verdict
+    check: contains_string
+    path: "{plan-dir}/reflection.md"
+    string: "## Solution Verdict"
+    description: "Reflection records a Solution Verdict section"
+
+  - id: reflection-semantic-verdict
+    check: contains_string
+    path: "{plan-dir}/reflection.md"
+    string: "## Semantic Verdict"
+    description: "Reflection records a Semantic Verdict section"
+
+  - id: reflection-evidence-readiness
+    check: contains_string
+    path: "{plan-dir}/reflection.md"
+    string: "## Evidence-Readiness Verdict"
+    description: "Reflection records an Evidence-Readiness Verdict section"
+
+  - id: reflection-next-move
+    check: contains_string
+    path: "{plan-dir}/reflection.md"
+    string: "## Next Move"
+    description: "Reflection records a Next Move section"
+
+  - id: progress-complete
+    check: json_field_equals
+    path: "{plan-dir}/state.json"
+    field: "close_signals.progress.satisfied"
+    equals: true
+    description: "Structured close signal confirms all progress items are complete before VALIDATE"
+
+  - id: kb-updated
+    check: json_field_equals
+    path: "{plan-dir}/state.json"
+    field: "close_signals.kb.satisfied"
+    equals: true
+    description: "Structured close signal confirms semantic/KB upkeep is complete before VALIDATE"
+
+  - id: semantic-substrate-satisfied
+    check: json_field_equals
+    path: "{plan-dir}/state.json"
+    field: "close_signals.semantic_substrate.satisfied"
+    equals: true
+    description: "Structured close signal confirms task-relevant semantic substrate gaps are resolved before VALIDATE"
+
+  - id: quant-results-validation-satisfied
+    check: json_field_equals
+    path: "{plan-dir}/state.json"
+    field: "close_signals.quant_results_validation.satisfied"
+    equals: true
+    description: "Structured close signal confirms quant/model/betting result claims have machine-readable validation before VALIDATE"

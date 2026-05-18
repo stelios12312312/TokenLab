@@ -1,0 +1,141 @@
+{
+  "version": 1,
+  "cohorts": [
+    {
+      "id": "workflow_automation_recipe_discovery",
+      "archetype": "workflow_automation",
+      "label": "Workflow automation repos should route reusable operational work into recipe discovery",
+      "path_fragments": [
+        "tesseract-automation-engine"
+      ],
+      "goal": "Normalize a reusable operational automation flow for tender ingestion and syncing",
+      "recommended_policy": {
+        "archetype": "workflow_automation",
+        "preferred_workflows": [
+          "/recipe-discovery"
+        ],
+        "search_policy": {
+          "prefer_early_stop": true
+        }
+      },
+      "expected": {
+        "entrypoint": "/recipe-discovery",
+        "search_tier": "tier1",
+        "deep_search_used": false
+      }
+    },
+    {
+      "id": "quant_repo_sme",
+      "archetype": "quant",
+      "label": "Quant repos should route validation and edge-discovery work into SME improvement",
+      "path_fragments": [
+        "ValueInvestingAI"
+      ],
+      "goal": "Improve validation strategy and edge discovery for the investing model",
+      "recommended_policy": {
+        "archetype": "quant",
+        "preferred_workflows": [
+          "/sme-improvement"
+        ],
+        "preferred_personas": [
+          "quant",
+          "assumptions_challenger"
+        ],
+        "search_policy": {
+          "prefer_early_stop": true
+        }
+      },
+      "expected": {
+        "entrypoint": "/sme-improvement",
+        "search_tier": "tier1",
+        "deep_search_used": false
+      }
+    },
+    {
+      "id": "ux_ui_course_guardrails_real",
+      "archetype": "ux_ui_course",
+      "label": "Course-generation repos should route user-facing flow changes into strong guardrails",
+      "path_fragments": [
+        "Courses/learndash-auto-course-tesseract",
+        "Memebot/learndash-auto-course-tesseract"
+      ],
+      "goal": "Improve course creation flow for learners and authors",
+      "recommended_policy": {
+        "archetype": "ux_ui_course",
+        "preferred_workflows": [
+          "/safe-change-power"
+        ],
+        "preferred_personas": [
+          "ux_ui",
+          "traceability"
+        ],
+        "search_policy": {
+          "prefer_early_stop": true
+        }
+      },
+      "expected": {
+        "entrypoint": "/safe-change-power",
+        "search_tier": "tier0",
+        "deep_search_used": false
+      }
+    },
+    {
+      "id": "cms_plugin_guardrails_real",
+      "archetype": "cms_plugin",
+      "label": "Plugin config and migration work should route into strong guardrails",
+      "path_fragments": [
+        "wp-membership-plugin-tesseract"
+      ],
+      "goal": "Harden plugin role migration and config safety",
+      "recommended_policy": {
+        "archetype": "cms_plugin",
+        "preferred_workflows": [
+          "/safe-change-power"
+        ],
+        "preferred_personas": [
+          "config_integrity",
+          "traceability"
+        ],
+        "search_policy": {
+          "prefer_early_stop": true
+        }
+      },
+      "expected": {
+        "entrypoint": "/safe-change-power",
+        "search_tier": "tier1",
+        "deep_search_used": false
+      }
+    },
+    {
+      "id": "content_automation_steward_real",
+      "archetype": "content_automation",
+      "label": "Content automation drift should escalate into stewardship",
+      "path_fragments": [
+        "crawler-extractor-agent",
+        "Publishing Assistant"
+      ],
+      "goal": "Consolidate drift across prompts, outputs, and automation docs",
+      "recommended_policy": {
+        "archetype": "content_automation",
+        "preferred_workflows": [
+          "/steward"
+        ],
+        "preferred_personas": [
+          "traceability",
+          "assumptions_challenger"
+        ],
+        "required_secondary_signals": [
+          "multi_surface_files"
+        ],
+        "search_policy": {
+          "prefer_early_stop": true
+        }
+      },
+      "expected": {
+        "entrypoint": "/steward",
+        "search_tier": "tier1",
+        "deep_search_used": false
+      }
+    }
+  ]
+}

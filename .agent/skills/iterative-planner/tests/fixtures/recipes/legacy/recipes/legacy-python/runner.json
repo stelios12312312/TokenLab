@@ -1,0 +1,27 @@
+{
+  "recipe_id": "legacy-python",
+  "title": "Legacy Python",
+  "runner": {
+    "type": "python",
+    "cwd": ".",
+    "command": [
+      "python",
+      "-m",
+      "legacy.runner"
+    ],
+    "dry_run_flags": [
+      "--dry-run"
+    ],
+    "live_flags": []
+  },
+  "parameters": {
+    "account_id": {
+      "required": true,
+      "type": "string"
+    }
+  },
+  "systems": [
+    "fixture"
+  ],
+  "skills": []
+}

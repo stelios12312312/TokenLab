@@ -1,0 +1,23 @@
+name: "Documentation Freshness"
+type: file_freshness
+quick: true
+severity: info
+pairs:
+  - doc: "README.md"
+    watches:
+      - "src/**/*.ts"
+      - "src/**/*.py"
+      - "lib/**/*.js"
+    threshold_days: 30
+
+  - doc: "docs/architecture.md"
+    watches:
+      - "src/**/*.ts"
+      - "src/**/*.py"
+    threshold_days: 14
+
+  - doc: ".agent/rules.md"
+    watches:
+      - ".agent/workflows/*.md"
+      - ".agent/skills/**/*.md"
+    threshold_days: 7

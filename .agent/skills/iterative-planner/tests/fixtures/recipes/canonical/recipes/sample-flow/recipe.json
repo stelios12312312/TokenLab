@@ -1,0 +1,33 @@
+{
+  "id": "sample-flow",
+  "title": "Sample Flow",
+  "capability_id": "run_sample_flow",
+  "entity_ids": [],
+  "required_params": [],
+  "systems": [
+    "fixture"
+  ],
+  "scripts": [
+    {
+      "path": "scripts/sample_flow.py",
+      "purpose": "Fixture runner script"
+    }
+  ],
+  "skills": [],
+  "workflows": [
+    "sample.md"
+  ],
+  "runner": {
+    "type": "command",
+    "cwd": ".",
+    "command": [
+      "python",
+      "scripts/sample_flow.py"
+    ],
+    "defaults": {},
+    "dry_run_flags": [
+      "--dry-run"
+    ],
+    "live_flags": []
+  }
+}

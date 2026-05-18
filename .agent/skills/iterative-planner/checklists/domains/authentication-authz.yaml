@@ -1,0 +1,44 @@
+name: "Authentication & Authorization Domain Checklist"
+
+items:
+  - id: token-expiry
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "token"
+    severity: warn
+    description: "Token expiration and refresh handling verified"
+
+  - id: privilege-escalation
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "privilege"
+    severity: warn
+    description: "Privilege escalation routes audited (role boundaries, admin paths)"
+
+  - id: rate-limiting
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "rate limit"
+    severity: warn
+    description: "Rate limiting and brute-force protection verified on auth endpoints"
+
+  - id: session-management
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "session"
+    severity: warn
+    description: "Session management checked (fixation, hijacking, invalidation on logout)"
+
+  - id: permission-caching
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "permission"
+    severity: warn
+    description: "Permission caching staleness assessed (RBAC updates propagate correctly)"
+
+  - id: prolog-security-invariants
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "I-023"
+    severity: warn
+    description: "Prolog security invariants checked (I-023: auth stories tested, I-024: public endpoints have rate limits, I-025: sensitive data reviewed)"

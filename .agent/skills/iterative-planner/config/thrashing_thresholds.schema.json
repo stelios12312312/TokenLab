@@ -1,0 +1,626 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Iterative Planner Thrashing Thresholds",
+  "type": "object",
+  "required": [
+    "thrashing_thresholds"
+  ],
+  "properties": {
+    "thrashing_thresholds": {
+      "type": "object",
+      "required": [
+        "version",
+        "defaults_profile",
+        "response_progression",
+        "signals"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "defaults_profile": {
+          "type": "string",
+          "minLength": 1
+        },
+        "response_progression": {
+          "type": "object",
+          "required": [
+            "level_1_hint",
+            "level_2_mini_reflect",
+            "level_3_hard_block"
+          ],
+          "properties": {
+            "level_1_hint": {
+              "type": "object",
+              "required": [
+                "min_active_signals",
+                "max_signal_severity"
+              ],
+              "properties": {
+                "min_active_signals": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "max_signal_severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                }
+              },
+              "additionalProperties": false
+            },
+            "level_2_mini_reflect": {
+              "type": "object",
+              "required": [
+                "min_active_signals",
+                "severe_signal_levels"
+              ],
+              "properties": {
+                "min_active_signals": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "severe_signal_levels": {
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "enum": [
+                      "low",
+                      "medium",
+                      "high",
+                      "critical"
+                    ]
+                  }
+                }
+              },
+              "additionalProperties": false
+            },
+            "level_3_hard_block": {
+              "type": "object",
+              "required": [
+                "retrigger_within_tool_calls",
+                "continue_decisions_before_block"
+              ],
+              "properties": {
+                "retrigger_within_tool_calls": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "continue_decisions_before_block": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        },
+        "signals": {
+          "type": "object",
+          "required": [
+            "thrashing_repeat_edit",
+            "thrashing_oscillating_errors",
+            "thrashing_backtrack_pattern",
+            "thrashing_checkpoint_flood",
+            "thrashing_tool_call_volume",
+            "thrashing_criterion_stuck",
+            "thrashing_progress_divergence",
+            "thrashing_silent_scope_creep",
+            "thrashing_test_regression",
+            "thrashing_no_artifact_progress",
+            "thrashing_criterion_overbudget",
+            "thrashing_session_overbudget",
+            "thrashing_reflect_overdue",
+            "thrashing_plan_not_reread",
+            "thrashing_spot_check_severe",
+            "thrashing_spot_check_persistent"
+          ],
+          "properties": {
+            "thrashing_repeat_edit": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "lookback_tool_calls",
+                "repeat_edit_count",
+                "require_progress_stall"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "lookback_tool_calls": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "repeat_edit_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "require_progress_stall": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_oscillating_errors": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "lookback_tool_calls",
+                "repeat_error_count",
+                "normalize_whitespace"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "lookback_tool_calls": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "repeat_error_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "normalize_whitespace": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_backtrack_pattern": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "lookback_tool_calls",
+                "distinct_edit_events",
+                "require_revert_after_edit"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "lookback_tool_calls": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "distinct_edit_events": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "require_revert_after_edit": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_checkpoint_flood": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "checkpoint_commits_per_criterion"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "checkpoint_commits_per_criterion": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_tool_call_volume": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "historical_percentile",
+                "multiplier"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "historical_percentile": {
+                  "type": "number",
+                  "minimum": 50,
+                  "maximum": 100
+                },
+                "multiplier": {
+                  "type": "number",
+                  "exclusiveMinimum": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_criterion_stuck": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "duration_multiplier",
+                "minimum_minutes"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "duration_multiplier": {
+                  "type": "number",
+                  "exclusiveMinimum": 1
+                },
+                "minimum_minutes": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_progress_divergence": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "path_overlap_ratio",
+                "minimum_unplanned_mentions"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "path_overlap_ratio": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "minimum_unplanned_mentions": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_silent_scope_creep": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "unplanned_file_count",
+                "allow_listed_generated_artifacts"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "unplanned_file_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "allow_listed_generated_artifacts": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_test_regression": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "failing_runs",
+                "require_prior_pass"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "failing_runs": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "require_prior_pass": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_no_artifact_progress": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "stalled_tool_calls",
+                "require_active_criterion"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "stalled_tool_calls": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "require_active_criterion": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_criterion_overbudget": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "budget_multiplier",
+                "minimum_minutes"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "budget_multiplier": {
+                  "type": "number",
+                  "exclusiveMinimum": 1
+                },
+                "minimum_minutes": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_session_overbudget": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "budget_multiplier",
+                "minimum_minutes"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "budget_multiplier": {
+                  "type": "number",
+                  "exclusiveMinimum": 1
+                },
+                "minimum_minutes": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_reflect_overdue": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "tool_calls_without_reflect",
+                "ignore_if_recent_mini_reflect"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "tool_calls_without_reflect": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "ignore_if_recent_mini_reflect": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_plan_not_reread": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "tool_calls_since_plan_read",
+                "warn_before_block"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "tool_calls_since_plan_read": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "warn_before_block": {
+                  "type": "boolean"
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_spot_check_severe": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "high_finding_count",
+                "lookback_tool_calls"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "high_finding_count": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "lookback_tool_calls": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            },
+            "thrashing_spot_check_persistent": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "severity",
+                "recurrence_count"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "severity": {
+                  "enum": [
+                    "low",
+                    "medium",
+                    "high",
+                    "critical"
+                  ]
+                },
+                "recurrence_count": {
+                  "type": "integer",
+                  "minimum": 1
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

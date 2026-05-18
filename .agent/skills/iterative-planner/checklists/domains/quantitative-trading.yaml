@@ -1,0 +1,90 @@
+name: "Quantitative Trading Domain Checklist"
+
+# Extends the base quant.yaml with hardline requirements derived from
+# Evolution Trader and UFC/IPBS post-mortems (2026-03-29).
+# Applies to projects with tags: trading, quant, backtest, optimization, strategy
+
+items:
+  # --- Inherited from quant.yaml ---
+  - id: temporal-leakage
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "leakage"
+    severity: warn
+    description: "Data leakage / look-ahead bias investigated"
+
+  - id: temporal-ordering
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "temporal"
+    severity: warn
+    description: "Temporal ordering verified (no future data in features)"
+
+  - id: calibration-check
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "calibr"
+    severity: warn
+    description: "Calibration impact assessed in plan"
+
+  - id: backtest-determinism
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "determinism"
+    severity: warn
+    description: "Backtest determinism addressed (fixed seeds, no RNG pollution)"
+
+  # --- Hardline requirements (new, 2026-03-29) ---
+
+  - id: data-sufficiency
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "data sufficiency"
+    description: "Plan addresses minimum data volume for optimization (HR-003: min 500 data points, 1000 recommended)"
+
+  - id: train-test-temporal-split
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "temporal split"
+    description: "Plan enforces temporal train/test separation, not random splits (HR-004)"
+
+  - id: validation-wiring
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "validation"
+    description: "Plan confirms all validation modules are wired to the pipeline (HR-001, derived from M-022)"
+
+  - id: mutual-exclusivity
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "exclusive"
+    severity: warn
+    description: "Findings assess mutually exclusive configuration flags (HR-005, derived from M-024)"
+
+  - id: degenerate-output-handling
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "zero"
+    severity: warn
+    description: "Plan addresses zero-activity / degenerate output handling (HR-009, derived from M-010)"
+
+  - id: edge-over-baseline
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "baseline"
+    severity: warn
+    description: "Plan requires demonstration of edge over baseline (HR-008: buy-and-hold, random, market odds)"
+
+  - id: metric-lineage
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "metric"
+    severity: warn
+    description: "Plan addresses metric lineage — raw vs capped/transformed values (HR-006, derived from M-007)"
+
+  - id: oos-is-gap
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "out-of-sample"
+    severity: warn
+    description: "Plan documents OOS/IS gap threshold for strategy rejection"

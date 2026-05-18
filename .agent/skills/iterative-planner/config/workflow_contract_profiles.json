@@ -1,0 +1,117 @@
+{
+  "version": 1,
+  "contract_version": "2026-04-30.ritual-contracts.v1",
+  "profiles": {
+    "implementation_full": {
+      "enforcement": "strict",
+      "required_commands": ["work-preflight", "ritual-lint", "new", "gate"],
+      "required_artifacts_by_phase": {
+        "plan": ["plan.md", "verification_strategy.yaml"],
+        "execute": ["verification.md", "red_team_notes.md"],
+        "reflect": ["reflection.md", "verification.md"],
+        "validate": ["verification.md"]
+      },
+      "required_gates": ["explore-to-plan", "plan-to-execute", "execute-to-reflect", "reflect-to-validate", "validate-to-close"],
+      "required_proof_surfaces": ["verification_strategy.yaml", "verification.md", "reports/test_runs"],
+      "post_change_audits": ["red-team", "regression"]
+    },
+    "planning_only": {
+      "enforcement": "strict",
+      "required_commands": ["work-preflight", "ritual-lint", "new"],
+      "required_artifacts_by_phase": {
+        "plan": ["plan.md", "verification_strategy.yaml"]
+      },
+      "required_gates": ["explore-to-plan", "plan-to-execute"],
+      "required_proof_surfaces": ["verification_strategy.yaml"],
+      "post_change_audits": []
+    },
+    "diagnostic": {
+      "enforcement": "advisory",
+      "required_commands": ["work-preflight", "ritual-lint"],
+      "required_artifacts_by_phase": {
+        "plan": ["findings.md"]
+      },
+      "required_gates": [],
+      "required_proof_surfaces": ["findings.md"],
+      "post_change_audits": []
+    },
+    "audit": {
+      "enforcement": "strict",
+      "required_commands": ["work-preflight", "ritual-lint"],
+      "required_artifacts_by_phase": {
+        "execute": ["verification.md"],
+        "validate": ["verification.md"]
+      },
+      "required_gates": ["execute-to-reflect", "reflect-to-validate", "validate-to-close"],
+      "required_proof_surfaces": ["verification.md", "reports"],
+      "post_change_audits": []
+    },
+    "migration": {
+      "enforcement": "strict",
+      "required_commands": ["work-preflight", "ritual-lint", "migrate"],
+      "required_artifacts_by_phase": {
+        "plan": ["plan.md", "verification_strategy.yaml"],
+        "execute": ["verification.md"],
+        "validate": ["verification.md"]
+      },
+      "required_gates": ["explore-to-plan", "plan-to-execute", "execute-to-reflect", "reflect-to-validate", "validate-to-close"],
+      "required_proof_surfaces": ["verification_strategy.yaml", "verification.md", "reports"],
+      "post_change_audits": ["red-team"]
+    },
+    "stewardship": {
+      "enforcement": "strict",
+      "required_commands": ["work-preflight", "ritual-lint", "steward"],
+      "required_artifacts_by_phase": {
+        "plan": ["plan.md"],
+        "execute": ["verification.md"]
+      },
+      "required_gates": ["explore-to-plan", "plan-to-execute", "execute-to-reflect"],
+      "required_proof_surfaces": ["verification.md", "reports"],
+      "post_change_audits": []
+    },
+    "recipe": {
+      "enforcement": "strict",
+      "required_commands": ["work-preflight", "ritual-lint", "recipe"],
+      "required_artifacts_by_phase": {
+        "plan": ["plan.md", "verification_strategy.yaml"],
+        "execute": ["verification.md"]
+      },
+      "required_gates": ["explore-to-plan", "plan-to-execute", "execute-to-reflect", "reflect-to-validate"],
+      "required_proof_surfaces": ["verification_strategy.yaml", "verification.md", "reports"],
+      "post_change_audits": []
+    },
+    "release": {
+      "enforcement": "strict",
+      "required_commands": ["work-preflight", "ritual-lint"],
+      "required_artifacts_by_phase": {
+        "plan": ["plan.md", "verification_strategy.yaml"],
+        "validate": ["verification.md"]
+      },
+      "required_gates": ["explore-to-plan", "plan-to-execute", "execute-to-reflect", "reflect-to-validate", "validate-to-close"],
+      "required_proof_surfaces": ["verification_strategy.yaml", "verification.md", "reports"],
+      "post_change_audits": ["regression"]
+    },
+    "ontology": {
+      "enforcement": "strict",
+      "required_commands": ["work-preflight", "ritual-lint", "ontology"],
+      "required_artifacts_by_phase": {
+        "plan": ["plan.md", "verification_strategy.yaml"],
+        "execute": ["verification.md"]
+      },
+      "required_gates": ["explore-to-plan", "plan-to-execute", "execute-to-reflect", "reflect-to-validate"],
+      "required_proof_surfaces": ["verification_strategy.yaml", "verification.md", "ontology_facts.pl"],
+      "post_change_audits": ["red-team"]
+    },
+    "browser_evidence": {
+      "enforcement": "strict",
+      "required_commands": ["work-preflight", "ritual-lint"],
+      "required_artifacts_by_phase": {
+        "plan": ["plan.md", "verification_strategy.yaml"],
+        "execute": ["verification.md"]
+      },
+      "required_gates": ["explore-to-plan", "plan-to-execute", "execute-to-reflect", "reflect-to-validate"],
+      "required_proof_surfaces": ["verification_strategy.yaml", "verification.md", "reports/evidence"],
+      "post_change_audits": []
+    }
+  }
+}

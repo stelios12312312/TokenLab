@@ -1,0 +1,21 @@
+{
+  "id": "daily-runner",
+  "title": "Daily Runner",
+  "capability_id": "daily_runner",
+  "entity_ids": ["campaign"],
+  "required_params": ["campaign_id"],
+  "systems": ["reporting"],
+  "scripts": [
+    {
+      "path": "jobs/daily_runner.mjs",
+      "purpose": "Run the daily campaign workflow"
+    }
+  ],
+  "skills": [],
+  "workflows": ["/recipe-bootstrap"],
+  "runner": {
+    "type": "project_command",
+    "command": ["node", "jobs/daily_runner.mjs"]
+  },
+  "story_refs": ["US-075"]
+}

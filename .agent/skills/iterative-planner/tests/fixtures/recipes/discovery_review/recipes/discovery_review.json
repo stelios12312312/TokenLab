@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "generated_at": "2026-04-29T12:00:00.000Z",
+  "curated_by": "agent_manual_review",
+  "cwd": "/tmp/ipbs-shaped-fixture",
+  "goal": "run daily IPBS flow",
+  "goal_source": "fixture",
+  "candidates": [
+    {
+      "id": "daily_pipeline",
+      "title": "Daily Pipeline",
+      "status": "review_required",
+      "capability_id_guess": "run_daily_pipeline",
+      "recipe_id_guess": "daily-pipeline",
+      "entity_id_guess": "ipbs_daily",
+      "entity_title_guess": "IPBS Daily",
+      "systems": ["ipbs", "reporting"],
+      "skills": ["ipbs", "reporting"],
+      "workflows": [".agent/workflows/daily-ipbs.md"],
+      "required_params_guess": ["entity_id"],
+      "trigger_hints": [
+        "\\b(run|generate)\\b.*\\b(daily|pipeline)\\b"
+      ],
+      "scripts": [
+        {
+          "path": "scripts/prod/daily_runner.py",
+          "purpose": "Run the daily IPBS production pipeline",
+          "score": 24,
+          "matched_goal_tokens": ["daily", "runner"]
+        }
+      ],
+      "matched_request_history": [],
+      "matched_story_refs": ["US-074"],
+      "matched_story_context": [
+        {
+          "id": "US-074",
+          "title": "Recipe discovery review handoff",
+          "status": "active"
+        }
+      ],
+      "matched_persona_findings": [
+        {
+          "analyzer": "assumptions_challenger",
+          "severity": "info",
+          "message": "Confirm the runner remains project-owned before bootstrap.",
+          "location": "scripts/prod/daily_runner.py"
+        }
+      ],
+      "ontology_hints": {
+        "evidence": ["story_refs:US-074"]
+      },
+      "searched_surfaces": ["repo_entrypoints", "personas", "ontology"],
+      "search_status": "multi_surface",
+      "confidence": "high",
+      "runner_hint": {
+        "type": "command",
+        "cwd": ".",
+        "command": ["python3", "scripts/prod/daily_runner.py"],
+        "dry_run_flags": [],
+        "live_flags": []
+      },
+      "review": {
+        "decision": "approved",
+        "canonical_recipe_id": "daily-pipeline",
+        "canonical_capability_id": "run_daily_pipeline",
+        "canonical_entity_id": "ipbs_daily",
+        "canonical_entity_title": "IPBS Daily",
+        "required_params": ["entity_id"],
+        "runner": {
+          "type": "command",
+          "cwd": ".",
+          "command": ["python3", "scripts/prod/daily_runner.py", "--entity-id", "{entity_id}"],
+          "dry_run_flags": ["--dry-run"],
+          "live_flags": ["--live"]
+        }
+      }
+    },
+    {
+      "id": "pending_flow",
+      "title": "Pending Flow",
+      "status": "review_required",
+      "capability_id_guess": "run_pending_flow",
+      "recipe_id_guess": "pending-flow",
+      "entity_id_guess": null,
+      "entity_title_guess": null,
+      "systems": ["ipbs"],
+      "required_params_guess": [],
+      "scripts": [
+        {
+          "path": "scripts/prod/pending_flow.py",
+          "purpose": "Unreviewed candidate flow",
+          "score": 9
+        }
+      ],
+      "workflows": [],
+      "matched_story_refs": ["US-075"],
+      "matched_persona_findings": [],
+      "confidence": "low",
+      "review": {
+        "decision": "pending",
+        "canonical_recipe_id": "pending-flow",
+        "canonical_capability_id": "run_pending_flow",
+        "canonical_entity_id": null,
+        "canonical_entity_title": null,
+        "required_params": [],
+        "runner": null
+      }
+    }
+  ]
+}

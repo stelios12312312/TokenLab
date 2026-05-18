@@ -1,0 +1,19 @@
+{
+  "description": "Happy path: EXPLORE → PLAN with all requirements met",
+  "gate": "explore-to-plan",
+  "edge_case": false,
+  "input": {
+    "state_md": "# Current State: EXPLORE\n## Iteration: 0",
+    "findings_md": "# Findings\n## Index\n- [F-1] Finding one\n- [F-2] Finding two\n- [F-3] Finding three\n\n## F-1: First finding\nDetails here.\n\n## F-2: Second finding\nRoot Cause analysis here.\n\n## F-3: Third finding\nAdjacency discovery noted.\n\n## Key Constraints\nNone.",
+    "kb_files": ["index.md", "mistakes.md", "patterns.md", "gotchas.md"],
+    "health_report_exists": true,
+    "health_report_age_minutes": 30
+  },
+  "expected_checks": [
+    { "name": "Minimum 3 indexed findings in findings.md", "status": "PASS", "code": "GATE-EXP-001" },
+    { "name": "Root cause analysis present in findings", "status": "PASS", "code": "GATE-EXP-002" },
+    { "name_pattern": "Knowledge base file exists: knowledge/*", "status": "PASS", "code": "GATE-EXP-003", "count": 4 },
+    { "name": "Adjacency discovery performed", "status": "PASS", "code": "GATE-EXP-004" }
+  ],
+  "expected_result": "PASS"
+}

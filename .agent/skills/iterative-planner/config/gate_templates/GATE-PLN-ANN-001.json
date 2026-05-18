@@ -1,0 +1,32 @@
+{
+  "gate_id": "GATE-PLN-ANN-001",
+  "title": "New files in this plan need @planner annotations",
+  "accepted_patterns": [
+    "Every annotation-worthy file in `## Files To Modify` must declare at least one @planner: annotation.",
+    "Annotation-worthy paths (default): scripts/, src/, lib/, services/, .agent/skills/iterative-planner/scripts/.",
+    "Override the allowlist via PLANNER_ANNOTATION_WORTHY_GLOBS (semicolon-separated path prefixes).",
+    "Disable entirely (advisory mode) via PLANNER_ANNOTATION_DISCIPLINE=off.",
+    "Required at minimum: @planner:capability OR @planner:module.",
+    "Recommended for traceability: @planner:story_id, @planner:proves.",
+    "Format: comment-prefix + @planner:<key> = <value>",
+    "    JS/TS/MJS/Go/Rust/Java/C/C++/Swift/Kotlin/PHP: //",
+    "    Python/Ruby/Shell/YAML/TOML/R/Julia: #",
+    "    Prolog: %% (or %)"
+  ],
+  "paste_template": [
+    "// At the top of <file>, replace each <FILL: ...> with a real value:",
+    "// @planner:module = <FILL: logical module, e.g. supervisor_runner>",
+    "// @planner:capability = <FILL: what this provides, e.g. advisor_verdict_renderer>",
+    "// @planner:story_id = <FILL: US-NNN from reports/user_story_audit/story_registry.json>",
+    "//",
+    "// OR declare a waiver in plan.md (in any section):",
+    "// [KB_NOT_APPLICABLE: annotation: <file-path>: <real reason, not TBD or placeholder>]"
+  ],
+  "worked_example": ".agent/skills/iterative-planner/examples/passing/GATE-PLN-ANN-001.md:lines 1-30",
+  "autofix": {
+    "available": true,
+    "command": "node .agent/skills/iterative-planner/scripts/annotation_assist.mjs --apply",
+    "text": "annotation_assist.mjs proposes high-confidence annotations from filename/structure heuristics; lower-confidence cases land in plans/annotation_review.md for review. After running, re-check your new files; the supervisor may still need @planner:story_id added manually."
+  },
+  "retry": "node .agent/skills/iterative-planner/scripts/transition.mjs plan-to-execute"
+}

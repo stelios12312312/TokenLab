@@ -1,0 +1,86 @@
+name: "PLAN → EXECUTE Gate"
+
+items:
+  - id: problem-statement
+    check: not_contains_string
+    path: "{plan-dir}/plan.md"
+    string: "To be defined during PLAN"
+    description: "Problem statement has been defined (not still template)"
+
+  - id: files-to-modify
+    check: not_contains_string
+    path: "{plan-dir}/plan.md"
+    string: "To be determined after EXPLORE"
+    description: "Files to modify have been listed (not still template)"
+
+  - id: steps-defined
+    check: not_contains_string
+    path: "{plan-dir}/plan.md"
+    string: "To be determined after EXPLORE"
+    description: "Execution steps have been defined"
+
+  - id: verification-strategy
+    check: not_contains_string
+    path: "{plan-dir}/plan.md"
+    string: "To be defined before first EXECUTE"
+    description: "Verification strategy has been defined"
+
+  - id: success-criteria
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "## Success Criteria"
+    description: "Success criteria section exists in plan.md"
+
+  - id: fix-classification
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "## Fix Classification"
+    severity: warn
+    description: "Fix classification section present (required for bugs, optional for features)"
+
+  - id: decision-logged
+    check: file_not_empty
+    path: "{plan-dir}/decisions.md"
+    severity: warn
+    description: "At least one decision logged in decisions.md"
+
+  - id: kb-applied-tag
+    check: contains_any_string
+    path: "{plan-dir}/plan.md"
+    include:
+      - "[KB_APPLIED"
+      - "[KB_NOT_APPLICABLE"
+    description: "Plan references KB learnings via [KB_APPLIED] or [KB_NOT_APPLICABLE] tag (FAIL — must prove past learnings were considered)"
+
+  - id: invariants-documented
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "invariant"
+    severity: warn
+    description: "Plan documents which invariants (Prolog I-NNN) apply to this change and will be enforced"
+
+  - id: orphan-feature-resolved
+    check: not_contains_string
+    path: "{plan-dir}/plan.md"
+    string: "[ORPHAN_FEATURE]"
+    severity: warn
+    description: "No unresolved [ORPHAN_FEATURE] tags in plan.md — resolve with [STORY_CREATED: US-NNN] or [MAPPED_TO: US-NNN] before EXECUTE"
+
+  # Pre-mortem gate (HR-series, added 2026-03-29)
+  - id: pre-mortem-documented
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "Pre-Mortem"
+    severity: warn
+    description: "Plan includes a Pre-Mortem section answering: 'If this fails in 6 months, what's the most likely reason?' (gates.json pre_mortem=true)"
+
+  # Mistakes KB cross-reference (added 2026-04-03)
+  # Requires agent to explicitly reference at least one past mistake before executing.
+  # Prevents recurring bugs catalogued in mistakes.md from being ignored.
+  # Failure code: GATE-PTE-012
+  - id: mistakes-consulted
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "M-0"
+    severity: warn
+    description: "At least one M-NNN mistake referenced in findings.md — proves past mistakes were consulted before planning (WARN — write 'M-000: N/A — no relevant past mistakes' if none apply)"

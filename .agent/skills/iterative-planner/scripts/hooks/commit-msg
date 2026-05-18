@@ -1,0 +1,20 @@
+#!/bin/sh
+# --- iterative-planner commit-msg hook ---
+# commit-msg: iterative-planner close/proof body enforcement
+
+GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+SKILL_DIR="${ITERATIVE_PLANNER_SKILL_DIR:-$GIT_ROOT/.agent/skills/iterative-planner}"
+CHECK_SCRIPT="$SKILL_DIR/scripts/hooks/commit_msg_check.mjs"
+RUN_NODE="$SKILL_DIR/scripts/hooks/run-node.sh"
+
+[ -f "$CHECK_SCRIPT" ] || {
+  echo "ERROR: iterative-planner commit-msg checker not found: $CHECK_SCRIPT" >&2
+  exit 1
+}
+
+if [ -f "$RUN_NODE" ]; then
+  ITERATIVE_PLANNER_PROJECT_ROOT="$GIT_ROOT" sh "$RUN_NODE" "$CHECK_SCRIPT" "$1"
+else
+  ITERATIVE_PLANNER_PROJECT_ROOT="$GIT_ROOT" node "$CHECK_SCRIPT" "$1"
+fi
+exit $?

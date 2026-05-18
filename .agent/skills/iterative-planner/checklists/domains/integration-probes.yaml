@@ -1,0 +1,62 @@
+name: "Integration Probe Templates"
+description: >
+  Standard probes to copy into the Assumption Ledger for common integration patterns.
+  When a bug description matches any signal keyword, use the corresponding probe template.
+
+templates:
+  webhook:
+    assumption: "Webhook is registered and receiving events"
+    probe: "curl the webhook info endpoint (e.g. Telegram getWebhookInfo, Stripe webhook list) or check delivery logs"
+    signals: ["webhook", "callback", "subscription", "event listener", "hook"]
+    example: |
+      | A-1 | Webhook receiving events | `curl https://api.telegram.org/botTOKEN/getWebhookInfo` | `{"last_error_message": "SSL error"}` | ❌ VIOLATED |
+
+  database-relationship:
+    assumption: "Parent-child records are linked via FK/join table"
+    probe: "SELECT with JOIN to verify FK integrity, COUNT matching records"
+    signals: ["attached", "linked", "belongs to", "parent", "child", "foreign key", "relationship", "associated"]
+    example: |
+      | A-1 | Quizzes linked to course | `SELECT COUNT(*) FROM quiz_course_map WHERE course_id=X` | 0 | ❌ VIOLATED |
+
+  api-connection:
+    assumption: "External API is reachable and authenticated"
+    probe: "curl the health/status/me endpoint with credentials, check HTTP status"
+    signals: ["API", "endpoint", "service", "integration", "connector", "REST", "GraphQL"]
+    example: |
+      | A-1 | API reachable | `curl -H 'Authorization: Bearer ...' https://api.example.com/health` | `200 OK` | ✅ VERIFIED |
+
+  message-queue:
+    assumption: "Messages are being produced and consumed"
+    probe: "Check queue depth, last message timestamp, consumer lag, dead-letter queue size"
+    signals: ["queue", "message", "publish", "subscribe", "consumer", "producer", "broker", "kafka", "rabbitmq", "redis pub"]
+    example: |
+      | A-1 | Consumer processing | `redis-cli XLEN mystream` | 0 (empty, consumer caught up) | ✅ VERIFIED |
+
+  bot-connection:
+    assumption: "Bot is connected, polling/receiving, and responding"
+    probe: "Check bot status API, send test message, verify receipt in logs"
+    signals: ["bot", "telegram", "discord", "slack", "chat", "polling", "long-poll"]
+    example: |
+      | A-1 | Bot token valid | `curl https://api.telegram.org/botTOKEN/getMe` | `{"ok": true, "result": {"username": "mybot"}}` | ✅ VERIFIED |
+      | A-2 | Bot receiving updates | `curl .../getUpdates?limit=1` | `{"result": []}` (no recent messages) | ❌ VIOLATED |
+
+  file-pipeline:
+    assumption: "Input/output files exist, are readable, and have expected content"
+    probe: "ls -la the path, head/tail the file, wc -l for row count, check permissions"
+    signals: ["file", "path", "input", "output", "pipeline", "ETL", "export", "import", "CSV", "JSON", "Parquet"]
+    example: |
+      | A-1 | Input file exists | `ls -la data/input.csv` | `-rw-r--r-- 1 user staff 0 Mar 21 12:00 data/input.csv` (0 bytes!) | ❌ VIOLATED |
+
+  authentication:
+    assumption: "Credentials/tokens are valid and have correct permissions"
+    probe: "Call a read-only authenticated endpoint, check response for auth errors"
+    signals: ["auth", "token", "credential", "permission", "401", "403", "login", "session", "cookie", "JWT"]
+    example: |
+      | A-1 | Token valid | `curl -H 'Authorization: Bearer $TOKEN' .../me` | `{"error": "token_expired"}` | ❌ VIOLATED |
+
+  cron-scheduler:
+    assumption: "Scheduled job is registered and firing"
+    probe: "Check cron logs, systemd timer status, or scheduler dashboard for last execution time"
+    signals: ["cron", "scheduler", "periodic", "timer", "scheduled", "interval", "recurring"]
+    example: |
+      | A-1 | Cron job registered | `crontab -l | grep myjob` | No output (not registered!) | ❌ VIOLATED |

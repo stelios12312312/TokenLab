@@ -1,0 +1,28 @@
+{
+  "gate_id": "GATE-ETR-008",
+  "title": "Red-team vectors have content depth",
+  "accepted_patterns": [
+    "Exactly one of these per section, case-sensitive:",
+    "  `Attack:`",
+    "  `**Attack**:`",
+    "  `### Attack`",
+    "Repeat the same shape for Impact and Mitigation.",
+    "NOT accepted: `**Attack:**` because the colon is inside the bold span."
+  ],
+  "paste_heading": "Paste this into each shallow vector",
+  "paste_template": [
+    "**Attack**: <one-paragraph adversarial scenario; name trigger, input, and fault>",
+    "",
+    "**Impact**: <production consequence; name the user, data, or system damage>",
+    "",
+    "**Mitigation**:",
+    "1. <existing defense; cite file:line or test name>",
+    "2. <remaining gap if any, or \"None\" if fully mitigated>"
+  ],
+  "worked_example": ".agent/skills/iterative-planner/examples/passing/GATE-ETR-008.md:lines 1-15",
+  "autofix": {
+    "available": false,
+    "text": "None - content gates require substantive analysis. Literal placeholder text still fails this gate."
+  },
+  "retry": "node .agent/skills/iterative-planner/scripts/transition.mjs execute-to-reflect"
+}

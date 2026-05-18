@@ -1,0 +1,26 @@
+name: "Orphaned Capability Check"
+type: orphaned_capabilities
+quick: true
+# v7.3.0: demoted from fail to warn. Orphaned-capability findings are repo
+# hygiene — useful at /advisor or /housekeeping time, not at every plan
+# transition. Forcing agents to register every utility script just to clear
+# the gate created ritual artifacts unrelated to the actual task.
+severity: warn
+scan_paths:
+  - ".agent/skills/**/scripts/**/*.mjs"
+  - ".agent/skills/**/scripts/**/*.py"
+  - ".agent/skills/**/scripts/**/*.sh"
+  - ".agent/skills/**/prolog/**/*.pl"
+  - ".agent/workflows/**/*.md"
+exclude_paths:
+  - "node_modules/**"
+  - ".git/**"
+  - "**/lib/**"
+reference_docs:
+  - "README.md"
+  - ".agent/ADAPTATION-GUIDE.md"
+  - ".agent/skills/**/README.md"
+  - ".agent/skills/**/SKILL.md"
+  - ".agent/skills/**/MIGRATION.md"
+  - ".agent/skills/**/references/**/*.md"
+  - ".agent/rules.md"

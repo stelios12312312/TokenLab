@@ -1,0 +1,37 @@
+name: "AI Safety / Multi-Agent Domain Checklist"
+
+items:
+  - id: tone-policy
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "tone"
+    severity: warn
+    description: "Tone/communication policy compliance checked"
+
+  - id: pii-handling
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "PII"
+    severity: warn
+    description: "PII handling and redaction verified"
+
+  - id: guardrail-ordering
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "guardrail"
+    severity: warn
+    description: "Guardrail ordering verified (input vs output, no interference)"
+
+  - id: escalation-paths
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "escalat"
+    severity: warn
+    description: "Escalation paths verified (human handoff triggers working)"
+
+  - id: behavioral-eval
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "eval"
+    severity: warn
+    description: "Behavioral evaluation plan defined (multi-turn dialogue tests)"

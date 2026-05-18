@@ -1,0 +1,83 @@
+{
+  "projects": [
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Courses/Executives course/tesseract-automation-engine",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Courses/crawler-extractor-agent",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Courses/learndash-auto-course-tesseract",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Courses/tender-copilot",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Courses/tesseract-career-coach",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Courses/wp-membership-plugin/wp-membership-plugin-tesseract",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Hive/hive-demo",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Investment/ValueInvestingAI",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Iterative Planner",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Janus/janus_v2_mvp/janus_mvp_2",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Kalgera/financial_risk",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Kemeta",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Memebot/learndash-auto-course-tesseract",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Metalos/evolution-trading-scientist",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Publishing Assistant",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/TalentInc/progression-ai-engine",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Tennis/Sport betting/ipbs_datapack_starter",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Tennis/trueskill-atp-tennis",
+      "type": "standard"
+    }
+  ],
+  "last_scan": "2026-05-16T21:50:58.618Z",
+  "scan_roots": [
+    "/Users/stylianoskampakis/Dropbox (Personal)/Freelance",
+    "/Users/stylianoskampakis/Documents",
+    "/Users/stylianoskampakis/Desktop"
+  ],
+  "source_project_path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab"
+}

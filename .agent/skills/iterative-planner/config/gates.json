@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "description": "Gate registry — single source of truth for all transition gates. Scripts read from here instead of hardcoding gate names.",
+  "gates": {
+    "explore-to-plan": {
+      "from": "explore",
+      "to": "plan",
+      "authority_profile": {
+        "phase": "plan",
+        "agent_role": "primary",
+        "persona_role": "challenge",
+        "ontology_role": "contract_enforcement",
+        "continuous_execute_supervision": false
+      },
+      "persona_audit": true,
+      "health_scan": "quick",
+      "trace_audit": true,
+      "reachability_audit": true,
+      "failure_code_prefix": "GATE-EXP"
+    },
+    "plan-to-execute": {
+      "from": "plan",
+      "to": "execute",
+      "authority_profile": {
+        "phase": "execute",
+        "agent_role": "primary",
+        "persona_role": "boundary_only",
+        "ontology_role": "boundary_verification",
+        "continuous_execute_supervision": false
+      },
+      "persona_audit": true,
+      "health_scan": null,
+      "trace_audit": true,
+      "reachability_audit": true,
+      "pre_mortem": true,
+      "pre_mortem_min_risks": 3,
+      "failure_code_prefix": "GATE-PLN"
+    },
+    "execute-to-reflect": {
+      "from": "execute",
+      "to": "reflect",
+      "authority_profile": {
+        "phase": "reflect",
+        "agent_role": "primary",
+        "persona_role": "challenge",
+        "ontology_role": "contract_enforcement",
+        "continuous_execute_supervision": false
+      },
+      "persona_audit": true,
+      "health_scan": null,
+      "trace_audit": true,
+      "reachability_audit": true,
+      "hardline_audit": true,
+      "hardline_personas": ["wiring_auditor", "assumptions_challenger", "config_integrity", "traceability"],
+      "failure_code_prefix": "GATE-ETR"
+    },
+    "reflect-to-validate": {
+      "from": "reflect",
+      "to": "validate",
+      "authority_profile": {
+        "phase": "validate",
+        "agent_role": "primary",
+        "persona_role": "proof_challenge",
+        "ontology_role": "proof_consistency",
+        "continuous_execute_supervision": false
+      },
+      "persona_audit": true,
+      "health_scan": "full",
+      "trace_audit": true,
+      "reachability_audit": true,
+      "failure_code_prefix": "GATE-REF"
+    },
+    "validate-to-close": {
+      "from": "validate",
+      "to": "close",
+      "authority_profile": {
+        "phase": "close",
+        "agent_role": "primary",
+        "persona_role": "challenge",
+        "ontology_role": "contract_enforcement",
+        "continuous_execute_supervision": false
+      },
+      "persona_audit": true,
+      "health_scan": "full",
+      "trace_audit": true,
+      "reachability_audit": true,
+      "failure_code_prefix": "GATE-VAL"
+    },
+    "notify-user": {
+      "from": ["close", "validate"],
+      "to": null,
+      "authority_profile": {
+        "phase": "close",
+        "agent_role": "primary",
+        "persona_role": "challenge",
+        "ontology_role": "contract_enforcement",
+        "continuous_execute_supervision": false
+      },
+      "audit_only": true,
+      "persona_audit": true,
+      "health_scan": null,
+      "trace_audit": true,
+      "reachability_audit": false,
+      "failure_code_prefix": "GATE-NTF"
+    }
+  }
+}

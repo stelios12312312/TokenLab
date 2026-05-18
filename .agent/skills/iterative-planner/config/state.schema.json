@@ -1,0 +1,667 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Plan State (Canonical)",
+  "description": "Machine-readable plan state. Written alongside state.md for deterministic tooling.",
+  "type": "object",
+  "required": ["version", "state", "iteration", "plan_dir", "created_at", "updated_at"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Schema version for forward compatibility"
+    },
+    "state": {
+      "type": "string",
+      "enum": ["EXPLORE", "PLAN", "EXECUTE", "REFLECT", "VALIDATE", "RE_PLAN", "CLOSE"],
+      "description": "Current plan state"
+    },
+    "iteration": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Current iteration number"
+    },
+    "plan_dir": {
+      "type": "string",
+      "pattern": "^plan_\\d{4}-\\d{2}-\\d{2}_[0-9a-f]{8,16}$",
+      "description": "Plan directory name"
+    },
+    "goal": {
+      "type": "string",
+      "description": "Plan goal text"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of plan creation"
+    },
+    "updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO 8601 UTC timestamp of last state change"
+    },
+    "current_step": {
+      "type": ["string", "null"],
+      "description": "Current plan step being executed"
+    },
+    "fix_attempts": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of fix attempts for current step"
+    },
+    "transitions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["from", "to", "timestamp"],
+        "properties": {
+          "from": { "type": "string", "enum": ["INIT", "EXPLORE", "PLAN", "EXECUTE", "REFLECT", "VALIDATE", "RE_PLAN", "CLOSE"] },
+          "to": { "type": "string", "enum": ["EXPLORE", "PLAN", "EXECUTE", "REFLECT", "VALIDATE", "RE_PLAN", "CLOSE"] },
+          "timestamp": { "type": "string", "format": "date-time" },
+          "gate_result": { "type": "string", "enum": ["PASS", "FAIL", "SKIP"] },
+          "failure_codes": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "script_versions": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          },
+          "marker": { "type": "string" }
+        }
+      },
+      "description": "Ordered transition history"
+    },
+    "change_manifest": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Files changed in current iteration"
+    },
+    "script_versions": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Hash of each script at last transition (for drift detection)"
+    },
+    "rule_bundle_version": {
+      "type": "string",
+      "description": "Semantic version of the Prolog rule bundle used"
+    },
+    "trace_summary": {
+      "type": "object",
+      "properties": {
+        "total_calls": { "type": "integer", "minimum": 0 },
+        "coverage_pct": { "type": "number", "minimum": 0, "maximum": 100 },
+        "ide": { "type": "string" },
+        "rules_checked": { "type": "integer", "minimum": 0 },
+        "rules_passed": { "type": "integer", "minimum": 0 },
+        "last_audit": { "type": "string", "format": "date-time" }
+      },
+      "description": "Tool trace audit summary from last gate transition"
+    },
+    "transition_nonce": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{16}$",
+      "description": "Nonce proving state.json was written by transition.mjs (RT-001)"
+    },
+    "approval_nonce_hash": {
+      "type": "string",
+      "description": "SHA-256 hash of user approval nonce (RT-002)"
+    },
+    "kb_digest_hash": {
+      "type": "string",
+      "description": "SHA-256 hash of KB content + salt (RT-003)"
+    },
+    "knowledge_snapshot": {
+      "type": ["object", "null"],
+      "description": "Baseline hash snapshot of plans/knowledge/ captured at plan creation",
+      "properties": {
+        "captured_at": { "type": "string", "format": "date-time" },
+        "hash": { "type": "string" },
+        "files": {
+          "type": "object",
+          "additionalProperties": {
+            "type": ["string", "null"]
+          }
+        }
+      }
+    },
+    "recovery_context": {
+      "type": "object",
+      "description": "Optional lineage metadata when a plan is recovered from a poisoned predecessor",
+      "properties": {
+        "mode": { "type": "string", "enum": ["source", "successor"] },
+        "reason": { "type": "string" },
+        "recovered_at": { "type": "string", "format": "date-time" },
+        "recovered_from_plan": { "type": ["string", "null"] },
+        "successor_plan": { "type": ["string", "null"] },
+        "carried_artifacts": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "poisoned_gates": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "gate": { "type": "string" },
+              "consecutive_fails": { "type": "integer", "minimum": 0 },
+              "last_attempt_at": { "type": ["string", "null"], "format": "date-time" },
+              "failure_codes": {
+                "type": "array",
+                "items": { "type": "string" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "program_context": {
+      "type": "object",
+      "description": "Optional parent Program Packet context when this plan is executing a program ticket.",
+      "properties": {
+        "program_id": { "type": "string" },
+        "program_title": { "type": "string" },
+        "program_packet_path": { "type": "string" },
+        "epic_id": { "type": "string" },
+        "ticket_id": { "type": "string" },
+        "ticket_title": { "type": "string" },
+        "ticket_type": { "type": "string" },
+        "ticket_lifecycle": {
+          "type": "string",
+          "enum": ["proposed", "ready", "in_progress", "blocked", "done", "verified", "closed", "deferred"]
+        },
+        "child_plan_policy": {
+          "type": "string",
+          "enum": ["required", "not_required", "waived"]
+        },
+        "verification_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "close_signals": {
+      "type": "object",
+      "description": "Structured close-readiness signals refreshed from plan artifacts",
+      "properties": {
+        "last_refreshed_at": { "type": "string", "format": "date-time" },
+        "progress": {
+          "type": "object",
+          "properties": {
+            "open_items": { "type": "integer", "minimum": 0 },
+            "completed_items": { "type": "integer", "minimum": 0 },
+            "satisfied": { "type": "boolean" }
+          }
+        },
+        "kb": {
+          "type": "object",
+          "properties": {
+            "baseline_hash": { "type": ["string", "null"] },
+            "current_hash": { "type": ["string", "null"] },
+            "changed_since_plan_start": { "type": "boolean" },
+            "status": { "type": "string" },
+            "satisfied": { "type": "boolean" },
+            "explicit_no_new_learnings": { "type": "boolean" },
+            "explicit_updated_tag": { "type": "boolean" },
+            "signoff_sources": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "signoff_reason": { "type": ["string", "null"] },
+            "legacy_entries_detected": { "type": "boolean" }
+          }
+        },
+        "planner_core": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "migration_smoke_verified": { "type": "boolean" },
+            "planner_journey_verified": { "type": "boolean" },
+            "satisfied": { "type": "boolean" },
+            "verification_command": { "type": ["string", "null"] },
+            "journey_verification_command": { "type": ["string", "null"] }
+          }
+        },
+        "test_evidence": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "satisfied": { "type": "boolean" },
+            "status": { "type": "string" },
+            "code_paths": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "test_paths": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "test_command_verified": { "type": "boolean" },
+            "waiver_reason": { "type": ["string", "null"] },
+            "waiver_approved_by": { "type": ["string", "null"] }
+          }
+        },
+        "anti_recurrence": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "satisfied": { "type": "boolean" },
+            "status": { "type": "string" },
+            "trigger_terms": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "guard_types": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "waiver_reason": { "type": ["string", "null"] },
+            "waiver_approved_by": { "type": ["string", "null"] }
+          }
+        },
+        "mistake_registry": {
+          "type": "object",
+          "properties": {
+            "registry_present": { "type": "boolean" },
+            "registry_usable": { "type": "boolean" },
+            "registry_error": { "type": ["string", "null"] },
+            "registry_version": { "type": "integer", "minimum": 1 },
+            "status": { "type": "string" },
+            "active_count": { "type": "integer", "minimum": 0 },
+            "active_ids": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "active_mistakes": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "title": { "type": "string" },
+                  "summary": { "type": ["string", "null"] },
+                  "kb_refs": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "required_guards": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "recommended_annotations": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "verification_hooks": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "obligation_ids": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "severity": { "type": "string" },
+                  "matched_trigger_families": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_files": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_declared_files": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_observed_files": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_terms": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_deliverable_kinds": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_story_tags": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "learned_obligations": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "satisfied": { "type": "boolean" },
+            "status": { "type": "string" },
+            "registry_present": { "type": "boolean" },
+            "registry_version": { "type": "integer", "minimum": 1 },
+            "source_mistake_registry_present": { "type": "boolean" },
+            "source_mistake_registry_usable": { "type": "boolean" },
+            "source_mistake_registry_error": { "type": ["string", "null"] },
+            "degraded_source_registry": { "type": "boolean" },
+            "degraded_source_registry_count": { "type": "integer", "minimum": 0 },
+            "degraded_source_registry_ids": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "active_ids": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "active_count": { "type": "integer", "minimum": 0 },
+            "satisfied_count": { "type": "integer", "minimum": 0 },
+            "active_obligations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "source_mistake": { "type": ["string", "null"] },
+                  "source_mistake_registered": { "type": ["boolean", "null"] },
+                  "source_registry_degraded": { "type": "boolean" },
+                  "source_registry_status": { "type": ["string", "null"] },
+                  "subject_id": { "type": "string" },
+                  "verification_mode": { "type": "string" },
+                  "severity": { "type": "string" },
+                  "required_by_phase": { "type": "string" },
+                  "satisfied": { "type": "boolean" },
+                  "status": { "type": "string" },
+                  "evidence_source": { "type": ["string", "null"] },
+                  "activation_source": { "type": ["string", "null"] },
+                  "guard_types": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "recommended_annotations": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "verification_hooks": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "kb_refs": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_trigger_families": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_files": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_declared_files": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_observed_files": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_terms": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_deliverable_kinds": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_story_tags": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "waiver_reason": { "type": ["string", "null"] },
+                  "waiver_approved_by": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        },
+        "verification_obligation_synthesis": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "satisfied": { "type": "boolean" },
+            "status": { "type": "string" },
+            "detail": { "type": ["string", "null"] },
+            "active_count": { "type": "integer", "minimum": 0 },
+            "required_plan_fields": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "required_reporting_sections": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "required_validation_levels": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "systems_exercised_present": { "type": "boolean" },
+            "remaining_unverified_present": { "type": "boolean" },
+            "sufficiency_rationale_present": { "type": "boolean" },
+            "validation_status": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "source_summary": {
+              "type": "object",
+              "properties": {
+                "repo_contexts": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "task_shape_signals": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "ontology_signals": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "persona_signals": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "system_boundaries": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            },
+            "obligations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "label": { "type": "string" },
+                  "verification_mode": { "type": "string" },
+                  "required_proof_type": { "type": "string" },
+                  "requires_audit_review": { "type": "boolean" },
+                  "rationale": { "type": "string" },
+                  "matched_goal_terms": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_files": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_deliverable_kinds": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_story_tags": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "matched_persona_packs": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "source_signals": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "system_boundaries_touched": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "quant_results_validation": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "satisfied": { "type": "boolean" },
+            "status": {
+              "type": "string",
+              "enum": ["missing_artifact", "diagnostic_only", "blocked_alarm", "promotion_blocked", "satisfied", "not_required"]
+            },
+            "required_artifact": { "type": "string" },
+            "artifact_present": { "type": "boolean" },
+            "artifact_valid": { "type": "boolean" },
+            "applicable": { "type": "boolean" },
+            "run_class": {
+              "type": ["string", "null"],
+              "enum": ["smoke", "wiring_proof", "exploratory", "serious_search", "promotion_candidate", null]
+            },
+            "promotion_verdict": {
+              "type": ["string", "null"],
+              "enum": ["diagnostic_only", "not_promotable", "promotable", "blocked", null]
+            },
+            "blocking_issues": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "warnings": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "detail": { "type": ["string", "null"] }
+          }
+        },
+        "semantic_substrate": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "satisfied": { "type": "boolean" },
+            "status": {
+              "type": "string",
+              "enum": ["not_required", "satisfied", "missing_relevant_gaps"]
+            },
+            "scan_scope": {
+              "type": "string",
+              "enum": ["planned_plus_nearby"]
+            },
+            "scan_scope_used": {
+              "type": "string",
+              "enum": ["planned_plus_nearby", "repo_wide_fallback"]
+            },
+            "scope_degraded": { "type": "boolean" },
+            "scope_degraded_reason": {
+              "type": ["string", "null"],
+              "enum": ["missing_planned_files", "no_scoped_candidates", "no_planned_files", null]
+            },
+            "relevant_domains": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "relevance_evidence": {
+              "type": "object",
+              "properties": {
+                "config": {
+                  "type": "string",
+                  "enum": ["none", "weak", "strong"]
+                },
+                "story_semantics": {
+                  "type": "string",
+                  "enum": ["none", "weak", "strong"]
+                }
+              }
+            },
+            "advisory_gap_ids": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "blocking_gap_ids": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "sources_present": {
+              "type": "object",
+              "properties": {
+                "annotations": { "type": "boolean" },
+                "story_registry": { "type": "boolean" },
+                "persona_artifacts": { "type": "boolean" }
+              }
+            },
+            "detail": { "type": ["string", "null"] }
+          }
+        },
+        "intent_evidence": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "satisfied": { "type": "boolean" },
+            "status": { "type": "string" },
+            "contract_present": { "type": "boolean" },
+            "goal_requires_contract": { "type": "boolean" },
+            "required_deliverables": { "type": "integer", "minimum": 0 },
+            "satisfied_deliverables": { "type": "integer", "minimum": 0 },
+            "primary_user": { "type": ["string", "null"] },
+            "job_to_be_done": { "type": ["string", "null"] },
+            "detail": { "type": ["string", "null"] },
+            "missing_fields": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "missing_deliverables": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "deliverables": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "satisfied": { "type": "boolean" },
+                  "status": { "type": "string" },
+                  "waiver_reason": { "type": ["string", "null"] },
+                  "waiver_approved_by": { "type": ["string", "null"] },
+                  "evidence_mode": { "type": ["string", "null"] }
+                }
+              }
+            }
+          }
+        },
+        "ontology": {
+          "type": "object",
+          "properties": {
+            "refreshed": { "type": "boolean" },
+            "refreshed_at": { "type": "string", "format": "date-time" },
+            "facts_path": { "type": "string" },
+            "error": { "type": "string" },
+            "meta": { "type": "object" }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,0 +1,65 @@
+name: "WordPress Plugin Domain Checklist"
+
+items:
+  - id: hook-tracing
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "hook"
+    severity: warn
+    description: "WordPress hooks (actions/filters) affecting change identified"
+
+  - id: ajax-mapping
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "ajax"
+    severity: warn
+    description: "AJAX handlers traced (frontend → backend paths)"
+
+  - id: rest-auth
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "REST"
+    severity: warn
+    description: "REST API authentication verified (nonces, capabilities)"
+
+  - id: singleton-freshness
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "option"
+    severity: warn
+    description: "Options/singletons checked for stale cached values"
+
+  - id: provider-parity
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "provider"
+    severity: warn
+    description: "AI/service provider classes checked for parity (if applicable)"
+
+  - id: missing-content-turbulence
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "Are there any active migrations, recent plugin uninstalls, or major structural changes active on the site right now?"
+    severity: warn
+    description: "WordPress missing-content incidents ask the turbulence question before backend speculation"
+
+  - id: missing-content-dom-probe
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "raw HTML"
+    severity: warn
+    description: "WordPress missing-content incidents inspect the exact broken URL at the raw HTML/DOM layer"
+
+  - id: missing-content-branch
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "0 bytes"
+    severity: warn
+    description: "WordPress missing-content incidents branch render crashes from query/data failures explicitly"
+
+  - id: missing-content-entity-preservation
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "direct DB proof"
+    severity: warn
+    description: "WordPress missing-content incidents preserve CPT/data structure until direct DB proof justifies changes"

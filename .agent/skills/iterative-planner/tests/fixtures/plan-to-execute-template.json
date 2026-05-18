@@ -1,0 +1,16 @@
+{
+  "description": "Edge case: PLAN → EXECUTE with template text still present",
+  "gate": "plan-to-execute",
+  "edge_case": true,
+  "input": {
+    "state_md": "# Current State: PLAN\n## Iteration: 1",
+    "plan_md": "# Plan v0\n\n## Goal\nFix the bug\n\n## Problem Statement\n*To be defined during PLAN.*\n\n## Files To Modify\n*To be determined after EXPLORE.*\n\n## Steps\n*To be determined after EXPLORE.*\n\n## Verification Strategy\n*To be defined during PLAN.*"
+  },
+  "expected_checks": [
+    { "name": "Problem Statement defined in plan.md", "status": "FAIL", "code": "GATE-PLN-001" },
+    { "name": "Files to modify listed in plan.md", "status": "FAIL", "code": "GATE-PLN-002" },
+    { "name": "Execution steps defined in plan.md", "status": "FAIL", "code": "GATE-PLN-003" },
+    { "name": "Verification Strategy section present in plan.md", "status": "FAIL", "code": "GATE-PLN-004" }
+  ],
+  "expected_result": "FAIL"
+}

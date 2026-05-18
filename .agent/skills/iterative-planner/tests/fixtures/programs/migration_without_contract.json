@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "id": "PGM-TEST",
+  "title": "Migration Missing Contract",
+  "status": "ready",
+  "goal": "Show migration safeguard failure.",
+  "story_refs": ["US-001"],
+  "epics": [
+    { "id": "EP-001", "title": "Migration epic", "story_refs": ["US-001"], "ticket_refs": ["T-001"] }
+  ],
+  "tickets": [
+    {
+      "id": "T-001",
+      "epic_id": "EP-001",
+      "title": "Move data boundary",
+      "type": "migration",
+      "lifecycle": "ready",
+      "story_refs": ["US-001"],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": ["AC-001"],
+      "child_plan": { "policy": "required", "plan_dir": null, "reason": "Migration work" },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": ["VM-001"]
+    }
+  ],
+  "acceptance_criteria": [
+    { "id": "AC-001", "scope": "ticket", "subject_ref": "T-001", "text": "Migration has compatibility proof.", "story_refs": ["US-001"], "maintenance_rationale": null }
+  ],
+  "dependencies": [],
+  "compatibility_contracts": [],
+  "migration_boundaries": [],
+  "deletion_move_census": [],
+  "verification_matrix": [
+    { "id": "VM-001", "scope": "ticket", "subject_ref": "T-001", "acceptance_criterion_ref": "AC-001", "proof_type": "proof:migration_verification", "command_or_action": "Run migration smoke", "pass_means": "Migration path is compatible" }
+  ],
+  "decisions": []
+}

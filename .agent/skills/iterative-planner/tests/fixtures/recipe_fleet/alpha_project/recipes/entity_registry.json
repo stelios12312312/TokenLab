@@ -1,0 +1,9 @@
+{
+  "version": 1,
+  "entities": [
+    {
+      "id": "portfolio",
+      "title": "Portfolio"
+    }
+  ]
+}
