@@ -1,8 +1,8 @@
 import unittest
 import pandas as pd
-from examples.z1_core_solvency.config import SolvencyConfig
-from examples.z1_core_solvency.scenarios import get_scenario_config, generate_stress_grid
-from examples.z1_core_solvency.run import run_simulation
+from projects.z1.core_solvency.config import SolvencyConfig
+from projects.z1.core_solvency.scenarios import get_scenario_config, generate_stress_grid
+from projects.z1.core_solvency.run import run_simulation
 
 class TestZ1CoreSolvency(unittest.TestCase):
     

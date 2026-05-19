@@ -408,6 +408,86 @@ function collectTicketEvidence(packet, ticket) {
   };
 }
 
+function markdownBlock(value) {
+  return typeof value === "string" ? value.replace(/\r\n?/g, "\n").trim() : "";
+}
+
+function comparableLine(value) {
+  return markdownBlock(value).replace(/\s+/g, " ").toLowerCase();
+}
+
+function firstMarkdownBlock(values) {
+  for (const value of values) {
+    const text = markdownBlock(value);
+    if (text) return text;
+  }
+  return "";
+}
+
+function stripDuplicateLeadingTitle(text, title) {
+  const body = markdownBlock(text);
+  const heading = comparableLine(title);
+  if (!body || !heading) return body;
+  const lines = body.split("\n");
+  if (comparableLine(lines[0]) !== heading) return body;
+  return lines.slice(1).join("\n").trim();
+}
+
+function intakeDescriptionFromPacket(intakePacket, ticketTitle) {
+  if (!intakePacket || typeof intakePacket !== "object") return null;
+  const title = firstMarkdownBlock([
+    intakePacket.source?.ticket_title,
+    intakePacket.source?.title,
+    intakePacket.ticket_title,
+    intakePacket.title,
+  ]);
+  const text = firstMarkdownBlock([
+    intakePacket.source?.text,
+    intakePacket.source_text,
+    intakePacket.body,
+    intakePacket.source?.body,
+    intakePacket.text,
+    intakePacket.description,
+    intakePacket.source?.description,
+    intakePacket.content,
+    intakePacket.source?.content,
+  ]);
+  const body = stripDuplicateLeadingTitle(text, ticketTitle || title);
+  if (!body) return null;
+  return { title, body };
+}
+
+function resolveArtifactCandidates({ cwd, packetPath, artifactPath }) {
+  const raw = asString(artifactPath);
+  if (!raw) return [];
+  if (isAbsolute(raw)) return [raw];
+  return uniqueStrings([
+    resolve(cwd, raw),
+    packetPath ? resolve(dirname(packetPath), raw) : null,
+  ]);
+}
+
+function loadIntakeDescription({ cwd, packetPath, ticket }) {
+  const artifacts = asArray(ticket?.review_artifacts).filter((artifact) => {
+    const kind = asString(artifact?.kind);
+    const path = asString(artifact?.path);
+    return kind === "program_intake_packet" || /intake_packet\.json$/i.test(path);
+  });
+  for (const artifact of artifacts) {
+    for (const candidate of resolveArtifactCandidates({ cwd, packetPath, artifactPath: artifact.path })) {
+      if (!candidate || !existsSync(candidate)) continue;
+      try {
+        const packet = JSON.parse(readFileSync(candidate, "utf-8"));
+        const description = intakeDescriptionFromPacket(packet, ticket?.title);
+        if (description) return { ...description, path: candidate };
+      } catch {
+        // Publish must remain available for hand-authored or stale Program Packets.
+      }
+    }
+  }
+  return null;
+}
+
 function buildTicketIntakeReceipt({
   action,
   source,
@@ -1086,32 +1166,33 @@ function publishMarker(ticketId) {
   return `<!-- planner-ticket-publish:${ticketId} -->`;
 }
 
-function renderPublishIssueBody({ packet, ticket, evidence, env = process.env }) {
+function renderPublishIssueBody({ packet, ticket, evidence, intakeDescription = null, env = process.env }) {
+  const title = asString(ticket.title) || "Program ticket";
   const lines = [
     publishMarker(ticket.id || "unknown"),
-    "### Planner Program Ticket",
-    "",
-    `Program: \`${packet.id || "unknown"}\``,
-    `Ticket: \`${ticket.id || "unknown"}\``,
-    `Lifecycle: \`${ticket.lifecycle || "proposed"}\``,
-    "",
-    ticket.title || "Program ticket",
-    "",
-    "Deterministic Program Packet evidence remains authoritative. GitHub is a collaboration mirror.",
+    `## ${title}`,
     "",
   ];
+  const descriptionBody = markdownBlock(intakeDescription?.body);
+  if (descriptionBody) lines.push(descriptionBody, "");
+  lines.push(
+    "---",
+    "",
+    `*Planner: Program \`${packet.id || "unknown"}\` | Ticket \`${ticket.id || "unknown"}\` | Lifecycle \`${ticket.lifecycle || "proposed"}\`*`,
+    "*Deterministic Program Packet evidence remains authoritative. GitHub is a collaboration mirror.*",
+  );
   const storyRefs = uniqueStrings(evidence.story_refs);
   const gapRefs = uniqueStrings(evidence.gap_refs);
-  if (storyRefs.length > 0) lines.push(`Story refs: ${storyRefs.map((id) => `\`${id}\``).join(", ")}`);
-  if (gapRefs.length > 0) lines.push(`Gap refs: ${gapRefs.map((id) => `\`${id}\``).join(", ")}`);
+  if (storyRefs.length > 0) lines.push(`*Story refs: ${storyRefs.map((id) => `\`${id}\``).join(", ")}*`);
+  if (gapRefs.length > 0) lines.push(`*Gap refs: ${gapRefs.map((id) => `\`${id}\``).join(", ")}*`);
   if (evidence.acceptance_criteria.length > 0) {
-    lines.push("", "Acceptance criteria:");
+    lines.push("", "### Acceptance Criteria");
     for (const criterion of evidence.acceptance_criteria.slice(0, 8)) {
       lines.push(`- \`${criterion.id}\`: ${criterion.text || criterion.summary || "Acceptance criterion"}`);
     }
   }
   if (evidence.verification_rows.length > 0) {
-    lines.push("", "Verification rows:");
+    lines.push("", "### Verification Rows");
     for (const row of evidence.verification_rows.slice(0, 8)) {
       lines.push(`- \`${row.id}\`: ${row.command_or_action || row.proof_type || "Verification row"}`);
     }
@@ -1230,7 +1311,8 @@ export async function runPublish(inputArgs, options = {}) {
   if (!ticket) throw new Error(`Ticket not found in Program Packet: ${args.ticket}`);
   const evidence = collectTicketEvidence(target.packet, ticket);
   const title = redactText(ticket.title || `${target.packet.id || "Program"} ${ticket.id}`, env);
-  const body = renderPublishIssueBody({ packet: target.packet, ticket, evidence, env });
+  const intakeDescription = loadIntakeDescription({ cwd, packetPath: target.path, ticket });
+  const body = renderPublishIssueBody({ packet: target.packet, ticket, evidence, intakeDescription, env });
   const existing = existingPublishedIssue(ticket, args.repo);
   const programPacketPath = relativePath(cwd, target.path);
 

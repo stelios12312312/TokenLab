@@ -71,13 +71,17 @@
     {
       "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Tennis/trueskill-atp-tennis",
       "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab",
+      "type": "standard"
     }
   ],
-  "last_scan": "2026-05-16T21:50:58.618Z",
+  "last_scan": "2026-05-18T18:49:50.259Z",
   "scan_roots": [
     "/Users/stylianoskampakis/Dropbox (Personal)/Freelance",
     "/Users/stylianoskampakis/Documents",
     "/Users/stylianoskampakis/Desktop"
   ],
-  "source_project_path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab"
+  "source_project_path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Iterative Planner"
 }

@@ -105,6 +105,14 @@ function writeProgram(tmp, packet) {
   return path;
 }
 
+function writeIntakePacket(tmp, packetId, name, packet) {
+  const relPath = join("plans", "programs", packetId, "intake", name);
+  const absPath = join(tmp, relPath);
+  mkdirSync(dirname(absPath), { recursive: true });
+  writeFileSync(absPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+  return relPath;
+}
+
 function readJson(path) {
   return JSON.parse(readFileSync(path, "utf-8"));
 }
@@ -585,8 +593,62 @@ console.log("\nGitHub Ticket Review Contracts\n");
     assert(result.ticket_intake_receipt.action === "publish", "publish emits a Ticket Intake Receipt");
     assert(result.ticket_intake_receipt.deterministic_status === "not_run_publish_only", "publish receipt does not pretend publish verifies the ticket");
     assert(result.ticket_intake_receipt.direct_github_creation_allowed === false, "publish receipt records explicit GitHub publication boundary");
+    assert(result.planned_issue.body.includes("Planner: Program"), "dry-run publish keeps planner metadata when no intake artifact exists");
     assert(writeCalls(fakeGh.calls).length === 0, "dry-run publish performs no GitHub writes");
     assert(readFileSync(programPath, "utf-8") === before, "dry-run publish does not edit Program Packet");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  const tmp = makeTemp();
+  try {
+    const ticketTitle = "Discrete CIP and VRP with Governance";
+    const intakeText = `${ticketTitle}
+
+Implement discrete CIP (Creator Incentive Pool) and VRP (Validator Reward Pool) as separate ledger accounts with waterfall-priority funding from Treasury.
+
+Make the GitHub mirror readable to collaborators who are not inside the planner.`;
+    const intakePath = writeIntakePacket(tmp, "PGM-TEST", "t-001_intake_packet.json", {
+      version: 1,
+      source: {
+        title: ticketTitle,
+        text: intakeText,
+      },
+    });
+    const programPath = writeProgram(tmp, baseProgram({
+      ticket: {
+        title: ticketTitle,
+        review_artifacts: [
+          {
+            path: intakePath,
+            kind: "program_intake_packet",
+            generated_at: "2026-05-18T00:00:00.000Z",
+          },
+        ],
+      },
+    }));
+    const fakeGh = createFakeGh();
+    const result = await runPublish([
+      "publish",
+      "--program",
+      programPath,
+      "--ticket",
+      "T-001",
+      "--repo",
+      "owner/repo",
+      "--json",
+    ], { cwd: tmp, ghRunner: fakeGh.runner, env: mockReviewReadyEnv });
+    const body = result.planned_issue.body;
+    const descriptionIndex = body.indexOf("Implement discrete CIP");
+    const metadataIndex = body.indexOf("Planner: Program");
+    const afterHeading = body.slice(body.indexOf(`## ${ticketTitle}`) + `## ${ticketTitle}`.length).trimStart();
+
+    assert(body.includes(`## ${ticketTitle}`), "publish issue body leads with ticket title heading");
+    assert(descriptionIndex >= 0, "publish issue body includes intake source description");
+    assert(descriptionIndex < metadataIndex, "intake source description appears before planner metadata");
+    assert(!afterHeading.startsWith(ticketTitle), "publish issue body strips duplicated intake title line");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -688,7 +750,24 @@ console.log("\nGitHub Ticket Review Contracts\n");
   const tmp = makeTemp();
   const secret = "sk-publish-redaction-secret";
   try {
-    const programPath = writeProgram(tmp, baseProgram({ ticket: { title: `Publish without leaking ${secret}` } }));
+    const intakePath = writeIntakePacket(tmp, "PGM-TEST", "t-001_intake_packet.json", {
+      version: 1,
+      source_text: `Publish without leaking ${secret}
+
+This body also mentions ${secret} and must be redacted before GitHub publication.`,
+    });
+    const programPath = writeProgram(tmp, baseProgram({
+      ticket: {
+        title: `Publish without leaking ${secret}`,
+        review_artifacts: [
+          {
+            path: intakePath,
+            kind: "program_intake_packet",
+            generated_at: "2026-05-18T00:00:00.000Z",
+          },
+        ],
+      },
+    }));
     const fakeGh = createFakeGh();
     const result = await runPublish([
       "publish",

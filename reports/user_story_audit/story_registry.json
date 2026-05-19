@@ -8,7 +8,7 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "test_story_ref": null,
+      "test_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
       "notes": "P0 Structural change"
     },
     {
@@ -19,7 +19,7 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "test_story_ref": null,
+      "test_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
       "notes": "P0 Structural change"
     },
     {
@@ -30,7 +30,7 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "test_story_ref": null,
+      "test_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
       "notes": "P0 Structural change"
     },
     {
@@ -41,7 +41,7 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "test_story_ref": null,
+      "test_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
       "notes": "P0 Structural change"
     },
     {
@@ -52,7 +52,7 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "test_story_ref": null,
+      "test_refs": [],
       "notes": "P1 Fidelity change"
     },
     {
@@ -63,7 +63,7 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "test_story_ref": null,
+      "test_refs": [],
       "notes": "P1 Fidelity change"
     },
     {
@@ -74,7 +74,7 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "test_story_ref": null,
+      "test_refs": [],
       "notes": "P1 Fidelity change"
     },
     {
@@ -85,7 +85,7 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "test_story_ref": null,
+      "test_refs": [],
       "notes": "P1 Fidelity change"
     },
     {
@@ -96,7 +96,7 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "test_story_ref": null,
+      "test_refs": [],
       "notes": "P1 Fidelity change"
     }
   ],

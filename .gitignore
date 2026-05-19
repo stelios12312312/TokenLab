@@ -156,7 +156,18 @@ cython_debug/
 *.xls
 .xlsx
 *.xlsx
-projects/
+# Legacy client project files (not tracked)
+projects/*.py
+projects/*.ipynb
+projects/*.csv
+projects/*.xlsx
+projects/*.xls
+projects/*.sqlite
+projects/*.log
+projects/data/
+projects/.ipynb_checkpoints/
+# Z1 project IS tracked
+!projects/z1/
 scratchpad.py
 .DS_Store
 .DS_Store
@@ -179,3 +190,4 @@ examples/z1_core_solvency/z1_simulation_kb/*.csv
 __pycache__/
 *.ppt
 *.pptx
+plans/

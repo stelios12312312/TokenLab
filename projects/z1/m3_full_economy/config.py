@@ -58,6 +58,12 @@ class M3EconomyConfig:
     tier_thresholds_pcs: Dict[str, float] = field(
         default_factory=lambda: {"Bronze": 0.0, "Silver": 100.0, "Gold": 500.0, "Platinum": 1500.0}
     )
+    tier_min_tenure_epochs: Dict[str, int] = field(
+        default_factory=lambda: {"Bronze": 0, "Silver": 4, "Gold": 8, "Platinum": 12}
+    )
+    tier_budget_allocations: Dict[str, float] = field(
+        default_factory=lambda: {"Bronze": 0.40, "Silver": 0.25, "Gold": 0.20, "Platinum": 0.15}
+    )
 
     # Settlement dynamics
     settle_propensity_by_cohort: Dict[str, float] = field(

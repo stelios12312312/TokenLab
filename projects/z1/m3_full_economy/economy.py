@@ -183,20 +183,27 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         else: # linear
             claimed_this_epoch = self.config.initial_viewers / self.config.n_epochs
 
-        total_pcs = 0.0
+        # Calculate PCS and Tiers, and aggregate tier PCS
+        tier_total_pcs = {tier: 0.0 for tier in getattr(self.config, 'tier_budget_allocations', {"Bronze": 1.0}).keys()}
+        
         for name, pool in cohort_pools.items():
             if name not in getattr(self.config, 'cohort_population_shares', {}).keys(): continue
             pool.tenure_epochs += 1
             pool.activity_score = pool.claim_rate * pool.utility_spend_rate
             pool.pcs_score = (pool.tenure_epochs * self.config.pcs_tenure_weight) + (pool.activity_score * self.config.pcs_activity_weight)
-            total_pcs += pool.pcs_score * pool.population
             
             pool.cumulative_pcs += pool.pcs_score
+            
+            # Tier advancement with tenure gate
             for tier_name, threshold in reversed(list(self.config.tier_thresholds_pcs.items())):
-                if pool.cumulative_pcs >= threshold:
+                min_tenure = getattr(self.config, 'tier_min_tenure_epochs', {}).get(tier_name, 0)
+                if pool.cumulative_pcs >= threshold and pool.tenure_epochs >= min_tenure:
                     pool.tier = tier_name
                     break
+                    
+            tier_total_pcs[pool.tier] += pool.pcs_score * pool.population
 
+        # Allocate budget per tier and distribute proportionally
         for name, pool in cohort_pools.items():
             if name not in getattr(self.config, 'cohort_population_shares', {}).keys(): continue
             base_claimers = claimed_this_epoch * self.config.cohort_population_shares[name]
@@ -207,8 +214,11 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
             pool.cumulative_verified_population += int(verified)
             pool.num_users = pool.cumulative_claimed_population
             
-            normalized_pcs = (pool.pcs_score * pool.population) / total_pcs if total_pcs > 0 else 0
-            total_issued = self.config.acr_epoch_budget * normalized_pcs * self.throttle_multiplier
+            tier_budget = self.config.acr_epoch_budget * getattr(self.config, 'tier_budget_allocations', {"Bronze": 1.0}).get(pool.tier, 0.0)
+            tier_sum_pcs = tier_total_pcs.get(pool.tier, 0.0)
+            
+            normalized_pcs_in_tier = (pool.pcs_score * pool.population) / tier_sum_pcs if tier_sum_pcs > 0 else 0
+            total_issued = tier_budget * normalized_pcs_in_tier * self.throttle_multiplier
             issue_acr_to_vesting(self, name, total_issued)
             
         # Recalculate live supply since topups happened, then compute SR

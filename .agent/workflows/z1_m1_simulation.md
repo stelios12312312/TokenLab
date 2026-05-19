@@ -8,37 +8,37 @@ Run the full Z1 M1 simulation pipeline: regenerate knowledge base → run simula
 ```bash
 # Full run (KB + simulation + 27-grid + HTML report)
 cd /path/to/TokenLab
-python examples/z1_m1_workflow.py
+python projects/z1/z1_m1_workflow.py
 
 # Full run + open HTML report in browser
-python examples/z1_m1_workflow.py --open
+python projects/z1/z1_m1_workflow.py --open
 
 # KB regeneration only (parameter grids + matrices)
-python examples/z1_m1_workflow.py --kb-only
+python projects/z1/z1_m1_workflow.py --kb-only
 
 # Simulation only (skip KB regen)
-python examples/z1_m1_workflow.py --sim-only
+python projects/z1/z1_m1_workflow.py --sim-only
 
 # Single scenario
-python examples/z1_m1_workflow.py --scenario baseline
+python projects/z1/z1_m1_workflow.py --scenario baseline
 
 # List existing runs
-python examples/z1_m1_workflow.py --list-runs
+python projects/z1/z1_m1_workflow.py --list-runs
 ```
 
 ## Direct Simulation (without workflow wrapper)
 
 ```bash
 cd /path/to/TokenLab
-python -m examples.z1_core_solvency.run --scenario full
+python -m projects.z1.core_solvency.run --scenario full
 ```
 
 ## Output Locations
 
-- **KB artifacts**: `examples/z1_core_solvency/z1_simulation_kb/`
-- **Run outputs**: `examples/outputs/z1_core_solvency/<run_id>/`
-- **HTML report**: `examples/outputs/z1_core_solvency/<run_id>/M1_report.html`
-- **MD report**: `examples/outputs/z1_core_solvency/<run_id>/M1_report.md`
+- **KB artifacts**: `projects/z1/core_solvency/z1_simulation_kb/`
+- **Run outputs**: `outputs/z1_core_solvency/<run_id>/`
+- **HTML report**: `outputs/z1_core_solvency/<run_id>/M1_report.html`
+- **MD report**: `outputs/z1_core_solvency/<run_id>/M1_report.md`
 
 ## What Gets Generated
 
