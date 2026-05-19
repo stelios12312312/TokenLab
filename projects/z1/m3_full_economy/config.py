@@ -111,6 +111,8 @@ class M3EconomyConfig:
     
     # M3 Governance Staking (US-Z1-M3-06)
     governance_staking_enabled: bool = True
+    governance_voting_enabled: bool = True
+    governance_max_budget_shift_rate: float = 0.05
     staking_lock_epochs: int = 12                # Minimum lock period before unstaking
     staking_rate_by_cohort: Dict[str, float] = field(
         default_factory=lambda: {"passive_viewers": 0.0, "active_viewers": 0.05, "power_users": 0.30, "adversarial_whales": 0.0}

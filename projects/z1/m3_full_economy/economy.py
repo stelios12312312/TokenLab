@@ -341,6 +341,33 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         else:
             self.throttle_multiplier = 1.0
             
+        # ==================================================
+        # M3 Phase 5: Governance Voting (US-Z1-M3-06)
+        # ==================================================
+        if getattr(self.config, 'governance_voting_enabled', False):
+            creators_staked = cohort_pools['creators'].staked_z1u if 'creators' in cohort_pools else 0.0
+            validators_staked = cohort_pools['validators'].staked_z1u if 'validators' in cohort_pools else 0.0
+            total_voting_weight = creators_staked + validators_staked
+            
+            if total_voting_weight > 0:
+                # Target split based on vote weight
+                cip_vote_share = creators_staked / total_voting_weight
+                
+                total_budget = self.config.cip_budget_per_epoch + self.config.vrp_budget_per_epoch
+                target_cip_budget = total_budget * cip_vote_share
+                
+                max_shift = total_budget * getattr(self.config, 'governance_max_budget_shift_rate', 0.05)
+                
+                # Shift towards target
+                cip_diff = target_cip_budget - self.config.cip_budget_per_epoch
+                shift = max(-max_shift, min(max_shift, cip_diff))
+                
+                self.config.cip_budget_per_epoch += shift
+                self.config.vrp_budget_per_epoch -= shift
+                
+        self.per_epoch_counters['cip_budget'] = self.config.cip_budget_per_epoch
+        self.per_epoch_counters['vrp_budget'] = self.config.vrp_budget_per_epoch
+            
         assert_all_invariants(self)
         
         metrics = extract_epoch_metrics(self, self.config)
