@@ -25,6 +25,20 @@
         "T-INTAKE-8685AC30",
         "T-INTAKE-DDE5D6DF"
       ]
+    },
+    {
+      "id": "EP-SIMULATION",
+      "title": "Token Economy Simulations",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "ticket_refs": [
+        "T-SIM-COMPARE",
+        "T-SIM-SWEEP",
+        "T-SIM-MONTECARLO"
+      ]
     }
   ],
   "tickets": [
@@ -453,6 +467,153 @@
         }
       },
       "last_review_status": "review_ready"
+    },
+    {
+      "id": "T-SIM-COMPARE",
+      "epic_id": "EP-SIMULATION",
+      "title": "Comparative M2 vs M3 Resilience Simulation",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "closed",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-SIM-COMPARE"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": "plan_2026-05-21_a2428903a5b598f8",
+        "reason": "Simulation option requires standard execution validation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-SIM-COMPARE"
+      ],
+      "external_refs": [],
+      "review_artifacts": [],
+      "github_sync": {
+        "last_synced_at": null,
+        "last_issue_url": null,
+        "published_issue_number": null,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        },
+        "last_review_status": "review_ready",
+        "last_comment_url": null,
+        "labels_applied": [],
+        "project_status": {
+          "action": "skipped",
+          "reason": "No project item"
+        }
+      },
+      "last_review_status": "review_ready"
+    },
+    {
+      "id": "T-SIM-SWEEP",
+      "epic_id": "EP-SIMULATION",
+      "title": "Parameter Sweep & Sensitivity Analysis",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "closed",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-SIM-SWEEP"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": "plan_2026-05-21_a2428903a5b598f8",
+        "reason": "Simulation option requires standard execution validation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-SIM-SWEEP"
+      ],
+      "external_refs": [],
+      "review_artifacts": [],
+      "github_sync": {
+        "last_synced_at": null,
+        "last_issue_url": null,
+        "published_issue_number": null,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        },
+        "last_review_status": "review_ready",
+        "last_comment_url": null,
+        "labels_applied": [],
+        "project_status": {
+          "action": "skipped",
+          "reason": "No project item"
+        }
+      },
+      "last_review_status": "review_ready"
+    },
+    {
+      "id": "T-SIM-MONTECARLO",
+      "epic_id": "EP-SIMULATION",
+      "title": "Run Monte Carlo Stress Tests",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "closed",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-SIM-MONTECARLO"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": "plan_2026-05-21_a2428903a5b598f8",
+        "reason": "Simulation option requires standard execution validation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-SIM-MONTECARLO"
+      ],
+      "external_refs": [],
+      "review_artifacts": [],
+      "github_sync": {
+        "last_synced_at": null,
+        "last_issue_url": null,
+        "published_issue_number": null,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        },
+        "last_review_status": "review_ready",
+        "last_comment_url": null,
+        "labels_applied": [],
+        "project_status": {
+          "action": "skipped",
+          "reason": "No project item"
+        }
+      },
+      "last_review_status": "review_ready"
     }
   ],
   "acceptance_criteria": [
@@ -502,6 +663,42 @@
       "subject_ref": "T-INTAKE-DDE5D6DF",
       "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
       "story_refs": [
+        "US-Z1-M3-09"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-T-SIM-COMPARE",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-COMPARE",
+      "text": "Simulates comparative M2 vs M3 resilience under standard growth and bank-run conditions, producing comparative plots for prices, settlement ratios, and reserves.",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-T-SIM-SWEEP",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-SWEEP",
+      "text": "Performs multi-dimensional parameter sweeps over provider_recirculation_rate and creator_sell_propensity, rendering parameter sensitivity heatmaps.",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-T-SIM-MONTECARLO",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-MONTECARLO",
+      "text": "Runs stochastic Monte Carlo demand simulations with sudden validator offline shocks, showing system stability percentiles.",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
         "US-Z1-M3-09"
       ],
       "maintenance_rationale": null
@@ -560,6 +757,39 @@
       "pass_means": "Simulation runs and validates tier progression curves, tenure gating, and gaming prevention mechanisms.",
       "status": "pass",
       "verified_at": "2026-05-21T15:26:00Z"
+    },
+    {
+      "id": "VM-T-SIM-COMPARE",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-COMPARE",
+      "acceptance_criterion_ref": "AC-T-SIM-COMPARE",
+      "proof_type": "proof:dry_run",
+      "command_or_action": "PYTHONPATH=./src:. python projects/z1/m3_full_economy/compare_m2_m3.py",
+      "pass_means": "Comparison runs successfully, showing M3's higher price stability and reserve resilience compared to M2 under extreme stress, with output plots saved in outputs/z1_m3_sims/compare/.",
+      "status": "pass",
+      "verified_at": "2026-05-21T15:44:26Z"
+    },
+    {
+      "id": "VM-T-SIM-SWEEP",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-SWEEP",
+      "acceptance_criterion_ref": "AC-T-SIM-SWEEP",
+      "proof_type": "proof:dry_run",
+      "command_or_action": "PYTHONPATH=./src:. python projects/z1/m3_full_economy/param_sweep.py",
+      "pass_means": "Sweep executes successfully over the specified ranges, saving parameter grids and sensitivity heatmaps under outputs/z1_m3_sims/sweeps/.",
+      "status": "pass",
+      "verified_at": "2026-05-21T15:44:26Z"
+    },
+    {
+      "id": "VM-T-SIM-MONTECARLO",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-MONTECARLO",
+      "acceptance_criterion_ref": "AC-T-SIM-MONTECARLO",
+      "proof_type": "proof:dry_run",
+      "command_or_action": "PYTHONPATH=./src:. python projects/z1/m3_full_economy/monte_carlo.py",
+      "pass_means": "Monte Carlo simulations run successfully with randomized demand shocks and validator failures, saving distribution charts under outputs/z1_m3_sims/monte_carlo/.",
+      "status": "pass",
+      "verified_at": "2026-05-21T15:44:26Z"
     }
   ],
   "decisions": [],
