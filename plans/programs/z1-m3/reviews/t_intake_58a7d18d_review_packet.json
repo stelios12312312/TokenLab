@@ -1,0 +1,536 @@
+{
+  "version": 1,
+  "generated_at": "2026-05-21T14:35:04.683Z",
+  "program": {
+    "id": "z1-m3",
+    "title": "Z1 M3 Full Economy",
+    "status": "design",
+    "packet_path": "plans/programs/z1-m3/program_packet.json"
+  },
+  "ticket": {
+    "id": "T-INTAKE-58A7D18D",
+    "epic_id": "EP-INTAKE",
+    "title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with ...[truncated 514 chars]",
+    "type": "feature",
+    "lifecycle": "proposed",
+    "story_refs": [
+      "US-Z1-M3-01",
+      "US-Z1-M3-02",
+      "US-Z1-M3-03",
+      "US-Z1-M3-04",
+      "US-Z1-M3-05",
+      "US-Z1-M3-06",
+      "US-Z1-M3-07",
+      "US-Z1-M3-08",
+      "US-Z1-M3-09"
+    ],
+    "defect_refs": [],
+    "gap_refs": [
+      "GAP-INTAKE-58A7D18D"
+    ],
+    "depends_on": [],
+    "acceptance_criteria": [
+      "AC-T-INTAKE-58A7D18D"
+    ],
+    "child_plan": {
+      "policy": "required",
+      "plan_dir": null,
+      "reason": "Executable intake ticket requires a child iterative plan before implementation."
+    },
+    "compatibility_contract_refs": [],
+    "migration_boundary_refs": [],
+    "deletion_move_census_refs": [],
+    "verification_refs": [
+      "VM-T-INTAKE-58A7D18D"
+    ],
+    "external_refs": [
+      {
+        "kind": "local_text",
+        "source_hash": "95a97c5c8200706f",
+        "synced_at": "2026-05-18T10:09:59.968Z"
+      },
+      {
+        "kind": "github_issue",
+        "repo": "stelios12312312/TokenLab",
+        "issue_number": 3,
+        "title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with ...[truncated 514 chars]",
+        "state": "open",
+        "url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/3",
+        "synced_at": "2026-05-18T13:11:30.422Z"
+      }
+    ],
+    "review_artifacts": [
+      {
+        "path": "plans/programs/z1-m3/intake/t-intake-58a7d18d_intake_packet.json",
+        "kind": "program_intake_packet",
+        "generated_at": "2026-05-18T10:09:59.968Z"
+      }
+    ],
+    "github_sync": {
+      "last_synced_at": "2026-05-18T13:11:30.422Z",
+      "last_issue_url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/3",
+      "published_issue_number": 3,
+      "project_publish": {
+        "action": "skipped",
+        "reason": "No project requested"
+      }
+    }
+  },
+  "github": {
+    "source": "issue",
+    "repo": "stelios12312312/TokenLab",
+    "issue_number": 3,
+    "title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with ...[truncated 514 chars]",
+    "body": "## Z1 M3 P0: Structural Foundation for Full Economy Simulation\n\n### Summary\nTransition the Z1 simulation from the M2 (5-step loop) architecture to the M3 (Vault-defined) 4-phase epoch execution pipeline. This ticket covers the **P0 structural priorities** that form the foundation for all subsequent M3 work.\n\n### ✅ Implemented (commit 766651a, bc716c8)\n\n#### 1. Genesis Unlock (US-Z1-M3-01)\n7-bucket vesting schedule (Team, Advisors, Seed, Private, Public, Treasury, Ecosystem) with configurable cliff and linear duration per bucket. Ecosystem unlocks route to Audience Reserve; all others to Treasury.\n\n#### 2. Provider Recirculation (US-Z1-M3-02)\n20% of provider fiat revenue is recirculated back as Z1U instead of being dumped on the AMM. Reduces sell pressure and keeps value within the ecosystem.\n\n#### 3. Composite Settlement Ratio (US-Z1-M3-03)\nReplaced the single-factor M2 SR (AMM health only) with a blended formula:\n- **70% AMM health** (spot price / initial price)\n- **30% AR health** (audience reserve / live supply)\n\nDual degradation produces a strictly lower SR than the M2 baseline, providing stronger protection during stress.\n\n#### 4. 4-Phase Epoch Reordering (US-Z1-M3-04)\nRewrote the execution loop to match the Vault specification:\n1. **Vault-Release** — Genesis tokens unlocked into active pools\n2. **AR-Top-up** — Treasury evaluates and funds the reserve *before* settlement\n3. **Vesting** — PCS/BAS calculated, ACR issued and vested\n4. **Settle/Spend/Recirculate** — Demands processed, utilities spent, AMM hit\n\n### Verification\n- 100-epoch smoke test passed with zero invariant violations\n- Z1U conservation, ACR conservation, and burn consistency all held\n- Migration parity: M3 SR matches M2 at baseline, correctly diverges under stress\n- Provider recirculation: 20.00% rate confirmed exactly\n\n### Files\nAll code in `projects/z1/m3_full_economy/` (isolated from M2 baseline)\n\n### Follow-up Tickets\n- #5 — Discrete CIP/VRP pools + Governance Staking (US-Z1-M3-05, 06)\n- #6 — Creator + Validator Agent Expansion (US-Z1-M3-07, 08)\n- #7 — 4-Stage PCS Epoch Budget Design (US-Z1-M3-09)\n\n---\n*Planner: Program z1-m3 · Ticket T-INTAKE-58A7D18D · Stories: US-Z1-M3-01–09*",
+    "state": "OPEN",
+    "url": "https://github.com/stelios12312312/TokenLab/issues/3",
+    "labels": [],
+    "project_item": null
+  },
+  "linked_evidence": {
+    "story_refs": [
+      "US-Z1-M3-01",
+      "US-Z1-M3-02",
+      "US-Z1-M3-03",
+      "US-Z1-M3-04",
+      "US-Z1-M3-05",
+      "US-Z1-M3-06",
+      "US-Z1-M3-07",
+      "US-Z1-M3-08",
+      "US-Z1-M3-09"
+    ],
+    "defect_refs": [],
+    "gap_refs": [
+      "GAP-INTAKE-58A7D18D"
+    ],
+    "acceptance_criteria": [
+      {
+        "id": "AC-T-INTAKE-58A7D18D",
+        "scope": "ticket",
+        "subject_ref": "T-INTAKE-58A7D18D",
+        "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+        "story_refs": [
+          "US-Z1-M3-01",
+          "US-Z1-M3-02",
+          "US-Z1-M3-03",
+          "US-Z1-M3-04",
+          "US-Z1-M3-05",
+          "US-Z1-M3-06",
+          "US-Z1-M3-07",
+          "US-Z1-M3-08",
+          "US-Z1-M3-09"
+        ],
+        "maintenance_rationale": "Draft intake gap requires story linkage before ready."
+      }
+    ],
+    "verification_rows": [
+      {
+        "id": "VM-T-INTAKE-58A7D18D",
+        "scope": "ticket",
+        "subject_ref": "T-INTAKE-58A7D18D",
+        "acceptance_criterion_ref": "AC-T-INTAKE-58A7D18D",
+        "proof_type": "proof:artifact_review",
+        "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-58a7d18d_intake_packet.json",
+        "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+      }
+    ],
+    "child_plan": {
+      "policy": "required",
+      "plan_dir": null,
+      "reason": "Executable intake ticket requires a child iterative plan before implementation."
+    },
+    "changed_files": []
+  },
+  "retro_recurrence_check": {
+    "version": 1,
+    "status": "not_applicable",
+    "summary": {
+      "blocking_count": 0,
+      "advisory_count": 0,
+      "match_count": 0,
+      "source_count": 3,
+      "trusted_count": 0,
+      "derived_count": 0
+    },
+    "matches": [],
+    "warnings": []
+  },
+  "quant_persona_gate": {
+    "version": "1.0.0",
+    "required": false,
+    "status": "not_applicable",
+    "reason": "no_quant_scope",
+    "matched_signals": [
+      "support:factor"
+    ],
+    "summary": {
+      "matched_signal_count": 1,
+      "required_guard_count": 0,
+      "satisfied_guard_count": 0,
+      "missing_guard_count": 0
+    },
+    "required_guards": []
+  },
+  "deterministic": {
+    "status": "review_ready",
+    "blockers": [],
+    "retro_recurrence_check": {
+      "version": 1,
+      "status": "not_applicable",
+      "summary": {
+        "blocking_count": 0,
+        "advisory_count": 0,
+        "match_count": 0,
+        "source_count": 3,
+        "trusted_count": 0,
+        "derived_count": 0
+      },
+      "matches": [],
+      "warnings": []
+    },
+    "quant_persona_gate": {
+      "version": "1.0.0",
+      "required": false,
+      "status": "not_applicable",
+      "reason": "no_quant_scope",
+      "matched_signals": [
+        "support:factor"
+      ],
+      "summary": {
+        "matched_signal_count": 1,
+        "required_guard_count": 0,
+        "satisfied_guard_count": 0,
+        "missing_guard_count": 0
+      },
+      "required_guards": []
+    },
+    "program_packet_validation": {
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "counts": {
+        "epics": 1,
+        "tickets": 4,
+        "acceptance_criteria": 4,
+        "verification_rows": 5,
+        "decisions": 0
+      }
+    },
+    "program_gates": [
+      {
+        "ok": true,
+        "gate": "design-to-ready",
+        "errors": [],
+        "warnings": [],
+        "counts": {
+          "epics": 1,
+          "tickets": 4,
+          "acceptance_criteria": 4,
+          "verification_rows": 5,
+          "decisions": 0
+        }
+      }
+    ],
+    "command_results": [
+      {
+        "id": "program_manager_check",
+        "command": "node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program /Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab/plans/programs/z1-m3/program_packet.json --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"command\": \"check\",\n  \"gate\": null,\n  \"status\": \"PASS\",\n  \"packet_path\": \"/Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab/plans/programs/z1-m3/program_packet.json\",\n  \"program\": {\n    \"id\": \"z1-m3\",\n    \"title\": \"Z1 M3 Full Economy\",\n    \"status\": \"design\"\n  },\n  \"counts\": {\n    \"epics\": 1,\n    \"tickets\": 4,\n    \"acceptance_criteria\": 4,\n    \"verification_rows\": 5,\n    \"decisions\": 0\n  },\n  \"errors\": [],\n  \"warnings\": [],\n  \"message\": null\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "3371f0b83cee059ed11855f880592fae98a7a4196e03086dd75fb975b326d124"
+      },
+      {
+        "id": "program_gate_design_to_ready",
+        "command": "node .agent/skills/iterative-planner/scripts/program_manager.mjs verify design-to-ready --program /Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab/plans/programs/z1-m3/program_packet.json --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"command\": \"verify\",\n  \"gate\": \"design-to-ready\",\n  \"status\": \"PASS\",\n  \"packet_path\": \"/Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab/plans/programs/z1-m3/program_packet.json\",\n  \"program\": {\n    \"id\": \"z1-m3\",\n    \"title\": \"Z1 M3 Full Economy\",\n    \"status\": \"design\"\n  },\n  \"counts\": {\n    \"epics\": 1,\n    \"tickets\": 4,\n    \"acceptance_criteria\": 4,\n    \"verification_rows\": 5,\n    \"decisions\": 0\n  },\n  \"errors\": [],\n  \"warnings\": [],\n  \"message\": null\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "6445cc82279c5c77122044df433fc2f49fd607dab87d901866cb6ba2946d9319"
+      },
+      {
+        "id": "story_registry_evidence_us_z1_m3_01",
+        "command": "node .agent/skills/iterative-planner/scripts/story_registry.mjs evidence US-Z1-M3-01 --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"status\": \"PASS\",\n  \"story\": {\n    \"id\": \"US-Z1-M3-01\",\n    \"title\": \"Genesis unlock with 7 buckets\",\n    \"status\": \"FULLY_COVERED\",\n    \"counts\": {\n      \"code_refs\": 2,\n      \"test_refs\": 1,\n      \"validation_refs\": 1\n    },\n    \"issues\": [],\n    \"evidence_ready\": true,\n    \"guidance\": \"Evidence chain inputs are present in story_registry.json.\"\n  }\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "8b35cec831c7e5de159d6a86fb4dbd601fa0d1897c0d4f8cc4c55ce46b08e172"
+      },
+      {
+        "id": "story_registry_evidence_us_z1_m3_02",
+        "command": "node .agent/skills/iterative-planner/scripts/story_registry.mjs evidence US-Z1-M3-02 --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"status\": \"PASS\",\n  \"story\": {\n    \"id\": \"US-Z1-M3-02\",\n    \"title\": \"Provider recirculation rate\",\n    \"status\": \"FULLY_COVERED\",\n    \"counts\": {\n      \"code_refs\": 2,\n      \"test_refs\": 1,\n      \"validation_refs\": 1\n    },\n    \"issues\": [],\n    \"evidence_ready\": true,\n    \"guidance\": \"Evidence chain inputs are present in story_registry.json.\"\n  }\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "a7a15be9cd19436123e38c379158af1d10b72f2337441f660b04396886a78e15"
+      },
+      {
+        "id": "story_registry_evidence_us_z1_m3_03",
+        "command": "node .agent/skills/iterative-planner/scripts/story_registry.mjs evidence US-Z1-M3-03 --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"status\": \"PASS\",\n  \"story\": {\n    \"id\": \"US-Z1-M3-03\",\n    \"title\": \"Full composite SR formula\",\n    \"status\": \"FULLY_COVERED\",\n    \"counts\": {\n      \"code_refs\": 2,\n      \"test_refs\": 1,\n      \"validation_refs\": 1\n    },\n    \"issues\": [],\n    \"evidence_ready\": true,\n    \"guidance\": \"Evidence chain inputs are present in story_registry.json.\"\n  }\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "8b9ba08bce1170e19c0bc63864477b479aa5546cb45eaf8a10caad7fcc19bc8d"
+      },
+      {
+        "id": "story_registry_evidence_us_z1_m3_04",
+        "command": "node .agent/skills/iterative-planner/scripts/story_registry.mjs evidence US-Z1-M3-04 --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"status\": \"PASS\",\n  \"story\": {\n    \"id\": \"US-Z1-M3-04\",\n    \"title\": \"Epoch pipeline reordering (AR top-up before settlement)\",\n    \"status\": \"FULLY_COVERED\",\n    \"counts\": {\n      \"code_refs\": 2,\n      \"test_refs\": 1,\n      \"validation_refs\": 1\n    },\n    \"issues\": [],\n    \"evidence_ready\": true,\n    \"guidance\": \"Evidence chain inputs are present in story_registry.json.\"\n  }\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "8d016fbe5d1c51345857c3d691bb93928d0c6f13fdf760d6b5f5fbf87cdf3188"
+      },
+      {
+        "id": "story_registry_evidence_us_z1_m3_05",
+        "command": "node .agent/skills/iterative-planner/scripts/story_registry.mjs evidence US-Z1-M3-05 --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"status\": \"PASS\",\n  \"story\": {\n    \"id\": \"US-Z1-M3-05\",\n    \"title\": \"Discrete VRP + CIP pools with waterfall priority\",\n    \"status\": \"FULLY_COVERED\",\n    \"counts\": {\n      \"code_refs\": 2,\n      \"test_refs\": 1,\n      \"validation_refs\": 1\n    },\n    \"issues\": [],\n    \"evidence_ready\": true,\n    \"guidance\": \"Evidence chain inputs are present in story_registry.json.\"\n  }\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "64ab5655e3a0ebd503d4123aebab233fb5f846a26e11d6d6648eb63526fc3622"
+      },
+      {
+        "id": "story_registry_evidence_us_z1_m3_06",
+        "command": "node .agent/skills/iterative-planner/scripts/story_registry.mjs evidence US-Z1-M3-06 --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"status\": \"PASS\",\n  \"story\": {\n    \"id\": \"US-Z1-M3-06\",\n    \"title\": \"Governance staking as Z1U sink\",\n    \"status\": \"FULLY_COVERED\",\n    \"counts\": {\n      \"code_refs\": 2,\n      \"test_refs\": 1,\n      \"validation_refs\": 1\n    },\n    \"issues\": [],\n    \"evidence_ready\": true,\n    \"guidance\": \"Evidence chain inputs are present in story_registry.json.\"\n  }\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "13ec6191d7c7aba23673b1c6c64995d00663869608ef21594db19c072a16b942"
+      },
+      {
+        "id": "story_registry_evidence_us_z1_m3_07",
+        "command": "node .agent/skills/iterative-planner/scripts/story_registry.mjs evidence US-Z1-M3-07 --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"status\": \"PASS\",\n  \"story\": {\n    \"id\": \"US-Z1-M3-07\",\n    \"title\": \"Creator cohort with CIP distribution and recirculation\",\n    \"status\": \"FULLY_COVERED\",\n    \"counts\": {\n      \"code_refs\": 3,\n      \"test_refs\": 1,\n      \"validation_refs\": 1\n    },\n    \"issues\": [],\n    \"evidence_ready\": true,\n    \"guidance\": \"Evidence chain inputs are present in story_registry.json.\"\n  }\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "9e0e117dd6a81135f901a2bc286fdb23bf3f6e0971171add3294e70c794e3128"
+      },
+      {
+        "id": "story_registry_evidence_us_z1_m3_08",
+        "command": "node .agent/skills/iterative-planner/scripts/story_registry.mjs evidence US-Z1-M3-08 --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"status\": \"PASS\",\n  \"story\": {\n    \"id\": \"US-Z1-M3-08\",\n    \"title\": \"Validator cohort with VRP rewards\",\n    \"status\": \"FULLY_COVERED\",\n    \"counts\": {\n      \"code_refs\": 3,\n      \"test_refs\": 1,\n      \"validation_refs\": 1\n    },\n    \"issues\": [],\n    \"evidence_ready\": true,\n    \"guidance\": \"Evidence chain inputs are present in story_registry.json.\"\n  }\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "990cfe58a52173f10e3268620e483c0a1225c3b70516069dc3d80aa9d99451e6"
+      },
+      {
+        "id": "story_registry_evidence_us_z1_m3_09",
+        "command": "node .agent/skills/iterative-planner/scripts/story_registry.mjs evidence US-Z1-M3-09 --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"status\": \"PASS\",\n  \"story\": {\n    \"id\": \"US-Z1-M3-09\",\n    \"title\": \"4-stage PCS with epoch budget\",\n    \"status\": \"FULLY_COVERED\",\n    \"counts\": {\n      \"code_refs\": 2,\n      \"test_refs\": 1,\n      \"validation_refs\": 1\n    },\n    \"issues\": [],\n    \"evidence_ready\": true,\n    \"guidance\": \"Evidence chain inputs are present in story_registry.json.\"\n  }\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "4955e885475f3c0f90d737f7b42eb59dde5213a10a581277c08167a8f055dcd0"
+      },
+      {
+        "id": "rule_engine_verify_stories",
+        "command": "node .agent/skills/iterative-planner/scripts/rule_engine.mjs verify-stories --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"output_schema_version\": \"1.0.0\",\n  \"stories\": 9,\n  \"stories_total\": 9,\n  \"stories_retired\": 0,\n  \"coverage\": {\n    \"full\": 0,\n    \"partial\": 9,\n    \"missing\": 0\n  },\n  \"gaps\": {\n    \"no_tests\": [],\n    \"high_priority\": []\n  },\n  \"conflicts\": [],\n  \"invariant_violations\": [],\n  \"status\": \"PASS\"\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "4e15e478cde4166d65bf695b4c5c914ae35310685006a600ec1c3c918ffc2936"
+      },
+      {
+        "id": "rule_engine_find_conflicts",
+        "command": "node .agent/skills/iterative-planner/scripts/rule_engine.mjs find-conflicts --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"conflicts\": [],\n  \"count\": 0\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "ff30ec6c5f373c3f1b7ae2161b7a7d865e1415e9214070306085968ee5a15305"
+      },
+      {
+        "id": "annotation_parser_validate",
+        "command": "node .agent/skills/iterative-planner/scripts/annotation_parser.mjs --json --validate",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"summary\": {\n    \"total_files_scanned\": 456,\n    \"files_with_annotations\": 19,\n    \"total_annotations\": 36,\n    \"errors\": 11,\n    \"by_key\": {\n      \"story_id us-087\": 6,\n      \"proves\": 7,\n      \"module\": 1,\n      \"capability\": 2,\n      \"story_id\": 1,\n      \"config_flag\": 5,\n      \"mutually_exclusive\": 10,\n      \"story_id us-large-001\": 1,\n      \"proves billing_export_contract\": 1,\n      \"story_id us-med-001\": 1,\n      \"tested_by tests/payment.test.mjs\": 1\n    }\n  },\n  \"files\": {\n    \".agent/skills/iterative-planner/scripts/error_explainer.mjs\": [\n      {\n        \"file\": \".agent/skills/iterative-planner/scripts/error_explainer.mjs\",\n        \"line\": 2,\n        \"key\": \"story_id us-087\",\n        \"value\": null,\n        \"values\": [],\n        \"error\": \"Unknown annotation key: story_id us-087\"\n      },\n      {\n        \"file\": \".agent/skills/iterative-planner/scripts/error_explainer.mjs\",\n        \"line\": 3,\n        \"key\": \"proves\",\n        \"value\": \"crit:CRIT-003\",\n        \"values\": [\n          \"crit:CRIT-003\"\n        ],\n        \"error\": null\n      }\n    ],\n    \".agent/skills/iterative-planner/scripts/lib/annotation_discipline.mjs\": [\n      {\n        \"file\": \".agent/skills/iterative-planner/scripts/lib/annotation_discipline.mjs\",\n        \"line\": 3,\n        \"key\": \"module\",\n        \"value\": \"annotation_discipline\",\n        \"values\": [\n          \"annotation_discipline\"\n        ],\n        \"error\": null\n      },\n      {\n        \"file\": \".agent/skills/iterative-planner/scripts/lib/annotation_discipline.mjs\",\n        \"line\": 4,\n        \"key\": \"capability\",\n        \"value\": \"annotatio…[truncated 6592 chars]",
+        "stderr_excerpt": "⚠️  .agent/skills/iterative-planner/scripts/error_explainer.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/scripts/lib/annotation_discipline.mjs:5 — Unknown annotation key: story_id\n⚠️  .agent/skills/iterative-planner/scripts/plan_inspector.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/scripts/plan_similarity.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/scripts/security_audit.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/scripts/story_cli.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/scripts/visualize_wrapper.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/tests/fixtu…[truncated 2141 chars]",
+        "output_sha256": "fdc8a4d2b78d328c3656b153cd69dc4cb291118b6c02ab12319ffd992a5f68a8"
+      },
+      {
+        "id": "annotation_assist",
+        "command": "node .agent/skills/iterative-planner/scripts/annotation_assist.mjs --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"scanned\": 130,\n  \"files\": [\n    {\n      \"file\": \"src/TokenLab/utils/reporting.py\",\n      \"classes\": [],\n      \"suggestions\": [\n        {\n          \"key\": \"consumer\",\n          \"value\": \"projects/z1/core_solvency/html_report.py\",\n          \"confidence\": \"high\",\n          \"reason\": \"Imported by projects/z1/core_solvency/html_report.py\",\n          \"annotation\": \"# @planner:consumer = projects/z1/core_solvency/html_report.py\"\n        },\n        {\n          \"key\": \"consumer\",\n          \"value\": \"projects/z1/core_solvency/html_report.py\",\n          \"confidence\": \"high\",\n          \"reason\": \"Imported by projects/z1/core_solvency/html_report.py\",\n          \"annotation\": \"# @planner:consumer = projects/z1/core_solvency/html_report.py\"\n        },\n        {\n          \"key\": \"consumer\",\n          \"value\": \"projects/z1/m2_market_dynamics/html_report.py\",\n          \"confidence\": \"high\",\n          \"reason\": \"Imported by projects/z1/m2_market_dynamics/html_report.py\",\n          \"annotation\": \"# @planner:consumer = projects/z1/m2_market_dynamics/html_report.py\"\n        },\n        {\n          \"key\": \"consumer\",\n          \"value\": \"projects/z1/m2_market_dynamics/html_report.py\",\n          \"confidence\": \"high\",\n          \"reason\": \"Imported by projects/z1/m2_market_dynamics/html_report.py\",\n          \"annotation\": \"# @planner:consumer = projects/z1/m2_market_dynamics/html_report.py\"\n        },\n        {\n          \"key\": \"consumer\",\n          \"value\": \"src/TokenLab/utils/reporting.py\",\n          \"confidence\": \"high\",\n          \"reason\": \"Imported by src/TokenLab/utils/reporting.py\",\n      …[truncated 43648 chars]",
+        "stderr_excerpt": "Scanning 130 source files in /Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab...\n  Import graph: 130 files with imports\n",
+        "output_sha256": "ba948d081f95730a6b34bd8aacf0e94f6b35cedf8668974bbffe66c7c6eb6c88"
+      },
+      {
+        "id": "ontology_serializer",
+        "command": "node .agent/skills/iterative-planner/scripts/ontology_serializer.mjs --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"meta\": {\n    \"goals\": 0,\n    \"criteria\": 0,\n    \"goal_criterion_links\": 0,\n    \"criterion_story_links\": 0,\n    \"validation_artifacts\": 0,\n    \"audit_passes\": 0,\n    \"annotation_proves\": 7,\n    \"verification_results\": 0,\n    \"verification_subjects\": 1,\n    \"verification_modes\": 1,\n    \"verification_obligations\": 1,\n    \"verification_evidence\": 0,\n    \"verification_waivers\": 0,\n    \"retro_cases\": 0,\n    \"known_mistakes\": 3,\n    \"active_mistakes\": 0,\n    \"structured_findings\": 0,\n    \"persona_packs\": 0,\n    \"persona_constraints\": 0,\n    \"persona_findings\": 0,\n    \"quant_results_validation\": 1,\n    \"intent_contracts\": 0,\n    \"intent_deliverables\": 0,\n    \"recipe_entities\": 0,\n    \"recipe_capabilities\": 0,\n    \"recipe_contracts\": 0,\n    \"recipe_discovery_candidates\": 0\n  },\n  \"facts\": [\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/error_explainer.mjs', 'CRIT-003').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/plan_inspector.mjs', 'CRIT-003').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/plan_similarity.mjs', 'CRIT-003').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/security_audit.mjs', 'CRIT-003_crit:CRIT-007').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/story_cli.mjs', 'CRIT-001_crit:CRIT-004').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/visualize_wrapper.mjs', 'CRIT-003').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/tests/test_traceability_engine.mjs', 'sc_1').\",\n…[truncated 6482 chars]",
+        "stderr_excerpt": "",
+        "output_sha256": "f4295788dc8adcf54e4751faa34275d62a60e0f36722a0f4f810d2707126bbb8"
+      },
+      {
+        "id": "rule_engine_check_invariants",
+        "command": "node .agent/skills/iterative-planner/scripts/rule_engine.mjs check-invariants --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"output_schema_version\": \"1.0.0\",\n  \"violations\": [],\n  \"count\": 0,\n  \"status\": \"PASS\"\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "c74e910c76841481b1780929640f19fbebdda39329deeea5299baf260a7e3b42"
+      }
+    ]
+  },
+  "deepseek_advisory": {
+    "available": true,
+    "config": {
+      "configured": true,
+      "model": "deepseek-chat",
+      "base_url": "https://api.deepseek.com",
+      "endpoint": "https://api.deepseek.com/chat/completions",
+      "phases": [
+        "gate",
+        "post_task"
+      ],
+      "write_mode": "safe_apply",
+      "timeout_ms": 20000,
+      "local_env_loaded": false,
+      "using_deepseek_alias": false,
+      "missing": []
+    },
+    "source": "provider",
+    "raw_excerpt": "{\n  \"status\": \"review_ready\",\n  \"summary\": \"All deterministic checks pass. No blockers. Quant persona gate not required. Ticket is ready for review.\",\n  \"findings\": [\n    \"All 9 stories have FULLY_COVERED evidence.\",\n    \"Program packet validation passed with no errors.\",\n    \"Design-to-ready gate passed.\",\n    \"No conflicts or invariant violations.\",\n    \"Annotation parser found 11 errors but none are blocking for this ticket.\",\n    \"Retro recurrence check not applicable.\",\n    \"Quant persona gate not required (no_quant_scope).\"\n  ],\n  \"recommended_actions\": [\n    \"Proceed with review as ticket is review_ready.\"\n  ]\n}",
+    "status": "review_ready",
+    "summary": "All deterministic checks pass. No blockers. Quant persona gate not required. Ticket is ready for review.",
+    "findings": [
+      {
+        "id": "DS-001",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-002",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-003",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-004",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-005",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-006",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      },
+      {
+        "id": "DS-007",
+        "status": "fresh",
+        "message": "",
+        "evidence_refs": []
+      }
+    ],
+    "recommended_actions": [
+      "Proceed with review as ticket is review_ready."
+    ]
+  },
+  "final_status": "review_ready",
+  "artifact": {
+    "path": "plans/programs/z1-m3/reviews/t_intake_58a7d18d_review_packet.json"
+  },
+  "ticket_intake_receipt": {
+    "name": "Ticket Intake Receipt",
+    "version": 1,
+    "action": "review",
+    "front_door": "/program-manager",
+    "source": {
+      "kind": "github_issue",
+      "repo": "stelios12312312/TokenLab",
+      "issue_number": 3,
+      "project_item_id": null,
+      "url": "https://github.com/stelios12312312/TokenLab/issues/3",
+      "title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with ...[truncated 514 chars]"
+    },
+    "program_packet_path": "plans/programs/z1-m3/program_packet.json",
+    "review_artifact_path": "plans/programs/z1-m3/reviews/t_intake_58a7d18d_review_packet.json",
+    "ticket_id": "T-INTAKE-58A7D18D",
+    "ticket_title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with ...[truncated 514 chars]",
+    "ticket_lifecycle": "proposed",
+    "story_refs": [
+      "US-Z1-M3-01",
+      "US-Z1-M3-02",
+      "US-Z1-M3-03",
+      "US-Z1-M3-04",
+      "US-Z1-M3-05",
+      "US-Z1-M3-06",
+      "US-Z1-M3-07",
+      "US-Z1-M3-08",
+      "US-Z1-M3-09"
+    ],
+    "gap_refs": [
+      "GAP-INTAKE-58A7D18D"
+    ],
+    "defect_refs": [],
+    "acceptance_criteria_refs": [
+      "AC-T-INTAKE-58A7D18D"
+    ],
+    "verification_refs": [
+      "VM-T-INTAKE-58A7D18D"
+    ],
+    "deterministic_status": "review_ready",
+    "deterministic_blocker_count": 0,
+    "deterministic_blockers": [],
+    "retro_recurrence_status": "not_applicable",
+    "retro_recurrence_blocking_count": 0,
+    "retro_recurrence_advisory_count": 0,
+    "quant_persona_gate_status": "not_applicable",
+    "quant_persona_gate_required": false,
+    "quant_persona_gate_missing_count": 0,
+    "deepseek_advisory_status": "review_ready",
+    "deepseek_advisory_block": "<<<DEEPSEEK_VERDICT_BEGIN>>>\nStatus: review_ready\nSummary: All deterministic checks pass. No blockers. Quant persona gate not required. Ticket is ready for review.\nFindings:\n- DS-001 (status=fresh)\n- DS-002 (status=fresh)\n- DS-003 (status=fresh)\n- DS-004 (status=fresh)\n- DS-005 (status=fresh)\n- DS-006 (status=fresh)\n- DS-007 (status=fresh)\nRecommended actions:\n- Proceed with review as ticket is review_ready.\n<<<DEEPSEEK_VERDICT_END>>>",
+    "verbatim_reproduction_contract": "Primary agents must reproduce deepseek_advisory_block verbatim in their reply to the user; paraphrase is forbidden. The DEEPSEEK_VERDICT_BEGIN/END delimiters are part of the contract -- quote them as written.",
+    "direct_github_creation_allowed": false,
+    "github_publication": "mirror_sync_only",
+    "next_required_command": "node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program plans/programs/z1-m3/program_packet.json --json",
+    "review_command": "node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs review --issue <n> --program plans/programs/z1-m3/program_packet.json --ticket T-INTAKE-58A7D18D --json"
+  }
+}
