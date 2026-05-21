@@ -159,11 +159,17 @@ function allRegistryStories(storyRegistry) {
 }
 
 function combinedContextText(context) {
-  const stories = allRegistryStories(context?.storyRegistry);
-  return normalizeText([
-    ...Object.values(context?.planFiles || {}),
-    ...stories.map(storyText),
-  ].join(" "));
+  return normalizeText(Object.values(context?.planFiles || {}).join(" "));
+}
+
+function currentShape(context) {
+  const shape = context?.planShape;
+  if (shape && typeof shape === "object") return normalizeText(shape.primary || "");
+  return normalizeText(shape || "");
+}
+
+function hasScientificPlanShape(context) {
+  return currentShape(context) === "scientific";
 }
 
 function textContainsAny(text, terms) {
@@ -193,16 +199,14 @@ function roles(context) {
 }
 
 function hasQuantScope(context, text) {
-  if (roles(context).includes("quant") || roles(context).includes("quant_target")) return true;
-  const stories = allRegistryStories(context?.storyRegistry);
-  if (stories.some((story) => textContainsAny(storyText(story), ["quant", "model", "betting", "odds", "market"]))) return true;
+  if (hasScientificPlanShape(context)) return true;
   return textContainsAny(text, QUANT_SCOPE_TERMS);
 }
 
 function shouldApply(context) {
   const text = combinedContextText(context);
-  if (!text) return roles(context).includes("quant_target");
-  if (roles(context).includes("quant_target")) return true;
+  if (!text) return hasScientificPlanShape(context) && (roles(context).includes("quant") || roles(context).includes("quant_target"));
+  if (hasScientificPlanShape(context) && (roles(context).includes("quant") || roles(context).includes("quant_target"))) return true;
   if (textContainsAny(text, HIGH_SIGNAL_TERMS)) return true;
   return hasQuantScope(context, text) && textContainsAny(text, TARGET_SIGNAL_TERMS);
 }

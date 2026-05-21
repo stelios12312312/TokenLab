@@ -148,10 +148,10 @@ ux_violation('UX-004', S1,
     'Two UX stories produce conflicting state for the same UI entity',
     'MEDIUM') :-
     story(S1, _, _, St1), St1 \= retired,
+    ux_relevant(S1),
+    postcondition(S1, state_change(Entity, StateA)),
     story(S2, _, _, St2), St2 \= retired,
     S1 \= S2,
-    ux_relevant(S1),
     ux_relevant(S2),
-    postcondition(S1, state_change(Entity, StateA)),
     postcondition(S2, state_change(Entity, StateB)),
     StateA \= StateB.

@@ -64,6 +64,7 @@ const nonChoreCases = [
   { goal: "Migrate fleet projects to v7.4.3", expected: "migration" },
   { goal: "Implement redirect middleware in Express", expected: "feature" },
   { goal: "Fix broken redirect router logic", expected: "bug-fix" },
+  { goal: "Open the pricing page", expected: "analysis" },
 ];
 for (const c of nonChoreCases) {
   const shape = detectPlanShape({ goalText: c.goal });

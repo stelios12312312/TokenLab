@@ -5,7 +5,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
-import { runPublish, runReview } from "../scripts/github_ticket_review.mjs";
+import { renderText, runPublish, runReview } from "../scripts/github_ticket_review.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -265,8 +265,8 @@ const mockReviewReadyEnv = {
   PLANNER_DRIFT_LLM_MOCK_RESPONSE: JSON.stringify({
     status: "review_ready",
     summary: "Advisory review says ready",
-    findings: [],
-    recommended_actions: [],
+    findings: [{ id: "DS-001", status: "fresh", message: "Review packet has enough references" }],
+    recommended_actions: ["Keep deterministic evidence authoritative"],
   }),
 };
 
@@ -298,6 +298,14 @@ console.log("\nGitHub Ticket Review Contracts\n");
     assert(result.ticket_intake_receipt.ticket_id === "T-001", "review receipt records ticket id");
     assert(result.ticket_intake_receipt.deterministic_status === result.review_status, "review receipt mirrors deterministic status");
     assert(result.ticket_intake_receipt.deepseek_advisory_status === "review_ready", "review receipt records advisory status separately");
+    assert(result.ticket_intake_receipt.deepseek_advisory_block.includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "review receipt includes fenced DeepSeek block");
+    assert(result.ticket_intake_receipt.deepseek_advisory_block.includes("Review packet has enough references"), "review receipt block includes DeepSeek finding text");
+    assert(result.ticket_intake_receipt.deepseek_advisory_block.includes("Keep deterministic evidence authoritative"), "review receipt block includes recommended action");
+    assert(result.ticket_intake_receipt.verbatim_reproduction_contract?.includes("verbatim"), "review receipt includes verbatim reproduction contract");
+    assert(result.github_sync.planned_comment.includes("DeepSeek advisory verdict"), "GitHub review comment surfaces DeepSeek verdict block");
+    assert(result.github_sync.planned_comment.includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "GitHub review comment includes DeepSeek block delimiters");
+    assert(renderText(result).includes("REPRODUCE VERBATIM"), "text-mode review output instructs agents to reproduce the DeepSeek block");
+    assert(renderText(result).includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "text-mode review output includes DeepSeek block delimiters");
     assert(result.review_packet.retro_recurrence_check.status === "not_applicable", "passing review packet includes recurrence check");
     assert(result.ticket_intake_receipt.retro_recurrence_status === "not_applicable", "review receipt carries recurrence status");
     assert(writeCalls(fakeGh.calls).length === 0, "dry-run performs no GitHub write calls");
@@ -565,6 +573,8 @@ console.log("\nGitHub Ticket Review Contracts\n");
     assert(!JSON.stringify(result).includes(secret), "result JSON redacts API keys");
     assert(!artifact.includes(secret), "Review Packet artifact redacts API keys");
     assert(!JSON.stringify(result.ticket_intake_receipt).includes(secret), "review receipt redacts API keys");
+    assert(!String(result.ticket_intake_receipt.deepseek_advisory_block || "").includes(secret), "review receipt DeepSeek block redacts API keys");
+    assert(!String(result.github_sync.planned_comment || "").includes(secret), "planned GitHub comment redacts API keys");
     assert(!callText.includes(secret), "GitHub comment/update calls redact API keys");
   } finally {
     rmSync(tmp, { recursive: true, force: true });

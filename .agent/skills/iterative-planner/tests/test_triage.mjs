@@ -71,6 +71,7 @@ const analysisGoals = [
   "Explain how shape detection works",
   "List all active mistakes",
   "Summarize the v7.4.x changes",
+  "Open the pricing page",
 ];
 for (const goal of analysisGoals) {
   const shape = detectPlanShape({ goalText: goal });
@@ -101,7 +102,14 @@ const cases = [
   { goal: "Increase Facebook Ad Group budgets by 10%",     max_score: 1,  path: "skip_planner" },
   { goal: "Add a redirect from /old-page to /new-page",    max_score: 1,  path: "skip_planner" },
   { goal: "Set up redirects for the old landing pages",    max_score: 1,  path: "skip_planner" },
+  { goal: "open a page",                                   max_score: 0,  path: "skip_planner" },
+  { goal: "Open the pricing page",                         max_score: 0,  path: "skip_planner" },
+  { goal: "Open https://example.com",                      max_score: 0,  path: "skip_planner" },
+  { goal: "Open the page and check the hero text",         max_score: 0,  path: "skip_planner" },
+  { goal: "opena page",                                    max_score: 0,  path: "skip_planner" },
   { goal: "Implement redirect middleware in Express",      min_score: 4,  path_one_of: ["standard_planner"] },
+  { goal: "Open the router and fix the redirect bug",      min_score: 4,  path_one_of: ["standard_planner"] },
+  { goal: "Open the page component and implement loading state", min_score: 4, path_one_of: ["standard_planner"] },
   { goal: "LinkedAPI connection is healthy; SSI check passed and connection retrieval passed. Failures were a hardcoded 60-second timeout in our code. Increase polling timeout to 5 minutes, add a 5-second delay, and improve logs.", max_score: 3, path: "lightweight" },
   { goal: "What does the merger script do?",               max_score: 0,  path: "skip_planner_question" },
 ];
@@ -157,6 +165,16 @@ try {
     "triage subcommand --json returns skip_planner for chore goal");
   assert(typeof parsed.complexity_score === "number",
     "triage subcommand returns numeric complexity_score");
+
+  const openJson = execFileSync(NODE, [bootstrap, "triage", "Open the pricing page", "--json"], {
+    cwd: tmp, encoding: "utf-8",
+    env: { ...process.env, CODEX_THREAD_ID: "", _PLANNER_PLAN_TARGET: "" },
+  });
+  const parsedOpen = JSON.parse(openJson);
+  assert(parsedOpen.recommended_path === "skip_planner",
+    "triage subcommand --json returns skip_planner for simple open/view goal");
+  assert(parsedOpen.simple_read_only_action === true,
+    "triage subcommand marks simple open/view goal as read-only");
 
   const outText = execFileSync(NODE, [bootstrap, "triage", "What does the auth flow do?"], {
     cwd: tmp, encoding: "utf-8",

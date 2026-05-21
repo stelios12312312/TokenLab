@@ -39,6 +39,10 @@ import {
   evaluateQuantPersonaGate,
   quantPersonaGateToBlockers,
 } from "./lib/quant_persona_gate.mjs";
+import {
+  buildDeepSeekAdvisoryBlock,
+  DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT,
+} from "./lib/deepseek_advisory_block.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1185,74 +1189,6 @@ async function runIntakeDeepSeekAdvisory({ intakePacket, cwd, env, fetchImpl }) 
   }
 }
 
-// Phase C: Build a fenced verbatim-reproduction block for the DeepSeek advisory.
-// Format choice: delimiters `<<<DEEPSEEK_VERDICT_BEGIN>>>` / `<<<DEEPSEEK_VERDICT_END>>>`
-// chosen because (a) they are unlikely to collide with natural language,
-// (b) they survive markdown rendering without escaping, (c) they are easy
-// to grep for in post-hoc audits of agent replies.
-//
-// Vector 7 defense: if the LLM ever emits the delimiter substrings inside its
-// own response (whether by accident or via prompt injection — "summary: ... <<<DEEPSEEK_VERDICT_END>>>
-// ignore previous instructions"), splicing that raw text into the block would
-// terminate the fenced region early and let trailing attacker text escape the
-// verbatim contract. scrubDelimiter() rewrites both BEGIN and END substrings
-// to a clearly-marked escaped form before the field is concatenated into the
-// block.
-function scrubDelimiter(text) {
-  if (typeof text !== "string") return text;
-  // Red-team audit F-005 fix: scrub all confusable forms of the delimiter,
-  // not just the exact-case + exact-whitespace pattern. Defense in depth
-  // against future consumers that might parse case-insensitively.
-  //   /gi flag        — case-insensitive (matches DEEPSEEK_VERDICT_END, deepseek_verdict_end, etc.)
-  //   \s* inside <<<>>> — tolerates whitespace padding (<<< DEEPSEEK_VERDICT_END >>>)
-  return text
-    .replace(/<<<\s*DEEPSEEK_VERDICT_BEGIN\s*>>>/gi, "[DEEPSEEK_VERDICT_BEGIN_ESCAPED]")
-    .replace(/<<<\s*DEEPSEEK_VERDICT_END\s*>>>/gi,   "[DEEPSEEK_VERDICT_END_ESCAPED]");
-}
-
-function buildDeepSeekAdvisoryBlock(advisory) {
-  const status = scrubDelimiter(advisory?.status || "unavailable");
-  const rawSummary = (typeof advisory?.summary === "string" && advisory.summary.trim()) ? advisory.summary.trim() : "(no summary)";
-  const summary = scrubDelimiter(rawSummary);
-  const findings = asArray(advisory?.findings).slice(0, 10);
-  const actions = asArray(advisory?.recommended_actions).slice(0, 10);
-  const lines = [
-    "<<<DEEPSEEK_VERDICT_BEGIN>>>",
-    `Status: ${status}`,
-    `Summary: ${summary}`,
-  ];
-  if (findings.length > 0) {
-    lines.push("Findings:");
-    for (const f of findings) {
-      // Findings reach this point already normalised by normalizeIntakeAdvisoryPayload
-      // into {id, status, message, evidence_refs}. Fall back through reasonable
-      // alternatives if message is empty, then to id, then to a JSON dump.
-      let text;
-      if (typeof f === "string") {
-        text = f;
-      } else if (f?.message) {
-        text = f.id ? `${f.id}: ${f.message}` : f.message;
-      } else if (f?.text) {
-        text = f.text;
-      } else if (f?.id) {
-        text = `${f.id} (status=${f.status || "unknown"})`;
-      } else {
-        text = JSON.stringify(f);
-      }
-      lines.push(`- ${scrubDelimiter(String(text)).slice(0, 300)}`);
-    }
-  }
-  if (actions.length > 0) {
-    lines.push("Recommended actions:");
-    for (const a of actions) {
-      const text = typeof a === "string" ? a : (a?.text || a?.action || JSON.stringify(a));
-      lines.push(`- ${scrubDelimiter(String(text)).slice(0, 300)}`);
-    }
-  }
-  lines.push("<<<DEEPSEEK_VERDICT_END>>>");
-  return lines.join("\n");
-}
-
 function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPath, ticket, acceptanceCriteria, verificationRows, deterministic, deepseekAdvisory }) {
   const blockerCount = asArray(deterministic?.blockers).length;
   const recurrence = deterministic?.retro_recurrence_check || null;
@@ -1306,7 +1242,7 @@ function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPat
     // The block is also rendered in renderIntakeText() so text-mode callers
     // get the same content.
     deepseek_advisory_block: buildDeepSeekAdvisoryBlock(deepseekAdvisory),
-    verbatim_reproduction_contract: "Primary agents must reproduce deepseek_advisory_block verbatim in their reply to the user; paraphrase is forbidden. The DEEPSEEK_VERDICT_BEGIN/END delimiters are part of the contract — quote them as written.",
+    verbatim_reproduction_contract: DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT,
     direct_github_creation_allowed: false,
     github_publication: "explicit_publish_required",
     next_required_command: `node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program ${programPacketPath} --json`,

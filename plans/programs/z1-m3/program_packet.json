@@ -2,7 +2,7 @@
   "version": 1,
   "id": "z1-m3",
   "title": "Z1 M3 Full Economy",
-  "status": "design",
+  "status": "executing",
   "goal": "Implement M3 mechanisms and agent expansions for full Z1 token economy based on Vault-to-Code Gap Analysis.",
   "epics": [
     {

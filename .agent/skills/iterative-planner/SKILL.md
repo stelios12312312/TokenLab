@@ -1,6 +1,6 @@
 ---
 name: iterative-planner
-planner_version: "7.6.37"
+planner_version: "7.6.38"
 description: >
   State-machine driven iterative planning and execution for complex coding tasks.
   Cycle: Explore → Plan → Execute → Reflect → Validate → Close / Re-plan. Filesystem as persistent memory.

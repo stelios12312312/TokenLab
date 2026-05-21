@@ -386,6 +386,7 @@ If the project has a test suite, run test_baseline.mjs capture "<test-command>" 
 
 | Version | Codename | Key Features |
 |---------|----------|-------------|
+| 7.6.38 | Visible Ticket Review Advisory | Makes `github_ticket_review.mjs review` carry the full fenced DeepSeek advisory verdict and verbatim reproduction contract in Ticket Intake Receipts, text output, and planned GitHub review comments while keeping deterministic blockers authoritative. Also routes simple read-only open/view page and URL tasks to `skip_planner` so agents do not bootstrap the planner for trivial browser/read actions. |
 | 7.6.37 | Readable GitHub Ticket Publish | Makes `github_ticket_review.mjs publish` include the original Program Manager intake description from the ticket's intake packet above planner metadata in GitHub issue bodies. Dry-run/live publish now keep collaborator-readable ticket context while preserving deterministic Program Packet metadata and redaction. |
 | 7.6.36 | Tokenomics TokenLab Rollout | Bumps the shipped planner version after the tokenomics persona pack and documents the TokenLab migration path. Downstream tokenomics projects should receive the `tokenomics` pack during upgrade and use persona adaptation to add the role when high-confidence TokenLab/tokenomics signals are present. |
 | 7.6.35 | Tokenomics Persona Pack | Adds a built-in `tokenomics` persona pack for token economics and TokenLab-style projects. The pack checks token supply/emissions, vesting/unlocks, incentive sustainability, liquidity/treasury/governance authority, financial claim boundaries, and legal/regulatory review boundaries without giving financial or legal advice. Persona adaptation now recommends `tokenomics` from tokenomics/token launch signals, evidence committees add assumptions/wiring/traceability companions, and managed docs expose tokenomics autorun guidance. |
@@ -504,6 +505,13 @@ This rollout is additive and does not add states to the iterative planner state 
 ## Breaking Changes (v7.0.1 → v7.1.0)
 
 No breaking changes. `7.1.0` is a reusable program-management layer on top of the existing iterative planner. It adds new workflows, schemas, scripts, docs, tests, and optional plan metadata, but preserves existing gate commands, state transitions, and plan validity.
+
+## Breaking Changes (v7.6.37 -> v7.6.38)
+
+No breaking changes. v7.6.38 adds user-visible DeepSeek advisory block rendering
+to GitHub ticket review outputs and improves bootstrap triage for simple
+read-only open/view actions. Existing Program Packets, GitHub dry-run/write
+behavior, deterministic review status, and redaction rules remain compatible.
 
 ## Breaking Changes (v7.6.36 -> v7.6.37)
 
