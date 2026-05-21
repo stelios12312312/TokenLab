@@ -26,6 +26,10 @@ import {
   evaluateQuantPersonaGate,
   quantPersonaGateToBlockers,
 } from "./lib/quant_persona_gate.mjs";
+import {
+  buildDeepSeekAdvisoryBlock,
+  DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT,
+} from "./lib/deepseek_advisory_block.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -497,6 +501,7 @@ function buildTicketIntakeReceipt({
   deterministicStatus,
   deterministicBlockers,
   deepseekAdvisoryStatus,
+  deepseekAdvisory,
   github,
   reviewArtifactPath,
   retroRecurrenceCheck,
@@ -505,6 +510,8 @@ function buildTicketIntakeReceipt({
   const blockers = asArray(deterministicBlockers);
   const recurrence = retroRecurrenceCheck || null;
   const quantGate = quantPersonaGate || null;
+  const advisoryStatus = deepseekAdvisory?.status || deepseekAdvisoryStatus || "not_run";
+  const advisoryBlock = deepseekAdvisory ? buildDeepSeekAdvisoryBlock(deepseekAdvisory) : null;
   return {
     name: "Ticket Intake Receipt",
     version: 1,
@@ -543,7 +550,9 @@ function buildTicketIntakeReceipt({
     quant_persona_gate_status: quantGate?.status || "not_run",
     quant_persona_gate_required: quantGate?.required === true,
     quant_persona_gate_missing_count: quantGate?.summary?.missing_guard_count || 0,
-    deepseek_advisory_status: deepseekAdvisoryStatus || "not_run",
+    deepseek_advisory_status: advisoryStatus,
+    deepseek_advisory_block: advisoryBlock,
+    verbatim_reproduction_contract: advisoryBlock ? DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT : null,
     direct_github_creation_allowed: false,
     github_publication: action === "publish" ? "explicit_publish" : "mirror_sync_only",
     next_required_command: `node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program ${programPacketPath} --json`,
@@ -797,6 +806,7 @@ function renderReviewComment(reviewPacket, { env = process.env } = {}) {
   const recurrence = reviewPacket.retro_recurrence_check || reviewPacket.deterministic?.retro_recurrence_check || null;
   const recurrenceMatches = asArray(recurrence?.matches);
   const quantGate = reviewPacket.quant_persona_gate || reviewPacket.deterministic?.quant_persona_gate || null;
+  const advisoryBlock = reviewPacket.ticket_intake_receipt?.deepseek_advisory_block || null;
   const lines = [
     markerFor(reviewPacket.ticket?.id || "unknown"),
     "### Planner Ticket Review",
@@ -809,6 +819,12 @@ function renderReviewComment(reviewPacket, { env = process.env } = {}) {
     "Deterministic checks are authoritative. DeepSeek is advisory only.",
     "",
   ];
+  if (advisoryBlock) {
+    lines.push("DeepSeek advisory verdict:");
+    lines.push("");
+    lines.push(advisoryBlock);
+    lines.push("");
+  }
   if (recurrence) {
     lines.push("Retro Recurrence Check:");
     lines.push(`- Status: \`${recurrence.status || "not_run"}\``);
@@ -1104,6 +1120,7 @@ export async function runReview(inputArgs, options = {}) {
     deterministicStatus: reviewPacket.final_status,
     deterministicBlockers: reviewPacket.deterministic.blockers,
     deepseekAdvisoryStatus: advisory.status,
+    deepseekAdvisory: advisory,
     retroRecurrenceCheck: recurrenceCheck,
     quantPersonaGate,
     github: {
@@ -1402,6 +1419,16 @@ function renderText(result) {
     `Ticket Intake Receipt: ${result.ticket_intake_receipt?.deterministic_status || "unknown"}`,
   ];
   const blockers = asArray(result.review_packet?.deterministic?.blockers);
+  const receipt = result.ticket_intake_receipt || null;
+  if (receipt?.deepseek_advisory_block) {
+    lines.push("");
+    lines.push("DeepSeek advisory (REPRODUCE VERBATIM in your reply to the user):");
+    lines.push(receipt.deepseek_advisory_block);
+    if (receipt.verbatim_reproduction_contract) {
+      lines.push("");
+      lines.push(`Contract: ${receipt.verbatim_reproduction_contract}`);
+    }
+  }
   if (blockers.length > 0) {
     lines.push("Blockers:");
     for (const blocker of blockers.slice(0, 8)) {
@@ -1451,6 +1478,7 @@ export {
   fetchIssue,
   fetchProjectItem,
   parseArgs,
+  renderText,
   renderReviewComment,
   resolveRepo,
 };

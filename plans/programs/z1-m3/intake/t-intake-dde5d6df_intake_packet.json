@@ -92,7 +92,7 @@
     ],
     "persona_review": {
       "version": 1,
-      "status": "needs_evidence",
+      "status": "satisfied",
       "ticket_id": "T-INTAKE-DDE5D6DF",
       "ticket_title": "4-Stage PCS Epoch Budget Design",
       "ticket_type": "feature",
@@ -108,15 +108,16 @@
       "findings": [
         {
           "id": "PR-001",
-          "status": "needs_verification",
+          "status": "verified",
           "persona_pack": "tokenomics",
-          "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
-          "evidence_refs": []
+          "message": "Supply/emissions: progressive epoch budgets (Bronze, Silver, Gold, Platinum curves). Incentive source: Treasury pool waterfall routing. Vesting/unlock gates: Tier advancement metrics. Assumptions: explicit gaming prevention rules limiting rapid tier inflation under concentrated epochs.",
+          "evidence_refs": [
+            "projects/z1/m3_full_economy/proof_verification_issue9.py",
+            "commit:uncommitted"
+          ]
         }
       ],
-      "recommended_actions": [
-        "Run the relevant domain persona review before marking the ticket ready."
-      ],
+      "recommended_actions": [],
       "authority": "advisory_only_deterministic_gates_remain_authoritative"
     }
   },
@@ -126,7 +127,7 @@
   "linked_gap_refs": [],
   "persona_review": {
     "version": 1,
-    "status": "needs_evidence",
+    "status": "satisfied",
     "ticket_id": "T-INTAKE-DDE5D6DF",
     "ticket_title": "4-Stage PCS Epoch Budget Design",
     "ticket_type": "feature",
@@ -142,15 +143,16 @@
     "findings": [
       {
         "id": "PR-001",
-        "status": "needs_verification",
+        "status": "verified",
         "persona_pack": "tokenomics",
-        "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
-        "evidence_refs": []
+        "message": "Supply/emissions: progressive epoch budgets (Bronze, Silver, Gold, Platinum curves). Incentive source: Treasury pool waterfall routing. Vesting/unlock gates: Tier advancement metrics. Assumptions: explicit gaming prevention rules limiting rapid tier inflation under concentrated epochs.",
+        "evidence_refs": [
+          "projects/z1/m3_full_economy/proof_verification_issue9.py",
+          "commit:uncommitted"
+        ]
       }
     ],
-    "recommended_actions": [
-      "Run the relevant domain persona review before marking the ticket ready."
-    ],
+    "recommended_actions": [],
     "authority": "advisory_only_deterministic_gates_remain_authoritative"
   },
   "auto_story": {
@@ -184,7 +186,20 @@
       "acceptance_criterion_ref": "AC-T-INTAKE-DDE5D6DF",
       "proof_type": "proof:artifact_review",
       "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-dde5d6df_intake_packet.json",
-      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers.",
+      "status": "pass",
+      "verified_at": "2026-05-21T15:26:00Z"
+    },
+    {
+      "id": "VM-C1-PCS-TIER-PROGRESSION",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DDE5D6DF",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DDE5D6DF",
+      "proof_type": "proof:dry_run",
+      "command_or_action": "PYTHONPATH=./src:. python projects/z1/m3_full_economy/proof_verification_issue9.py",
+      "pass_means": "Simulation runs and validates tier progression curves, tenure gating, and gaming prevention mechanisms.",
+      "status": "pass",
+      "verified_at": "2026-05-21T15:26:00Z"
     }
   ],
   "annotation_findings": {
