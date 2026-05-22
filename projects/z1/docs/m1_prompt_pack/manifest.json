@@ -1,0 +1,42 @@
+{
+  "pack_name": "z1_tokenlab_m1_prompt_pack",
+  "version": "1.0",
+  "scope": "Milestone 1 only: Core Solvency Model",
+  "model": "Reduced-form TokenLab cohort ABM",
+  "answers": [
+    "Q1 AR sustainability",
+    "Q2 vesting pressure",
+    "structural Q4 Treasury/AR loop"
+  ],
+  "excluded": [
+    "endogenous price",
+    "governance",
+    "campaign lifecycle",
+    "creators",
+    "validators",
+    "adversarial agents",
+    "full PCS",
+    "full 14-agent taxonomy"
+  ],
+  "files": [
+    "ALL_M1_PROMPTS_COMBINED.md",
+    "M1_CODER_CHECKLIST.md",
+    "M1_ONE_SHOT_STARTER_PROMPT.md",
+    "README.md",
+    "prompts/00_m1_master_context.md",
+    "prompts/01_repo_orientation_m1.md",
+    "prompts/02_scaffold_m1.md",
+    "prompts/03_state_config_cohorts_m1.md",
+    "prompts/04_ledger_invariants_m1.md",
+    "prompts/05_epoch_loop_m1.md",
+    "prompts/06_scenarios_m1.md",
+    "prompts/07_stress_grid_m1.md",
+    "prompts/08_metrics_outputs_m1.md",
+    "prompts/09_plots_m1.md",
+    "prompts/10_sensitivity_m1.md",
+    "prompts/11_m1_report_generator.md",
+    "prompts/12_scope_guardrails_m1.md",
+    "reference/M1_ACCEPTANCE_CRITERIA.md",
+    "reference/M1_SCOPE_SUMMARY.md"
+  ]
+}
