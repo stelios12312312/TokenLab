@@ -1,0 +1,299 @@
+{
+  "_comment": "MCP tool definitions for the iterative planner. Single source of truth for tool schemas, descriptions, and phase mappings. Read by mcp_server.mjs at startup.",
+  "tools": {
+    "create_plan": {
+      "description": "Create a new iterative plan with a goal. This is the first step — describe what you want to accomplish.",
+      "phase": "no_plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "goal": { "type": "string", "description": "What you want to accomplish (1-2 sentences)" }
+        },
+        "required": ["goal"]
+      }
+    },
+    "resume_plan": {
+      "description": "Resume the currently active plan. Returns current state, phase, and what to do next.",
+      "phase": "no_plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "list_plans": {
+      "description": "List all plans (active and archived) with their status.",
+      "phase": "no_plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "read_kb": {
+      "description": "Read the knowledge base (mistakes, patterns, gotchas). MUST be called before adding findings. Returns KB content and generates a digest hash.",
+      "phase": "explore",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "add_finding": {
+      "description": "Add an indexed finding from your exploration. Minimum 3 findings required before transitioning to PLAN. Each finding must have a title, context, and impact (at least 30 words).",
+      "phase": "explore",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "description": "Finding ID (e.g., F-01, F-02)" },
+          "title": { "type": "string", "description": "Short title for the finding" },
+          "context": { "type": "string", "description": "Detailed context — what you found and why it matters (minimum 30 words)" },
+          "files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Files related to this finding"
+          }
+        },
+        "required": ["id", "title", "context"]
+      }
+    },
+    "check_adjacency": {
+      "description": "Run blast radius analysis on files you plan to modify. Identifies related files that may also need changes.",
+      "phase": "explore",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Files to analyze for adjacency impacts"
+          }
+        },
+        "required": ["files"]
+      }
+    },
+    "set_problem_statement": {
+      "description": "Define the problem statement for your plan. Must include: (1) expected behavior, (2) current behavior, (3) root cause.",
+      "phase": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "expected": { "type": "string", "description": "What should happen" },
+          "current": { "type": "string", "description": "What currently happens" },
+          "root_cause": { "type": "string", "description": "Why the current behavior occurs" }
+        },
+        "required": ["expected", "current", "root_cause"]
+      }
+    },
+    "list_files_to_modify": {
+      "description": "Declare every file that will be touched during EXECUTE. This scopes the work and enables drift detection.",
+      "phase": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" },
+                "action": { "type": "string", "enum": ["NEW", "EDIT", "DELETE"] },
+                "reason": { "type": "string" }
+              },
+              "required": ["path", "action", "reason"]
+            },
+            "description": "Files to modify with action and justification"
+          }
+        },
+        "required": ["files"]
+      }
+    },
+    "add_step": {
+      "description": "Add an execution step to the plan. Steps should be atomic and ordered.",
+      "phase": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "number": { "type": "integer", "description": "Step number (1-based)" },
+          "description": { "type": "string", "description": "What this step accomplishes" },
+          "files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Files touched in this step"
+          }
+        },
+        "required": ["number", "description"]
+      }
+    },
+    "define_verification": {
+      "description": "Define verification strategy with success criteria. Each criterion needs a test command and expected result.",
+      "phase": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "criteria": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string" },
+                "command": { "type": "string" },
+                "pass_means": { "type": "string" }
+              },
+              "required": ["name", "command", "pass_means"]
+            }
+          }
+        },
+        "required": ["criteria"]
+      }
+    },
+    "request_approval": {
+      "description": "Request user approval to proceed from PLAN to EXECUTE. Blocked until problem statement, file list, and verification strategy are defined.",
+      "phase": "plan",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "summary": { "type": "string", "description": "Brief summary of the plan for user review" }
+        },
+        "required": ["summary"]
+      }
+    },
+    "update_progress": {
+      "description": "Mark a step as completed or update its status. Updates progress.md and state.md.",
+      "phase": "execute",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "step": { "type": "integer", "description": "Step number being updated" },
+          "status": { "type": "string", "enum": ["completed", "in_progress", "blocked"], "description": "New status" },
+          "notes": { "type": "string", "description": "What was done or why it's blocked" }
+        },
+        "required": ["step", "status"]
+      }
+    },
+    "log_change": {
+      "description": "Log a file change to the change manifest in state.md.",
+      "phase": "execute",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "file": { "type": "string", "description": "File path that was changed" },
+          "action": { "type": "string", "enum": ["NEW", "EDIT", "DELETE"] },
+          "description": { "type": "string", "description": "What changed" }
+        },
+        "required": ["file", "action", "description"]
+      }
+    },
+    "create_checkpoint": {
+      "description": "Create a checkpoint before a risky operation. Enables rollback if something goes wrong.",
+      "phase": "execute",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reason": { "type": "string", "description": "Why this checkpoint is needed" }
+        },
+        "required": ["reason"]
+      }
+    },
+    "add_red_team_vector": {
+      "description": "Add a red-team attack vector. Minimum 3 vectors required before transitioning to REFLECT. Each needs: attack description, impact, and mitigation.",
+      "phase": "execute",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "attack": { "type": "string", "description": "How could this change be exploited or fail?" },
+          "impact": { "type": "string", "description": "What's the worst-case consequence?" },
+          "mitigation": { "type": "string", "description": "How is this prevented or contained?" }
+        },
+        "required": ["attack", "impact", "mitigation"]
+      }
+    },
+    "add_verification_result": {
+      "description": "Record a verification result (PASS/FAIL) with evidence. Must include actual command output as proof of work.",
+      "phase": "reflect",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "criterion": { "type": "string", "description": "Which success criterion this verifies" },
+          "status": { "type": "string", "enum": ["PASS", "FAIL", "UNVERIFIED"] },
+          "evidence": { "type": "string", "description": "Actual command output or explanation" }
+        },
+        "required": ["criterion", "status", "evidence"]
+      }
+    },
+    "update_kb": {
+      "description": "Update the knowledge base with lessons learned. Add mistakes (M-NNN), patterns (P-NNN), or gotchas (G-NNN).",
+      "phase": "reflect",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": { "type": "string", "enum": ["mistake", "pattern", "gotcha", "none"], "description": "Type of KB entry" },
+          "id": { "type": "string", "description": "Entry ID (e.g., M-006, P-008). Required unless type is 'none'." },
+          "title": { "type": "string", "description": "Short title" },
+          "content": { "type": "string", "description": "Full content of the KB entry" },
+          "reason_if_none": { "type": "string", "description": "Why no new learnings (required if type is 'none')" }
+        },
+        "required": ["type"]
+      }
+    },
+    "write_summary": {
+      "description": "Write the plan summary for CLOSE phase. Summarizes what was done, what changed, and key decisions.",
+      "phase": "close",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "summary": { "type": "string", "description": "Summary of what was accomplished" },
+          "changes": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "List of key changes made"
+          }
+        },
+        "required": ["summary", "changes"]
+      }
+    },
+    "get_state": {
+      "description": "Get the current plan state including phase, iteration, step, and transition history.",
+      "phase": "always",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "get_gate_status": {
+      "description": "Check the status of all gates — which have passed, which are blocking, and what's needed to proceed.",
+      "phase": "always",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "get_plan_info": {
+      "description": "Get the current plan details including goal, findings, steps, and progress.",
+      "phase": "always",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    "request_human_help": {
+      "description": "Escalate to the human user when stuck. Use when all available tools are blocked or you need guidance.",
+      "phase": "always",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "reason": { "type": "string", "description": "Why you need help" },
+          "context": { "type": "string", "description": "What you've tried so far" }
+        },
+        "required": ["reason"]
+      }
+    },
+    "diagnose_gate": {
+      "description": "Diagnose why a gate is blocked. Returns the Prolog guards that are failing, what each guard requires, which MCP tool to call to satisfy it, and any invariant violations. Use this when get_gate_status shows a FAIL.",
+      "phase": "always",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "gate": { "type": "string", "description": "Gate name to diagnose (e.g., 'explore-to-plan', 'plan-to-execute', 'reflect-to-validate', 'validate-to-close'). If omitted, diagnoses the next gate for the current phase." }
+        }
+      }
+    }
+  }
+}

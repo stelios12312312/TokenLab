@@ -1,0 +1,87 @@
+schema_version: 1.0.0
+namespace: z1/simulation/m1/active_registry
+description: Complete registry of all parameters active in M1 simulation, combining source-backed anchors and provisional
+  defaults.
+source_backed_parameters:
+  m1_cohorts:
+    value: 3
+    ref: z1_m1_source_anchors.json
+  n_epochs:
+    value: 104
+    ref: z1_m1_source_anchors.json
+  adoption_sizes_anchor:
+    value:
+    - 200000000
+    - 500000000
+    - 750000000
+    - 1000000000
+    ref: z1_m1_source_anchors.json
+  claim_rates_anchor:
+    value:
+    - 0.2
+    - 0.5
+    - 0.8
+    ref: z1_m1_source_anchors.json
+  onboarding_profiles_anchor:
+    value:
+    - front_loaded
+    - linear
+    - back_loaded
+    ref: z1_m1_source_anchors.json
+  critical_vesting_test:
+    value:
+      users: 200000000
+      cliff_days: 180
+    ref: z1_m1_source_anchors.json
+  settlement_pressure_ratio_target_max:
+    value: 0.8
+    ref: z1_m1_source_anchors.json
+  utility_fee_share_default:
+    value: 0.2
+    ref: z1_m1_source_anchors.json
+provisional_parameters:
+  settlement_ratio:
+    baseline: 0.02
+    grid_ref: z1_m1_provisional_defaults.yaml#D1
+  settlement_cap_ratio_to_AR:
+    baseline: 0.05
+    grid_ref: z1_m1_provisional_defaults.yaml#D2
+  brand_inflow_ratio_to_initial_AR:
+    baseline: 0.005
+    grid_ref: z1_m1_provisional_defaults.yaml#D3
+  utility_burn_share:
+    baseline: 0.05
+    grid_ref: z1_m1_provisional_defaults.yaml#D4
+  treasury_topup_threshold_ratio:
+    baseline: 0.2
+    grid_ref: z1_m1_provisional_defaults.yaml#D5
+  treasury_topup_target_ratio:
+    baseline: 0.5
+    grid_ref: z1_m1_provisional_defaults.yaml#D6
+  throttle_threshold_ratio:
+    baseline: 0.1
+    grid_ref: z1_m1_provisional_defaults.yaml#D7
+  throttle_multiplier_when_stressed:
+    baseline: 0.5
+    grid_ref: z1_m1_provisional_defaults.yaml#D8
+  utility_spend_rate:
+    baseline: 0.05
+    grid_ref: z1_m1_provisional_defaults.yaml#D9
+  cohort_population_share_templates:
+    baseline: engaged_base
+    grid_ref: z1_m1_provisional_defaults.yaml#D10
+  cohort_behavior_multiplier_templates:
+    baseline: balanced
+    grid_ref: z1_m1_provisional_defaults.yaml#D11
+deferred_parameters_not_in_m1:
+- treasury_bucket (M2)
+- pcs_weight_range (M3)
+constraint_relationships:
+- utility_fee_share + utility_burn_share <= 0.95
+- treasury_topup_target_ratio > treasury_topup_threshold_ratio
+- 'cohort_population_shares: passive + active + power = 1.0'
+- All rates in [0, 1]
+- settlement_ratio > 0
+grid_references:
+  granular_grids: z1_m1_granular_grids.yaml
+  provisional_defaults: z1_m1_provisional_defaults.yaml

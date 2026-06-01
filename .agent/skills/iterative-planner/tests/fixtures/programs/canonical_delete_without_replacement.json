@@ -1,0 +1,45 @@
+{
+  "version": 1,
+  "id": "PGM-TEST",
+  "title": "Canonical Delete Missing Replacement",
+  "status": "ready",
+  "goal": "Show canonical-file safeguard failure.",
+  "story_refs": ["US-001"],
+  "canonical_files": ["src/canonical.js"],
+  "epics": [
+    { "id": "EP-001", "title": "Canonical cleanup", "story_refs": ["US-001"], "ticket_refs": ["T-001"] }
+  ],
+  "tickets": [
+    {
+      "id": "T-001",
+      "epic_id": "EP-001",
+      "title": "Delete canonical file",
+      "type": "delete_move",
+      "lifecycle": "ready",
+      "story_refs": ["US-001"],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": ["AC-001"],
+      "child_plan": { "policy": "required", "plan_dir": null, "reason": "Canonical deletion" },
+      "deletes_files": ["src/canonical.js"],
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": ["DMC-001"],
+      "verification_refs": ["VM-001"]
+    }
+  ],
+  "acceptance_criteria": [
+    { "id": "AC-001", "scope": "ticket", "subject_ref": "T-001", "text": "Canonical delete has replacement decision.", "story_refs": ["US-001"], "maintenance_rationale": null }
+  ],
+  "dependencies": [],
+  "compatibility_contracts": [],
+  "migration_boundaries": [],
+  "deletion_move_census": [
+    { "id": "DMC-001", "ticket_ref": "T-001", "summary": "Canonical delete census", "paths": ["src/canonical.js"], "canonical_files": ["src/canonical.js"], "capability_impacts": [] }
+  ],
+  "verification_matrix": [
+    { "id": "VM-001", "scope": "ticket", "subject_ref": "T-001", "acceptance_criterion_ref": "AC-001", "proof_type": "proof:artifact_review", "command_or_action": "Review replacement decision", "pass_means": "Replacement decision exists" }
+  ],
+  "decisions": []
+}

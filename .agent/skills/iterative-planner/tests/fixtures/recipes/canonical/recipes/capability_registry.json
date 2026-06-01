@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "capabilities": [
+    {
+      "id": "run_sample_flow",
+      "title": "Run Sample Flow",
+      "triggers": [
+        "sample flow"
+      ],
+      "recipe_ids": [
+        "sample-flow"
+      ]
+    }
+  ]
+}

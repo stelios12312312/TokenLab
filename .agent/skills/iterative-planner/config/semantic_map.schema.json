@@ -1,0 +1,370 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iterative-planner.local/config/semantic_map.schema.json",
+  "title": "Steward Semantic Map",
+  "description": "Machine-readable stewardship index linking domain entities, traceability assets, obligations, and drift signals.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "generated_at",
+    "goal_anchor",
+    "focus",
+    "entities",
+    "relations",
+    "obligations"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "goal_anchor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "summary"
+      ],
+      "properties": {
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "summary": {
+          "type": "string",
+          "minLength": 1
+        },
+        "intent_ref": {
+          "type": "string"
+        }
+      }
+    },
+    "focus": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "enum": [
+          "website",
+          "funnel",
+          "campaign",
+          "crm",
+          "telemetry",
+          "planner",
+          "workflow",
+          "docs",
+          "traceability"
+        ]
+      },
+      "uniqueItems": true
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "relations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/relation"
+      }
+    },
+    "obligations": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/obligation"
+      }
+    },
+    "drift_signals": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/driftSignal"
+      }
+    },
+    "coverage_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "entity_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "relation_count": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "open_obligations": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "grounded_entities": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    }
+  },
+  "$defs": {
+    "pathList": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true
+    },
+    "entity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "label",
+        "surface",
+        "status",
+        "source_refs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_-]+$"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "page",
+            "funnel",
+            "campaign",
+            "asset",
+            "persona",
+            "story",
+            "workflow",
+            "telemetry_artifact",
+            "finding",
+            "test",
+            "doc",
+            "rule"
+          ]
+        },
+        "label": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surface": {
+          "type": "string",
+          "enum": [
+            "website",
+            "funnel",
+            "campaign",
+            "crm",
+            "telemetry",
+            "planner",
+            "workflow",
+            "docs",
+            "tests",
+            "ontology"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "active",
+            "draft",
+            "stale",
+            "missing",
+            "unknown"
+          ]
+        },
+        "source_refs": {
+          "$ref": "#/$defs/pathList"
+        },
+        "story_refs": {
+          "$ref": "#/$defs/pathList"
+        },
+        "test_refs": {
+          "$ref": "#/$defs/pathList"
+        },
+        "doc_refs": {
+          "$ref": "#/$defs/pathList"
+        },
+        "telemetry_refs": {
+          "$ref": "#/$defs/pathList"
+        },
+        "tags": {
+          "$ref": "#/$defs/pathList"
+        }
+      }
+    },
+    "relation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "from",
+        "to"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_-]+$"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "contains",
+            "drives_traffic_to",
+            "measures",
+            "audits",
+            "implements",
+            "validates",
+            "documents",
+            "links_to_story",
+            "depends_on",
+            "finds_issue_in",
+            "owns"
+          ]
+        },
+        "from": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_-]+$"
+        },
+        "to": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_-]+$"
+        },
+        "confidence": {
+          "type": "string",
+          "enum": [
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/pathList"
+        }
+      }
+    },
+    "obligation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "type",
+        "status",
+        "subject_ids",
+        "gap"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_-]+$"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "story_link",
+            "test_link",
+            "doc_sync",
+            "taxonomy_sync",
+            "telemetry_grounding",
+            "cta_wiring",
+            "persona_coverage",
+            "workflow_dispatch",
+            "ontology_rule",
+            "human_review"
+          ]
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "open",
+            "in_progress",
+            "satisfied",
+            "waived"
+          ]
+        },
+        "subject_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z0-9_-]+$"
+          },
+          "uniqueItems": true
+        },
+        "gap": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/pathList"
+        },
+        "workflow_targets": {
+          "$ref": "#/$defs/pathList"
+        }
+      }
+    },
+    "driftSignal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "category",
+        "severity",
+        "subject_ids",
+        "detail"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Z0-9_-]+$"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "coverage_drift",
+            "taxonomy_drift",
+            "telemetry_gap",
+            "story_gap",
+            "workflow_gap",
+            "doc_drift",
+            "persona_gap"
+          ]
+        },
+        "severity": {
+          "type": "string",
+          "enum": [
+            "critical",
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        "subject_ids": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z0-9_-]+$"
+          },
+          "uniqueItems": true
+        },
+        "detail": {
+          "type": "string",
+          "minLength": 1
+        },
+        "evidence_refs": {
+          "$ref": "#/$defs/pathList"
+        }
+      }
+    }
+  }
+}

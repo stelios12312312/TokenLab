@@ -1,0 +1,37 @@
+name: "MCP Orchestration / Automation Domain Checklist"
+
+items:
+  - id: mission-fidelity
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "mission"
+    severity: warn
+    description: "Mission fidelity verified (agent activity aligned with stated objective)"
+
+  - id: env-config
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "env"
+    severity: warn
+    description: "Environment variables verified (all required vars present and valid)"
+
+  - id: connector-health
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "connect"
+    severity: warn
+    description: "Connector/integration health checked (API keys, endpoints reachable)"
+
+  - id: skill-registration
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "skill"
+    severity: warn
+    description: "Skill registration and discovery verified"
+
+  - id: drift-anchor
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "drift"
+    severity: warn
+    description: "Drift prevention measures defined in plan"

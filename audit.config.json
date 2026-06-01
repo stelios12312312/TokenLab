@@ -1,0 +1,12 @@
+{
+  "roles": [
+    "core",
+    "quant",
+    "tokenomics"
+  ],
+  "fail_on": [
+    "HIGH",
+    "CRITICAL"
+  ],
+  "auto_committee": true
+}

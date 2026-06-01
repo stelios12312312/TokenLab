@@ -1,0 +1,128 @@
+name: "EXECUTE → REFLECT Gate"
+
+items:
+  - id: red-team-notes-exist
+    check: file_exists
+    path: "{plan-dir}/red_team_notes.md"
+    description: "Adversarial red-team notes artifact exists (mandatory before REFLECT)"
+
+  - id: red-team-notes-not-empty
+    check: file_not_empty
+    path: "{plan-dir}/red_team_notes.md"
+    description: "Red-team notes contain actual analysis (not empty)"
+
+  # v7.3.1: red-team depth scales with plan shape. Broad-impact shapes need 3
+  # vectors; narrow-impact shapes need 1 — one honest vector beats three padded.
+  # Docs plans skip the depth check entirely (the file still has to exist).
+  - id: red-team-min-vectors-broad
+    check: min_headings
+    path: "{plan-dir}/red_team_notes.md"
+    min: 3
+    required_for_shapes: ["bug-fix", "regression", "migration", "planner-core", "unknown"]
+    description: "At least 3 attack vectors (broad-impact shapes — bug-fix, regression, migration, planner-core)"
+
+  - id: red-team-min-vectors-narrow
+    check: min_headings
+    path: "{plan-dir}/red_team_notes.md"
+    min: 1
+    required_for_shapes: ["feature", "integration", "refactor"]
+    description: "At least 1 attack vector (narrow-impact shapes need one honest vector, not three padded)"
+
+  - id: red-team-has-mitigations
+    check: contains_string
+    path: "{plan-dir}/red_team_notes.md"
+    string: "Mitigation"
+    required_for_shapes: ["bug-fix", "regression", "migration", "planner-core", "feature", "integration", "refactor", "unknown"]
+    description: "Mitigations documented for attack vectors"
+
+  - id: progress-has-in-progress
+    check: contains_any_string
+    path: "{plan-dir}/progress.md"
+    include:
+      - "- [x]"
+      - "## Completed\n- "
+    severity: warn
+    description: "At least one completed item in progress.md"
+
+  - id: state-is-execute
+    check: contains_string
+    path: "{plan-dir}/state.md"
+    string: "EXECUTE"
+    severity: warn
+    description: "Current state is EXECUTE before transitioning"
+
+  # Persona audit is compulsory at this gate (v2.1.0)
+  - id: persona-audit-config-exists
+    check: file_exists
+    path: "{cwd}/audit.config.json"
+    description: "audit.config.json exists (required for compulsory persona audit)"
+
+  # Reachability audit is compulsory at this gate (RT-HARDENING-007)
+  - id: reachability-audit-clean
+    check: command_succeeds
+    command: "node .agent/skills/iterative-planner/scripts/rule_engine.mjs reachability-audit"
+    description: "State-space reachability analysis passes (no deadlocks, forbidden paths, gate bypasses, escalation routes)"
+
+  # Retro 2026-03-22: defect fixes must trace to report artifacts
+  - id: defect-blast-radius
+    check: file_exists
+    path: "{plan-dir}/red_team_notes.md"
+    severity: warn
+    description: "When fixing defects, red-team notes must cover blast radius to reports/ and story_registry.json"
+
+  # Hardline audit checks (HR-series, added 2026-03-29)
+  # Derived from UFC/IPBS and Evolution Trader post-mortems.
+  # v7.3.1: hardline perspectives apply to broad-impact shapes only.
+  # A narrow feature plan doesn't need 3 hardline perspectives.
+  - id: hardline-perspectives-documented
+    check: min_headings
+    path: "{plan-dir}/red_team_notes.md"
+    min: 3
+    required_for_shapes: ["bug-fix", "regression", "migration", "planner-core", "unknown"]
+    description: "Red-team notes must cover ≥3 perspectives (HR-010 — broad-impact shapes only)"
+
+  - id: hardline-validation-wiring
+    check: contains_string
+    path: "{plan-dir}/red_team_notes.md"
+    string: "wir"
+    severity: warn
+    description: "Red-team notes should assess whether validation modules are wired to the pipeline (HR-001)"
+
+  - id: hardline-evidence-chain
+    check: contains_string
+    path: "{plan-dir}/verification.md"
+    string: "verif"
+    severity: warn
+    description: "Verification must document evidence chain from goals to artifacts (HR-011)"
+
+  - id: annotation-validation
+    check: command_succeeds
+    command: "node .agent/skills/iterative-planner/scripts/annotation_parser.mjs --validate"
+    severity: warn
+    description: "@planner: annotations are valid (no broken references, expired disables, or unknown keys)"
+
+  # Regression prevention: test-drift scan (Rule 2 — added v3.8.0)
+  - id: test-drift-documented
+    check: contains_string
+    path: "{plan-dir}/verification.md"
+    string: "Test Drift"
+    severity: warn
+    description: "Test drift scan documented in verification.md (WARN — write 'N/A — no tests' if project has no test suite)"
+
+  # Parity check enforcement (added 2026-04-03)
+  # When the project has a parity-registry.md, require the agent to document parity check results.
+  # Prevents API client parity drift (M-019 pattern: same bug occurred twice without detection).
+  # Failure code: GATE-ETR-011
+  - id: parity-check-documented
+    check: contains_string
+    path: "{plan-dir}/verification.md"
+    string: "Parity"
+    severity: warn
+    description: "Parity check results documented in verification.md (WARN — write 'Parity: N/A — no parity-registry.md' if project has no paired files)"
+
+  # Ontology traceability audit (v3.5.0)
+  - id: traceability-audit
+    check: command_succeeds
+    command: "node .agent/skills/iterative-planner/scripts/ontology_serializer.mjs"
+    severity: warn
+    description: "Ontology serializer can extract traceability facts from project artifacts (goals, criteria, stories, validation)"

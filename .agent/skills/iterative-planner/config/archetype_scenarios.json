@@ -1,0 +1,347 @@
+{
+  "version": 1,
+  "planner_core_proof_bundle": {
+    "trigger_paths": [
+      ".agent/skills/iterative-planner/scripts/bootstrap.mjs",
+      ".agent/skills/iterative-planner/scripts/planner_preflight.mjs",
+      ".agent/skills/iterative-planner/scripts/verify_gate.mjs",
+      ".agent/skills/iterative-planner/scripts/transition.mjs",
+      ".agent/skills/iterative-planner/scripts/lib/plan_utils.mjs",
+      ".agent/skills/iterative-planner/scripts/knowledge_resolver.mjs"
+    ],
+    "required_commands": [
+      "node .agent/skills/iterative-planner/tests/test_migration.mjs",
+      "node .agent/skills/iterative-planner/tests/test_bootstrap_state_surface.mjs",
+      "node .agent/skills/iterative-planner/tests/test_archetype_preflight_scenarios.mjs",
+      "node .agent/skills/iterative-planner/tests/test_transition_gate_flows.mjs",
+      "node .agent/skills/iterative-planner/tests/test_archetype_gate_canonicalization.mjs"
+    ]
+  },
+  "preflight_scenarios": [
+    {
+      "id": "content_automation_simple_ui_edit",
+      "archetype": "content_automation",
+      "family": "simple_cms_content_edit",
+      "goal": "Remove the Facebook CTA from WordPress page 109 and redirect the remaining button",
+      "files": ["content/pages/page-109.md"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "content_automation_static_clone",
+      "archetype": "content_automation",
+      "family": "static_ui_clone",
+      "goal": "Clone the campaign landing page into standalone HTML",
+      "files": ["public/campaign.html"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "content_automation_docs_contract",
+      "archetype": "content_automation",
+      "family": "docs_only_change",
+      "goal": "Clarify the publishing workflow contract and update the README wording",
+      "files": ["README.md", "docs/publishing-workflow.md"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "contract_test", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "content_automation_migration_parity",
+      "archetype": "content_automation",
+      "family": "migration_parity_change",
+      "goal": "Verify the content export migration parity path before rollout",
+      "files": ["scripts/verify_export_migration.mjs", "config/export_routes.json"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change-power", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "content_automation_integration_change",
+      "archetype": "content_automation",
+      "family": "orchestration_integration_change",
+      "goal": "Harden the publishing sync runner and connector retry behavior",
+      "files": ["scripts/publish_sync_runner.mjs", "src/integrations/cms_client.mjs"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "content_automation_planner_core",
+      "archetype": "content_automation",
+      "family": "planner_core_shared_surface",
+      "goal": "Unify planner preflight routing and evidence contract",
+      "files": [".agent/skills/iterative-planner/scripts/planner_preflight.mjs", ".agent/workflows/safe-change.md"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change-power", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "content_automation_poisoned_followup",
+      "archetype": "content_automation",
+      "family": "poisoned_simple_followup_recovery",
+      "goal": "Remove the Facebook CTA from WordPress page 109 and redirect the remaining button",
+      "files": ["content/pages/page-109.md"],
+      "active_plan": { "state": "PLAN", "poisoned": true },
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "recover_poison_then_lightweight", "strictness_mode": "lightweight" }
+    },
+
+    {
+      "id": "cms_plugin_simple_ui_edit",
+      "archetype": "cms_plugin",
+      "family": "simple_cms_content_edit",
+      "goal": "Remove the stale membership CTA from the WordPress pricing page and redirect the remaining button",
+      "files": ["templates/pricing-page.php"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "cms_plugin_static_clone",
+      "archetype": "cms_plugin",
+      "family": "static_ui_clone",
+      "goal": "Clone the plugin onboarding page into standalone HTML",
+      "files": ["public/onboarding.html"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "cms_plugin_docs_contract",
+      "archetype": "cms_plugin",
+      "family": "docs_only_change",
+      "goal": "Clarify the plugin activation workflow contract and update the admin guide wording",
+      "files": ["README.md", "docs/admin-guide.md"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "contract_test", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "cms_plugin_migration_parity",
+      "archetype": "cms_plugin",
+      "family": "migration_parity_change",
+      "goal": "Verify the membership role migration parity path before release",
+      "files": ["scripts/verify_role_migration.mjs", "config/roles.json"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change-power", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "cms_plugin_integration_change",
+      "archetype": "cms_plugin",
+      "family": "orchestration_integration_change",
+      "goal": "Harden the membership webhook sync runner and connector retry behavior",
+      "files": ["scripts/membership_sync_runner.mjs", "src/integrations/payment_gateway.mjs"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "cms_plugin_planner_core",
+      "archetype": "cms_plugin",
+      "family": "planner_core_shared_surface",
+      "goal": "Unify planner preflight routing and evidence contract",
+      "files": [".agent/skills/iterative-planner/scripts/planner_preflight.mjs", ".agent/workflows/safe-change-power.md"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change-power", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "cms_plugin_poisoned_followup",
+      "archetype": "cms_plugin",
+      "family": "poisoned_simple_followup_recovery",
+      "goal": "Remove the stale membership CTA from the WordPress pricing page and redirect the remaining button",
+      "files": ["templates/pricing-page.php"],
+      "active_plan": { "state": "PLAN", "poisoned": true },
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "recover_poison_then_lightweight", "strictness_mode": "lightweight" }
+    },
+
+    {
+      "id": "ux_ui_course_simple_ui_edit",
+      "archetype": "ux_ui_course",
+      "family": "simple_cms_content_edit",
+      "goal": "Remove the stale CTA from the course landing page and redirect the remaining button",
+      "files": ["templates/course-landing.php"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "ux_ui_course_static_clone",
+      "archetype": "ux_ui_course",
+      "family": "static_ui_clone",
+      "goal": "Clone the learner dashboard page into standalone HTML",
+      "files": ["public/learner-dashboard.html"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "ux_ui_course_docs_contract",
+      "archetype": "ux_ui_course",
+      "family": "docs_only_change",
+      "goal": "Clarify the course authoring workflow contract and update the onboarding guide wording",
+      "files": ["README.md", "docs/authoring-guide.md"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "contract_test", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "ux_ui_course_migration_parity",
+      "archetype": "ux_ui_course",
+      "family": "migration_parity_change",
+      "goal": "Verify the generated-course schema migration parity path before rollout",
+      "files": ["scripts/verify_course_schema_migration.mjs", "schema/course_output.json"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change-power", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "ux_ui_course_integration_change",
+      "archetype": "ux_ui_course",
+      "family": "orchestration_integration_change",
+      "goal": "Harden the course generation runner and LMS connector retry behavior",
+      "files": ["scripts/course_generation_runner.mjs", "src/integrations/lms_client.mjs"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "ux_ui_course_planner_core",
+      "archetype": "ux_ui_course",
+      "family": "planner_core_shared_surface",
+      "goal": "Unify planner preflight routing and evidence contract",
+      "files": [".agent/skills/iterative-planner/scripts/planner_preflight.mjs", ".agent/workflows/advisor.md"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change-power", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "ux_ui_course_poisoned_followup",
+      "archetype": "ux_ui_course",
+      "family": "poisoned_simple_followup_recovery",
+      "goal": "Remove the stale CTA from the course landing page and redirect the remaining button",
+      "files": ["templates/course-landing.php"],
+      "active_plan": { "state": "PLAN", "poisoned": true },
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "recover_poison_then_lightweight", "strictness_mode": "lightweight" }
+    },
+
+    {
+      "id": "workflow_automation_simple_ui_edit",
+      "archetype": "workflow_automation",
+      "family": "simple_cms_content_edit",
+      "goal": "Update the operator-facing settings page button copy and redirect the stale CTA",
+      "files": ["templates/operator-settings.php"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "workflow_automation_static_clone",
+      "archetype": "workflow_automation",
+      "family": "static_ui_clone",
+      "goal": "Clone the operator review page into standalone HTML",
+      "files": ["public/operator-review.html"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "workflow_automation_docs_contract",
+      "archetype": "workflow_automation",
+      "family": "docs_only_change",
+      "goal": "Clarify the automation handoff workflow contract and update the runbook wording",
+      "files": ["README.md", "docs/runbook.md"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "contract_test", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "workflow_automation_migration_parity",
+      "archetype": "workflow_automation",
+      "family": "migration_parity_change",
+      "goal": "Verify the workflow migration parity path before rollout",
+      "files": ["scripts/verify_workflow_migration.mjs", "config/workflows.json"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change-power", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "workflow_automation_integration_change",
+      "archetype": "workflow_automation",
+      "family": "orchestration_integration_change",
+      "goal": "Harden the webhook sync runner and connector retry behavior",
+      "files": ["scripts/webhook_sync_runner.mjs", "src/integrations/crm_client.mjs"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "workflow_automation_planner_core",
+      "archetype": "workflow_automation",
+      "family": "planner_core_shared_surface",
+      "goal": "Unify planner preflight routing and evidence contract",
+      "files": [".agent/skills/iterative-planner/scripts/planner_preflight.mjs", ".agent/workflows/recipe-discovery.md"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change-power", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "workflow_automation_poisoned_followup",
+      "archetype": "workflow_automation",
+      "family": "poisoned_simple_followup_recovery",
+      "goal": "Update the operator-facing settings page button copy and redirect the stale CTA",
+      "files": ["templates/operator-settings.php"],
+      "active_plan": { "state": "PLAN", "poisoned": true },
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "recover_poison_then_lightweight", "strictness_mode": "lightweight" }
+    },
+
+    {
+      "id": "quant_simple_ui_edit",
+      "archetype": "quant",
+      "family": "simple_cms_content_edit",
+      "goal": "Remove the stale CTA from the research dashboard landing page and redirect the remaining button",
+      "files": ["templates/research-dashboard.php"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "quant_static_clone",
+      "archetype": "quant",
+      "family": "static_ui_clone",
+      "goal": "Clone the valuation dashboard page into standalone HTML",
+      "files": ["public/valuation-dashboard.html"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "quant_docs_contract",
+      "archetype": "quant",
+      "family": "docs_only_change",
+      "goal": "Clarify the analyst review workflow contract and update the research guide wording",
+      "files": ["README.md", "docs/research-guide.md"],
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "contract_test", "workflow": "/safe-change", "recovery_mode": "start_lightweight", "strictness_mode": "lightweight" }
+    },
+    {
+      "id": "quant_migration_parity",
+      "archetype": "quant",
+      "family": "migration_parity_change",
+      "goal": "Verify the factor-model migration parity path before rollout",
+      "files": ["scripts/verify_factor_model_migration.mjs", "config/factor_model.json"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change-power", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "quant_integration_change",
+      "archetype": "quant",
+      "family": "orchestration_integration_change",
+      "goal": "Harden the market data sync runner and connector retry behavior",
+      "files": ["scripts/market_data_sync_runner.mjs", "src/integrations/data_vendor_client.mjs"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "quant_planner_core",
+      "archetype": "quant",
+      "family": "planner_core_shared_surface",
+      "goal": "Unify planner preflight routing and evidence contract",
+      "files": [".agent/skills/iterative-planner/scripts/planner_preflight.mjs", ".agent/workflows/sme-improvement.md"],
+      "expected": { "flow_mode": "full", "evidence_mode": "behavioral_smoke", "workflow": "/safe-change-power", "recovery_mode": "bootstrap_full_plan", "strictness_mode": "full" }
+    },
+    {
+      "id": "quant_poisoned_followup",
+      "archetype": "quant",
+      "family": "poisoned_simple_followup_recovery",
+      "goal": "Remove the stale CTA from the research dashboard landing page and redirect the remaining button",
+      "files": ["templates/research-dashboard.php"],
+      "active_plan": { "state": "PLAN", "poisoned": true },
+      "expected": { "flow_mode": "lightweight", "evidence_mode": "manual_observation", "workflow": "/safe-change", "recovery_mode": "recover_poison_then_lightweight", "strictness_mode": "lightweight" }
+    }
+  ],
+  "gate_canonicalization_scenarios": [
+    {
+      "id": "execution_steps_alias_passes",
+      "goal": "Retrofit explicit criterion traceability",
+      "files": ["src/traceability.js"],
+      "story_registry_ids": ["US-001"],
+      "expected_exit": 0,
+      "expect_fragment": "1 success criterion row(s) map explicitly to story_registry.json entries",
+      "plan_content": "# Plan\n\n## Goal\nRetrofit explicit criterion traceability\n\n## Problem Statement\nStory-aware plans should accept a deterministic section alias for execution steps.\n\n## Files To Modify\n- src/traceability.js\n\n## Execution Steps\n1. Add the gate.\n2. Update the docs.\n3. Verify the regression coverage.\n\n## Verification Strategy\n| Criterion | Story linkage | Check | Pass means |\n|---|---|---|---|\n| The plan gate accepts explicit story linkage. | US-001 | Run verify_gate.mjs plan-to-execute | The gate accepts the explicit mapping |\n\n## Success Criteria\n1. The plan gate accepts explicit story linkage.\n\n## Fix Classification\nRoot-cause fix\n"
+    },
+    {
+      "id": "header_aliases_and_proof_aliases_pass",
+      "goal": "Stabilize browser UI verification proof aliases",
+      "files": ["src/dashboard.tsx", "src/dashboard.css"],
+      "expected_exit": 0,
+      "expect_fragment": "1 success criterion row(s) include context-sensitive verification proof planning",
+      "plan_content": "# Plan\n\n## Goal\nStabilize browser UI verification proof aliases\n\n## Problem Statement\nBrowser-facing plans should accept deterministic header aliases and whitelisted proof aliases.\n\n## Files To Modify\n- src/dashboard.tsx\n- src/dashboard.css\n\n## Steps\n1. Add the verification contract.\n2. Document the proof strategy.\n3. Run the planner gate.\n\n## Verification Obligation Synthesis\n- Repo/system context: Browser UI change touching the rendered dashboard flow\n- Task shape: Planner contract hardening for browser verification labels\n- Ontology signals: N/A — no ontology signals\n- Persona signals: N/A — no persona signals\n- System boundaries touched: rendered dashboard flow and browser inspection path\n- Derived verification obligations: Require browser-aware proof rather than wrapper-only checks\n\n## Verification Strategy\n| Criterion | Story | System context | Proof | Command | Pass | Residual risk |\n|---|---|---|---|---|---|---|\n| Browser proof aliases are accepted deterministically. | N/A | Browser UI change touching the rendered dashboard flow | Visual verification with browser trace | Run the browser journey against the local dashboard page and capture the rendered state | The rendered dashboard journey matches expectations without CTA or layout regressions | Live stakeholder approval remains out of scope |\n\n## Success Criteria\n1. Browser proof aliases are accepted deterministically.\n\n## Fix Classification\nDefense in depth\n"
+    },
+    {
+      "id": "story_linkage_still_fails_without_mapping",
+      "goal": "Retrofit explicit criterion traceability",
+      "files": ["src/traceability.js"],
+      "story_registry_ids": ["US-001"],
+      "expected_exit": 1,
+      "expect_fragment": "Verification Strategy must include explicit 'Criterion' and 'Story linkage' columns",
+      "plan_content": "# Plan\n\n## Goal\nRetrofit explicit criterion traceability\n\n## Problem Statement\nStory-aware plans should still fail when success criteria never declare which story proves them.\n\n## Files To Modify\n- src/traceability.js\n\n## Steps\n1. Add the gate.\n2. Update the docs.\n3. Verify the regression coverage.\n\n## Verification Strategy\n| Criterion | Check | Pass means |\n|---|---|---|\n| The plan gate blocks missing story linkage. | Run verify_gate.mjs plan-to-execute | The gate explains the missing mapping |\n\n## Success Criteria\n1. The plan gate blocks missing story linkage.\n\n## Fix Classification\nRoot-cause fix\n"
+    },
+    {
+      "id": "wrapper_only_proof_still_fails",
+      "goal": "Harden recipe verification planning",
+      "files": ["recipes/customer-sync/recipe.json", "scripts/customer_sync_wrapper.mjs"],
+      "expected_exit": 1,
+      "expect_fragment": "still relies on wrapper/unit proof only",
+      "plan_content": "# Plan\n\n## Goal\nHarden recipe verification planning\n\n## Problem Statement\nRecipe orchestration work should not treat wrapper tests as proof that the real system behavior is validated.\n\n## Files To Modify\n- recipes/customer-sync/recipe.json\n- scripts/customer_sync_wrapper.mjs\n\n## Steps\n1. Add the verification contract.\n2. Document the proof strategy.\n3. Run the planner gate.\n\n## Verification Obligation Synthesis\n- Repo/system context: Recipe orchestration touching connector dry-runs and audit output\n- Task shape: Planner contract hardening for recipe validation\n- Ontology signals: N/A — no ontology signals\n- Persona signals: N/A — no persona signals\n- System boundaries touched: recipe runner, connector dry-run, audit artifact\n- Derived verification obligations: Require orchestration-aware dry-run and audit proof, not wrapper-only proof\n\n## Verification Strategy\n| Criterion | Story linkage | Repo/system context | Required proof type | Concrete command or action | Pass means | What remains unverified |\n|---|---|---|---|---|---|---|\n| The planner blocks weak recipe verification plans. | N/A | Recipe orchestration touching connector dry-runs and audit output | Wrapper unit test | Run npm test customer_sync_wrapper | Wrapper tests pass locally | Connector dry-run not exercised yet |\n\n## Success Criteria\n1. The planner blocks weak recipe verification plans.\n\n## Fix Classification\nRoot-cause fix\n"
+    }
+  ]
+}

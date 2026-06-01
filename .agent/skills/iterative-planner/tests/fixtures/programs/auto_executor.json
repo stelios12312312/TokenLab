@@ -1,0 +1,77 @@
+{
+  "version": 1,
+  "id": "PGM-AUTO",
+  "title": "Auto-executor fixture",
+  "status": "validating",
+  "goal": "Exercise the verification_runner.mjs auto path.",
+  "story_refs": ["US-001"],
+  "epics": [
+    {
+      "id": "EP-001",
+      "title": "Auto execution",
+      "story_refs": ["US-001"],
+      "ticket_refs": ["T-AUTO"]
+    }
+  ],
+  "tickets": [
+    {
+      "id": "T-AUTO",
+      "epic_id": "EP-001",
+      "title": "Auto-executed verification",
+      "type": "feature",
+      "lifecycle": "verified",
+      "story_refs": ["US-001"],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": ["AC-AUTO"],
+      "child_plan": { "policy": "not_required", "plan_dir": null, "reason": "fixture" },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": ["VM-AUTO-PASS", "VM-AUTO-FAIL", "VM-MANUAL"]
+    }
+  ],
+  "acceptance_criteria": [
+    { "id": "AC-AUTO", "scope": "ticket", "subject_ref": "T-AUTO", "text": "Auto-executor proves rows execute.", "story_refs": ["US-001"], "maintenance_rationale": null }
+  ],
+  "dependencies": [],
+  "compatibility_contracts": [],
+  "migration_boundaries": [],
+  "deletion_move_census": [],
+  "verification_matrix": [
+    {
+      "id": "VM-AUTO-PASS",
+      "scope": "ticket",
+      "subject_ref": "T-AUTO",
+      "acceptance_criterion_ref": "AC-AUTO",
+      "proof_type": "proof:command_smoke",
+      "command_or_action": "/bin/sh -c 'echo runner-ok && exit 0'",
+      "pass_means": "Exit 0",
+      "executor": "auto",
+      "timeout_seconds": 10
+    },
+    {
+      "id": "VM-AUTO-FAIL",
+      "scope": "ticket",
+      "subject_ref": "T-AUTO",
+      "acceptance_criterion_ref": "AC-AUTO",
+      "proof_type": "proof:command_smoke",
+      "command_or_action": "/bin/sh -c 'echo runner-fail && exit 7'",
+      "pass_means": "Exit 0",
+      "executor": "auto",
+      "timeout_seconds": 10
+    },
+    {
+      "id": "VM-MANUAL",
+      "scope": "ticket",
+      "subject_ref": "T-AUTO",
+      "acceptance_criterion_ref": "AC-AUTO",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review fixture artifact",
+      "pass_means": "Reviewer confirms",
+      "result": "PASS"
+    }
+  ],
+  "decisions": []
+}

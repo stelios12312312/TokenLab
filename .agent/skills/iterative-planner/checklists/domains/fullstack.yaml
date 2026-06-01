@@ -1,0 +1,37 @@
+name: "Full-Stack Web App Domain Checklist"
+
+items:
+  - id: api-contracts
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "API"
+    severity: warn
+    description: "API contracts/routes affected by change identified"
+
+  - id: migration-check
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "migrat"
+    severity: warn
+    description: "Database migration needs assessed"
+
+  - id: auth-impact
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "auth"
+    severity: warn
+    description: "Authentication/authorization impact checked"
+
+  - id: frontend-backend-sync
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "frontend"
+    severity: warn
+    description: "Frontend components consuming changed endpoints identified"
+
+  - id: type-safety
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "type"
+    severity: warn
+    description: "TypeScript types / API response shapes verified"

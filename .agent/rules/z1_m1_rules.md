@@ -72,7 +72,8 @@ Plots must use **seaborn** for professional styling. When running with `repetiti
 - **stable**: otherwise
 
 ### 8. Output Structure
-All outputs go to `outputs/z1_core_solvency/<run_id>/`:
+All outputs go to `outputs/z1_core_solvency/<run_id>/` (at repository root).
+Source code lives under `projects/z1/core_solvency/` and `projects/z1/m2_market_dynamics/`:
 - `per_epoch/*.csv` — per-epoch metrics for each scenario
 - `scenario_summaries/*.json` — summary JSON per scenario
 - `grid_summary.csv` — combined grid results

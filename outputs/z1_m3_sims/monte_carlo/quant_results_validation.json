@@ -1,0 +1,32 @@
+{
+  "verdict": {
+    "is_promoted": true,
+    "justification": "The median final Audience Reserve ratio is 234.50% (well above the 30% collapse threshold), demonstrating high resilience under stress."
+  },
+  "statistics": {
+    "n_trials": 100,
+    "n_epochs": 100,
+    "audience_reserve": {
+      "median_final_ratio": 2.3449548273769767,
+      "p05_final_ratio": 2.344942477862726,
+      "p95_final_ratio": 2.44495891728074
+    },
+    "spot_price": {
+      "median_final": 0.07320815464307764,
+      "p05_final": 0.07320742328610821,
+      "p95_final": 0.07320860376998668
+    }
+  },
+  "metadata": {
+    "disclaimer": "DISCLAIMER: This simulation and all generated outputs are not financial advice and not investment advice.",
+    "temporal_coverage": "100 epochs",
+    "historical_tape_range": "365 simulated days",
+    "row_counts": 10000,
+    "leakage_audit": {
+      "leakage_detected": false,
+      "strongest_counterargument": "Rational agents under severe market panic might coordinate sudden mass exits, violating the baseline independent behavior assumptions.",
+      "falsification_criteria": "The simulation hypothesis is falsified if the AMM spot price falls below $0.05 or pool depth drops to exactly zero.",
+      "presentation_stamp": "VERIFIED_Z1_M3_MONTE_CARLO"
+    }
+  }
+}

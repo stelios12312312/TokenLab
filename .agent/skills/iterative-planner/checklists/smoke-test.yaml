@@ -1,0 +1,34 @@
+name: "Smoke Test (Audit Pre-Requisite)"
+
+items:
+  - id: upgrade-dry-run-clean
+    check: command_succeeds
+    command: "node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade . --dry-run"
+    description: "migrate.mjs upgrade --dry-run exits cleanly (basic script functionality)"
+
+  - id: verify-passes
+    check: command_succeeds
+    command: "node .agent/skills/iterative-planner/scripts/migrate.mjs verify ."
+    description: "migrate.mjs verify detects no stale or missing files"
+
+  - id: skill-md-has-version
+    check: contains_string
+    path: "{cwd}/.agent/skills/iterative-planner/SKILL.md"
+    string: "planner_version:"
+    description: "SKILL.md contains planner_version frontmatter"
+
+  - id: version-json-exists
+    check: file_exists
+    path: "{cwd}/.agent/skills/iterative-planner/config/version.json"
+    description: "version.json exists (single source of truth for planner version)"
+
+  - id: config-integrity-exists
+    check: file_exists
+    path: "{cwd}/.agent/skills/iterative-planner/config/.config_integrity"
+    description: "Config integrity baseline exists (required for tamper detection)"
+
+  - id: test-migration-exists
+    check: file_exists
+    path: "{cwd}/.agent/skills/iterative-planner/tests/test_migration.mjs"
+    severity: warn
+    description: "Migration test file exists (run manually: node tests/test_migration.mjs)"

@@ -1,0 +1,272 @@
+{
+  "version": 1,
+  "generated_report": "reports/workflow_migration_inventory.yaml",
+  "entries": [
+    {
+      "workflow": "/advisor",
+      "v6_purpose": "Guided decision tree and start-of-session triage",
+      "v7_action": "Redesigned",
+      "v7_owner": "Agent A + Orchestrator",
+      "notes": "Phase 4 routes /advisor through planner advise plus bounded composition rules."
+    },
+    {
+      "workflow": "/consolidate-annotations",
+      "v6_purpose": "Annotation cleanup before broader audits",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Human + Agent B support",
+      "notes": "Still useful before Agent B extraction and for annotation hygiene."
+    },
+    {
+      "workflow": "/diagnose",
+      "v6_purpose": "Current-failure proof capture before choosing a fix",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Agent A",
+      "notes": "Still needed for corrective evidence gates and blocked runtime incidents."
+    },
+    {
+      "workflow": "/housekeeping",
+      "v6_purpose": "Tech debt cleanup and stale-surface repairs",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Human",
+      "notes": "Agent C can surface candidates, but the workflow stays user-driven."
+    },
+    {
+      "workflow": "/ignore-planner",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Human + Agent A",
+      "notes": "Explicit bounded bypass for trivial, operational, or analysis-only work where planner state machine overhead would be ritual."
+    },
+    {
+      "workflow": "/kb-update",
+      "v6_purpose": "Knowledge base update after a session",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Human + Agent A",
+      "notes": "Still the direct post-session knowledge-base update surface."
+    },
+    {
+      "workflow": "/knowledge-steward",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Agent C",
+      "notes": "Phase 2 autonomous knowledge-steward surface."
+    },
+    {
+      "workflow": "/migrate-all",
+      "v6_purpose": "Fleet migration and propagation tooling",
+      "v7_action": "Updated",
+      "v7_owner": "Human",
+      "notes": "Now routes through migrate.mjs and version-aware rollout logic."
+    },
+    {
+      "workflow": "/program-manager",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "Updated",
+      "v7_owner": "Agent A + Human",
+      "notes": "v7.6.39 adds PASS-only verify --write status advancement, ticket review_status separation, submitted/review_ready lifecycle aliases, and compact DeepSeek status/summary/artifact proof by default."
+    },
+    {
+      "workflow": "/ontology",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Agent A + Human",
+      "notes": "Phase 2.6 deterministic ontology workflow for build, validate, query, and task-context compression."
+    },
+    {
+      "workflow": "/parity-audit",
+      "v6_purpose": "Check declared parity pairs for drift",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Human",
+      "notes": "Still a direct audit workflow."
+    },
+    {
+      "workflow": "/recipe-bootstrap",
+      "v6_purpose": "Bootstrap recipe registries and contracts",
+      "v7_action": "Restored",
+      "v7_owner": "Agent A",
+      "notes": "Restored by ADR 0042; bootstraps project-owned canonical recipe folders from approved discovery reviews."
+    },
+    {
+      "workflow": "/recipe-discovery",
+      "v6_purpose": "Propose candidate recipes from an operational request",
+      "v7_action": "Restored",
+      "v7_owner": "Agent A",
+      "notes": "Restored by ADR 0042; emits discovery_review.json/md for human or agent review."
+    },
+    {
+      "workflow": "/recipe-fleet-audit",
+      "v6_purpose": "N/A — added during recipe restoration",
+      "v7_action": "New",
+      "v7_owner": "Agent A",
+      "notes": "Added by ADR 0042 R.4; audits configured project recipe surfaces for adoption, schema drift, collisions, and plan-only migration recommendations."
+    },
+    {
+      "workflow": "/recipe-tidy",
+      "v6_purpose": "Normalize messy requests into deterministic recipe folders",
+      "v7_action": "Restored",
+      "v7_owner": "Agent A",
+      "notes": "Restored by ADR 0042; consolidates ad-hoc operational scripts into project-owned recipe contracts."
+    },
+    {
+      "workflow": "/full-review-and-fix",
+      "v6_purpose": "Combined red-team, regression, and user-story audit remediation",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Agent A",
+      "notes": "Still the combined audit-and-remediate workflow for broad review/fix sessions."
+    },
+    {
+      "workflow": "/red-team-audit",
+      "v6_purpose": "Code audit for bugs, regressions, and risk",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Agent A + red-team skill",
+      "notes": "Still callable directly and still recommended by orchestration rules."
+    },
+    {
+      "workflow": "/red-team-user-story-audit",
+      "v6_purpose": "Manual story gap and conflict audit",
+      "v7_action": "Deprecated",
+      "v7_owner": "Agent B",
+      "notes": "Alias to /story-verification with a deprecation warning during the transition window."
+    },
+    {
+      "workflow": "/regression-audit",
+      "v6_purpose": "Regression review after change work",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Human-triggered",
+      "notes": "Still a direct audit workflow and still required by some orchestrator routes."
+    },
+    {
+      "workflow": "/release",
+      "v6_purpose": "Release preparation and cut workflow",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Human",
+      "notes": "Can optionally consume Agent B fleet verification before shipping."
+    },
+    {
+      "workflow": "/retro",
+      "v6_purpose": "Retrospective lesson capture after incidents or fixes",
+      "v7_action": "Updated",
+      "v7_owner": "Agent A + Agent C",
+      "notes": "Retros now feed Agent C pattern analysis and promotion proposals."
+    },
+    {
+      "workflow": "/safe-change",
+      "v6_purpose": "Plan and execute a normal code change safely",
+      "v7_action": "Simplified",
+      "v7_owner": "Agent A + Agent B async",
+      "notes": "Same user-facing command, lighter internal ceremony, async Agent B follow-up."
+    },
+    {
+      "workflow": "/safe-change-power",
+      "v6_purpose": "High-risk or cross-system change workflow",
+      "v7_action": "Simplified",
+      "v7_owner": "Agent A + Orchestrator",
+      "notes": "Now composes stronger follow-up audits through bounded orchestration rules."
+    },
+    {
+      "workflow": "/safe-plan",
+      "v6_purpose": "Plan-only workflow with no code changes",
+      "v7_action": "Simplified",
+      "v7_owner": "Agent A",
+      "notes": "Stops at PLAN with the YAML-first verification contract."
+    },
+    {
+      "workflow": "/roadmap-steward",
+      "v6_purpose": "Alias for roadmap/program-management prompts",
+      "v7_action": "Renamed",
+      "v7_owner": "Agent A",
+      "notes": "Alias to /program-manager when requests use roadmap-steward language."
+    },
+    {
+      "workflow": "/sme-improvement",
+      "v6_purpose": "Goal-aligned strategic or process improvement discovery",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Human",
+      "notes": "Specialized improvement workflow remains user-driven."
+    },
+    {
+      "workflow": "/steward",
+      "v6_purpose": "Cross-surface consolidation across docs, ontology, and persona drift",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Human",
+      "notes": "Complements /knowledge-steward rather than being replaced by it."
+    },
+    {
+      "workflow": "/story-bootstrap",
+      "v6_purpose": "Bootstrap story coverage from repo evidence",
+      "v7_action": "Renamed",
+      "v7_owner": "Agent A",
+      "notes": "Alias to /story-registry-bootstrap with a migration note during the transition window."
+    },
+    {
+      "workflow": "/story-registry-bootstrap",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Agent A",
+      "notes": "Phase 0.5 canonical story-registry bootstrap workflow."
+    },
+    {
+      "workflow": "/story-review-agent",
+      "v6_purpose": "Separate-session story coverage review for multi-agent approvals",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Story Review Agent",
+      "notes": "Internal reviewer surface retained outside the main user-facing workflow table."
+    },
+    {
+      "workflow": "/evidence-browser",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Human + Agent A",
+      "notes": "Phase 2.5 browser evidence contract workflow for artifact-backed website verification."
+    },
+    {
+      "workflow": "/story-verification",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Agent B",
+      "notes": "Phase 3 read-only story verification workflow."
+    },
+    {
+      "workflow": "/thrashing-recovery",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Agent A + Human",
+      "notes": "Phase 2.8 recovery workflow for mini-reflect and human escalation after thrashing interrupts."
+    },
+    {
+      "workflow": "/ticket-traceability-repair",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Agent A",
+      "notes": "Repairs Program Packet tickets blocked by missing story traceability before child-plan implementation."
+    },
+    {
+      "workflow": "/reflection",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Agent A + Agent C",
+      "notes": "Phase 2.9 structured reflection guide workflow for ontology-backed REFLECT answers and next-time candidates."
+    },
+    {
+      "workflow": "/conventions",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Human + Agent A",
+      "notes": "Phase 2.10 convention induction, review, lifecycle, and validate-to-close enforcement workflow."
+    },
+    {
+      "workflow": "/spot-check",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Agent A + async cheap-LLM worker",
+      "notes": "Phase 2.11 async spot-check workflow for reviewing, acknowledging, and escalating structured worker findings."
+    },
+    {
+      "workflow": "/sidekick",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "Parked",
+      "v7_owner": "N/A — parked by B.2",
+      "notes": "Parked in .agent/_parked/sidekick because the pilot had zero flight evidence. Commit-message help may return only as a focused future tool."
+    }
+  ]
+}

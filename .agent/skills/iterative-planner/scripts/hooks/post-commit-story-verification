@@ -1,0 +1,13 @@
+#!/bin/sh
+# post-commit: iterative-planner Agent B story verification trigger
+# Non-blocking and advisory — the helper decides whether routing enables it.
+
+GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+SKILL_DIR="${ITERATIVE_PLANNER_SKILL_DIR:-$GIT_ROOT/.agent/skills/iterative-planner}"
+TRIGGER_SCRIPT="$SKILL_DIR/scripts/hooks/post_commit_story_verification.mjs"
+
+[ -f "$TRIGGER_SCRIPT" ] || exit 0
+
+ITERATIVE_PLANNER_PROJECT_ROOT="$GIT_ROOT" node "$TRIGGER_SCRIPT" >/dev/null 2>&1 || exit 0
+
+exit 0

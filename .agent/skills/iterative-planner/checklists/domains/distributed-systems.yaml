@@ -1,0 +1,44 @@
+name: "Distributed Systems Domain Checklist"
+
+items:
+  - id: partition-handling
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "partition"
+    severity: warn
+    description: "Network partition handling verified (CAP trade-offs documented)"
+
+  - id: eventual-consistency
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "consisten"
+    severity: warn
+    description: "Eventual consistency windows assessed (read-after-write, stale reads)"
+
+  - id: idempotent-operations
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "idempoten"
+    severity: warn
+    description: "All distributed operations verified idempotent (retry-safe)"
+
+  - id: clock-skew
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "clock"
+    severity: warn
+    description: "Clock skew and time synchronization handling assessed"
+
+  - id: circuit-breaker
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "circuit"
+    severity: warn
+    description: "Circuit breaker / bulkhead patterns assessed for external service calls"
+
+  - id: prolog-distributed-invariants
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "I-028"
+    severity: warn
+    description: "Prolog distributed system invariants checked (I-028: transactions are atomic, I-029: migrations rollback-tested)"

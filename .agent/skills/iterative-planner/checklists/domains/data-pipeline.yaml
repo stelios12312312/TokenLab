@@ -1,0 +1,44 @@
+name: "Data Pipeline Domain Checklist"
+
+items:
+  - id: schema-drift
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "schema"
+    severity: warn
+    description: "Schema drift in upstream sources assessed (column renames, type changes)"
+
+  - id: silent-data-loss
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "data loss"
+    severity: warn
+    description: "Silent data loss vectors checked (dropped rows, null coercion, filter errors)"
+
+  - id: idempotency
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "idempoten"
+    severity: warn
+    description: "Transformation idempotency verified (re-runs produce same results)"
+
+  - id: data-lineage
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "lineage"
+    severity: warn
+    description: "Data lineage traced from source to output for affected columns/fields"
+
+  - id: temporal-ordering
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "ordering"
+    severity: warn
+    description: "Temporal ordering and event sequencing verified (late-arriving data handled)"
+
+  - id: prolog-data-invariants
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "I-028"
+    severity: warn
+    description: "Prolog data integrity invariants checked (I-028: transactions are atomic, I-029: migrations have rollback tests)"

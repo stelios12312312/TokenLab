@@ -1,0 +1,204 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Iterative Planner Verification Strategy",
+  "type": "object",
+  "required": ["verification_strategy"],
+  "properties": {
+    "verification_strategy": {
+      "type": "object",
+      "required": [
+        "version",
+        "plan_id",
+        "created_at",
+        "updated_at",
+        "repo_system_context",
+        "verification_obligation_synthesis",
+        "criteria"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "plan_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" },
+        "updated_at": { "type": "string", "format": "date-time" },
+        "repo_system_context": { "type": "string" },
+        "verification_obligation_synthesis": {
+          "type": "object",
+          "required": ["summary", "scope", "non_goals", "dependencies"],
+          "properties": {
+            "summary": { "type": "string" },
+            "scope": { "type": "string" },
+            "non_goals": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "dependencies": {
+              "type": "array",
+              "items": { "type": "string" }
+            }
+          },
+          "additionalProperties": true
+        },
+        "criteria": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "criterion",
+              "repo_system_context",
+              "required_proof_type",
+              "implementation",
+              "acceptance",
+              "tests",
+              "concrete_action",
+              "how_verified",
+              "pass_means",
+              "persona_audit_required"
+            ],
+            "properties": {
+              "id": { "type": "string" },
+              "criterion": { "type": "string" },
+              "story_id": { "type": ["string", "null"] },
+              "domain": { "type": ["string", "null"] },
+              "repo_system_context": { "type": "string" },
+              "required_proof_type": { "type": "string" },
+              "risk_level": { "type": ["string", "null"] },
+              "required_proof_weight": { "type": ["number", "null"] },
+              "accumulated_proof_weight": { "type": ["number", "null"] },
+              "proof_sufficient": { "type": ["boolean", "null"] },
+              "implementation": {
+                "type": "object",
+                "required": ["file", "lines"],
+                "properties": {
+                  "file": { "type": "string" },
+                  "lines": { "type": "string" },
+                  "function": { "type": ["string", "null"] }
+                },
+                "additionalProperties": true
+              },
+              "acceptance": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string" }
+              },
+              "tests": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["name", "file", "type"],
+                  "properties": {
+                    "name": { "type": "string" },
+                    "file": { "type": "string" },
+                    "type": {
+                      "enum": ["unit", "integration", "e2e", "smoke"]
+                    }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "evidence_artifacts": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["type", "path"],
+                  "properties": {
+                    "type": {
+                      "enum": [
+                        "screenshot",
+                        "console_log",
+                        "network_trace",
+                        "coverage_report",
+                        "test_output",
+                        "convention_satisfied",
+                        "accessibility_audit",
+                        "integration_trace",
+                        "performance_trace",
+                        "rollback_script",
+                        "schema_check",
+                        "row_count"
+                      ]
+                    },
+                    "path": { "type": "string" },
+                    "proof_type": { "type": ["string", "null"] },
+                    "convention_id": { "type": "string" },
+                    "target_file": { "type": "string" },
+                    "expected": { "type": "string" },
+                    "weight_base": { "type": ["number", "null"] },
+                    "modifiers": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    },
+                    "computed_weight": { "type": ["number", "null"] },
+                    "baseline": { "type": "string" },
+                    "comparison_report": { "type": "string" },
+                    "diff_threshold": { "type": "number" },
+                    "assert_no_errors": { "type": "boolean" },
+                    "allowed_warnings": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    },
+                    "expected_requests": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "url_pattern": { "type": "string" },
+                          "method": { "type": "string" },
+                          "status": { "type": "number" }
+                        },
+                        "additionalProperties": true
+                      }
+                    },
+                    "minimum_line_coverage": { "type": "number" },
+                    "minimum_branch_coverage": { "type": "number" },
+                    "assert_all_passed": { "type": "boolean" },
+                    "max_new_violations": { "type": "number" },
+                    "max_response_ms": { "type": "number" },
+                    "assert_equal": { "type": "boolean" },
+                    "expected_delta": { "type": "number" }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "concrete_action": {
+                "type": "object",
+                "required": ["type"],
+                "properties": {
+                  "type": {
+                    "enum": ["command", "procedure", "review"]
+                  },
+                  "command": { "type": ["string", "null"] },
+                  "procedure": {
+                    "type": ["array", "null"],
+                    "items": { "type": "string" }
+                  },
+                  "reviewer_persona": { "type": ["string", "null"] }
+                },
+                "additionalProperties": true
+              },
+              "how_verified": {
+                "enum": [
+                  "integration_test",
+                  "unit_test",
+                  "artifact_review",
+                  "manual_smoke",
+                  "regression_test",
+                  "waiver_approved"
+                ]
+              },
+              "pass_means": { "type": "string" },
+              "what_remains_unverified": { "type": ["string", "null"] },
+              "persona_audit_required": { "type": "boolean" },
+              "persona_audit_result": { "type": ["string", "null"] },
+              "waiver": { "type": ["object", "null"] }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

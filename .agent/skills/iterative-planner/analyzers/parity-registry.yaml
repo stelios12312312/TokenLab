@@ -1,0 +1,8 @@
+name: "Parity Registry Check"
+type: parity_registry
+severity: fail
+registry_path: "plans/knowledge/parity-registry.md"
+checks:
+  - "file_existence"
+  - "function_count"
+  - "signature_match"

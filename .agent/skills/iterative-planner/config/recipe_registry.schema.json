@@ -1,0 +1,174 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iterative-planner.local/schemas/recipe_registry.schema.json",
+  "title": "Iterative Planner Recipe Registries",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/capability_registry"
+    },
+    {
+      "$ref": "#/$defs/entity_registry"
+    }
+  ],
+  "$defs": {
+    "script": {
+      "type": "object",
+      "required": [
+        "path",
+        "purpose"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1
+        },
+        "purpose": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "additionalProperties": true
+    },
+    "trigger": {
+      "oneOf": [
+        {
+          "type": "string",
+          "minLength": 1
+        },
+        {
+          "type": "object",
+          "required": [
+            "pattern"
+          ],
+          "properties": {
+            "pattern": {
+              "type": "string",
+              "minLength": 1
+            },
+            "weight": {
+              "type": "number"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "capability_registry": {
+      "type": "object",
+      "required": [
+        "version",
+        "capabilities"
+      ],
+      "properties": {
+        "version": {},
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "description": {
+                "type": "string"
+              },
+              "triggers": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/trigger"
+                }
+              },
+              "parameters": {
+                "type": "array"
+              },
+              "required_params": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "recipe_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "skills": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "scripts": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/script"
+                }
+              },
+              "supported_entities": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "entity_registry": {
+      "type": "object",
+      "required": [
+        "version",
+        "entities"
+      ],
+      "properties": {
+        "version": {},
+        "entities": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "title": {
+                "type": "string"
+              },
+              "aliases": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "systems": {
+                "type": "object"
+              },
+              "recipe_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}

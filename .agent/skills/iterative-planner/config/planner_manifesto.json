@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "hard_policy_mode": "minimal_semantic_core",
+  "north_star": "Help the operator reach the cheapest semantically valid next move with the least ritual necessary.",
+  "doctrine": {
+    "summary": "Loop First, Determinism Second, Generalize Last.",
+    "phase_authority": {
+      "explore": "agent primary, personas widen discovery, ontology advisory",
+      "plan": "agent primary, personas challenge, ontology enforces contracts",
+      "execute": "agent primary, personas and ontology boundary-only",
+      "reflect": "agent primary, personas challenge proof, ontology checks consistency"
+    },
+    "anti_ritual_rule": "Do not add continuous execute-time supervision or extra workflows when existing surfaces can express the same signal.",
+    "anti_ritual_contract": {
+      "summary": "Anti-ritual warnings stay visible, but only explicit semantic/proof/integrity bases may hard-block.",
+      "mixed_enforcement_rule": "Ritual drift is advisory unless the blocker is backed by semantic_block, integrity_or_poison, required_proof_gap, or planner_core_self_proof.",
+      "preferred_route": "Prefer the lightest valid flow, or recover then return to the lightest valid flow when a poisoned lightweight plan is active."
+    }
+  },
+  "hard_policies": [
+    {
+      "id": "semantic_risk_blocks",
+      "summary": "Only semantic risk, missing proof substance, and real integrity contradictions may hard-block planner progress."
+    },
+    {
+      "id": "canonicalize_before_blocking",
+      "summary": "Known wording and formatting variance must be normalized before any planner surface escalates severity."
+    },
+    {
+      "id": "ontology_challenges_not_replaces",
+      "summary": "Ontology and Prolog should challenge, constrain, and enrich reasoning without replacing open-ended judgment."
+    },
+    {
+      "id": "impact_over_ritual",
+      "summary": "Prefer findings that reduce ambiguity or risk over ceremony that only proves the planner was used."
+    }
+  ],
+  "anti_goals": [
+    "Ritual hard blocks caused only by heading wording, label drift, or stale failure history.",
+    "A second AI fixer layer that guesses at missing semantic content.",
+    "Ontology rules that substitute for product or implementation judgment.",
+    "Verbose traces or telemetry that add operator burden without clear learning value.",
+    "Continuous execute-time supervision that turns planner discipline into ritual."
+  ],
+  "success_signals": [
+    "One deterministic script can explain the planner's north star, route, evidence mode, semantic blocks, repairable variances, and next best actions.",
+    "The shared planner surfaces expose anti_ritual status, drift ids, and a recommended action without inventing a separate ritual workflow.",
+    "Reasonable wording variants produce the same planner classification and gate outcome.",
+    "Simple CMS or static work routes lightweight when appropriate instead of being trapped in planner-core ceremony.",
+    "Planner-core and other semantic-risk work still surface strong proof obligations and real blockers.",
+    "Shared routing surfaces expose authority profile, audit posture, recommended path, and symmetry hunts without inventing extra planner commands."
+  ],
+  "ontology_role": {
+    "mode": "challenge_and_enrich",
+    "responsibilities": [
+      "Surface invariant violations and missing semantic obligations.",
+      "Expose the cheapest valid next move or recovery path for known planner states.",
+      "Classify repairable variance separately from semantic blockers."
+    ],
+    "non_goals": [
+      "Replacing open-ended implementation planning or tradeoff reasoning.",
+      "Guessing at missing requirements or synthesizing evidence that does not exist."
+    ]
+  }
+}

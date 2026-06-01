@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "stories": [
+    {
+      "id": "US-MED-001",
+      "title": "Normalize payment amounts",
+      "status": "draft",
+      "code_refs": ["src/payment.mjs"],
+      "test_refs": [],
+      "validation_refs": []
+    }
+  ]
+}

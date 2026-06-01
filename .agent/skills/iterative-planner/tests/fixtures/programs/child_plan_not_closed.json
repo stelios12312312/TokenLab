@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "id": "PGM-TEST",
+  "title": "Child Plan Not Closed",
+  "status": "executing",
+  "goal": "Show child-plan closure failure.",
+  "story_refs": ["US-001"],
+  "epics": [
+    { "id": "EP-001", "title": "Child plan epic", "story_refs": ["US-001"], "ticket_refs": ["T-001"] }
+  ],
+  "tickets": [
+    {
+      "id": "T-001",
+      "epic_id": "EP-001",
+      "title": "Verify before child close",
+      "type": "feature",
+      "lifecycle": "verified",
+      "story_refs": ["US-001"],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": ["AC-001"],
+      "child_plan": { "policy": "required", "plan_dir": "plan_missing", "state": "execute", "reason": "Feature work" },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": ["VM-001"]
+    }
+  ],
+  "acceptance_criteria": [
+    { "id": "AC-001", "scope": "ticket", "subject_ref": "T-001", "text": "Child plan is closed before verification.", "story_refs": ["US-001"], "maintenance_rationale": null }
+  ],
+  "dependencies": [],
+  "compatibility_contracts": [],
+  "migration_boundaries": [],
+  "deletion_move_census": [],
+  "verification_matrix": [
+    { "id": "VM-001", "scope": "ticket", "subject_ref": "T-001", "acceptance_criterion_ref": "AC-001", "proof_type": "proof:planner_smoke", "command_or_action": "Inspect child plan state", "pass_means": "Child plan state is CLOSE" }
+  ],
+  "decisions": []
+}

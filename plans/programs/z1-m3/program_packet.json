@@ -1,0 +1,807 @@
+{
+  "version": 1,
+  "id": "z1-m3",
+  "title": "Z1 M3 Full Economy",
+  "status": "executing",
+  "goal": "Implement M3 mechanisms and agent expansions for full Z1 token economy based on Vault-to-Code Gap Analysis.",
+  "epics": [
+    {
+      "id": "EP-INTAKE",
+      "title": "Idea intake",
+      "story_refs": [
+        "US-Z1-M3-01",
+        "US-Z1-M3-02",
+        "US-Z1-M3-03",
+        "US-Z1-M3-04",
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-07",
+        "US-Z1-M3-08",
+        "US-Z1-M3-09"
+      ],
+      "ticket_refs": [
+        "T-INTAKE-58A7D18D",
+        "T-INTAKE-DEB15B9C",
+        "T-INTAKE-8685AC30",
+        "T-INTAKE-DDE5D6DF"
+      ]
+    },
+    {
+      "id": "EP-SIMULATION",
+      "title": "Token Economy Simulations",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "ticket_refs": [
+        "T-SIM-COMPARE",
+        "T-SIM-SWEEP",
+        "T-SIM-MONTECARLO"
+      ]
+    }
+  ],
+  "tickets": [
+    {
+      "id": "T-INTAKE-58A7D18D",
+      "epic_id": "EP-INTAKE",
+      "title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with ...[truncated 514 chars]",
+      "type": "feature",
+      "lifecycle": "proposed",
+      "story_refs": [
+        "US-Z1-M3-01",
+        "US-Z1-M3-02",
+        "US-Z1-M3-03",
+        "US-Z1-M3-04",
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-07",
+        "US-Z1-M3-08",
+        "US-Z1-M3-09"
+      ],
+      "defect_refs": [],
+      "gap_refs": [
+        "GAP-INTAKE-58A7D18D"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-INTAKE-58A7D18D"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": null,
+        "reason": "Executable intake ticket requires a child iterative plan before implementation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-INTAKE-58A7D18D"
+      ],
+      "external_refs": [
+        {
+          "kind": "local_text",
+          "source_hash": "95a97c5c8200706f",
+          "synced_at": "2026-05-18T10:09:59.968Z"
+        },
+        {
+          "kind": "github_issue",
+          "repo": "stelios12312312/TokenLab",
+          "issue_number": 3,
+          "synced_at": "2026-05-21T14:35:04.683Z",
+          "title": "Z1 M3 Vault-to-Code Gap Analysis priorities. P0 Structural changes: Genesis unlock (CW-03/M39) with ...[truncated 514 chars]",
+          "state": "OPEN",
+          "url": "https://github.com/stelios12312312/TokenLab/issues/3"
+        }
+      ],
+      "review_artifacts": [
+        {
+          "path": "plans/programs/z1-m3/intake/t-intake-58a7d18d_intake_packet.json",
+          "kind": "program_intake_packet",
+          "generated_at": "2026-05-18T10:09:59.968Z"
+        },
+        {
+          "path": "plans/programs/z1-m3/reviews/t_intake_58a7d18d_review_packet.json",
+          "kind": "ticket_review_packet",
+          "status": "review_ready",
+          "generated_at": "2026-05-21T14:35:04.683Z"
+        }
+      ],
+      "github_sync": {
+        "last_synced_at": "2026-05-21T14:35:04.683Z",
+        "last_issue_url": "https://github.com/stelios12312312/TokenLab/issues/3",
+        "published_issue_number": 3,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        },
+        "last_review_status": "review_ready",
+        "last_comment_url": null,
+        "labels_applied": [
+          "planner:review-ready",
+          "planner:ticket-proposed"
+        ],
+        "project_status": {
+          "action": "skipped",
+          "reason": "No project item/project id"
+        }
+      },
+      "last_review_status": "review_ready"
+    },
+    {
+      "id": "T-INTAKE-DEB15B9C",
+      "epic_id": "EP-INTAKE",
+      "title": "Discrete CIP and VRP with Governance",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "proposed",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-INTAKE-DEB15B9C"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": null,
+        "reason": "Executable intake ticket requires a child iterative plan before implementation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-INTAKE-DEB15B9C"
+      ],
+      "external_refs": [
+        {
+          "kind": "local_text",
+          "source_hash": "8e996325e3f55bbb",
+          "synced_at": "2026-05-18T17:56:07.299Z"
+        },
+        {
+          "kind": "github_issue",
+          "repo": "stelios12312312/TokenLab",
+          "issue_number": 5,
+          "synced_at": "2026-05-21T14:34:21.286Z",
+          "title": "Discrete CIP and VRP with Governance",
+          "state": "CLOSED",
+          "url": "https://github.com/stelios12312312/TokenLab/issues/5"
+        }
+      ],
+      "review_artifacts": [
+        {
+          "path": "plans/programs/z1-m3/intake/t-intake-deb15b9c_intake_packet.json",
+          "kind": "program_intake_packet",
+          "generated_at": "2026-05-18T17:56:07.299Z"
+        },
+        {
+          "path": "plans/programs/z1-m3/reviews/t_intake_deb15b9c_review_packet.json",
+          "kind": "ticket_review_packet",
+          "status": "review_ready",
+          "generated_at": "2026-05-21T14:34:21.286Z"
+        }
+      ],
+      "persona_packs": [
+        "tokenomics",
+        "assumptions_challenger",
+        "wiring_auditor",
+        "traceability"
+      ],
+      "persona_review": {
+        "version": 1,
+        "status": "needs_evidence",
+        "ticket_id": "T-INTAKE-DEB15B9C",
+        "ticket_title": "Discrete CIP and VRP with Governance",
+        "ticket_type": "feature",
+        "base_ticket_type": "feature",
+        "persona_packs": [
+          "tokenomics",
+          "assumptions_challenger",
+          "wiring_auditor",
+          "traceability"
+        ],
+        "required_evidence": [
+          "story linkage, acceptance criteria, verification proof, and explicit assumptions"
+        ],
+        "findings": [
+          {
+            "id": "PR-001",
+            "status": "needs_verification",
+            "persona_pack": "tokenomics",
+            "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
+            "evidence_refs": []
+          }
+        ],
+        "recommended_actions": [
+          "Run the relevant domain persona review before marking the ticket ready."
+        ],
+        "authority": "advisory_only_deterministic_gates_remain_authoritative"
+      },
+      "github_sync": {
+        "last_synced_at": "2026-05-21T14:34:21.286Z",
+        "last_issue_url": "https://github.com/stelios12312312/TokenLab/issues/5",
+        "published_issue_number": 5,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        },
+        "last_review_status": "review_ready",
+        "last_comment_url": null,
+        "labels_applied": [
+          "planner:review-ready",
+          "planner:ticket-proposed"
+        ],
+        "project_status": {
+          "action": "skipped",
+          "reason": "No project item/project id"
+        }
+      },
+      "last_review_status": "review_ready"
+    },
+    {
+      "id": "T-INTAKE-8685AC30",
+      "epic_id": "EP-INTAKE",
+      "title": "Agent Expansion with CIP and VRP",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "proposed",
+      "story_refs": [
+        "US-Z1-M3-07",
+        "US-Z1-M3-08"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-INTAKE-8685AC30"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": null,
+        "reason": "Executable intake ticket requires a child iterative plan before implementation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-INTAKE-8685AC30"
+      ],
+      "external_refs": [
+        {
+          "kind": "local_text",
+          "source_hash": "15eb7e9f1a108d57",
+          "synced_at": "2026-05-18T17:56:22.288Z"
+        },
+        {
+          "kind": "github_issue",
+          "repo": "stelios12312312/TokenLab",
+          "issue_number": 6,
+          "synced_at": "2026-05-21T14:34:31.110Z",
+          "title": "Agent Expansion with CIP and VRP",
+          "state": "CLOSED",
+          "url": "https://github.com/stelios12312312/TokenLab/issues/6"
+        }
+      ],
+      "review_artifacts": [
+        {
+          "path": "plans/programs/z1-m3/intake/t-intake-8685ac30_intake_packet.json",
+          "kind": "program_intake_packet",
+          "generated_at": "2026-05-18T17:56:22.288Z"
+        },
+        {
+          "path": "plans/programs/z1-m3/reviews/t_intake_8685ac30_review_packet.json",
+          "kind": "ticket_review_packet",
+          "status": "review_ready",
+          "generated_at": "2026-05-21T14:34:31.110Z"
+        }
+      ],
+      "persona_packs": [
+        "tokenomics",
+        "assumptions_challenger",
+        "wiring_auditor",
+        "traceability"
+      ],
+      "persona_review": {
+        "version": 1,
+        "status": "needs_evidence",
+        "ticket_id": "T-INTAKE-8685AC30",
+        "ticket_title": "Agent Expansion with CIP and VRP",
+        "ticket_type": "feature",
+        "base_ticket_type": "feature",
+        "persona_packs": [
+          "tokenomics",
+          "assumptions_challenger",
+          "wiring_auditor",
+          "traceability"
+        ],
+        "required_evidence": [
+          "story linkage, acceptance criteria, verification proof, and explicit assumptions"
+        ],
+        "findings": [
+          {
+            "id": "PR-001",
+            "status": "needs_verification",
+            "persona_pack": "tokenomics",
+            "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
+            "evidence_refs": []
+          }
+        ],
+        "recommended_actions": [
+          "Run the relevant domain persona review before marking the ticket ready."
+        ],
+        "authority": "advisory_only_deterministic_gates_remain_authoritative"
+      },
+      "github_sync": {
+        "last_synced_at": "2026-05-21T14:34:31.110Z",
+        "last_issue_url": "https://github.com/stelios12312312/TokenLab/issues/6",
+        "published_issue_number": 6,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        },
+        "last_review_status": "review_ready",
+        "last_comment_url": null,
+        "labels_applied": [
+          "planner:review-ready",
+          "planner:ticket-proposed"
+        ],
+        "project_status": {
+          "action": "skipped",
+          "reason": "No project item/project id"
+        }
+      },
+      "last_review_status": "review_ready"
+    },
+    {
+      "id": "T-INTAKE-DDE5D6DF",
+      "epic_id": "EP-INTAKE",
+      "title": "4-Stage PCS Epoch Budget Design",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "proposed",
+      "story_refs": [
+        "US-Z1-M3-09"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-INTAKE-DDE5D6DF"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": null,
+        "reason": "Executable intake ticket requires a child iterative plan before implementation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-INTAKE-DDE5D6DF"
+      ],
+      "external_refs": [
+        {
+          "kind": "local_text",
+          "source_hash": "9b84cf3c42b41a21",
+          "synced_at": "2026-05-18T17:56:38.056Z"
+        },
+        {
+          "kind": "github_issue",
+          "repo": "stelios12312312/TokenLab",
+          "issue_number": 7,
+          "synced_at": "2026-05-21T14:30:00.137Z",
+          "title": "4-Stage PCS Epoch Budget Design",
+          "state": "CLOSED",
+          "url": "https://github.com/stelios12312312/TokenLab/issues/7"
+        }
+      ],
+      "review_artifacts": [
+        {
+          "path": "plans/programs/z1-m3/intake/t-intake-dde5d6df_intake_packet.json",
+          "kind": "program_intake_packet",
+          "generated_at": "2026-05-18T17:56:38.056Z"
+        },
+        {
+          "path": "plans/programs/z1-m3/reviews/t_intake_dde5d6df_review_packet.json",
+          "kind": "ticket_review_packet",
+          "status": "review_ready",
+          "generated_at": "2026-05-21T14:30:00.137Z"
+        }
+      ],
+      "persona_packs": [
+        "tokenomics",
+        "assumptions_challenger",
+        "traceability"
+      ],
+      "persona_review": {
+        "version": 1,
+        "status": "satisfied",
+        "ticket_id": "T-INTAKE-DDE5D6DF",
+        "ticket_title": "4-Stage PCS Epoch Budget Design",
+        "ticket_type": "feature",
+        "base_ticket_type": "feature",
+        "persona_packs": [
+          "tokenomics",
+          "assumptions_challenger",
+          "traceability"
+        ],
+        "required_evidence": [
+          "story linkage, acceptance criteria, verification proof, and explicit assumptions"
+        ],
+        "findings": [
+          {
+            "id": "PR-001",
+            "status": "verified",
+            "persona_pack": "tokenomics",
+            "message": "Supply/emissions: progressive epoch budgets (Bronze, Silver, Gold, Platinum curves). Incentive source: Treasury pool waterfall routing. Vesting/unlock gates: Tier advancement metrics. Assumptions: explicit gaming prevention rules limiting rapid tier inflation under concentrated epochs.",
+            "evidence_refs": [
+              "projects/z1/m3_full_economy/proof_verification_issue9.py",
+              "commit:uncommitted"
+            ]
+          }
+        ],
+        "recommended_actions": [],
+        "authority": "advisory_only_deterministic_gates_remain_authoritative"
+      },
+      "github_sync": {
+        "last_synced_at": "2026-05-21T14:30:00.137Z",
+        "last_issue_url": "https://github.com/stelios12312312/TokenLab/issues/7",
+        "published_issue_number": 7,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        },
+        "last_review_status": "review_ready",
+        "last_comment_url": null,
+        "labels_applied": [
+          "planner:review-ready",
+          "planner:ticket-proposed"
+        ],
+        "project_status": {
+          "action": "skipped",
+          "reason": "No project item/project id"
+        }
+      },
+      "last_review_status": "review_ready"
+    },
+    {
+      "id": "T-SIM-COMPARE",
+      "epic_id": "EP-SIMULATION",
+      "title": "Comparative M2 vs M3 Resilience Simulation",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "closed",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-SIM-COMPARE"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": "plan_2026-05-21_a2428903a5b598f8",
+        "reason": "Simulation option requires standard execution validation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-SIM-COMPARE"
+      ],
+      "external_refs": [],
+      "review_artifacts": [],
+      "github_sync": {
+        "last_synced_at": null,
+        "last_issue_url": null,
+        "published_issue_number": null,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        },
+        "last_review_status": "review_ready",
+        "last_comment_url": null,
+        "labels_applied": [],
+        "project_status": {
+          "action": "skipped",
+          "reason": "No project item"
+        }
+      },
+      "last_review_status": "review_ready"
+    },
+    {
+      "id": "T-SIM-SWEEP",
+      "epic_id": "EP-SIMULATION",
+      "title": "Parameter Sweep & Sensitivity Analysis",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "closed",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-SIM-SWEEP"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": "plan_2026-05-21_a2428903a5b598f8",
+        "reason": "Simulation option requires standard execution validation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-SIM-SWEEP"
+      ],
+      "external_refs": [],
+      "review_artifacts": [],
+      "github_sync": {
+        "last_synced_at": null,
+        "last_issue_url": null,
+        "published_issue_number": null,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        },
+        "last_review_status": "review_ready",
+        "last_comment_url": null,
+        "labels_applied": [],
+        "project_status": {
+          "action": "skipped",
+          "reason": "No project item"
+        }
+      },
+      "last_review_status": "review_ready"
+    },
+    {
+      "id": "T-SIM-MONTECARLO",
+      "epic_id": "EP-SIMULATION",
+      "title": "Run Monte Carlo Stress Tests",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "closed",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-SIM-MONTECARLO"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": "plan_2026-05-21_a2428903a5b598f8",
+        "reason": "Simulation option requires standard execution validation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-SIM-MONTECARLO"
+      ],
+      "external_refs": [],
+      "review_artifacts": [],
+      "github_sync": {
+        "last_synced_at": null,
+        "last_issue_url": null,
+        "published_issue_number": null,
+        "project_publish": {
+          "action": "skipped",
+          "reason": "No project requested"
+        },
+        "last_review_status": "review_ready",
+        "last_comment_url": null,
+        "labels_applied": [],
+        "project_status": {
+          "action": "skipped",
+          "reason": "No project item"
+        }
+      },
+      "last_review_status": "review_ready"
+    }
+  ],
+  "acceptance_criteria": [
+    {
+      "id": "AC-T-INTAKE-58A7D18D",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-58A7D18D",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [
+        "US-Z1-M3-01",
+        "US-Z1-M3-02",
+        "US-Z1-M3-03",
+        "US-Z1-M3-04",
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-07",
+        "US-Z1-M3-08",
+        "US-Z1-M3-09"
+      ],
+      "maintenance_rationale": "Draft intake gap requires story linkage before ready."
+    },
+    {
+      "id": "AC-T-INTAKE-DEB15B9C",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DEB15B9C",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-T-INTAKE-8685AC30",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-8685AC30",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [
+        "US-Z1-M3-07",
+        "US-Z1-M3-08"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-T-INTAKE-DDE5D6DF",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DDE5D6DF",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [
+        "US-Z1-M3-09"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-T-SIM-COMPARE",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-COMPARE",
+      "text": "Simulates comparative M2 vs M3 resilience under standard growth and bank-run conditions, producing comparative plots for prices, settlement ratios, and reserves.",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-T-SIM-SWEEP",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-SWEEP",
+      "text": "Performs multi-dimensional parameter sweeps over provider_recirculation_rate and creator_sell_propensity, rendering parameter sensitivity heatmaps.",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-T-SIM-MONTECARLO",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-MONTECARLO",
+      "text": "Runs stochastic Monte Carlo demand simulations with sudden validator offline shocks, showing system stability percentiles.",
+      "story_refs": [
+        "US-Z1-M3-05",
+        "US-Z1-M3-06",
+        "US-Z1-M3-09"
+      ],
+      "maintenance_rationale": null
+    }
+  ],
+  "dependencies": [],
+  "compatibility_contracts": [],
+  "migration_boundaries": [],
+  "deletion_move_census": [],
+  "verification_matrix": [
+    {
+      "id": "VM-T-INTAKE-58A7D18D",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-58A7D18D",
+      "acceptance_criterion_ref": "AC-T-INTAKE-58A7D18D",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-58a7d18d_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+    },
+    {
+      "id": "VM-T-INTAKE-DEB15B9C",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DEB15B9C",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DEB15B9C",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-deb15b9c_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+    },
+    {
+      "id": "VM-T-INTAKE-8685AC30",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-8685AC30",
+      "acceptance_criterion_ref": "AC-T-INTAKE-8685AC30",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-8685ac30_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+    },
+    {
+      "id": "VM-T-INTAKE-DDE5D6DF",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DDE5D6DF",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DDE5D6DF",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-dde5d6df_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers.",
+      "status": "pass",
+      "verified_at": "2026-05-21T15:26:00Z"
+    },
+    {
+      "id": "VM-C1-PCS-TIER-PROGRESSION",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-DDE5D6DF",
+      "acceptance_criterion_ref": "AC-T-INTAKE-DDE5D6DF",
+      "proof_type": "proof:dry_run",
+      "command_or_action": "PYTHONPATH=./src:. python projects/z1/m3_full_economy/proof_verification_issue9.py",
+      "pass_means": "Simulation runs and validates tier progression curves, tenure gating, and gaming prevention mechanisms.",
+      "status": "pass",
+      "verified_at": "2026-05-21T15:26:00Z"
+    },
+    {
+      "id": "VM-T-SIM-COMPARE",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-COMPARE",
+      "acceptance_criterion_ref": "AC-T-SIM-COMPARE",
+      "proof_type": "proof:dry_run",
+      "command_or_action": "PYTHONPATH=./src:. python projects/z1/m3_full_economy/compare_m2_m3.py",
+      "pass_means": "Comparison runs successfully, showing M3's higher price stability and reserve resilience compared to M2 under extreme stress, with output plots saved in outputs/z1_m3_sims/compare/.",
+      "status": "pass",
+      "verified_at": "2026-05-21T15:44:26Z"
+    },
+    {
+      "id": "VM-T-SIM-SWEEP",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-SWEEP",
+      "acceptance_criterion_ref": "AC-T-SIM-SWEEP",
+      "proof_type": "proof:dry_run",
+      "command_or_action": "PYTHONPATH=./src:. python projects/z1/m3_full_economy/param_sweep.py",
+      "pass_means": "Sweep executes successfully over the specified ranges, saving parameter grids and sensitivity heatmaps under outputs/z1_m3_sims/sweeps/.",
+      "status": "pass",
+      "verified_at": "2026-05-21T15:44:26Z"
+    },
+    {
+      "id": "VM-T-SIM-MONTECARLO",
+      "scope": "ticket",
+      "subject_ref": "T-SIM-MONTECARLO",
+      "acceptance_criterion_ref": "AC-T-SIM-MONTECARLO",
+      "proof_type": "proof:dry_run",
+      "command_or_action": "PYTHONPATH=./src:. python projects/z1/m3_full_economy/monte_carlo.py",
+      "pass_means": "Monte Carlo simulations run successfully with randomized demand shocks and validator failures, saving distribution charts under outputs/z1_m3_sims/monte_carlo/.",
+      "status": "pass",
+      "verified_at": "2026-05-21T15:44:26Z"
+    }
+  ],
+  "decisions": [],
+  "story_refs": [
+    "US-Z1-M3-01",
+    "US-Z1-M3-02",
+    "US-Z1-M3-03",
+    "US-Z1-M3-04",
+    "US-Z1-M3-05",
+    "US-Z1-M3-06",
+    "US-Z1-M3-07",
+    "US-Z1-M3-08",
+    "US-Z1-M3-09"
+  ]
+}

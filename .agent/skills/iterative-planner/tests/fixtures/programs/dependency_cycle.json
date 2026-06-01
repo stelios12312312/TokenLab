@@ -1,0 +1,60 @@
+{
+  "version": 1,
+  "id": "PGM-TEST",
+  "title": "Dependency Cycle",
+  "status": "ready",
+  "goal": "Show dependency cycle failure.",
+  "story_refs": ["US-001"],
+  "epics": [
+    { "id": "EP-001", "title": "Cycle epic", "story_refs": ["US-001"], "ticket_refs": ["T-001", "T-002"] }
+  ],
+  "tickets": [
+    {
+      "id": "T-001",
+      "epic_id": "EP-001",
+      "title": "First ticket",
+      "type": "feature",
+      "lifecycle": "ready",
+      "story_refs": ["US-001"],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": ["T-002"],
+      "acceptance_criteria": ["AC-001"],
+      "child_plan": { "policy": "not_required", "plan_dir": null, "reason": "Fixture" },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": ["VM-001"]
+    },
+    {
+      "id": "T-002",
+      "epic_id": "EP-001",
+      "title": "Second ticket",
+      "type": "feature",
+      "lifecycle": "ready",
+      "story_refs": ["US-001"],
+      "defect_refs": [],
+      "gap_refs": [],
+      "depends_on": ["T-001"],
+      "acceptance_criteria": ["AC-002"],
+      "child_plan": { "policy": "not_required", "plan_dir": null, "reason": "Fixture" },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": ["VM-002"]
+    }
+  ],
+  "acceptance_criteria": [
+    { "id": "AC-001", "scope": "ticket", "subject_ref": "T-001", "text": "First ticket is ready.", "story_refs": ["US-001"], "maintenance_rationale": null },
+    { "id": "AC-002", "scope": "ticket", "subject_ref": "T-002", "text": "Second ticket is ready.", "story_refs": ["US-001"], "maintenance_rationale": null }
+  ],
+  "dependencies": [],
+  "compatibility_contracts": [],
+  "migration_boundaries": [],
+  "deletion_move_census": [],
+  "verification_matrix": [
+    { "id": "VM-001", "scope": "ticket", "subject_ref": "T-001", "acceptance_criterion_ref": "AC-001", "proof_type": "proof:artifact_review", "command_or_action": "Review", "pass_means": "Review passes" },
+    { "id": "VM-002", "scope": "ticket", "subject_ref": "T-002", "acceptance_criterion_ref": "AC-002", "proof_type": "proof:artifact_review", "command_or_action": "Review", "pass_means": "Review passes" }
+  ],
+  "decisions": []
+}

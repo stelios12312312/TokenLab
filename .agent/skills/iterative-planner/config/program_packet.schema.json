@@ -1,0 +1,299 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Program Packet",
+  "description": "Domain-agnostic roadmap/program-management artifact for orchestrating child iterative planner plans.",
+  "type": "object",
+  "required": [
+    "version",
+    "id",
+    "title",
+    "status",
+    "goal",
+    "epics",
+    "tickets",
+    "acceptance_criteria",
+    "dependencies",
+    "compatibility_contracts",
+    "migration_boundaries",
+    "deletion_move_census",
+    "verification_matrix",
+    "decisions"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "version": { "type": "integer", "enum": [1] },
+    "id": { "type": "string", "minLength": 1 },
+    "title": { "type": "string", "minLength": 1 },
+    "status": {
+      "type": "string",
+      "enum": ["design", "ready", "executing", "validating", "closed", "deferred"]
+    },
+    "goal": { "type": "string", "minLength": 1 },
+    "story_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "canonical_files": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "epics": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "story_refs", "ticket_refs"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "story_refs": { "type": "array", "items": { "type": "string" }, "minItems": 1 },
+          "ticket_refs": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": true
+      }
+    },
+    "tickets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "epic_id", "title", "type", "lifecycle", "depends_on", "acceptance_criteria", "child_plan", "verification_refs"],
+        "properties": {
+          "id": { "type": "string" },
+          "epic_id": { "type": "string" },
+          "title": { "type": "string" },
+          "type": {
+            "type": "string",
+            "enum": ["feature", "defect", "gap", "migration", "delete_move", "maintenance", "documentation", "test", "refactor", "artifact", "administrative", "decision", "research"]
+          },
+          "ticket_type": {
+            "type": "string",
+            "description": "Specialized ticket lane such as quant_exploration or code_refactor. The schema-safe type field remains authoritative for Program Packet validation."
+          },
+          "persona_packs": {
+            "type": "array",
+            "description": "Advisory persona packs that should review the ticket lane before it is marked ready.",
+            "items": { "type": "string" }
+          },
+          "persona_review": {
+            "type": "object",
+            "description": "Advisory Program Manager persona-review guidance. Deterministic Program Packet validation, story checks, and gate proof remain authoritative.",
+            "properties": {
+              "version": { "type": "integer" },
+              "status": { "type": "string" },
+              "ticket_type": { "type": "string" },
+              "base_ticket_type": { "type": "string" },
+              "persona_packs": { "type": "array", "items": { "type": "string" } },
+              "required_evidence": { "type": "array", "items": { "type": "string" } },
+              "recommended_actions": { "type": "array", "items": { "type": "string" } },
+              "authority": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": ["proposed", "submitted", "review_ready", "ready", "in_progress", "blocked", "done", "verified", "closed", "deferred"]
+          },
+          "review_status": {
+            "type": "string",
+            "enum": ["not_run", "submitted", "fresh", "needs_story", "needs_annotation", "needs_verification", "ontology_conflict", "blocked", "review_ready", "unavailable"],
+            "description": "Deterministic/advisory ticket review status. Execution lifecycle remains authoritative for dispatch and close semantics."
+          },
+          "story_refs": { "type": "array", "items": { "type": "string" } },
+          "defect_refs": { "type": "array", "items": { "type": "string" } },
+          "gap_refs": { "type": "array", "items": { "type": "string" } },
+          "depends_on": { "type": "array", "items": { "type": "string" } },
+          "acceptance_criteria": { "type": "array", "items": { "type": "string" } },
+          "child_plan": {
+            "type": "object",
+            "required": ["policy", "reason"],
+            "properties": {
+              "policy": { "type": "string", "enum": ["required", "not_required", "waived"] },
+              "plan_dir": { "type": ["string", "null"] },
+              "state": { "type": "string" },
+              "waiver_decision_ref": { "type": "string" },
+              "reason": { "type": "string" }
+            },
+            "additionalProperties": true
+          },
+          "compatibility_contract_refs": { "type": "array", "items": { "type": "string" } },
+          "migration_boundary_refs": { "type": "array", "items": { "type": "string" } },
+          "deletion_move_census_refs": { "type": "array", "items": { "type": "string" } },
+          "verification_refs": { "type": "array", "items": { "type": "string" } },
+          "external_refs": {
+            "type": "array",
+            "description": "External or local collaboration/source items mirrored into this local ticket. GitHub issue/project data and local intake source metadata are not authority sources; Program Packet validation remains authoritative.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "kind": { "type": "string", "enum": ["github_issue", "github_project_item", "local_file", "local_text"] },
+                "repo": { "type": ["string", "null"] },
+                "issue_number": { "type": ["integer", "number", "string", "null"] },
+                "project_item_id": { "type": ["string", "null"] },
+                "project_id": { "type": ["string", "null"] },
+                "url": { "type": ["string", "null"] },
+                "project_url": { "type": ["string", "null"] },
+                "path": { "type": ["string", "null"] },
+                "source_hash": { "type": ["string", "null"] },
+                "title": { "type": ["string", "null"] },
+                "state": { "type": ["string", "null"] },
+                "synced_at": { "type": "string" }
+              },
+              "additionalProperties": true
+            }
+          },
+          "review_artifacts": {
+            "type": "array",
+            "description": "Local review evidence artifacts, typically generated Review Packet JSON files.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": { "type": "string" },
+                "kind": { "type": "string" },
+                "status": {
+                  "type": "string",
+                  "enum": ["not_run", "submitted", "fresh", "needs_story", "needs_annotation", "needs_verification", "ontology_conflict", "blocked", "review_ready", "unavailable"]
+                },
+                "generated_at": { "type": "string" }
+              },
+              "additionalProperties": true
+            }
+          },
+          "github_sync": {
+            "type": "object",
+            "description": "Last GitHub sync result for comments, labels, and Project status. Reflective metadata only.",
+            "properties": {
+              "last_synced_at": { "type": "string" },
+              "last_review_status": {
+                "type": "string",
+                "enum": ["not_run", "submitted", "fresh", "needs_story", "needs_annotation", "needs_verification", "ontology_conflict", "blocked", "review_ready", "unavailable"]
+              },
+              "last_issue_url": { "type": ["string", "null"] },
+              "last_comment_url": { "type": ["string", "null"] },
+              "labels_applied": { "type": "array", "items": { "type": "string" } },
+              "project_status": { "type": ["object", "null"], "additionalProperties": true }
+            },
+            "additionalProperties": true
+          },
+          "last_review_status": {
+            "type": "string",
+            "enum": ["not_run", "submitted", "fresh", "needs_story", "needs_annotation", "needs_verification", "ontology_conflict", "blocked", "review_ready", "unavailable"],
+            "description": "Deterministic ticket review status. Advisory LLM classifications do not mark tickets verified."
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "acceptance_criteria": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "scope", "subject_ref", "text"],
+        "properties": {
+          "id": { "type": "string" },
+          "scope": { "type": "string", "enum": ["program", "epic", "ticket"] },
+          "subject_ref": { "type": "string" },
+          "text": { "type": "string" },
+          "story_refs": { "type": "array", "items": { "type": "string" } },
+          "maintenance_rationale": { "type": ["string", "null"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "from_ref", "to_ref"],
+        "properties": {
+          "id": { "type": "string" },
+          "from_ref": { "type": "string" },
+          "to_ref": { "type": "string" },
+          "type": { "type": "string" },
+          "status": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "compatibility_contracts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "ticket_ref", "summary"],
+        "properties": {
+          "id": { "type": "string" },
+          "ticket_ref": { "type": "string" },
+          "summary": { "type": "string" },
+          "old_contract": { "type": "string" },
+          "new_contract": { "type": "string" },
+          "verification_refs": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": true
+      }
+    },
+    "migration_boundaries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "ticket_ref", "summary"],
+        "additionalProperties": true
+      }
+    },
+    "deletion_move_census": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "ticket_ref", "summary"],
+        "properties": {
+          "id": { "type": "string" },
+          "ticket_ref": { "type": "string" },
+          "summary": { "type": "string" },
+          "paths": { "type": "array", "items": { "type": "string" } },
+          "canonical_files": { "type": "array", "items": { "type": "string" } },
+          "capability_impacts": { "type": "array", "items": { "type": "object" } },
+          "replacement_decision_ref": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "verification_matrix": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "scope", "subject_ref", "acceptance_criterion_ref", "proof_type", "command_or_action", "pass_means"],
+        "properties": {
+          "id": { "type": "string" },
+          "scope": { "type": "string", "enum": ["program", "epic", "ticket", "compatibility", "regression"] },
+          "subject_ref": { "type": "string" },
+          "acceptance_criterion_ref": { "type": "string" },
+          "proof_type": { "type": "string" },
+          "command_or_action": { "type": "string" },
+          "pass_means": { "type": "string" },
+          "result": { "type": "string" },
+          "residual_risk": { "type": "string" },
+          "executor": {
+            "type": "string",
+            "enum": ["manual", "auto"],
+            "description": "How the row's command_or_action is executed. 'manual' (default) means a human/agent runs it and writes the result. 'auto' means verification_runner.mjs spawns the command and writes result automatically. 'auto' requires PLANNER_VERIFICATION_EXECUTE=1 in the environment as a global safety lock."
+          },
+          "result_source": {
+            "type": "string",
+            "enum": ["manual", "executed"],
+            "description": "Provenance of the result field. 'manual' = human asserted; 'executed' = verification_runner.mjs ran the command and wrote the result. Distinguishes claims from executed proofs in gate audit detail."
+          },
+          "executed_at": { "type": "string", "description": "ISO timestamp when verification_runner.mjs ran this row. Set automatically; do not edit manually." },
+          "exit_code": { "type": "number", "description": "Exit code of the executed command. Set automatically; do not edit manually." },
+          "stdout_excerpt": { "type": "string", "description": "First lines of stdout captured by the runner (truncated). Set automatically." },
+          "timeout_seconds": { "type": "number", "description": "Max seconds the runner will let command_or_action run before killing it. Default 60." }
+        },
+        "additionalProperties": true
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "type", "subject_ref", "rationale"],
+        "additionalProperties": true
+      }
+    }
+  }
+}

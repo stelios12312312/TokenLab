@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "obligations": [
+    {
+      "id": "responsive_ui_mobile",
+      "source_mistake": "M-UI-001",
+      "subject_id": "plan:responsive-ui-mobile",
+      "verification_mode": "manual_observation",
+      "fallback_triggers": {
+        "file_globs": ["**/*.css", "**/*.scss", "**/*.html", "**/*.tsx", "**/*.jsx"],
+        "plan_terms": ["landing page", "responsive", "mobile", "viewport"],
+        "deliverable_kinds": ["ui"]
+      },
+      "guard_types": [
+        "mobile_responsiveness"
+      ],
+      "severity": "warn_then_fail",
+      "required_by_phase": "reflect"
+    },
+    {
+      "id": "cms_missing_content_turbulence",
+      "source_mistake": "M-CMS-001",
+      "subject_id": "plan:cms-missing-content-turbulence",
+      "verification_mode": "artifact_review",
+      "guard_types": [
+        "site_turbulence"
+      ],
+      "severity": "warn_then_fail",
+      "required_by_phase": "reflect"
+    },
+    {
+      "id": "cms_missing_content_dom_probe",
+      "source_mistake": "M-CMS-001",
+      "subject_id": "plan:cms-missing-content-dom-probe",
+      "verification_mode": "artifact_review",
+      "guard_types": [
+        "raw_html_dom_probe"
+      ],
+      "severity": "warn_then_fail",
+      "required_by_phase": "reflect"
+    },
+    {
+      "id": "cms_missing_content_entity_preservation",
+      "source_mistake": "M-CMS-001",
+      "subject_id": "plan:cms-missing-content-entity-preservation",
+      "verification_mode": "artifact_review",
+      "guard_types": [
+        "entity_preservation"
+      ],
+      "severity": "warn_then_fail",
+      "required_by_phase": "reflect"
+    }
+  ]
+}

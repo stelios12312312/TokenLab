@@ -1,0 +1,7 @@
+{
+  "suggested_fix_command": "/advisor",
+  "auto_repair_safe": false,
+  "explanation": "The invariant M-001 indicates a missing declared guard for an active mistake; use /advisor to analyze and recommend a safe fix.",
+  "supervisor_status": "fresh",
+  "source": "provider"
+}

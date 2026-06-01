@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.0.0",
+  "namespace": "z1/simulation/m1/deferred_registry",
+  "description": "Parameters from the Z1 Phase 3 plan that are explicitly deferred to future milestones. These MUST NOT be activated in M1 simulation matrices.",
+  "deferred": [
+    {
+      "parameter_name": "treasury_bucket",
+      "values": 0.15,
+      "unit": "ratio",
+      "status": "deferred",
+      "milestone": "M2",
+      "active_in_m1": false,
+      "provenance": "Z1 Phase 3 Plan \u2014 M2 Treasury Extension",
+      "rationale": "Treasury allocation bucket for ecosystem funding; deferred to M2 when Treasury mechanics are expanded",
+      "constraints": [
+        "Must not appear in any M1 simulation matrix"
+      ],
+      "notes": "M2 will introduce multi-bucket Treasury management"
+    },
+    {
+      "parameter_name": "pcs_weight_range",
+      "values": [
+        0.1,
+        0.4
+      ],
+      "unit": "ratio range",
+      "status": "deferred",
+      "milestone": "M3",
+      "active_in_m1": false,
+      "provenance": "Z1 Phase 3 Plan \u2014 M3 PCS Scoring Decomposition",
+      "rationale": "Participation Credit Score weight range for full 14-agent taxonomy; deferred to M3",
+      "constraints": [
+        "Must not appear in any M1 simulation matrix",
+        "z1_m1_rules.md \u00a71 explicitly defers PCS"
+      ],
+      "notes": "M3 will introduce the full PCS scoring decomposition and 67-parameter sweep"
+    }
+  ]
+}

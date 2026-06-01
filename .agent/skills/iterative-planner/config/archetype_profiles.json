@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "default_profile": "support_workflow",
+  "profiles": {
+    "course_cms": {
+      "label": "Course/CMS",
+      "proof_defaults": ["browser_visual", "artifact_review", "story_registry"],
+      "repair_priority": ["telemetry", "story_registry", "semantic_readiness", "annotations", "workflow_intelligence"]
+    },
+    "quant_trading": {
+      "label": "Quant/Trading",
+      "proof_defaults": ["leakage_check", "out_of_sample_validation", "backtest_run", "live_parity_check"],
+      "repair_priority": ["telemetry", "semantic_readiness", "story_registry", "annotations", "workflow_intelligence"]
+    },
+    "automation_agent": {
+      "label": "Automation/Agent",
+      "proof_defaults": ["integration_smoke", "command_smoke", "tool_trace"],
+      "repair_priority": ["telemetry", "workflow_intelligence", "semantic_readiness", "story_registry", "annotations"]
+    },
+    "extraction_publishing": {
+      "label": "Extraction/Publishing",
+      "proof_defaults": ["fixture_replay", "schema_validation", "artifact_review"],
+      "repair_priority": ["telemetry", "semantic_readiness", "annotations", "story_registry", "workflow_intelligence"]
+    },
+    "support_workflow": {
+      "label": "Support/Workflow",
+      "proof_defaults": ["workflow_log", "artifact_review", "manual_observation"],
+      "repair_priority": ["telemetry", "story_registry", "annotations", "workflow_intelligence", "semantic_readiness"]
+    }
+  }
+}

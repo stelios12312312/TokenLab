@@ -1,0 +1,124 @@
+from dataclasses import dataclass, field
+from typing import Dict, List
+from .config import M3EconomyConfig, COHORT_NAMES
+
+@dataclass
+class CohortState:
+    name: str
+    population: int = 0
+    cumulative_claimed_population: int = 0
+    cumulative_verified_population: int = 0
+    
+    # Live variables loaded from config
+    claim_rate: float = 0.0
+    verification_pass_rate: float = 0.0
+    acr_issue_rate: float = 0.0
+    settle_propensity: float = 0.0
+    utility_spend_rate: float = 0.0
+
+    # PCS & BAS (GAP-01, GAP-02, GAP-04)
+    tenure_epochs: int = 0
+    activity_score: float = 0.0 
+    pcs_score: float = 0.0
+    bas_score: float = 0.0
+    cumulative_pcs: float = 0.0
+    tier: str = "Bronze"
+    
+    # Balances
+    acr_vesting_buckets: List[float] = field(default_factory=list) # Index = epochs remaining until available
+    acr_available: float = 0.0
+    acr_queued_for_settlement: float = 0.0
+    acr_settled: float = 0.0
+    acr_held: float = 0.0
+    acr_voided: float = 0.0
+    
+    z1u_balance: float = 0.0
+    
+    # Governance Staking (US-Z1-M3-06)
+    staked_z1u: float = 0.0
+    staking_buckets: List[float] = field(default_factory=list)  # FIFO queue, length = staking_lock_epochs
+
+@dataclass
+class GlobalState:
+    # Time
+    epoch: int = 0
+    
+    # Internal pools
+    audience_reserve: float = 0.0
+    audience_reserve_initial: float = 0.0
+    audience_reserve_floor_ratio: float = 0.0
+    treasury: float = 0.0
+    treasury_initial: float = 0.0
+    
+    # Tracking
+    total_acr_issued: float = 0.0
+    settlement_queue_acr: float = 0.0
+    settlement_queue_z1u_requested: float = 0.0
+    
+    # Flow tracking (exogenous / sinks)
+    total_z1u_burned: float = 0.0
+    cumulative_brand_inflow: float = 0.0
+    cumulative_utility_spend: float = 0.0
+    cumulative_treasury_fees: float = 0.0
+    cumulative_provider_payments: float = 0.0
+    cumulative_cip_funding: float = 0.0
+    cumulative_ops_costs: float = 0.0
+    cumulative_rwa_yield: float = 0.0
+    
+    # M3 Discrete Pool Balances (US-Z1-M3-05)
+    cip_pool_balance: float = 0.0
+    vrp_pool_balance: float = 0.0
+    cumulative_cip_pool_funded: float = 0.0
+    cumulative_vrp_pool_funded: float = 0.0
+    
+    # M3 Governance Staking (US-Z1-M3-06)
+    cumulative_staked_z1u: float = 0.0
+    cumulative_unstaked_z1u: float = 0.0
+    
+    # Health and metrics
+    throttle_multiplier: float = 1.0
+    ar_floor_breach_count: int = 0
+    per_epoch_counters: Dict[str, float] = field(default_factory=dict)
+    
+    cohorts: Dict[str, CohortState] = field(default_factory=dict)
+
+
+def initialize_state(config: M3EconomyConfig) -> GlobalState:
+    """Instantiate a zero-epoch state vector based on the configuration."""
+    cohorts = {}
+    for name in COHORT_NAMES:
+        c = CohortState(
+            name=name,
+            population=int(config.initial_viewers * config.cohort_population_shares[name]),
+            claim_rate=config.claim_rate_by_cohort[name],
+            verification_pass_rate=config.verification_pass_rate_by_cohort[name],
+            acr_issue_rate=config.acr_issue_rate_by_cohort[name],
+            settle_propensity=config.settle_propensity_by_cohort[name],
+            utility_spend_rate=config.utility_spend_rate_by_cohort[name],
+            acr_vesting_buckets=[0.0] * (config.vesting_lag_epochs + getattr(config, 'vesting_sub_cohort_phases', 1) - 1),
+            staking_buckets=[0.0] * config.staking_lock_epochs if config.governance_staking_enabled else []
+        )
+        cohorts[name] = c
+    
+    # M3 Creators & Validators
+    creators = CohortState(
+        name="creators",
+        population=getattr(config, 'creator_population', 0),
+        settle_propensity=getattr(config, 'creator_sell_propensity', 0.0),
+        staking_buckets=[0.0] * config.staking_lock_epochs if config.governance_staking_enabled else []
+    )
+    validators = CohortState(
+        name="validators",
+        population=getattr(config, 'validator_population', 0),
+        settle_propensity=getattr(config, 'validator_sell_propensity', 0.0),
+        staking_buckets=[0.0] * config.staking_lock_epochs if config.governance_staking_enabled else []
+    )
+    cohorts["creators"] = creators
+    cohorts["validators"] = validators
+    return GlobalState(
+        audience_reserve=config.audience_reserve_initial,
+        audience_reserve_initial=config.audience_reserve_initial,
+        treasury=config.treasury_initial,
+        treasury_initial=config.treasury_initial,
+        cohorts=cohorts
+    )

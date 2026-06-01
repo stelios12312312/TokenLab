@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "description": "Program Manager gates are separate from iterative planner state transitions. They validate Program Packets and orchestrate child plans without adding iterative planner states.",
+  "gates": {
+    "design-to-ready": {
+      "from_status": ["design"],
+      "to_status": "ready",
+      "purpose": "Confirm the roadmap has become a traceable, dependency-aware Program Packet with migration/delete safeguards declared.",
+      "required_checks": [
+        "program_packet_schema",
+        "epic_story_traceability",
+        "ticket_story_defect_gap_traceability",
+        "acceptance_criteria_mapping",
+        "dependency_acyclic",
+        "migration_delete_safeguards"
+      ]
+    },
+    "ready-to-execution": {
+      "from_status": ["ready"],
+      "to_status": "executing",
+      "purpose": "Confirm ready tickets have acceptance criteria, verification rows, dependency status, and child-plan policy before dispatch.",
+      "required_checks": [
+        "ready_ticket_acceptance_criteria",
+        "ready_ticket_verification_rows",
+        "dependency_status",
+        "child_plan_policy"
+      ]
+    },
+    "execution-to-program-validate": {
+      "from_status": ["executing"],
+      "to_status": "validating",
+      "purpose": "Confirm non-deferred executable tickets are done or verified and required child plans are closed.",
+      "required_checks": [
+        "ticket_completion_status",
+        "required_child_plan_closed",
+        "deferred_ticket_decisions"
+      ]
+    },
+    "validate-to-program-close": {
+      "from_status": ["validating"],
+      "to_status": "closed",
+      "purpose": "Confirm program-level verification, compatibility/regression evidence, deferral decisions, and residual risks are explicit.",
+      "required_checks": [
+        "all_tickets_closed_or_deferred",
+        "program_level_verification",
+        "compatibility_verification",
+        "regression_verification",
+        "residual_risk_recorded"
+      ]
+    }
+  }
+}

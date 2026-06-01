@@ -1,0 +1,429 @@
+{
+  "version": 1,
+  "generated_at": "2026-05-21T14:34:21.286Z",
+  "program": {
+    "id": "z1-m3",
+    "title": "Z1 M3 Full Economy",
+    "status": "design",
+    "packet_path": "plans/programs/z1-m3/program_packet.json"
+  },
+  "ticket": {
+    "id": "T-INTAKE-DEB15B9C",
+    "epic_id": "EP-INTAKE",
+    "title": "Discrete CIP and VRP with Governance",
+    "type": "feature",
+    "ticket_type": "feature",
+    "lifecycle": "proposed",
+    "story_refs": [
+      "US-Z1-M3-05",
+      "US-Z1-M3-06"
+    ],
+    "defect_refs": [],
+    "gap_refs": [],
+    "depends_on": [],
+    "acceptance_criteria": [
+      "AC-T-INTAKE-DEB15B9C"
+    ],
+    "child_plan": {
+      "policy": "required",
+      "plan_dir": null,
+      "reason": "Executable intake ticket requires a child iterative plan before implementation."
+    },
+    "compatibility_contract_refs": [],
+    "migration_boundary_refs": [],
+    "deletion_move_census_refs": [],
+    "verification_refs": [
+      "VM-T-INTAKE-DEB15B9C"
+    ],
+    "external_refs": [
+      {
+        "kind": "local_text",
+        "source_hash": "8e996325e3f55bbb",
+        "synced_at": "2026-05-18T17:56:07.299Z"
+      },
+      {
+        "kind": "github_issue",
+        "repo": "stelios12312312/TokenLab",
+        "issue_number": 5,
+        "title": "Discrete CIP and VRP with Governance",
+        "state": "open",
+        "url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/5",
+        "synced_at": "2026-05-18T17:56:49.213Z"
+      }
+    ],
+    "review_artifacts": [
+      {
+        "path": "plans/programs/z1-m3/intake/t-intake-deb15b9c_intake_packet.json",
+        "kind": "program_intake_packet",
+        "generated_at": "2026-05-18T17:56:07.299Z"
+      }
+    ],
+    "persona_packs": [
+      "tokenomics",
+      "assumptions_challenger",
+      "wiring_auditor",
+      "traceability"
+    ],
+    "persona_review": {
+      "version": 1,
+      "status": "needs_evidence",
+      "ticket_id": "T-INTAKE-DEB15B9C",
+      "ticket_title": "Discrete CIP and VRP with Governance",
+      "ticket_type": "feature",
+      "base_ticket_type": "feature",
+      "persona_packs": [
+        "tokenomics",
+        "assumptions_challenger",
+        "wiring_auditor",
+        "traceability"
+      ],
+      "required_evidence": [
+        "story linkage, acceptance criteria, verification proof, and explicit assumptions"
+      ],
+      "findings": [
+        {
+          "id": "PR-001",
+          "status": "needs_verification",
+          "persona_pack": "tokenomics",
+          "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
+          "evidence_refs": []
+        }
+      ],
+      "recommended_actions": [
+        "Run the relevant domain persona review before marking the ticket ready."
+      ],
+      "authority": "advisory_only_deterministic_gates_remain_authoritative"
+    },
+    "github_sync": {
+      "last_synced_at": "2026-05-18T17:56:49.213Z",
+      "last_issue_url": "https://api.github.com/repos/stelios12312312/TokenLab/issues/5",
+      "published_issue_number": 5,
+      "project_publish": {
+        "action": "skipped",
+        "reason": "No project requested"
+      }
+    }
+  },
+  "github": {
+    "source": "issue",
+    "repo": "stelios12312312/TokenLab",
+    "issue_number": 5,
+    "title": "Discrete CIP and VRP with Governance",
+    "body": "## Discrete CIP and VRP with Governance Staking\n\n### Summary\nImplement discrete **CIP (Creator Incentive Pool)** and **VRP (Validator Reward Pool)** as separate ledger accounts with waterfall-priority funding from Treasury. Add **governance staking** as a Z1U sink mechanism that locks tokens and reduces circulating supply pressure.\n\n### What this covers\n- **CIP:** A dedicated pool that funds content creators based on quality-weighted distribution. Treasury fills CIP each epoch according to a waterfall priority (after ops costs, before buybacks).\n- **VRP:** A dedicated pool that funds validators/verifiers with stake-weighted rewards. Separate funding line from CIP to prevent cross-contamination of incentive budgets.\n- **Governance Staking:** Users lock Z1U into a staking contract to participate in governance. Staked Z1U acts as a sink (removed from circulating supply), reducing settlement pressure on the Audience Reserve.\n\n### Tokenomics Persona Obligations\n- **Supply/Emissions:** Define CIP and VRP funding rates per epoch and their impact on Treasury drain\n- **Incentive Source:** Trace which pool funds which agent class (creators vs validators)\n- **Liquidity/Treasury/Governance Authority:** Document who controls pool parameters and staking APY\n- **Financial Advisory Boundary:** Staking APY claims require qualified review before publication\n\n### Stories\n- US-Z1-M3-05: Discrete VRP + CIP pools with waterfall priority\n- US-Z1-M3-06: Governance staking as Z1U sink\n\n---\n*Planner: Program z1-m3 · Ticket T-INTAKE-DEB15B9C · Lifecycle: proposed*",
+    "state": "CLOSED",
+    "url": "https://github.com/stelios12312312/TokenLab/issues/5",
+    "labels": [],
+    "project_item": null
+  },
+  "linked_evidence": {
+    "story_refs": [
+      "US-Z1-M3-05",
+      "US-Z1-M3-06"
+    ],
+    "defect_refs": [],
+    "gap_refs": [],
+    "acceptance_criteria": [
+      {
+        "id": "AC-T-INTAKE-DEB15B9C",
+        "scope": "ticket",
+        "subject_ref": "T-INTAKE-DEB15B9C",
+        "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+        "story_refs": [
+          "US-Z1-M3-05",
+          "US-Z1-M3-06"
+        ],
+        "maintenance_rationale": null
+      }
+    ],
+    "verification_rows": [
+      {
+        "id": "VM-T-INTAKE-DEB15B9C",
+        "scope": "ticket",
+        "subject_ref": "T-INTAKE-DEB15B9C",
+        "acceptance_criterion_ref": "AC-T-INTAKE-DEB15B9C",
+        "proof_type": "proof:artifact_review",
+        "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-deb15b9c_intake_packet.json",
+        "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers."
+      }
+    ],
+    "child_plan": {
+      "policy": "required",
+      "plan_dir": null,
+      "reason": "Executable intake ticket requires a child iterative plan before implementation."
+    },
+    "changed_files": []
+  },
+  "retro_recurrence_check": {
+    "version": 1,
+    "status": "not_applicable",
+    "summary": {
+      "blocking_count": 0,
+      "advisory_count": 0,
+      "match_count": 0,
+      "source_count": 3,
+      "trusted_count": 0,
+      "derived_count": 0
+    },
+    "matches": [],
+    "warnings": []
+  },
+  "quant_persona_gate": {
+    "version": "1.0.0",
+    "required": false,
+    "status": "not_applicable",
+    "reason": "no_quant_scope",
+    "matched_signals": [],
+    "summary": {
+      "matched_signal_count": 0,
+      "required_guard_count": 0,
+      "satisfied_guard_count": 0,
+      "missing_guard_count": 0
+    },
+    "required_guards": []
+  },
+  "deterministic": {
+    "status": "review_ready",
+    "blockers": [],
+    "retro_recurrence_check": {
+      "version": 1,
+      "status": "not_applicable",
+      "summary": {
+        "blocking_count": 0,
+        "advisory_count": 0,
+        "match_count": 0,
+        "source_count": 3,
+        "trusted_count": 0,
+        "derived_count": 0
+      },
+      "matches": [],
+      "warnings": []
+    },
+    "quant_persona_gate": {
+      "version": "1.0.0",
+      "required": false,
+      "status": "not_applicable",
+      "reason": "no_quant_scope",
+      "matched_signals": [],
+      "summary": {
+        "matched_signal_count": 0,
+        "required_guard_count": 0,
+        "satisfied_guard_count": 0,
+        "missing_guard_count": 0
+      },
+      "required_guards": []
+    },
+    "program_packet_validation": {
+      "ok": true,
+      "errors": [],
+      "warnings": [],
+      "counts": {
+        "epics": 1,
+        "tickets": 4,
+        "acceptance_criteria": 4,
+        "verification_rows": 5,
+        "decisions": 0
+      }
+    },
+    "program_gates": [
+      {
+        "ok": true,
+        "gate": "design-to-ready",
+        "errors": [],
+        "warnings": [],
+        "counts": {
+          "epics": 1,
+          "tickets": 4,
+          "acceptance_criteria": 4,
+          "verification_rows": 5,
+          "decisions": 0
+        }
+      }
+    ],
+    "command_results": [
+      {
+        "id": "program_manager_check",
+        "command": "node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program /Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab/plans/programs/z1-m3/program_packet.json --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"command\": \"check\",\n  \"gate\": null,\n  \"status\": \"PASS\",\n  \"packet_path\": \"/Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab/plans/programs/z1-m3/program_packet.json\",\n  \"program\": {\n    \"id\": \"z1-m3\",\n    \"title\": \"Z1 M3 Full Economy\",\n    \"status\": \"design\"\n  },\n  \"counts\": {\n    \"epics\": 1,\n    \"tickets\": 4,\n    \"acceptance_criteria\": 4,\n    \"verification_rows\": 5,\n    \"decisions\": 0\n  },\n  \"errors\": [],\n  \"warnings\": [],\n  \"message\": null\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "3371f0b83cee059ed11855f880592fae98a7a4196e03086dd75fb975b326d124"
+      },
+      {
+        "id": "program_gate_design_to_ready",
+        "command": "node .agent/skills/iterative-planner/scripts/program_manager.mjs verify design-to-ready --program /Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab/plans/programs/z1-m3/program_packet.json --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"command\": \"verify\",\n  \"gate\": \"design-to-ready\",\n  \"status\": \"PASS\",\n  \"packet_path\": \"/Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab/plans/programs/z1-m3/program_packet.json\",\n  \"program\": {\n    \"id\": \"z1-m3\",\n    \"title\": \"Z1 M3 Full Economy\",\n    \"status\": \"design\"\n  },\n  \"counts\": {\n    \"epics\": 1,\n    \"tickets\": 4,\n    \"acceptance_criteria\": 4,\n    \"verification_rows\": 5,\n    \"decisions\": 0\n  },\n  \"errors\": [],\n  \"warnings\": [],\n  \"message\": null\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "6445cc82279c5c77122044df433fc2f49fd607dab87d901866cb6ba2946d9319"
+      },
+      {
+        "id": "story_registry_evidence_us_z1_m3_05",
+        "command": "node .agent/skills/iterative-planner/scripts/story_registry.mjs evidence US-Z1-M3-05 --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"status\": \"PASS\",\n  \"story\": {\n    \"id\": \"US-Z1-M3-05\",\n    \"title\": \"Discrete VRP + CIP pools with waterfall priority\",\n    \"status\": \"FULLY_COVERED\",\n    \"counts\": {\n      \"code_refs\": 2,\n      \"test_refs\": 1,\n      \"validation_refs\": 1\n    },\n    \"issues\": [],\n    \"evidence_ready\": true,\n    \"guidance\": \"Evidence chain inputs are present in story_registry.json.\"\n  }\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "64ab5655e3a0ebd503d4123aebab233fb5f846a26e11d6d6648eb63526fc3622"
+      },
+      {
+        "id": "story_registry_evidence_us_z1_m3_06",
+        "command": "node .agent/skills/iterative-planner/scripts/story_registry.mjs evidence US-Z1-M3-06 --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"status\": \"PASS\",\n  \"story\": {\n    \"id\": \"US-Z1-M3-06\",\n    \"title\": \"Governance staking as Z1U sink\",\n    \"status\": \"FULLY_COVERED\",\n    \"counts\": {\n      \"code_refs\": 2,\n      \"test_refs\": 1,\n      \"validation_refs\": 1\n    },\n    \"issues\": [],\n    \"evidence_ready\": true,\n    \"guidance\": \"Evidence chain inputs are present in story_registry.json.\"\n  }\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "13ec6191d7c7aba23673b1c6c64995d00663869608ef21594db19c072a16b942"
+      },
+      {
+        "id": "rule_engine_verify_stories",
+        "command": "node .agent/skills/iterative-planner/scripts/rule_engine.mjs verify-stories --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"output_schema_version\": \"1.0.0\",\n  \"stories\": 9,\n  \"stories_total\": 9,\n  \"stories_retired\": 0,\n  \"coverage\": {\n    \"full\": 0,\n    \"partial\": 9,\n    \"missing\": 0\n  },\n  \"gaps\": {\n    \"no_tests\": [],\n    \"high_priority\": []\n  },\n  \"conflicts\": [],\n  \"invariant_violations\": [],\n  \"status\": \"PASS\"\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "4e15e478cde4166d65bf695b4c5c914ae35310685006a600ec1c3c918ffc2936"
+      },
+      {
+        "id": "rule_engine_find_conflicts",
+        "command": "node .agent/skills/iterative-planner/scripts/rule_engine.mjs find-conflicts --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"conflicts\": [],\n  \"count\": 0\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "ff30ec6c5f373c3f1b7ae2161b7a7d865e1415e9214070306085968ee5a15305"
+      },
+      {
+        "id": "annotation_parser_validate",
+        "command": "node .agent/skills/iterative-planner/scripts/annotation_parser.mjs --json --validate",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"summary\": {\n    \"total_files_scanned\": 457,\n    \"files_with_annotations\": 19,\n    \"total_annotations\": 36,\n    \"errors\": 11,\n    \"by_key\": {\n      \"story_id us-087\": 6,\n      \"proves\": 7,\n      \"module\": 1,\n      \"capability\": 2,\n      \"story_id\": 1,\n      \"config_flag\": 5,\n      \"mutually_exclusive\": 10,\n      \"story_id us-large-001\": 1,\n      \"proves billing_export_contract\": 1,\n      \"story_id us-med-001\": 1,\n      \"tested_by tests/payment.test.mjs\": 1\n    }\n  },\n  \"files\": {\n    \".agent/skills/iterative-planner/scripts/error_explainer.mjs\": [\n      {\n        \"file\": \".agent/skills/iterative-planner/scripts/error_explainer.mjs\",\n        \"line\": 2,\n        \"key\": \"story_id us-087\",\n        \"value\": null,\n        \"values\": [],\n        \"error\": \"Unknown annotation key: story_id us-087\"\n      },\n      {\n        \"file\": \".agent/skills/iterative-planner/scripts/error_explainer.mjs\",\n        \"line\": 3,\n        \"key\": \"proves\",\n        \"value\": \"crit:CRIT-003\",\n        \"values\": [\n          \"crit:CRIT-003\"\n        ],\n        \"error\": null\n      }\n    ],\n    \".agent/skills/iterative-planner/scripts/lib/annotation_discipline.mjs\": [\n      {\n        \"file\": \".agent/skills/iterative-planner/scripts/lib/annotation_discipline.mjs\",\n        \"line\": 3,\n        \"key\": \"module\",\n        \"value\": \"annotation_discipline\",\n        \"values\": [\n          \"annotation_discipline\"\n        ],\n        \"error\": null\n      },\n      {\n        \"file\": \".agent/skills/iterative-planner/scripts/lib/annotation_discipline.mjs\",\n        \"line\": 4,\n        \"key\": \"capability\",\n        \"value\": \"annotatio…[truncated 6592 chars]",
+        "stderr_excerpt": "⚠️  .agent/skills/iterative-planner/scripts/error_explainer.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/scripts/lib/annotation_discipline.mjs:5 — Unknown annotation key: story_id\n⚠️  .agent/skills/iterative-planner/scripts/plan_inspector.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/scripts/plan_similarity.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/scripts/security_audit.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/scripts/story_cli.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/scripts/visualize_wrapper.mjs:2 — Unknown annotation key: story_id us-087\n⚠️  .agent/skills/iterative-planner/tests/fixtu…[truncated 2141 chars]",
+        "output_sha256": "a43a94376000a8eca0ea45c90234800db85c50167c6078e7a58c1b316630e7e2"
+      },
+      {
+        "id": "annotation_assist",
+        "command": "node .agent/skills/iterative-planner/scripts/annotation_assist.mjs --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": false,
+        "stdout_excerpt": "{\n  \"scanned\": 131,\n  \"files\": [\n    {\n      \"file\": \"src/TokenLab/utils/reporting.py\",\n      \"classes\": [],\n      \"suggestions\": [\n        {\n          \"key\": \"consumer\",\n          \"value\": \"projects/z1/core_solvency/html_report.py\",\n          \"confidence\": \"high\",\n          \"reason\": \"Imported by projects/z1/core_solvency/html_report.py\",\n          \"annotation\": \"# @planner:consumer = projects/z1/core_solvency/html_report.py\"\n        },\n        {\n          \"key\": \"consumer\",\n          \"value\": \"projects/z1/core_solvency/html_report.py\",\n          \"confidence\": \"high\",\n          \"reason\": \"Imported by projects/z1/core_solvency/html_report.py\",\n          \"annotation\": \"# @planner:consumer = projects/z1/core_solvency/html_report.py\"\n        },\n        {\n          \"key\": \"consumer\",\n          \"value\": \"projects/z1/m2_market_dynamics/html_report.py\",\n          \"confidence\": \"high\",\n          \"reason\": \"Imported by projects/z1/m2_market_dynamics/html_report.py\",\n          \"annotation\": \"# @planner:consumer = projects/z1/m2_market_dynamics/html_report.py\"\n        },\n        {\n          \"key\": \"consumer\",\n          \"value\": \"projects/z1/m2_market_dynamics/html_report.py\",\n          \"confidence\": \"high\",\n          \"reason\": \"Imported by projects/z1/m2_market_dynamics/html_report.py\",\n          \"annotation\": \"# @planner:consumer = projects/z1/m2_market_dynamics/html_report.py\"\n        },\n        {\n          \"key\": \"consumer\",\n          \"value\": \"src/TokenLab/utils/reporting.py\",\n          \"confidence\": \"high\",\n          \"reason\": \"Imported by src/TokenLab/utils/reporting.py\",\n      …[truncated 43624 chars]",
+        "stderr_excerpt": "Scanning 131 source files in /Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab...\n  Import graph: 131 files with imports\n",
+        "output_sha256": "73c13def77e8e9a8b60c5e07684aded387bc2447514559cf184c14eacac58a91"
+      },
+      {
+        "id": "ontology_serializer",
+        "command": "node .agent/skills/iterative-planner/scripts/ontology_serializer.mjs --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"meta\": {\n    \"goals\": 0,\n    \"criteria\": 0,\n    \"goal_criterion_links\": 0,\n    \"criterion_story_links\": 0,\n    \"validation_artifacts\": 0,\n    \"audit_passes\": 0,\n    \"annotation_proves\": 7,\n    \"verification_results\": 0,\n    \"verification_subjects\": 1,\n    \"verification_modes\": 1,\n    \"verification_obligations\": 1,\n    \"verification_evidence\": 0,\n    \"verification_waivers\": 0,\n    \"retro_cases\": 0,\n    \"known_mistakes\": 3,\n    \"active_mistakes\": 0,\n    \"structured_findings\": 0,\n    \"persona_packs\": 0,\n    \"persona_constraints\": 0,\n    \"persona_findings\": 0,\n    \"quant_results_validation\": 1,\n    \"intent_contracts\": 0,\n    \"intent_deliverables\": 0,\n    \"recipe_entities\": 0,\n    \"recipe_capabilities\": 0,\n    \"recipe_contracts\": 0,\n    \"recipe_discovery_candidates\": 0\n  },\n  \"facts\": [\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/error_explainer.mjs', 'CRIT-003').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/plan_inspector.mjs', 'CRIT-003').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/plan_similarity.mjs', 'CRIT-003').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/security_audit.mjs', 'CRIT-003_crit:CRIT-007').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/story_cli.mjs', 'CRIT-001_crit:CRIT-004').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/scripts/visualize_wrapper.mjs', 'CRIT-003').\",\n    \"annotation_proves_criterion('.agent/skills/iterative-planner/tests/test_traceability_engine.mjs', 'sc_1').\",\n…[truncated 6482 chars]",
+        "stderr_excerpt": "",
+        "output_sha256": "f4295788dc8adcf54e4751faa34275d62a60e0f36722a0f4f810d2707126bbb8"
+      },
+      {
+        "id": "rule_engine_check_invariants",
+        "command": "node .agent/skills/iterative-planner/scripts/rule_engine.mjs check-invariants --json",
+        "exit_code": 0,
+        "status": "pass",
+        "blocking": true,
+        "stdout_excerpt": "{\n  \"output_schema_version\": \"1.0.0\",\n  \"violations\": [],\n  \"count\": 0,\n  \"status\": \"PASS\"\n}\n",
+        "stderr_excerpt": "",
+        "output_sha256": "c74e910c76841481b1780929640f19fbebdda39329deeea5299baf260a7e3b42"
+      }
+    ]
+  },
+  "deepseek_advisory": {
+    "available": true,
+    "config": {
+      "configured": true,
+      "model": "deepseek-chat",
+      "base_url": "https://api.deepseek.com",
+      "endpoint": "https://api.deepseek.com/chat/completions",
+      "phases": [
+        "gate",
+        "post_task"
+      ],
+      "write_mode": "safe_apply",
+      "timeout_ms": 20000,
+      "local_env_loaded": false,
+      "using_deepseek_alias": false,
+      "missing": []
+    },
+    "source": "provider",
+    "raw_excerpt": "{\n  \"status\": \"review_ready\",\n  \"summary\": \"All deterministic gates pass. Quant persona gate not required. Advisory persona review flagged needs_evidence but is non-blocking. Ticket is review_ready.\",\n  \"findings\": [\n    {\n      \"id\": \"PR-001\",\n      \"status\": \"needs_verification\",\n      \"persona_pack\": \"tokenomics\",\n      \"message\": \"story linkage, acceptance criteria, verification proof, and explicit assumptions\",\n      \"evidence_refs\": []\n    }\n  ],\n  \"recommended_actions\": [\n    \"Run the relevant domain persona review before marking the ticket ready.\"\n  ]\n}",
+    "status": "review_ready",
+    "summary": "All deterministic gates pass. Quant persona gate not required. Advisory persona review flagged needs_evidence but is non-blocking. Ticket is review_ready.",
+    "findings": [
+      {
+        "id": "PR-001",
+        "status": "needs_verification",
+        "message": "story linkage, acceptance criteria, verification proof, and explicit assumptions",
+        "evidence_refs": []
+      }
+    ],
+    "recommended_actions": [
+      "Run the relevant domain persona review before marking the ticket ready."
+    ]
+  },
+  "final_status": "review_ready",
+  "artifact": {
+    "path": "plans/programs/z1-m3/reviews/t_intake_deb15b9c_review_packet.json"
+  },
+  "ticket_intake_receipt": {
+    "name": "Ticket Intake Receipt",
+    "version": 1,
+    "action": "review",
+    "front_door": "/program-manager",
+    "source": {
+      "kind": "github_issue",
+      "repo": "stelios12312312/TokenLab",
+      "issue_number": 5,
+      "project_item_id": null,
+      "url": "https://github.com/stelios12312312/TokenLab/issues/5",
+      "title": "Discrete CIP and VRP with Governance"
+    },
+    "program_packet_path": "plans/programs/z1-m3/program_packet.json",
+    "review_artifact_path": "plans/programs/z1-m3/reviews/t_intake_deb15b9c_review_packet.json",
+    "ticket_id": "T-INTAKE-DEB15B9C",
+    "ticket_title": "Discrete CIP and VRP with Governance",
+    "ticket_lifecycle": "proposed",
+    "story_refs": [
+      "US-Z1-M3-05",
+      "US-Z1-M3-06"
+    ],
+    "gap_refs": [],
+    "defect_refs": [],
+    "acceptance_criteria_refs": [
+      "AC-T-INTAKE-DEB15B9C"
+    ],
+    "verification_refs": [
+      "VM-T-INTAKE-DEB15B9C"
+    ],
+    "deterministic_status": "review_ready",
+    "deterministic_blocker_count": 0,
+    "deterministic_blockers": [],
+    "retro_recurrence_status": "not_applicable",
+    "retro_recurrence_blocking_count": 0,
+    "retro_recurrence_advisory_count": 0,
+    "quant_persona_gate_status": "not_applicable",
+    "quant_persona_gate_required": false,
+    "quant_persona_gate_missing_count": 0,
+    "deepseek_advisory_status": "review_ready",
+    "deepseek_advisory_block": "<<<DEEPSEEK_VERDICT_BEGIN>>>\nStatus: review_ready\nSummary: All deterministic gates pass. Quant persona gate not required. Advisory persona review flagged needs_evidence but is non-blocking. Ticket is review_ready.\nFindings:\n- PR-001: story linkage, acceptance criteria, verification proof, and explicit assumptions\nRecommended actions:\n- Run the relevant domain persona review before marking the ticket ready.\n<<<DEEPSEEK_VERDICT_END>>>",
+    "verbatim_reproduction_contract": "Primary agents must reproduce deepseek_advisory_block verbatim in their reply to the user; paraphrase is forbidden. The DEEPSEEK_VERDICT_BEGIN/END delimiters are part of the contract -- quote them as written.",
+    "direct_github_creation_allowed": false,
+    "github_publication": "mirror_sync_only",
+    "next_required_command": "node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program plans/programs/z1-m3/program_packet.json --json",
+    "review_command": "node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs review --issue <n> --program plans/programs/z1-m3/program_packet.json --ticket T-INTAKE-DEB15B9C --json"
+  }
+}

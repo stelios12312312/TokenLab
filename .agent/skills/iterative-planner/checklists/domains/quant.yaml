@@ -1,0 +1,36 @@
+name: "Quant/Trading Domain Checklist"
+
+items:
+  - id: temporal-leakage
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "leakage"
+    severity: warn
+    description: "Data leakage / look-ahead bias investigated"
+
+  - id: temporal-ordering
+    check: contains_string
+    path: "{plan-dir}/findings.md"
+    string: "temporal"
+    severity: warn
+    description: "Temporal ordering verified (no future data in features)"
+
+  - id: calibration-check
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "calibr"
+    severity: warn
+    description: "Calibration impact assessed in plan"
+
+  - id: backtest-determinism
+    check: contains_string
+    path: "{plan-dir}/plan.md"
+    string: "determinism"
+    severity: warn
+    description: "Backtest determinism addressed (fixed seeds, no RNG pollution)"
+
+  - id: parity-check
+    check: file_exists
+    path: "{knowledge}/parity-registry.md"
+    severity: warn
+    description: "Parity registry exists (simulator/backtest/live paths must stay in sync)"

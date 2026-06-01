@@ -1,0 +1,26 @@
+{
+  "_comment": "Copy this file to your project root as audit.config.json and customise. Choose the persona pack that matches your repo.",
+
+  "roles": ["core", "assumptions_challenger"],
+
+  "auto_committee": true,
+
+  "fail_on": ["HIGH", "CRITICAL"],
+
+  "role_options": {
+    "assumptions_challenger": {},
+    "quant": {
+      "min_backtest_window_days": 252,
+      "required_metrics": ["sharpe", "max_drawdown"]
+    },
+    "quant_target": {},
+    "tokenomics": {},
+    "ux_ui": {
+      "critical_flows": [
+        { "id": "checkout",    "story_id": "us_005" },
+        { "id": "signup",      "story_id": "us_001" },
+        { "id": "login",       "story_id": "us_002" }
+      ]
+    }
+  }
+}

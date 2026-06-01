@@ -1,0 +1,153 @@
+name: "REFLECT → CLOSE Gate"
+
+items:
+  - id: verification-results
+    check: contains_string
+    path: "{plan-dir}/verification.md"
+    string: "PASS"
+    description: "Verification results contain at least one PASS"
+
+  - id: verification-not-template
+    check: not_contains_string
+    path: "{plan-dir}/verification.md"
+    string: "To be populated during PLAN"
+    description: "Verification is not still template"
+
+  - id: progress-complete
+    check: json_field_equals
+    path: "{plan-dir}/state.json"
+    field: "close_signals.progress.satisfied"
+    equals: true
+    severity: warn
+    description: "Structured close signal confirms all progress items are complete"
+
+  - id: kb-mistakes
+    check: file_exists
+    path: "{knowledge}/mistakes.md"
+    description: "Knowledge base mistakes.md exists (FAIL — must record learnings before close)"
+
+  - id: kb-patterns
+    check: file_exists
+    path: "{knowledge}/patterns.md"
+    description: "Knowledge base patterns.md exists (FAIL — must record proven patterns before close)"
+
+  - id: kb-gotchas
+    check: file_exists
+    path: "{knowledge}/gotchas.md"
+    description: "Knowledge base gotchas.md exists (FAIL — must record gotchas before close)"
+
+  - id: kb-patterns-has-entries
+    check: contains_string
+    path: "{knowledge}/patterns.md"
+    string: "## P-"
+    description: "patterns.md has at least one pattern entry (FAIL — record what worked)"
+
+  - id: kb-updated-this-plan
+    check: json_field_equals
+    path: "{plan-dir}/state.json"
+    field: "close_signals.kb.satisfied"
+    equals: true
+    description: "Structured close signal confirms KB was updated this plan or explicitly marked no-new-learnings"
+
+  - id: planner-core-migration-smoke
+    check: json_field_equals
+    path: "{plan-dir}/state.json"
+    field: "close_signals.planner_core.satisfied"
+    equals: true
+    description: "Structured close signal confirms planner-core self-proof is satisfied"
+
+  - id: test-evidence-satisfied
+    check: json_field_equals
+    path: "{plan-dir}/state.json"
+    field: "close_signals.test_evidence.satisfied"
+    equals: true
+    description: "Structured close signal confirms code changes have test evidence, use the static-UI manual path, or carry an approved waiver"
+
+  - id: anti-recurrence-satisfied
+    check: json_field_equals
+    path: "{plan-dir}/state.json"
+    field: "close_signals.anti_recurrence.satisfied"
+    equals: true
+    description: "Structured close signal confirms remediation-style work records an anti-recurrence guard (test, ontology, annotation, KB) or an approved waiver"
+
+  - id: learned-obligations-satisfied
+    check: json_field_equals
+    path: "{plan-dir}/state.json"
+    field: "close_signals.learned_obligations.satisfied"
+    equals: true
+    description: "Structured close signal confirms active learned verification obligations have evidence or approved waiver"
+
+  - id: baseline-exists
+    check: file_exists
+    path: "{plan-dir}/baseline.json"
+    skip_if_path: "{plan-dir}/verification.md"
+    skip_if_string: "no baseline captured"
+    severity: warn
+    description: "Test baseline captured (run test_baseline.mjs verify if present)"
+
+  # Regression prevention: regression audit evidence (added v3.8.0)
+  - id: regression-audit-evidence
+    check: contains_string
+    path: "{plan-dir}/verification.md"
+    string: "Regression"
+    severity: warn
+    description: "Regression audit documented in verification.md (WARN — write 'N/A — no baseline captured' if no test baseline exists)"
+
+  - id: health-baseline-exists
+    check: file_exists
+    path: "{plan-dir}/health_baseline.json"
+    severity: warn
+    description: "Health baseline captured at plan start"
+
+  - id: health-final-exists
+    check: file_exists
+    path: "{plan-dir}/health_final.json"
+    severity: warn
+    description: "Health final scan completed before close"
+
+  - id: capability-invariants
+    check: command_succeeds
+    command: "node .agent/skills/iterative-planner/scripts/rule_engine.mjs check-invariants"
+    severity: warn
+    description: "Capability invariants pass (includes cross-report consistency I-009/I-010/I-011)"
+
+  # Persona audit is compulsory at this gate (v2.1.0)
+  - id: persona-audit-config-exists
+    check: file_exists
+    path: "{cwd}/audit.config.json"
+    description: "audit.config.json exists (required for compulsory persona audit)"
+
+  # Gate chain enforcement (v2.1.0 retro): verify all prior gates were actually run
+  - id: gate-chain-compliance
+    check: file_exists
+    path: "{plan-dir}/state.json"
+    severity: warn
+    description: "state.json exists (enables gate chain enforcement I-015)"
+
+  # Reachability audit is compulsory at this gate (RT-HARDENING-007)
+  - id: reachability-audit-clean
+    check: command_succeeds
+    command: "node .agent/skills/iterative-planner/scripts/rule_engine.mjs reachability-audit"
+    description: "State-space reachability analysis passes (no deadlocks, forbidden paths, gate bypasses, escalation routes)"
+
+  # Retro 2026-03-22: catch cross-report status divergence
+  - id: no-uncommitted-placeholders
+    check: not_contains_string
+    path: "reports/defect_register.md"
+    string: "*uncommitted*"
+    severity: warn
+    description: "No *uncommitted* placeholders in defect register (all FIXED entries need commit SHA)"
+
+  - id: no-pending-commit-refs
+    check: not_contains_string
+    path: "reports/defect_register.md"
+    string: "| pending |"
+    severity: warn
+    description: "No 'pending' commit references in defect register"
+
+  - id: no-open-defects-if-clean
+    check: not_contains_string
+    path: "reports/red_team_audit/findings.md"
+    string: "still OPEN"
+    severity: warn
+    description: "Findings report has no stale 'still OPEN' labels (sync with defect_register.md)"

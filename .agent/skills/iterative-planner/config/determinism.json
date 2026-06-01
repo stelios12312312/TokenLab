@@ -1,0 +1,109 @@
+{
+  "version": "1.0.0",
+  "description": "Determinism hardening configuration. Feature flags control rollout of new behaviors.",
+
+  "features": {
+    "state_json": {
+      "enabled": true,
+      "description": "Write canonical state.json alongside state.md on every transition"
+    },
+    "decision_logs": {
+      "enabled": true,
+      "description": "Append-only decision log (inputs → checks → decision → next_state) per transition"
+    },
+    "failure_codes": {
+      "enabled": true,
+      "description": "Emit stable failure codes (GATE-XXX-NNN) alongside human messages"
+    },
+    "sorted_output": {
+      "enabled": true,
+      "description": "Sort file paths, findings, and checklist items before writing results"
+    },
+    "proof_traces": {
+      "enabled": true,
+      "description": "Persist Prolog proof traces under plans/<plan>/artifacts/prolog/"
+    },
+    "script_hashing": {
+      "enabled": true,
+      "description": "Record script content hash + version in state.json when transitions run"
+    },
+    "prolog_shadow_mode": {
+      "enabled": true,
+      "description": "RT-REDTEAM-M6: Run Prolog transition checks in parallel with JS gate logic to detect divergence"
+    },
+    "prolog_enforce_mode": {
+      "enabled": true,
+      "description": "M4-FIX: When enabled, Prolog/JS divergence BLOCKS transitions instead of warning. Prevents an LLM from tampering with JS gate logic while Prolog disagrees."
+    },
+    "strict_state_json": {
+      "enabled": true,
+      "description": "RT-REDTEAM-H1: Require all transitions to read/write ONLY state.json (not state.md) — state.md fallback removed"
+    },
+    "replay_mode": {
+      "enabled": true,
+      "description": "Support --replay <artifact-dir> mode in gate scripts"
+    },
+    "tool_trace": {
+      "enabled": true,
+      "description": "RT-REDTEAM-C4: Capture tool call traces via IDE hooks and verify file-read coverage at gate transitions (enabled by default)"
+    },
+    "proof_telemetry": {
+      "enabled": true,
+      "description": "Advisory-first proof telemetry: capture compact trusted work signals under plans/<plan>/telemetry/ so planner_findings can detect missing proof from actual work."
+    },
+    "suggestion_engine": {
+      "enabled": true,
+      "description": "Prolog-driven skill suggestions, completeness scoring, and auto-approve decisions"
+    },
+    "strict_trace_ide": {
+      "enabled": false,
+      "description": "L1-FIX + RT-HARDENING-005: GATE-TRC-009 (unsupported IDE) is FAIL when enabled. Disabled: Claude Code (VSCode extension) does not set TERM_PROGRAM=vscode in subprocess env, causing false-positive FAIL even when traces are being captured. Re-enable if running in a verified non-Claude-Code environment."
+    },
+    "reachability_audit": {
+      "enabled": true,
+      "description": "RT-HARDENING-007: Exhaustive state-space reachability analysis at gate transitions. Detects deadlocks, forbidden paths, gate bypasses, and privilege escalation routes."
+    }
+  },
+
+  "escalation_thresholds": {
+    "red_team": {
+      "staleness_days": 7,
+      "staleness_commits": 10,
+      "change_files_threshold": 5,
+      "change_lines_threshold": 200
+    },
+    "regression": {
+      "staleness_commits": 10
+    },
+    "retro": {
+      "replan_threshold": 2,
+      "drift_warning_threshold": 3,
+      "iteration_threshold": 4
+    },
+    "user_story": {
+      "staleness_days": 30,
+      "new_files_threshold": 3,
+      "registry_staleness_days": 14,
+      "registry_staleness_commits": 15
+    },
+    "advisor": {
+      "trigger_commits": 15,
+      "trigger_days": 5
+    }
+  },
+
+  "approval": {
+    "mode": "auto",
+    "comment": "auto = transition writes [APPROVED] directly (solo autopilot default, no daemon needed); interactive = user/daemon must approve; multi-agent = story review agent (v3.9.0)"
+  },
+
+  "timestamps": {
+    "format": "iso8601",
+    "timezone": "UTC"
+  },
+
+  "rule_engine": {
+    "rule_bundle_version": "1.1.0",
+    "strict_mode_env": "RULE_ENGINE_STRICT"
+  }
+}

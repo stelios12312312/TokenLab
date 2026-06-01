@@ -1,0 +1,21 @@
+{
+  "id": "daily-runner",
+  "title": "Daily Runner",
+  "capability_id": "daily_runner",
+  "entity_ids": ["portfolio"],
+  "required_params": ["portfolio_id"],
+  "systems": ["portfolio"],
+  "scripts": [
+    {
+      "path": "scripts/daily_runner.mjs",
+      "purpose": "Run the daily portfolio workflow"
+    }
+  ],
+  "skills": [],
+  "workflows": ["/recipe-tidy"],
+  "runner": {
+    "type": "project_command",
+    "command": ["node", "scripts/daily_runner.mjs"]
+  },
+  "story_refs": ["US-074"]
+}

@@ -1,0 +1,20 @@
+name: "KB Notification Gate (before presenting results)"
+
+items:
+  - id: summary-written
+    check: file_exists
+    path: "{plan-dir}/summary.md"
+    severity: warn
+    description: "Summary or walkthrough written before presenting to user"
+
+  - id: kb-updated-or-noted
+    check: file_not_empty
+    path: "{plan-dir}/decisions.md"
+    description: "Decisions log has content (contains learnings)"
+
+  - id: state-is-close
+    check: contains_string
+    path: "{plan-dir}/state.md"
+    string: "CLOSE"
+    severity: warn
+    description: "Plan state is CLOSE (expected before notifying user)"

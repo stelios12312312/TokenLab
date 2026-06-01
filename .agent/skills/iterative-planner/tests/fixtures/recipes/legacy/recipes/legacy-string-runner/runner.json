@@ -1,0 +1,12 @@
+{
+  "recipe_id": "legacy-string-runner",
+  "title": "Legacy String Runner",
+  "runner": "scripts/legacy_string_runner.py",
+  "parameters": {},
+  "systems": [
+    "fixture"
+  ],
+  "skills_used": [
+    "fixture-skill"
+  ]
+}

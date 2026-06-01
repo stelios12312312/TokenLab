@@ -1,0 +1,15 @@
+{
+  "description": "Edge case: EXPLORE → PLAN with insufficient findings (only 1)",
+  "gate": "explore-to-plan",
+  "edge_case": true,
+  "input": {
+    "state_md": "# Current State: EXPLORE\n## Iteration: 0",
+    "findings_md": "# Findings\n## Index\n- [F-1] Only one finding\n\n## F-1: First finding\nDetails.",
+    "kb_files": [],
+    "health_report_exists": false
+  },
+  "expected_checks": [
+    { "name": "Minimum 3 indexed findings in findings.md", "status": "FAIL", "code": "GATE-EXP-001" }
+  ],
+  "expected_result": "FAIL"
+}

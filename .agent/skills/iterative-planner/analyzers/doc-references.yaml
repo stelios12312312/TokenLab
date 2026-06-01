@@ -1,0 +1,14 @@
+name: "Documentation Reference Check"
+type: doc_references
+quick: true
+severity: warn
+scan_paths:
+  - "README.md"
+  - "docs/**/*.md"
+  - ".agent/**/*.md"
+  - "plans/knowledge/**/*.md"
+exclude_paths:
+  - "node_modules/**"
+  - ".git/**"
+  - "plans/plan_*/**"
+code_root: "."

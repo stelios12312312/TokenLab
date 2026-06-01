@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "rebaselined_at": "2026-06-01T13:42:50.783Z",
+  "packs": {
+    "assumptions_challenger": {
+      "files": [
+        "index.mjs",
+        "rules.pl"
+      ],
+      "hashes": {
+        "index.mjs": "73e553f93f57bd042a0e6835c3005c2fa8277252f0d81f0c357b4af458d2aeb6",
+        "rules.pl": "27022c557560f8dae97c412b6e3c05f9e92483c559fbdd624aff123d707a90c9"
+      }
+    },
+    "config_integrity": {
+      "files": [
+        "index.mjs",
+        "rules.pl"
+      ],
+      "hashes": {
+        "index.mjs": "01b8e3e2acf621d08070c96132f53437f1714d46202a50b1eee2c610a6a01d6f",
+        "rules.pl": "e8d5e96eb05f0083aed3eb757972a2db65f559239fa234155d75851b163bf13b"
+      }
+    },
+    "quant": {
+      "files": [
+        "index.mjs",
+        "rules.pl"
+      ],
+      "hashes": {
+        "index.mjs": "f1b6a91cd4114f7d1dc19929d9141965323f7c49500957d709d300044b31987b",
+        "rules.pl": "38f8ad671da822a57809f1909929bcc49cfd4c9b530c3ee6f55031f59fff9707"
+      }
+    },
+    "quant_target": {
+      "files": [
+        "index.mjs",
+        "rules.pl"
+      ],
+      "hashes": {
+        "index.mjs": "6bd635993efe1223a000f3ebdc7028c7be8dc2961feff0f14c250a609eb3937e",
+        "rules.pl": "0304e2f67c252e43feed4e71d37cb09832e677ec8b6d1a33928897c394c6bc73"
+      }
+    },
+    "tokenomics": {
+      "files": [
+        "index.mjs"
+      ],
+      "hashes": {
+        "index.mjs": "78102a1275807598f067ab43ee87c6db99434b14c1344320d5eb1278a341126c"
+      }
+    },
+    "traceability": {
+      "files": [
+        "index.mjs",
+        "rules.pl"
+      ],
+      "hashes": {
+        "index.mjs": "d6d1fc26406cf73ff0b18938fac6c3fe22e35bd3b97c751cd3e9ec4e06183018",
+        "rules.pl": "e01422e2390dcaf1d670830865f2286f550c0cda48f7182f9a815ef83016ea55"
+      }
+    },
+    "ux_ui": {
+      "files": [
+        "index.mjs",
+        "rules.pl"
+      ],
+      "hashes": {
+        "index.mjs": "3762d91237e26540be3ded5bd47fc0898e90b27aa72392f14010d72f88b803ed",
+        "rules.pl": "76936f18a5ec6c7205569889b457af865d32591a7634ecdcc7ac50361c0d7372"
+      }
+    },
+    "wiring_auditor": {
+      "files": [
+        "index.mjs",
+        "rules.pl"
+      ],
+      "hashes": {
+        "index.mjs": "31c3616e500822b7ef65ac9c968a4c1230acd70f2a214a62c9f88a223be0e27d",
+        "rules.pl": "63e5de341af4b5dac564937d915446d45d919629488dc94516895112d6f22776"
+      }
+    }
+  },
+  "persona_obligations": {
+    "path": ".agent/skills/iterative-planner/config/persona_obligations.json",
+    "hash": "b91ea9c6aba8b0ef5395ffa221d0f9e46c0685c251d33a3810dd66f1b032a4b6"
+  },
+  "root_instructions": {
+    "canonical": "CLAUDE.md",
+    "mirrors": [
+      "GEMINI.md",
+      "AGENTS.md"
+    ],
+    "policy": "byte_identical"
+  },
+  "recommended_seed_roles": [
+    "quant",
+    "tokenomics"
+  ]
+}
