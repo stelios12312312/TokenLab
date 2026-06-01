@@ -41,6 +41,8 @@ import {
 } from "./lib/quant_persona_gate.mjs";
 import {
   buildDeepSeekAdvisoryBlock,
+  DEEPSEEK_ADVISORY_NOT_RUN_STATUS,
+  DEEPSEEK_ADVISORY_NOT_RUN_SUMMARY,
   DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT,
 } from "./lib/deepseek_advisory_block.mjs";
 
@@ -72,6 +74,7 @@ function parseArgs(argv) {
     write: false,
     json: false,
     facts: false,
+    showDeepSeekBlock: false,
   };
   if (parsed.command === "verify") parsed.gate = args.shift() || null;
   if (parsed.command === "blockers" || parsed.command === "unlocks-if-closed") {
@@ -97,6 +100,7 @@ function parseArgs(argv) {
     else if (arg === "--remediate") parsed.remediate = true;
     else if (arg === "--force") parsed.force = true;
     else if (arg === "--write") parsed.write = true;
+    else if (arg === "--show-deepseek-block") parsed.showDeepSeekBlock = true;
     else if (!parsed.program) parsed.program = arg;
   }
   return parsed;
@@ -107,8 +111,8 @@ function usage() {
 
 Usage:
   node program_manager.mjs init --program <name-or-path> [--title "<program title>"] [--goal "<program goal>"] [--force] [--json]
-  node program_manager.mjs intake --program <path-or-id> (--from-text "<idea>"|--from-file <path>|--from-json-array '[{"title":"...","text":"..."}]'|--issue <n>|--project-item <id/url>) [--title "<short title>"] [--ticket-type <type>] [--persona-review] [--persona-packs <csv>] [--repo owner/name] [--write] [--json]
-  node program_manager.mjs intake --program <path-or-id> --from-text "<idea>" [--auto-story] [--write] [--json]
+  node program_manager.mjs intake --program <path-or-id> (--from-text "<idea>"|--from-file <path>|--from-json-array '[{"title":"...","text":"..."}]'|--issue <n>|--project-item <id/url>) [--title "<short title>"] [--ticket-type <type>] [--persona-review] [--persona-packs <csv>] [--repo owner/name] [--write] [--show-deepseek-block] [--json]
+  node program_manager.mjs intake --program <path-or-id> --from-text "<idea>" [--auto-story] [--write] [--show-deepseek-block] [--json]
   node program_manager.mjs check [--program <path-or-id>] [--remediate] [--write] [--json]
   node program_manager.mjs verify <gate> [--program <path-or-id>] [--remediate] [--write] [--json]
   node program_manager.mjs facts [--program <path-or-id>]
@@ -138,10 +142,13 @@ review metadata, and --persona-packs overrides the default packs. --from-json-ar
 accepts a JSON array string of ticket objects; each object needs
 text/body/description/content and may include title, id, ticket_type/type,
 persona_review, and persona_packs. --write updates only the local Program Packet
-and local intake artifact(s). --auto-story appends review-needed NOT_IMPLEMENTED draft stories to
+and local intake artifact(s). --show-deepseek-block renders the full fenced
+advisory verdict in text output; default output shows compact status/summary/artifact
+proof. --auto-story appends review-needed NOT_IMPLEMENTED draft stories to
 reports/user_story_audit/story_registry.json and links them to the ticket when
 --write is used. --remediate on check/verify emits advisory remediation task
-packets; --write writes the packet but does not mark deterministic gates passed.
+packets; --write writes the packet. On verify, --write also advances Program
+Packet status after deterministic validation and ontology checks pass.
 Publishing to GitHub is handled separately by github_ticket_review.mjs publish.
 
 No Program Packet is backward-compatible: check and verify return SKIP.`;
@@ -165,6 +172,11 @@ function clone(value) {
 
 function sha256(value) {
   return createHash("sha256").update(String(value || "")).digest("hex");
+}
+
+function oneLine(value, max = 240) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
 
 function sanitizeIdSegment(value) {
@@ -1062,6 +1074,7 @@ function buildIntakeDraft({ packet, source, timestamp, artifactRelPath, addition
     type: baseTicketType,
     ticket_type: ticketType,
     lifecycle: "proposed",
+    review_status: existingTicket.review_status || "not_run",
     story_refs: storyRefs,
     defect_refs: asArray(existingTicket.defect_refs),
     gap_refs: storyRefs.length > 0 ? asArray(existingTicket.gap_refs) : uniqueStrings([...(existingTicket.gap_refs || []), gapId]),
@@ -1236,11 +1249,11 @@ function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPat
     quant_persona_gate_status: quantGate?.status || "not_run",
     quant_persona_gate_required: quantGate?.required === true,
     quant_persona_gate_missing_count: quantGate?.summary?.missing_guard_count || 0,
-    deepseek_advisory_status: deepseekAdvisory?.status || "unavailable",
-    // Phase C: full advisory promoted to a fenced verbatim block. Primary agents
-    // must reproduce this block in their user-facing reply without paraphrase.
-    // The block is also rendered in renderIntakeText() so text-mode callers
-    // get the same content.
+    deepseek_advisory_status: deepseekAdvisory?.status || DEEPSEEK_ADVISORY_NOT_RUN_STATUS,
+    deepseek_advisory_summary: oneLine(deepseekAdvisory?.summary || (!deepseekAdvisory ? DEEPSEEK_ADVISORY_NOT_RUN_SUMMARY : "")),
+    deepseek_advisory_artifact_path: intakeArtifactPath,
+    // Full advisory remains in JSON artifacts for auditability; default text
+    // output renders a compact status/summary/artifact line instead.
     deepseek_advisory_block: buildDeepSeekAdvisoryBlock(deepseekAdvisory),
     verbatim_reproduction_contract: DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT,
     direct_github_creation_allowed: false,
@@ -1632,6 +1645,37 @@ function runProgramOntology(packet, cwd) {
   };
 }
 
+function programStatusAfterGate(gate) {
+  if (gate === "design-to-ready") return "ready";
+  if (gate === "ready-to-execution") return "executing";
+  if (gate === "execution-to-program-validate") return "validating";
+  if (gate === "validate-to-program-close") return "closed";
+  return null;
+}
+
+function buildProgramStatusTransition({ target, gate, write, env }) {
+  const previousStatus = asString(target?.packet?.status) || null;
+  const newStatus = programStatusAfterGate(gate);
+  const supported = !!newStatus;
+  const changed = supported && previousStatus !== newStatus;
+  const transition = {
+    gate: gate || null,
+    previous_status: previousStatus,
+    new_status: supported ? newStatus : previousStatus,
+    write_requested: write === true,
+    transition_written: false,
+    status: supported ? (changed ? "pending" : "already_current") : "unsupported_gate",
+  };
+  if (!supported || !write || !changed) return transition;
+  const nextPacket = clone(target.packet);
+  nextPacket.status = newStatus;
+  writeFileSync(target.resolved.path, `${JSON.stringify(redactObject(nextPacket, env), null, 2)}\n`, "utf-8");
+  target.packet = nextPacket;
+  transition.transition_written = true;
+  transition.status = "written";
+  return transition;
+}
+
 function loadTarget(cwd, programArg) {
   const resolved = resolveProgramPacketPath({ cwd, program: programArg });
   if (resolved.status !== "FOUND") return { resolved };
@@ -1804,6 +1848,10 @@ function renderText(result) {
   if (result.program?.id) lines.push(`Program: ${result.program.id} — ${result.program.title || ""}`);
   if (result.packet_path) lines.push(`Packet: ${result.packet_path}`);
   if (result.message) lines.push(result.message);
+  if (result.program_status_transition) {
+    const transition = result.program_status_transition;
+    lines.push(`Program status: ${transition.previous_status || "unknown"} -> ${transition.new_status || "unknown"} (${transition.transition_written ? "written" : transition.status || "not written"})`);
+  }
   if (result.errors?.length) {
     lines.push("\nErrors:");
     for (const error of result.errors) lines.push(`- ${error.code}: ${error.path} — ${error.message}`);
@@ -1844,7 +1892,22 @@ function buildResult({ command, gate, target, validation, ontology, message }) {
   };
 }
 
-function renderIntakeText(result) {
+function renderDeepSeekReceiptText(receipt, { showDeepSeekBlock = false } = {}) {
+  const lines = [];
+  lines.push(`DeepSeek advisory: ${receipt?.deepseek_advisory_status || DEEPSEEK_ADVISORY_NOT_RUN_STATUS}; summary: ${receipt?.deepseek_advisory_summary || "n/a"}; artifact: ${receipt?.deepseek_advisory_artifact_path || receipt?.intake_artifact_path || receipt?.review_artifact_path || "dry-run"}`);
+  if (showDeepSeekBlock && receipt?.deepseek_advisory_block) {
+    lines.push("");
+    lines.push("DeepSeek advisory verdict:");
+    lines.push(receipt.deepseek_advisory_block);
+    if (receipt.verbatim_reproduction_contract) {
+      lines.push("");
+      lines.push(`Contract: ${receipt.verbatim_reproduction_contract}`);
+    }
+  }
+  return lines;
+}
+
+function renderIntakeText(result, { showDeepSeekBlock = false } = {}) {
   if (Array.isArray(result.results)) {
     const lines = [
       `Program Manager intake: ${result.dry_run ? "dry-run" : "write"}`,
@@ -1859,10 +1922,10 @@ function renderIntakeText(result) {
       lines.push(`  Deterministic status: ${item.ticket_intake_receipt?.deterministic_status || "unknown"}`);
     }
     for (const receipt of asArray(result.ticket_intake_receipts)) {
-      if (receipt?.deepseek_advisory_block) {
+      if (receipt) {
         lines.push("");
-        lines.push(`DeepSeek advisory for ${receipt.ticket_id || "ticket"} (REPRODUCE VERBATIM in your reply to the user):`);
-        lines.push(receipt.deepseek_advisory_block);
+        lines.push(`DeepSeek advisory for ${receipt.ticket_id || "ticket"}:`);
+        lines.push(...renderDeepSeekReceiptText(receipt, { showDeepSeekBlock }));
       }
     }
     return lines.join("\n");
@@ -1884,17 +1947,9 @@ function renderIntakeText(result) {
     lines.push(`- deterministic status: ${receipt.deterministic_status}`);
     lines.push(`- retro recurrence: ${receipt.retro_recurrence_status || "not_run"}`);
     lines.push(`- next: ${receipt.next_required_command}`);
-    // Phase C: emit the fenced DeepSeek block + the verbatim-reproduction contract
-    // so text-mode consumers (e.g. operator running the CLI in a shell, or
-    // primary agents reading rendered output) cannot silently drop it.
-    if (receipt.deepseek_advisory_block) {
+    if (receipt) {
       lines.push("");
-      lines.push("DeepSeek advisory (REPRODUCE VERBATIM in your reply to the user):");
-      lines.push(receipt.deepseek_advisory_block);
-    }
-    if (receipt.verbatim_reproduction_contract) {
-      lines.push("");
-      lines.push(`Contract: ${receipt.verbatim_reproduction_contract}`);
+      lines.push(...renderDeepSeekReceiptText(receipt, { showDeepSeekBlock }));
     }
   }
   if (blockers.length > 0) {
@@ -1908,6 +1963,7 @@ function renderIntakeText(result) {
 
 async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
   const args = parseArgs(argv);
+  const env = process.env;
   if (["help", "--help", "-h"].includes(args.command)) {
     console.log(usage());
     return 0;
@@ -1934,7 +1990,7 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
   if (args.command === "intake") {
     try {
       const result = await runIntake(args, { cwd });
-      console.log(args.json ? JSON.stringify(result, null, 2) : renderIntakeText(result));
+      console.log(args.json ? JSON.stringify(result, null, 2) : renderIntakeText(result, { showDeepSeekBlock: args.showDeepSeekBlock }));
       return 0;
     } catch (error) {
       const payload = { status: "FAIL", error: error?.message || String(error) };
@@ -2056,6 +2112,25 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
     validation,
     ontology,
   });
+  if (args.command === "verify") {
+    result.program_status_transition = {
+      gate: args.gate,
+      previous_status: target.packet?.status || null,
+      new_status: programStatusAfterGate(args.gate) || target.packet?.status || null,
+      write_requested: args.write === true,
+      transition_written: false,
+      status: result.status === "PASS" ? "dry_run" : "not_written_gate_failed",
+    };
+    if (result.status === "PASS" && args.write) {
+      result.program_status_transition = buildProgramStatusTransition({
+        target,
+        gate: args.gate,
+        write: true,
+        env,
+      });
+      result.program.status = target.packet?.status || result.program.status;
+    }
+  }
   if (args.remediate) {
     result.remediation = buildRemediationPlan({
       result,

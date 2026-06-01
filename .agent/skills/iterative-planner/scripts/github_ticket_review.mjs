@@ -28,6 +28,8 @@ import {
 } from "./lib/quant_persona_gate.mjs";
 import {
   buildDeepSeekAdvisoryBlock,
+  DEEPSEEK_ADVISORY_NOT_RUN_STATUS,
+  DEEPSEEK_ADVISORY_NOT_RUN_SUMMARY,
   DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT,
 } from "./lib/deepseek_advisory_block.mjs";
 
@@ -37,6 +39,8 @@ const scriptDir = __dirname;
 const repoScriptPrefix = ".agent/skills/iterative-planner/scripts";
 
 export const TICKET_REVIEW_STATUSES = Object.freeze([
+  "not_run",
+  "submitted",
   "fresh",
   "needs_story",
   "needs_annotation",
@@ -85,6 +89,11 @@ function truncate(value, max = 1200) {
   return text.length <= max ? text : `${text.slice(0, max)}…[truncated ${text.length - max} chars]`;
 }
 
+function oneLine(value, max = 240) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
 function redactText(value, env = process.env) {
   return redactSecrets(String(value || ""), env);
 }
@@ -124,6 +133,7 @@ function parseArgs(argv = []) {
     write: false,
     json: false,
     closeGithubIssue: false,
+    showDeepSeekBlock: false,
   };
 
   for (let i = 0; i < args.length; i += 1) {
@@ -137,6 +147,7 @@ function parseArgs(argv = []) {
     else if (arg === "--write") parsed.write = true;
     else if (arg === "--json") parsed.json = true;
     else if (arg === "--close-github-issue") parsed.closeGithubIssue = true;
+    else if (arg === "--show-deepseek-block") parsed.showDeepSeekBlock = true;
     else if (arg === "--help" || arg === "-h") parsed.command = "help";
     else throw new Error(`Unknown argument: ${arg}`);
   }
@@ -148,14 +159,16 @@ function usage() {
   return `github_ticket_review.mjs — Review GitHub tickets against planner evidence
 
 Usage:
-  node github_ticket_review.mjs review --issue <n> --program <program-id-or-path> --ticket <ticket-id> [--repo <owner/repo>] [--write] [--json]
-  node github_ticket_review.mjs review --project-item <node-id-or-url> --program <program-id-or-path> --ticket <ticket-id> [--repo <owner/repo>] [--write] [--json]
+  node github_ticket_review.mjs review --issue <n> --program <program-id-or-path> --ticket <ticket-id> [--repo <owner/repo>] [--write] [--show-deepseek-block] [--json]
+  node github_ticket_review.mjs review --project-item <node-id-or-url> --program <program-id-or-path> --ticket <ticket-id> [--repo <owner/repo>] [--write] [--show-deepseek-block] [--json]
   node github_ticket_review.mjs publish --program <program-id-or-path> --ticket <ticket-id> --repo <owner/repo> [--project <id/url>] [--write] [--json]
 
 Safety:
   Dry-run is the default. --write is required for Program Packet edits, review artifacts,
   GitHub comments, labels, project status updates, or issue close attempts.
-  GitHub issues are never closed unless --close-github-issue is also passed.`;
+  GitHub issues are never closed unless --close-github-issue is also passed.
+  DeepSeek output is compact by default; use --show-deepseek-block for the full
+  fenced advisory verdict in text/GitHub review comments.`;
 }
 
 function parseRepoFromRemote(remote) {
@@ -510,7 +523,7 @@ function buildTicketIntakeReceipt({
   const blockers = asArray(deterministicBlockers);
   const recurrence = retroRecurrenceCheck || null;
   const quantGate = quantPersonaGate || null;
-  const advisoryStatus = deepseekAdvisory?.status || deepseekAdvisoryStatus || "not_run";
+  const advisoryStatus = deepseekAdvisory?.status || deepseekAdvisoryStatus || DEEPSEEK_ADVISORY_NOT_RUN_STATUS;
   const advisoryBlock = deepseekAdvisory ? buildDeepSeekAdvisoryBlock(deepseekAdvisory) : null;
   return {
     name: "Ticket Intake Receipt",
@@ -551,6 +564,8 @@ function buildTicketIntakeReceipt({
     quant_persona_gate_required: quantGate?.required === true,
     quant_persona_gate_missing_count: quantGate?.summary?.missing_guard_count || 0,
     deepseek_advisory_status: advisoryStatus,
+    deepseek_advisory_summary: oneLine(deepseekAdvisory?.summary || (!deepseekAdvisory ? DEEPSEEK_ADVISORY_NOT_RUN_SUMMARY : "")),
+    deepseek_advisory_artifact_path: reviewArtifactPath || null,
     deepseek_advisory_block: advisoryBlock,
     verbatim_reproduction_contract: advisoryBlock ? DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT : null,
     direct_github_creation_allowed: false,
@@ -786,6 +801,7 @@ function updateProgramPacket({ packet, ticketId, issue, artifactRelPath, finalSt
     project_status: sync?.project_status || null,
   };
   ticket.last_review_status = finalStatus;
+  ticket.review_status = finalStatus;
   return next;
 }
 
@@ -801,12 +817,15 @@ function markerFor(ticketId) {
   return `<!-- planner-ticket-review:${ticketId} -->`;
 }
 
-function renderReviewComment(reviewPacket, { env = process.env } = {}) {
+function renderReviewComment(reviewPacket, { env = process.env, showDeepSeekBlock = false } = {}) {
   const blockers = asArray(reviewPacket.deterministic?.blockers);
   const recurrence = reviewPacket.retro_recurrence_check || reviewPacket.deterministic?.retro_recurrence_check || null;
   const recurrenceMatches = asArray(recurrence?.matches);
   const quantGate = reviewPacket.quant_persona_gate || reviewPacket.deterministic?.quant_persona_gate || null;
   const advisoryBlock = reviewPacket.ticket_intake_receipt?.deepseek_advisory_block || null;
+  const advisoryStatus = reviewPacket.deepseek_advisory?.status || "unavailable";
+  const advisorySummary = oneLine(reviewPacket.deepseek_advisory?.summary || "");
+  const advisoryArtifact = reviewPacket.artifact?.path || reviewPacket.ticket_intake_receipt?.review_artifact_path || "dry-run";
   const lines = [
     markerFor(reviewPacket.ticket?.id || "unknown"),
     "### Planner Ticket Review",
@@ -814,12 +833,12 @@ function renderReviewComment(reviewPacket, { env = process.env } = {}) {
     `Status: **${reviewPacket.final_status}**`,
     `Program: \`${reviewPacket.program?.id || "unknown"}\``,
     `Ticket: \`${reviewPacket.ticket?.id || "unknown"}\``,
-    `DeepSeek advisory: \`${reviewPacket.deepseek_advisory?.status || "unavailable"}\``,
+    `DeepSeek advisory: \`${advisoryStatus}\`; summary: ${advisorySummary || "n/a"}; artifact: \`${advisoryArtifact}\``,
     "",
     "Deterministic checks are authoritative. DeepSeek is advisory only.",
     "",
   ];
-  if (advisoryBlock) {
+  if (showDeepSeekBlock && advisoryBlock) {
     lines.push("DeepSeek advisory verdict:");
     lines.push("");
     lines.push(advisoryBlock);
@@ -938,7 +957,7 @@ function maybeCloseIssue({ issue, cwd, repo, ghRunner, closeGithubIssue, body })
 }
 
 function syncGithub({ issue, ticket, reviewPacket, args, cwd, repo, ghRunner, env }) {
-  const body = renderReviewComment(reviewPacket, { env });
+  const body = renderReviewComment(reviewPacket, { env, showDeepSeekBlock: args.showDeepSeekBlock });
   const labels = lifecycleLabels(reviewPacket.final_status, ticket);
   const comment = syncIssueComment({ issue, ticketId: ticket.id, body, cwd, repo, ghRunner });
   const labelResult = syncLabels({ issue, labels, cwd, repo, ghRunner });
@@ -1135,7 +1154,7 @@ export async function runReview(inputArgs, options = {}) {
 
   let githubSync = {
     mode: args.write ? "write" : "dry_run",
-    planned_comment: renderReviewComment(reviewPacket, { env }),
+    planned_comment: renderReviewComment(reviewPacket, { env, showDeepSeekBlock: args.showDeepSeekBlock }),
     labels_applied: [],
     project_status: null,
   };
@@ -1400,7 +1419,7 @@ export async function runPublish(inputArgs, options = {}) {
   return redactObject(result, env);
 }
 
-function renderText(result) {
+function renderText(result, { showDeepSeekBlock = false } = {}) {
   if (result.ticket_id) {
     return [
       `Planner ticket publish: ${result.issue?.action || "planned"}`,
@@ -1420,9 +1439,13 @@ function renderText(result) {
   ];
   const blockers = asArray(result.review_packet?.deterministic?.blockers);
   const receipt = result.ticket_intake_receipt || null;
-  if (receipt?.deepseek_advisory_block) {
+  if (receipt) {
     lines.push("");
-    lines.push("DeepSeek advisory (REPRODUCE VERBATIM in your reply to the user):");
+    lines.push(`DeepSeek advisory: ${receipt.deepseek_advisory_status || DEEPSEEK_ADVISORY_NOT_RUN_STATUS}; summary: ${receipt.deepseek_advisory_summary || "n/a"}; artifact: ${receipt.deepseek_advisory_artifact_path || result.review_artifact_path || "dry-run"}`);
+  }
+  if (showDeepSeekBlock && receipt?.deepseek_advisory_block) {
+    lines.push("");
+    lines.push("DeepSeek advisory verdict:");
     lines.push(receipt.deepseek_advisory_block);
     if (receipt.verbatim_reproduction_contract) {
       lines.push("");
@@ -1458,7 +1481,7 @@ async function main(argv = process.argv.slice(2)) {
     const result = args.command === "publish"
       ? await runPublish(args)
       : await runReview(args);
-    console.log(args.json ? JSON.stringify(result, null, 2) : renderText(result));
+    console.log(args.json ? JSON.stringify(result, null, 2) : renderText(result, { showDeepSeekBlock: args.showDeepSeekBlock }));
     return 0;
   } catch (error) {
     const payload = { status: "FAIL", error: error?.message || String(error) };

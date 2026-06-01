@@ -10,7 +10,11 @@ import {
   EVIDENCE_BLOCKERS,
   verifyPlanEvidence,
 } from "../scripts/lib/evidence_verifier.mjs";
-import { lintVerificationStrategy } from "../scripts/lib/verification_strategy.mjs";
+import {
+  buildVerificationStrategyCompatibilityPlanContent,
+  lintVerificationStrategy,
+} from "../scripts/lib/verification_strategy.mjs";
+import { parseMarkdownTable } from "../scripts/lib/markdown_table.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -350,6 +354,37 @@ function scenarioLintRejectsUnknownProofGradientModifier() {
   }
 }
 
+function scenarioCompatibilityPlanContentEscapesLiteralPipes() {
+  const content = buildVerificationStrategyCompatibilityPlanContent("# Plan\n\n## Goal\nPipe safety\n", {
+    repo_system_context: "Parser | renderer contract",
+    criteria: [
+      {
+        id: "CRIT-PIPE",
+        criterion: "Generated table keeps A | B content",
+        story_id: "US-003",
+        repo_system_context: "Compatibility projection | parser",
+        required_proof_type: "proof:unit_test",
+        concrete_action: {
+          type: "command",
+          command: "node -e \"console.log('a|b')\"",
+        },
+        pass_means: "The A | B value remains one cell",
+        what_remains_unverified: "External renderer | theme-specific display",
+      },
+    ],
+  });
+  const tableStart = content.indexOf("| Criterion | Story linkage |");
+  const parsed = parseMarkdownTable(content.slice(tableStart));
+
+  assert(content.includes("A \\| B"), "compatibility projection escapes literal pipe content");
+  assert(parsed.malformed_rows.length === 0, "escaped compatibility projection has no malformed rows");
+  assert(parsed.rows.length === 1, "escaped compatibility projection has one data row");
+  assert(parsed.rows[0].length === 7, "escaped compatibility projection preserves the expected column count");
+  assert(parsed.rows[0][0] === "Generated table keeps A | B content", "criterion cell preserves literal pipe after parse");
+  assert(parsed.rows[0][4].includes("a|b"), "command cell preserves literal pipe after parse");
+  assert(parsed.rows[0][6].includes("renderer | theme-specific"), "residual-risk cell preserves literal pipe after parse");
+}
+
 function scenarioVerifyPlanEvidenceIsOptInForLegacyCriteria() {
   const tmp = makeTemp("verify-opt-in");
   try {
@@ -621,6 +656,7 @@ scenarioLintRejectsInvalidEvidenceArtifactShape();
 scenarioLintRejectsConventionArtifactWithoutConventionId();
 scenarioLintRejectsUnknownProofGradientMetadata();
 scenarioLintRejectsUnknownProofGradientModifier();
+scenarioCompatibilityPlanContentEscapesLiteralPipes();
 scenarioVerifyPlanEvidenceIsOptInForLegacyCriteria();
 scenarioVerifyPlanEvidencePassesWithStructuredTestRun();
 scenarioVerifyPlanEvidenceAcceptsSatisfiedConventionArtifact();

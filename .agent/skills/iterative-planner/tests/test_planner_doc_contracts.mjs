@@ -462,7 +462,7 @@ assertIncludes(
 );
 assertIncludes(
   skillDoc,
-  "`review_artifacts`, `github_sync`, and deterministic `last_review_status`",
+  "`review_artifacts`, `github_sync`, `review_status`, and deterministic `last_review_status`",
   "SKILL.md documents ticket review metadata fields"
 );
 assertIncludes(

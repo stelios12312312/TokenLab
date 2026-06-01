@@ -10,6 +10,7 @@ import { createHash } from "crypto";
 
 import { createInitialStateJson, writeStateJson } from "../scripts/lib/determinism.mjs";
 import { listGateCanonicalizationScenarios } from "../scripts/lib/archetype_scenarios.mjs";
+import { buildEnvelope, getEnvelopePath, validateEnvelopeAgainstDisk } from "../scripts/lib/plan_contract.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -95,6 +96,25 @@ function seedPlanFixture(projectRoot, scenario) {
 
 Accepted the deterministic gate fixture.
 `);
+
+  const built = buildEnvelope(planDir, {
+    approvalNonce,
+    approverOrigin: "auto",
+  });
+  if (!built.envelope) {
+    throw new Error(`failed to build approval envelope for ${scenario.id}: [${built.reason_code}] ${built.detail}`);
+  }
+  writeFileSync(getEnvelopePath(planDir), JSON.stringify(built.envelope, null, 2) + "\n");
+  const stateWithEnvelope = {
+    ...state,
+    approval_envelope_path: "approval_envelope.json",
+    approval_envelope_schema: built.envelope.schema_version,
+  };
+  writeStateJson(planDir, stateWithEnvelope);
+  const envelopeCheck = validateEnvelopeAgainstDisk(planDir);
+  if (!envelopeCheck.ok) {
+    throw new Error(`approval envelope did not validate for ${scenario.id}: [${envelopeCheck.reason_code}] ${envelopeCheck.detail}`);
+  }
 
   if (Array.isArray(scenario.story_registry_ids) && scenario.story_registry_ids.length > 0) {
     mkdirSync(join(projectRoot, "reports", "user_story_audit"), { recursive: true });

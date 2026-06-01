@@ -48,6 +48,13 @@ items:
     equals: true
     description: "Structured close signal confirms quant/model/betting result claims have machine-readable validation before close"
 
+  - id: review-intake-satisfied
+    check: json_field_equals
+    path: "{plan-dir}/state.json"
+    field: "close_signals.review_intake.satisfied"
+    equals: true
+    description: "Structured close signal confirms required review-intake findings have valid dispositions before close"
+
   - id: baseline-exists
     check: file_exists
     path: "{plan-dir}/baseline.json"

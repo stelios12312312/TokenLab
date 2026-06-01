@@ -1,0 +1,22 @@
+{
+    "final_ar_ratio": 0.9999868333333329,
+    "min_ar_ratio": 0.999986833333331,
+    "final_treasury": 150000515555.48712,
+    "min_treasury": 150000000000.0,
+    "max_settlement_queue_z1u": 145676219.08825892,
+    "avg_settlement_pressure_ratio": 765.1012338419034,
+    "max_settlement_pressure_ratio": 2913.5243817651785,
+    "total_utility_spend": 750982.6900362899,
+    "total_treasury_fees": 255555.48733865787,
+    "total_provider_payments": 457325.00497483043,
+    "total_burn": 37549.1345018145,
+    "total_brand_inflow": 260000.0,
+    "throttle_epochs": 0,
+    "ar_floor_breach_epochs": 0,
+    "n_repetitions": 10,
+    "final_ar_ratio_std": 9.826153259471045e-16,
+    "final_ar_ratio_p05": 0.9999868333333316,
+    "final_ar_ratio_p95": 0.9999868333333343,
+    "classification": "stable",
+    "scenario": "m1_optimal_calibration"
+}

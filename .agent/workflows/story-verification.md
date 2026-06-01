@@ -21,7 +21,7 @@ Use this when:
 - Agent B is `advisory`: it reports gaps in `reports/story_verification/*.yaml`; it does not block Agent A or fix code/registry drift itself.
 - Manual CLI stays available in this slice.
 - Phase 3.4 also adds an optional post-commit hook plus a documented scheduled-batch path.
-- CI recipes now live under `docs/ci/github_actions.md`, `docs/ci/gitlab.md`, and `docs/ci/pre_commit.md`.
+- CI recipes are documented inline below; the per-platform breakouts referenced in earlier drafts were never produced as separate files.
 
 ## Prerequisites
 

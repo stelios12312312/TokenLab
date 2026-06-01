@@ -36,15 +36,35 @@ If setup surfaces need repair, run the explicit setup command from Step 1 again.
 
 ### Step 3: Sync root instruction files
 
-Ensure `CLAUDE.md`, `GEMINI.md`, and `AGENTS.md` exist at the project root and are in sync. These files tell Claude Code, Gemini (Antigravity), and other AI IDEs to use the Iterative Planner rather than ad-hoc planning.
+Ensure `CLAUDE.md`, `GEMINI.md`, and `AGENTS.md` carry the current planner-managed snapshot. These files tell Claude Code, Gemini (Antigravity), Codex, and AGENTS-style IDEs to use the Iterative Planner rather than ad-hoc planning.
 
 ```bash
 bash .agent/scripts/sync-instructions.sh
 ```
 
-- If `CLAUDE.md` does not exist, the script will fail — create it first with the planner bootstrap instructions (see `ADAPTATION-GUIDE.md` Quick Start step 3).
-- If the files already exist, the script overwrites `GEMINI.md` and `AGENTS.md` from `CLAUDE.md`. Review any local customisations in those files before running.
-- **Going forward**: always edit `CLAUDE.md` and re-run the sync script. Never edit `GEMINI.md` or `AGENTS.md` directly.
+- The rendering source of truth is `.agent/skills/iterative-planner/references/CLAUDE.template.md` plus the managed snapshot section list in `scripts/lib/root_instruction_renderer.mjs`.
+- The sync script refreshes only the `<!-- BEGIN ITERATIVE-PLANNER MANAGED SNAPSHOT -->` block when a target already has one, preserving host-owned content before and after it.
+- Missing default root targets are created from the managed template, not copied from local `CLAUDE.md`, so Claude-specific project notes are not propagated into Gemini or AGENTS/Codex surfaces.
+- Custom instruction files with no planner-managed marker are left untouched.
+- Optional Cursor and VS Code targets are modeled by the renderer but only touched when those files already exist.
+
+Root instruction portability matrix:
+
+| IDE or agent surface | Instruction file | Default-created | Trace behavior | Update behavior |
+|----------------------|------------------|----------------:|----------------|-----------------|
+| Claude | `CLAUDE.md` | Yes | PostToolUse hook supported | Created/refreshed by setup and sync |
+| Gemini / Antigravity | `GEMINI.md` | Yes | Antigravity trace import when provided | Created/refreshed by setup and sync |
+| Codex / AGENTS-style | `AGENTS.md` | Yes | External hook trace not applicable for Codex; clean gate skip | Created/refreshed by setup and sync |
+| Cursor | `.cursor/rules/iterative-planner.mdc` | No | Claude-compatible PostToolUse hook when available | Refreshed only when existing or planner-managed |
+| VS Code | `.github/copilot-instructions.md` | No | PostToolUse hook only when the running agent exposes it | Refreshed only when existing or planner-managed |
+
+For a machine-readable target report:
+
+```bash
+node .agent/skills/iterative-planner/scripts/migrate.mjs sync-instructions . --json
+```
+
+The IVE productization contract is documented in `docs/ive-redesign/15_multi_ide_portability.md`.
 
 ### Step 4: Configure domain role
 
@@ -386,6 +406,8 @@ If the project has a test suite, run test_baseline.mjs capture "<test-command>" 
 
 | Version | Codename | Key Features |
 |---------|----------|-------------|
+| 7.6.40 | Branch Consolidation: Tokenomics + Review-Intake-Close | Merges origin/main's Review Intake Close Contract (deterministic review-intake ledgers for DeepSeek/advisor + ontology findings; gate-time LLM drift outputs persistable into plan-local review sources; required findings must be consumed/rejected/verified/waived before close; review-intake status in close signals + Prolog facts/invariants + ontology serialization + validation checklists) and the multi-IDE root-instruction portability matrix (renderer-driven managed snapshot block; Cursor + VS Code targets refreshed only when existing) with the codex/tokenomics rollout (tokenomics persona pack v7.6.35, IVE Productization program close, program-manager-hardening close). Single consolidated main. |
+| 7.6.39 | Anti-Ritual Planner Review Flow | Adds Program Manager status advancement on passing `verify <gate> --write`, separates ticket `review_status` from dispatch lifecycle while accepting `submitted`/`review_ready` compatibility aliases, makes DeepSeek visible as compact status/summary/artifact proof by default, and adds `operator_action` routing so questions/open-page/read-only/status checks bypass planner ritual while ambiguous or risky actions ask the user. |
 | 7.6.38 | Visible Ticket Review Advisory | Makes `github_ticket_review.mjs review` carry the full fenced DeepSeek advisory verdict and verbatim reproduction contract in Ticket Intake Receipts, text output, and planned GitHub review comments while keeping deterministic blockers authoritative. Also routes simple read-only open/view page and URL tasks to `skip_planner` so agents do not bootstrap the planner for trivial browser/read actions. |
 | 7.6.37 | Readable GitHub Ticket Publish | Makes `github_ticket_review.mjs publish` include the original Program Manager intake description from the ticket's intake packet above planner metadata in GitHub issue bodies. Dry-run/live publish now keep collaborator-readable ticket context while preserving deterministic Program Packet metadata and redaction. |
 | 7.6.36 | Tokenomics TokenLab Rollout | Bumps the shipped planner version after the tokenomics persona pack and documents the TokenLab migration path. Downstream tokenomics projects should receive the `tokenomics` pack during upgrade and use persona adaptation to add the role when high-confidence TokenLab/tokenomics signals are present. |
@@ -505,6 +527,17 @@ This rollout is additive and does not add states to the iterative planner state 
 ## Breaking Changes (v7.0.1 → v7.1.0)
 
 No breaking changes. `7.1.0` is a reusable program-management layer on top of the existing iterative planner. It adds new workflows, schemas, scripts, docs, tests, and optional plan metadata, but preserves existing gate commands, state transitions, and plan validity.
+
+## Breaking Changes (v7.6.38 -> v7.6.39)
+
+No breaking changes. v7.6.39 preserves existing `recommended_path` values and
+keeps full DeepSeek verdicts in JSON artifacts while defaulting terminal and
+GitHub output to compact advisory status/summary/artifact proof. Program Manager
+`verify <gate> --write` now advances program status only after passing
+deterministic validation and ontology checks; dry-runs and failed gates remain
+read-only. Existing ticket lifecycle values remain valid, and
+`submitted`/`review_ready` are accepted as compatibility aliases while
+`review_status` carries review state.
 
 ## Breaking Changes (v7.6.37 -> v7.6.38)
 

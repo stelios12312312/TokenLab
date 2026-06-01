@@ -60,6 +60,22 @@ When present, `plan.md` should include a `## Program Context` section with the s
 human-readable linkage. The Program Manager validates parent packet truth; the child
 plan still follows the normal iterative planner gates.
 
+### Optional `state.json.tamper_fingerprint`
+
+Successful gate transitions may store a signed tamper-evidence snapshot in
+`state.json.tamper_fingerprint`. The snapshot is versioned and covers sensitive
+planner artifacts such as `state.json`, `plan.md`, `findings.md`, `decisions.md`,
+`verification.md`, `progress.md`, red-team/reflection artifacts, and structured
+plan files when present.
+
+The `state.json` component uses the shared `computeStateHash()` path with volatile
+or self-referential fields excluded (`_state_hash`, `tamper_fingerprint`,
+`updated_at`, generated summaries). Gate checks warn with `GATE-TMP-001` when no
+snapshot exists yet and `GATE-TMP-002` when the stored snapshot differs from the
+current artifact set. These warnings do not replace existing hard blockers such as
+state integrity mismatch, approved-plan integrity, registry tamper, or config
+integrity. A successful transition refreshes the fingerprint for legitimate edits.
+
 **Fix Attempts**: tracks autonomous fixes on current step. After 2 fails → STOP. Resets on: user direction, new step, RE-PLAN. Leash hit example:
 
 ```markdown
@@ -307,11 +323,14 @@ Rules:
 - Program close requires all tickets `closed` or `deferred`, deferral decisions, and passing program-level verification.
 - `external_refs` mirrors GitHub Issues, GitHub Project items, or local text/file intake sources into the local ticket; it is not an authority source. Supported `kind` values are `github_issue`, `github_project_item`, `local_file`, and `local_text`.
 - `ticket_type` records a specialized ticket lane such as `quant_exploration` or `code_refactor`; the base `type` field remains schema-safe and authoritative for Program Packet validation. `persona_packs` and `persona_review` record advisory persona-review guidance for that lane.
+- `review_status` records deterministic or advisory review state separately from dispatch lifecycle. Valid values include `not_run`, `submitted`, `fresh`, `needs_story`, `needs_annotation`, `needs_verification`, `ontology_conflict`, `blocked`, `review_ready`, and `unavailable`.
 - `review_artifacts` points to local Review Packet JSON files such as `plans/programs/<program-id>/reviews/<ticket-id>_review_packet.json`.
 - `github_sync` records the last reflected GitHub comment, labels, and Project Status update.
-- `last_review_status` is deterministic (`blocked` or `review_ready`); advisory DeepSeek output must not mark tickets `verified`.
+- `last_review_status` uses the same review-status enum for compatibility. Advisory DeepSeek output must not mark tickets `verified`.
+- Ticket lifecycle values `submitted` and `review_ready` are accepted as review-facing aliases, but gates normalize them to effective lifecycle semantics so execution dispatch remains deterministic.
 - Intake Packets, Review Packets, and Ticket Intake Receipts include `retro_recurrence_check` / `retro_recurrence_status` so trusted active mistakes and retro-promoted obligations can block tickets until required guards or evidence are present.
 - Quant-shaped Intake Packets, Review Packets, GitHub comments, and Ticket Intake Receipts include `quant_persona_gate` / `quant_persona_gate_status`. Missing what-happened overview, quant persona obligation, target/outcome, data lineage or odds snapshot semantics, temporal/leakage handling, controls/baselines, or quant verification proof is a deterministic blocker even if DeepSeek reports `review_ready`.
+- Ticket Intake Receipts and default GitHub review comments surface DeepSeek as compact proof: advisory status, one-line summary, and local artifact path. Full fenced verdicts remain in JSON artifacts and only render in text when `--show-deepseek-block` is explicitly requested.
 
 Idea/backlog intake:
 
@@ -881,6 +900,8 @@ Required for quant/model/betting plans once the plan or verification surface mak
 
 Diagnostic/smoke work may close only when explicitly stamped as `diagnostic_only` or `wiring_proof` and no promotable language is used. Promotion candidates must carry enough evidence for controls, stability, confidence, leakage, splits, sample size, date span, presentation language, counterarguments, and falsification criteria. Betting or inefficiency claims also need odds snapshot / CLV / reference-price evidence.
 
+Probability outputs used for thresholds, Kelly sizing, or betting-policy interpretation need a calibration quality verdict, not only a plot or CSV. An explicit failed `calibration_quality` object or linked `calibration_bins.csv` with high-support weighted error, large bucket error, low-probability inversion, or non-monotonic observed-rate drops produces `blocked_alarm`, including for `diagnostic_only` runs.
+
 Minimum shape:
 
 ```json
@@ -921,6 +942,15 @@ Minimum shape:
     "strongest_counterargument": "...",
     "falsification_criteria": "...",
     "presentation_stamp": "diagnostic_only"
+  },
+  "calibration_quality": {
+    "verdict": "pass | fail | blocked | not_applicable",
+    "policy_use_allowed": false,
+    "artifact": "calibration_bins.csv",
+    "blocking_issues": [
+      "weighted_abs_error_gt_0.05",
+      "bucket_abs_error_gt_0.15"
+    ]
   }
 }
 ```

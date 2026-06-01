@@ -133,8 +133,10 @@ const {
 const { runPersonaAuditGate } = await import("./audit_runner.mjs");
 const { runChecklist } = await import("./lib/checklist_runner.mjs");
 const { refreshPlanArtifacts } = await import("./lib/plan_refresh.mjs");
+const { persistReviewIntakeSource } = await import("./lib/review_intake.mjs");
 const { writeScopeContract, summarizeScopeContract } = await import("./lib/scope_contract.mjs");
 const { buildPhaseContract, resolveAuthorityProfile, resolveProofPosture } = await import("./lib/planner_phase_routing.mjs");
+const { computePlanTamperFingerprint } = await import("./lib/plan_integrity.mjs");
 const { plansDir, knowledgeDir } = getPaths(cwd);
 const ACTIVE_PLAN_ALIAS_LABEL = "plans/ACTIVE_PLAN.md";
 
@@ -287,6 +289,39 @@ ${historyLines.join("\n")}
 `;
 
   writeFileSync(join(planDir, "state.md"), content);
+}
+
+function refreshTamperFingerprintSnapshot(planDir, planDirName, gate, reason = "transition") {
+  if (!planDir || !planDirName || !gate) {
+    return { refreshed: false, reason: "missing plan or gate" };
+  }
+
+  const releaseLock = acquireStateLock(planDir, 2000);
+  if (!releaseLock) {
+    return { refreshed: false, reason: "state lock unavailable" };
+  }
+
+  try {
+    const stateJson = readStateJson(planDir);
+    if (!stateJson) return { refreshed: false, reason: "state.json unreadable" };
+    const fingerprint = computePlanTamperFingerprint(planDir, {
+      stateJson,
+      gate,
+      generatedAt: nowISO(),
+    });
+    if (!fingerprint?.hash) return { refreshed: false, reason: "fingerprint unavailable" };
+
+    stateJson.tamper_fingerprint = fingerprint;
+    const written = writeStateJson(planDir, stateJson);
+    if (written) {
+      syncStateMarkdown(planDir, stateJson);
+      syncActivePlanAlias(plansDir, { planDirName, planDir, stateJson });
+      return { refreshed: true, hash: fingerprint.hash, reason };
+    }
+    return { refreshed: false, reason: "state write failed" };
+  } finally {
+    releaseLock();
+  }
 }
 
 function clearActivePlanPointerIfMatching(planDirName) {
@@ -442,6 +477,22 @@ function printLlmDriftGateAudit(result) {
   for (const finding of findings.slice(0, 3)) {
     console.log(`    - ${finding.classification || "unknown"} ${finding.surface || "surface"}${finding.file ? ` (${finding.file})` : ""}: ${finding.reason || finding.claim || "no detail"}`);
   }
+}
+
+function shouldPersistLlmDriftGateAudit(result) {
+  const findings = Array.isArray(result?.findings) ? result.findings : [];
+  if (findings.some((finding) => ["stale_blocking", "stale_advisory"].includes(finding?.classification))) return true;
+  return ["stale_blocking", "stale_advisory"].includes(result?.status);
+}
+
+function persistLlmDriftGateAuditResult(gate, planDir, result) {
+  if (!planDir || !shouldPersistLlmDriftGateAudit(result)) return null;
+  return persistReviewIntakeSource({
+    cwd,
+    planDir,
+    name: `llm_drift_gate_${gate}.json`,
+    payload: result,
+  });
 }
 
 function extractPlannedFilesForDrift(planDir) {
@@ -659,6 +710,8 @@ async function runTransition(gate, opts = {}) {
 
   const allResults = [];
   let sharedPlanRefresh = null;
+  let llmDriftGateAuditResult = null;
+  let llmDriftGateAuditPath = null;
 
   if (historyPoisonDiagnostic) {
     printSection("Retry History");
@@ -893,6 +946,21 @@ async function runTransition(gate, opts = {}) {
     console.log();
   }
 
+  if (planDir && LLM_DRIFT_AUDIT_GATES.has(gate)) {
+    try {
+      llmDriftGateAuditResult = runLlmDriftGateAudit(gate, planDirName);
+      llmDriftGateAuditPath = persistLlmDriftGateAuditResult(gate, planDir, llmDriftGateAuditResult);
+    } catch (e) {
+      llmDriftGateAuditResult = {
+        status: "unavailable",
+        summary: e.message,
+        fail_open: true,
+        hard_blocking: false,
+        findings: [],
+      };
+    }
+  }
+
   // Step 1.7: Shared plan refresh — regenerate ontology facts and structured close signals
   // before JS gate checks, checklists, and Prolog semantics run. Non-blocking: transitions
   // still continue even if the refresh cannot complete so legacy fallbacks remain available.
@@ -975,7 +1043,11 @@ async function runTransition(gate, opts = {}) {
   if (LLM_DRIFT_AUDIT_GATES.has(gate)) {
     printSection("LLM Drift Audit (advisory)");
     try {
-      printLlmDriftGateAudit(runLlmDriftGateAudit(gate, planDirName));
+      const result = llmDriftGateAuditResult || runLlmDriftGateAudit(gate, planDirName);
+      printLlmDriftGateAudit(result);
+      if (llmDriftGateAuditPath) {
+        console.log(`  Review intake source: ${llmDriftGateAuditPath}`);
+      }
     } catch (e) {
       console.log(`  ⚠ unavailable: ${e.message}. Deterministic checks remain authoritative; this section cannot fail the gate by itself.`);
     }
@@ -1365,6 +1437,17 @@ async function runTransition(gate, opts = {}) {
         delete stateJson.circuit_breakers[gate].last_fail_at;
       }
 
+      if (totalFail === 0) {
+        const fingerprint = computePlanTamperFingerprint(planDir, {
+          stateJson,
+          gate,
+          generatedAt: nowISO(),
+        });
+        if (fingerprint?.hash) {
+          stateJson.tamper_fingerprint = fingerprint;
+        }
+      }
+
       const stateWritten = writeStateJson(planDir, stateJson);
       if (stateWritten) {
         syncStateMarkdown(planDir, stateJson);
@@ -1457,6 +1540,12 @@ async function runTransition(gate, opts = {}) {
             console.log(`  ✓ KB digest proof persisted via ${kbDigestWrite.mode}.`);
           } else if (kbDigestWrite && kbDigestWrite.mode !== "none") {
             console.log(`  ⚠ KB digest proof was not persisted in auto mode: ${kbDigestWrite.detail}`);
+          }
+          const tamperRefresh = refreshTamperFingerprintSnapshot(planDir, planDirName, gate, "auto approval artifacts persisted");
+          if (tamperRefresh.refreshed) {
+            console.log(`  ✓ Tamper fingerprint refreshed (${tamperRefresh.hash}).`);
+          } else {
+            console.log(`  ⚠ Tamper fingerprint refresh skipped after auto approval: ${tamperRefresh.reason}`);
           }
           console.log(`    To require interactive approval: set approval.mode = "interactive" in determinism.json`);
         } else {

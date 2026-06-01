@@ -53,6 +53,7 @@ import { loadRetroRegistry } from "./lib/retro_registry.mjs";
 import { extractPersonaPackId, summarizePersonaArtifacts } from "./lib/persona_artifacts.mjs";
 import { computeVerificationObligationSynthesis } from "./lib/verification_obligations.mjs";
 import { computeQuantResultsValidationSignal } from "./lib/quant_results_validation.mjs";
+import { computeReviewIntake } from "./lib/review_intake.mjs";
 
 // Sanitization delegated to shared lib/sanitize.mjs:
 //   sanitize()    = sanitizeAtom    — free-text labels, descriptions
@@ -806,6 +807,7 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     persona_packs: 0,
     persona_constraints: 0,
     persona_findings: 0,
+    review_intake_items: 0,
     quant_results_validation: 0,
     intent_contracts: 0,
     intent_deliverables: 0,
@@ -860,6 +862,10 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     verificationContent,
     reflectionContent: planDir ? safeRead(join(planDir, "reflection.md")) : "",
     summaryContent: planDir ? safeRead(join(planDir, "summary.md")) : "",
+  });
+  const reviewIntake = computeReviewIntake({
+    cwd,
+    planDir,
   });
   for (const g of goals) {
     facts.push(`business_goal(${sanitizeId(g.id)}, ${sanitize(g.label)}).`);
@@ -1544,7 +1550,29 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     }
   }
 
-  // --- 16. Quant results validation close signal (optional / additive) ---
+  // --- 16. Review intake close signal (optional / additive) ---
+  if (reviewIntake) {
+    facts.push(`review_intake_required(${reviewIntake.required ? "true" : "false"}).`);
+    facts.push(`review_intake_satisfied(${reviewIntake.satisfied ? "true" : "false"}).`);
+    facts.push(`review_intake_unresolved_required_count(${Number(reviewIntake.unresolved_required_count || 0)}).`);
+    for (const item of Array.isArray(reviewIntake.items) ? reviewIntake.items : []) {
+      facts.push(`review_item(${sanitizeId(item.id)}, ${sanitizeEnumAtom(item.source_kind || "unknown")}, ${item.required ? "true" : "false"}).`);
+      facts.push(`review_item_classification(${sanitizeId(item.id)}, ${sanitizeEnumAtom(item.classification || "unknown")}).`);
+      if (item.source_path) facts.push(`review_item_source(${sanitizeId(item.id)}, ${sanitize(item.source_path)}).`);
+      if (item.claim) facts.push(`review_item_claim(${sanitizeId(item.id)}, ${sanitize(item.claim)}).`);
+      if (item.reason) facts.push(`review_item_reason(${sanitizeId(item.id)}, ${sanitize(item.reason)}).`);
+      if (item.required) facts.push(`review_item_required(${sanitizeId(item.id)}).`);
+      if (item.unresolved) facts.push(`review_item_unresolved(${sanitizeId(item.id)}).`);
+      if (item.disposition?.status) {
+        facts.push(`review_item_disposition(${sanitizeId(item.id)}, ${sanitizeEnumAtom(item.disposition.status)}).`);
+        facts.push(`review_item_disposition_valid(${sanitizeId(item.id)}, ${item.disposition_valid ? "true" : "false"}).`);
+      }
+      meta.review_intake_items++;
+    }
+    facts.push("");
+  }
+
+  // --- 17. Quant results validation close signal (optional / additive) ---
   if (quantResultsValidation) {
     facts.push(`quant_results_validation_required(${quantResultsValidation.required ? "true" : "false"}).`);
     facts.push(`quant_results_validation_satisfied(${quantResultsValidation.satisfied ? "true" : "false"}).`);
@@ -1562,7 +1590,7 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     facts.push("");
   }
 
-  // --- 17. Persona artifacts (optional / additive) ---
+  // --- 18. Persona artifacts (optional / additive) ---
   if (personaArtifacts.summary.present) {
     const personaFacts = [];
     const seenFacts = new Set();
@@ -1626,7 +1654,7 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     }
   }
 
-  // --- 18. Completeness marker ---
+  // --- 19. Completeness marker ---
   facts.push(`ontology_loaded(${meta.goals}, ${meta.criteria}, ${meta.audit_passes}).`);
 
   return { facts: facts.join("\n"), meta };

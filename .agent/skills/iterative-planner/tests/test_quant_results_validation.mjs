@@ -70,6 +70,8 @@ function completePromotionArtifact(overrides = {}) {
       odds_snapshot_matrix: "entry price: T-24/open; reference price: close; CLV available: yes; label type: excess return",
       strongest_counterargument: "Edge may be a liquidity artifact.",
       falsification_criteria: "Fails if CLV decays or control beats strategy on rolling windows.",
+      next_alpha_hypothesis: "Liquidity-adjusted injury-news drift may persist in lower-volume markets.",
+      next_experiment: "Run a serious_search on lower-volume markets with the same frozen leakage controls.",
       presentation_stamp: "promotion_candidate",
     },
     ...overrides,
@@ -134,6 +136,53 @@ function scenarioDiagnosticSmokePassesOnlyAsDiagnostic() {
     assert(signal.satisfied === true, "wiring proof with small trial budget can close as diagnostic");
     assert(signal.status === "diagnostic_only", "diagnostic run reports diagnostic_only status");
     assert(signal.warnings.some((w) => w.includes("diagnostic_trial_budget")), "diagnostic run warns about small trial budget");
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioBadCalibrationBinsBlockDiagnosticOnly() {
+  const planDir = makePlanDir("bad-calibration");
+  try {
+    writeFileSync(
+      join(planDir, "calibration_bins.csv"),
+      [
+        "model,prob_bucket,rows,avg_pred_prob,actual_favorite_win_rate,calibration_error",
+        "xgboost,\"(0.0, 0.1]\",676,0.035,0.859,0.824",
+      ].join("\n"),
+    );
+    writePlanFiles(planDir, {
+      plan: "# Plan\n\nDiagnostic model calibration wiring proof only.",
+      validation: {
+        version: 1,
+        applicable: true,
+        run_class: "wiring_proof",
+        promotion_verdict: "diagnostic_only",
+        search: {
+          trials_completed: 30,
+          unique_parameter_count: 71,
+          objective_handling: "sampled",
+        },
+        confidence_intervals: {
+          calibration_bins: {
+            artifact: "calibration_bins.csv",
+          },
+        },
+        controls: [],
+        evidence: {
+          strongest_counterargument: "Calibration diagnostics show this is not policy-usable.",
+          falsification_criteria: "Must pass calibration quality thresholds before policy use.",
+          presentation_stamp: "diagnostic_only",
+        },
+      },
+    });
+    const signal = computeQuantResultsValidationSignal({ planDir });
+    assert(signal.satisfied === false, "bad calibration bins fail even for diagnostic-only runs");
+    assert(signal.status === "blocked_alarm", "bad calibration uses blocked_alarm status");
+    assert(
+      signal.blocking_issues.some((issue) => issue.startsWith("calibration_quality_failed:xgboost")),
+      "calibration failure issue names the model",
+    );
   } finally {
     rmSync(planDir, { recursive: true, force: true });
   }
@@ -204,6 +253,34 @@ function scenarioPromotionCandidateMissingConfidenceFails() {
   }
 }
 
+function scenarioNonDiagnosticMissingNextExperimentFails() {
+  const planDir = makePlanDir("missing-next-alpha");
+  try {
+    const base = completePromotionArtifact();
+    const validation = {
+      ...base,
+      run_class: "serious_search",
+      promotion_verdict: "not_promotable",
+      evidence: {
+        ...base.evidence,
+        next_alpha_hypothesis: "",
+        next_experiment: "",
+        presentation_stamp: "not_promotable",
+      },
+    };
+    writePlanFiles(planDir, {
+      plan: "# Plan\n\nSerious quant search returned no promotable edge but should still feed the next alpha experiment.",
+      validation,
+    });
+    const signal = computeQuantResultsValidationSignal({ planDir });
+    assert(signal.satisfied === false, "non-diagnostic not-promotable run without next alpha learning fails");
+    assert(signal.blocking_issues.includes("missing_evidence.next_alpha_hypothesis"), "missing next alpha hypothesis is explicit");
+    assert(signal.blocking_issues.includes("missing_evidence.next_experiment"), "missing next experiment is explicit");
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
 function scenarioBettingInefficiencyMissingOddsFails() {
   const planDir = makePlanDir("missing-odds");
   try {
@@ -248,9 +325,11 @@ function scenarioExplicitNotApplicablePasses() {
 scenarioMissingArtifactFailsForResultClaims();
 scenarioCompleteBettingEvidencePasses();
 scenarioDiagnosticSmokePassesOnlyAsDiagnostic();
+scenarioBadCalibrationBinsBlockDiagnosticOnly();
 scenarioDiagnosticPromotionLanguageFails();
 scenarioControlBeatsStrategyWithoutAuditFails();
 scenarioPromotionCandidateMissingConfidenceFails();
+scenarioNonDiagnosticMissingNextExperimentFails();
 scenarioBettingInefficiencyMissingOddsFails();
 scenarioExplicitNotApplicablePasses();
 

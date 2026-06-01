@@ -106,6 +106,55 @@
       "type": "string",
       "description": "SHA-256 hash of user approval nonce (RT-002)"
     },
+    "approved_plan_hash": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{32}$",
+      "description": "SHA-256 hash of the approved plan integrity surface"
+    },
+    "approved_plan_hash_version": {
+      "type": "string",
+      "description": "Version of the approved plan hash algorithm"
+    },
+    "approved_plan_hash_artifacts": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Plan artifact names included in approved_plan_hash"
+    },
+    "approved_plan_hash_artifact_hashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{32}$"
+      },
+      "description": "Per-artifact hashes included in the approved plan integrity bundle"
+    },
+    "tamper_fingerprint": {
+      "type": "object",
+      "description": "Versioned tamper-evidence snapshot for sensitive planner artifacts at the last successful gate boundary",
+      "properties": {
+        "version": { "type": "string" },
+        "hash": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9a-f]{32}$"
+        },
+        "gate": { "type": "string" },
+        "generated_at": { "type": "string", "format": "date-time" },
+        "artifacts": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "hash": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{32}$"
+              },
+              "bytes": { "type": "integer", "minimum": 0 }
+            }
+          }
+        }
+      }
+    },
     "kb_digest_hash": {
       "type": "string",
       "description": "SHA-256 hash of KB content + salt (RT-003)"
@@ -516,6 +565,89 @@
                   "system_boundaries_touched": {
                     "type": "array",
                     "items": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "review_intake": {
+          "type": "object",
+          "properties": {
+            "required": { "type": "boolean" },
+            "satisfied": { "type": "boolean" },
+            "status": {
+              "type": "string",
+              "enum": ["not_required", "satisfied", "unresolved"]
+            },
+            "total_count": { "type": "integer", "minimum": 0 },
+            "required_count": { "type": "integer", "minimum": 0 },
+            "advisory_count": { "type": "integer", "minimum": 0 },
+            "unresolved_required_count": { "type": "integer", "minimum": 0 },
+            "ledger_present": { "type": "boolean" },
+            "ledger_path": { "type": ["string", "null"] },
+            "source_artifacts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "path": { "type": ["string", "null"] },
+                  "mtime_ms": { "type": ["number", "null"] }
+                }
+              }
+            },
+            "unresolved_required": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "classification": { "type": "string" },
+                  "source_kind": { "type": "string" },
+                  "source_path": { "type": ["string", "null"] },
+                  "claim": { "type": ["string", "null"] },
+                  "reason": { "type": ["string", "null"] },
+                  "recommended_action": { "type": ["string", "null"] }
+                }
+              }
+            },
+            "items": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "source_kind": { "type": "string" },
+                  "source_path": { "type": ["string", "null"] },
+                  "source_index": { "type": "integer", "minimum": 0 },
+                  "required": { "type": "boolean" },
+                  "severity": { "type": "string" },
+                  "classification": { "type": "string" },
+                  "surface": { "type": ["string", "null"] },
+                  "file": { "type": ["string", "null"] },
+                  "line": { "type": ["integer", "null"] },
+                  "claim": { "type": ["string", "null"] },
+                  "reason": { "type": ["string", "null"] },
+                  "recommended_action": { "type": ["string", "null"] },
+                  "runtime_truth_refs": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  },
+                  "confidence": { "type": ["string", "null"] },
+                  "disposition_valid": { "type": "boolean" },
+                  "unresolved": { "type": "boolean" },
+                  "disposition": {
+                    "type": ["object", "null"],
+                    "properties": {
+                      "status": { "type": ["string", "null"] },
+                      "evidence_refs": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                      },
+                      "disposition_reason": { "type": ["string", "null"] },
+                      "waiver_reason": { "type": ["string", "null"] },
+                      "approved_by": { "type": ["string", "null"] }
+                    }
                   }
                 }
               }

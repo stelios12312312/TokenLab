@@ -301,15 +301,46 @@ console.log("\nGitHub Ticket Review Contracts\n");
     assert(result.ticket_intake_receipt.deepseek_advisory_block.includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "review receipt includes fenced DeepSeek block");
     assert(result.ticket_intake_receipt.deepseek_advisory_block.includes("Review packet has enough references"), "review receipt block includes DeepSeek finding text");
     assert(result.ticket_intake_receipt.deepseek_advisory_block.includes("Keep deterministic evidence authoritative"), "review receipt block includes recommended action");
-    assert(result.ticket_intake_receipt.verbatim_reproduction_contract?.includes("verbatim"), "review receipt includes verbatim reproduction contract");
-    assert(result.github_sync.planned_comment.includes("DeepSeek advisory verdict"), "GitHub review comment surfaces DeepSeek verdict block");
-    assert(result.github_sync.planned_comment.includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "GitHub review comment includes DeepSeek block delimiters");
-    assert(renderText(result).includes("REPRODUCE VERBATIM"), "text-mode review output instructs agents to reproduce the DeepSeek block");
-    assert(renderText(result).includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "text-mode review output includes DeepSeek block delimiters");
+    assert(result.ticket_intake_receipt.verbatim_reproduction_contract?.includes("audit artifacts"), "review receipt explains DeepSeek artifact contract");
+    assert(result.ticket_intake_receipt.deepseek_advisory_summary === "Advisory review says ready", "review receipt carries compact DeepSeek summary");
+    assert(result.github_sync.planned_comment.includes("DeepSeek advisory: `review_ready`"), "GitHub review comment surfaces compact DeepSeek status");
+    assert(result.github_sync.planned_comment.includes("Advisory review says ready"), "GitHub review comment surfaces compact DeepSeek summary");
+    assert(result.github_sync.planned_comment.includes("Review packet:"), "GitHub review comment points to review packet artifact");
+    assert(!result.github_sync.planned_comment.includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "GitHub review comment omits DeepSeek block delimiters by default");
+    assert(renderText(result).includes("DeepSeek advisory: review_ready"), "text-mode review output includes compact DeepSeek status");
+    assert(renderText(result).includes("summary: Advisory review says ready"), "text-mode review output includes compact DeepSeek summary");
+    assert(!renderText(result).includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "text-mode review output omits DeepSeek block delimiters by default");
+    assert(renderText(result, { showDeepSeekBlock: true }).includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "--show-deepseek-block text rendering includes DeepSeek block");
     assert(result.review_packet.retro_recurrence_check.status === "not_applicable", "passing review packet includes recurrence check");
     assert(result.ticket_intake_receipt.retro_recurrence_status === "not_applicable", "review receipt carries recurrence status");
     assert(writeCalls(fakeGh.calls).length === 0, "dry-run performs no GitHub write calls");
     assert(!readJson(programPath).tickets[0].external_refs, "dry-run does not edit Program Packet metadata");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  const tmp = makeTemp();
+  try {
+    const programPath = writeProgram(tmp, baseProgram());
+    const fakeGh = createFakeGh();
+    const result = await runReview([
+      "review",
+      "--issue",
+      "42",
+      "--program",
+      programPath,
+      "--ticket",
+      "T-001",
+      "--repo",
+      "owner/repo",
+      "--show-deepseek-block",
+      "--json",
+    ], { cwd: tmp, ghRunner: fakeGh.runner, commandRunner: passingCommandRunner, env: mockReviewReadyEnv });
+
+    assert(result.github_sync.planned_comment.includes("DeepSeek advisory verdict"), "--show-deepseek-block adds the verbose verdict heading to GitHub comment");
+    assert(result.github_sync.planned_comment.includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "--show-deepseek-block includes DeepSeek delimiters in GitHub comment");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -413,6 +444,7 @@ console.log("\nGitHub Ticket Review Contracts\n");
     assert(ticket.external_refs.length === 1, "repeated write upserts external_refs instead of duplicating");
     assert(ticket.review_artifacts.length === 1, "repeated write upserts review_artifacts instead of duplicating");
     assert(ticket.last_review_status === "review_ready", "ticket last_review_status records deterministic result");
+    assert(ticket.review_status === "review_ready", "ticket review_status records deterministic result");
     assert(fakeGh.calls.some((args) => args[0] === "api" && args.join(" ").includes("issues/comments/COMMENT-1")), "existing review comment is updated");
     assert(fakeGh.calls.some((args) => args[0] === "issue" && args[1] === "edit" && args.includes("--add-label")), "--write applies lifecycle labels");
     assert(!fakeGh.calls.some((args) => args[0] === "issue" && args[1] === "close"), "--write does not close issues without explicit close flag");

@@ -17,7 +17,8 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { execFileSync } from "child_process";
 import { tmpdir } from "os";
 import { createHash } from "crypto";
-import { KB_SALT_HEX_LEN, computeStateHash } from "../scripts/lib/determinism.mjs";
+import { KB_SALT_HEX_LEN, computeStateHash, writeStateJson } from "../scripts/lib/determinism.mjs";
+import { buildEnvelope, getEnvelopePath, validateEnvelopeAgainstDisk } from "../scripts/lib/plan_contract.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -47,20 +48,24 @@ function assert(condition, label) {
 
 function runNode(args, cwd, extraEnv = {}) {
   try {
+    maybeRefreshPlanToExecuteEnvelope(args, cwd);
+    maybeRefreshInvariantEnvelope(args, cwd);
+    const stdout = execFileSync(NODE, args, {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        CODEX_THREAD_ID: "",
+        _PLANNER_PLAN_TARGET: "",
+        ...extraEnv,
+      },
+    });
+    maybeMaterializeApprovalEnvelope(args, cwd);
     return {
       ok: true,
       status: 0,
-      stdout: execFileSync(NODE, args, {
-        cwd,
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-        env: {
-          ...process.env,
-          CODEX_THREAD_ID: "",
-          _PLANNER_PLAN_TARGET: "",
-          ...extraEnv,
-        },
-      }),
+      stdout,
       stderr: "",
     };
   } catch (e) {
@@ -71,6 +76,61 @@ function runNode(args, cwd, extraEnv = {}) {
       stderr: e.stderr || "",
     };
   }
+}
+
+function maybeMaterializeApprovalEnvelope(args, cwd) {
+  const command = String(args?.[0] || "");
+  const gate = String(args?.[1] || "");
+  if (command !== transitionScript || gate !== "explore-to-plan") return;
+  materializeApprovalEnvelopeForCurrentPlan(cwd);
+}
+
+function maybeRefreshPlanToExecuteEnvelope(args, cwd) {
+  const command = String(args?.[0] || "");
+  const gate = String(args?.[1] || "");
+  if (args.includes("--planning-only")) return;
+  if (gate !== "plan-to-execute") return;
+  if (command !== transitionScript && command !== verifyGateScript) return;
+  materializeApprovalEnvelopeForCurrentPlan(cwd);
+}
+
+function maybeRefreshInvariantEnvelope(args, cwd) {
+  const command = String(args?.[0] || "");
+  const subcommand = String(args?.[1] || "");
+  if (command !== ruleEngineScript || subcommand !== "check-invariants") return;
+  materializeApprovalEnvelopeForCurrentPlan(cwd);
+}
+
+function materializeApprovalEnvelopeForCurrentPlan(cwd) {
+  // Many legacy gate fixtures rewrite plan.md after explore-to-plan so they can
+  // probe one specific PLAN check. Under the envelope contract, that edit is
+  // post-approval disk drift. Refresh the fixture-only envelope from the same
+  // approval nonce so these tests continue to exercise their intended gate.
+  if (!existsSync(join(cwd, "plans", ".current_plan"))) return;
+  const { planDir } = getPlanDir(cwd);
+  const statePath = join(planDir, "state.json");
+  const state = readJson(statePath);
+  if (!state?.approval_nonce_hash) return;
+
+  const existingEnvelope = validateEnvelopeAgainstDisk(planDir);
+  if (existingEnvelope.ok) return;
+
+  const decisions = readText(join(planDir, "decisions.md"));
+  const nonceMatch = decisions.match(/\[APPROVED:([0-9a-f]+)\]/);
+  if (!nonceMatch) return;
+
+  const built = buildEnvelope(planDir, {
+    approvalNonce: nonceMatch[1],
+    approverOrigin: "auto",
+  });
+  if (!built.envelope) {
+    throw new Error(`failed to materialize approval envelope for fixture: [${built.reason_code}] ${built.detail}`);
+  }
+
+  writeFileSync(getEnvelopePath(planDir), JSON.stringify(built.envelope, null, 2) + "\n");
+  state.approval_envelope_path = "approval_envelope.json";
+  state.approval_envelope_schema = built.envelope.schema_version;
+  writeStateJson(planDir, state);
 }
 
 function makeTemp(name) {
@@ -941,7 +1001,15 @@ function scenarioTransitionFlow() {
     assert(typeof afterExplore.approval_nonce_hash === "string" && afterExplore.approval_nonce_hash.length === 32, "explore-to-plan stores approval_nonce_hash");
     assert(typeof afterExplore.kb_digest_hash === "string" && afterExplore.kb_digest_hash.length === 32, "explore-to-plan stores kb_digest_hash");
     assert(typeof afterExplore.transition_nonce === "string" && afterExplore.transition_nonce.length === 32, "explore-to-plan stores transition_nonce");
+    assert(typeof afterExplore.tamper_fingerprint?.hash === "string" && afterExplore.tamper_fingerprint.hash.length === 32, "explore-to-plan stores tamper_fingerprint after auto approval artifacts");
     assert(/\[APPROVED:[0-9a-f]+\]/.test(decisions), "explore-to-plan writes an approval marker in auto mode");
+    const approvalNonceMatch = decisions.match(/\[APPROVED:([0-9a-f]+)\]/);
+    const envelopeAfterExplore = validateEnvelopeAgainstDisk(planDir);
+    assert(envelopeAfterExplore.ok, "explore-to-plan materializes a valid approval envelope for the fixture");
+    if (approvalNonceMatch && envelopeAfterExplore.ok) {
+      const expectedEnvelopeNonceHash = createHash("sha256").update(approvalNonceMatch[1]).digest("hex");
+      assert(envelopeAfterExplore.envelope.approval_nonce_hash === expectedEnvelopeNonceHash, "approval envelope records the full approval nonce hash");
+    }
     assert(!!kbDigestMatch && kbDigestMatch[1].length === KB_SALT_HEX_LEN, "explore-to-plan persists KB digest proof in findings.md when no ledger exists");
     if (kbDigestMatch) {
       const expectedDigest = createHash("sha256").update(kbDigestMatch[1] + readKnowledgeBaseContent(tmp)).digest("hex").slice(0, 32);
@@ -950,6 +1018,11 @@ function scenarioTransitionFlow() {
     assert(existsSync(join(planDir, "persona_guidance.md")), "explore-to-plan writes persona_guidance.md");
 
     const approvalHash = afterExplore.approval_nonce_hash;
+    const progressPath = join(planDir, "progress.md");
+    writeFileSync(progressPath, readText(progressPath).trimEnd() + "\n- [x] Tamper fixture changed a sensitive artifact.\n");
+    const tamperedPreflight = runNode([verifyGateScript, "plan-to-execute"], tmp);
+    assert(tamperedPreflight.ok, "tamper fingerprint mismatch warns without blocking a legitimate next transition");
+    assert(tamperedPreflight.stdout.includes("GATE-TMP-002"), "tamper fingerprint mismatch emits the stable warning code");
 
     const execute = runNode([transitionScript, "plan-to-execute"], tmp);
     assert(execute.ok, "transition plan-to-execute exits cleanly with the approved nonce path");
@@ -959,6 +1032,8 @@ function scenarioTransitionFlow() {
     const afterExecute = readJson(join(planDir, "state.json"));
     assert(afterExecute.state === "EXECUTE", "plan-to-execute advances the signed state to EXECUTE");
     assert(Array.isArray(afterExecute.consumed_nonces) && afterExecute.consumed_nonces.includes(approvalHash), "plan-to-execute records the consumed approval nonce hash");
+    assert(typeof afterExecute.tamper_fingerprint?.hash === "string" && afterExecute.tamper_fingerprint.hash.length === 32, "plan-to-execute refreshes tamper_fingerprint after legitimate artifact changes");
+    assert(afterExecute.tamper_fingerprint.hash !== afterExplore.tamper_fingerprint.hash, "tamper_fingerprint changes after the fixture artifact change and transition");
     assert(existsSync(join(planDir, "persona_guidance.md")), "plan-to-execute refreshes persona_guidance.md");
 
     const staleGate = runNode([verifyGateScript, "plan-to-execute"], tmp);
@@ -1927,7 +2002,7 @@ function scenarioVerificationMatrixRecognizesProofIds() {
 ${goal}
 
 ## Problem Statement
-What happened: observed behavior showed quant and migration proof rows were being judged by fragile prose matching instead of exact proof IDs. Quant and migration plans should be able to satisfy synthesized verification obligations with exact proof IDs while still naming the quant persona, target outcome, data source, odds snapshot as-of semantics, temporal leakage guard, and baseline controls.
+What happened: observed behavior showed quant and migration proof rows were being judged by fragile prose matching instead of exact proof IDs. Quant and migration plans should be able to satisfy synthesized verification obligations with exact proof IDs while still naming the quant persona, target outcome, data source, odds snapshot as-of semantics, temporal leakage guard, and baseline controls. Candidate alpha hypothesis: stale injury-news odds create a temporary edge mechanism. Expected edge metric is positive CLV versus the closing-line benchmark. Falsification threshold: reject if CLV decays or the baseline control wins. Next experiment: run a liquidity-adjusted follow-up screen.
 
 ## Files To Modify
 - models/ufc_model.py
@@ -1956,7 +2031,7 @@ ${semanticUpkeepContractBlock({
 ## Verification Strategy
 | Criterion | Story linkage | Repo/system context | Required proof type | Concrete command or action | Pass means | What remains unverified |
 |---|---|---|---|---|---|---|
-| The planner accepts exact quant and migration proof IDs. | US-003 | Quant model backtest, target outcome, data source, odds snapshot as-of timestamp, temporal split, leakage check, benchmark baseline controls, quant results validation, and migration parity | proof:temporal_split_check proof:leakage_check proof:benchmark_comparison proof:backtest_run proof:quant_results_validation proof:live_parity_check proof:migration_parity | Run verify_gate.mjs plan-to-execute and verification_matrix.mjs lint --json | Gate passes and lint shows quant_modeling plus migration_parity covered | Real trading execution remains out of scope |
+| The planner accepts exact quant and migration proof IDs. | US-003 | Quant model backtest, target outcome, data source, odds snapshot as-of timestamp, temporal split, leakage check, benchmark baseline controls, alpha discovery contract, quant results validation, and migration parity | proof:temporal_split_check proof:leakage_check proof:benchmark_comparison proof:backtest_run proof:alpha_discovery_contract proof:quant_results_validation proof:live_parity_check proof:migration_parity | Run verify_gate.mjs plan-to-execute and verification_matrix.mjs lint --json | Gate passes and lint shows quant_modeling plus migration_parity covered | Real trading execution remains out of scope |
 
 ## Success Criteria
 1. The planner accepts exact quant and migration proof IDs.
@@ -1977,6 +2052,7 @@ Root-cause fix
     assert(coverage.get("quant_modeling") === true, "verification matrix lint covers quant_modeling");
     assert(coverage.get("migration_parity") === true, "verification matrix lint covers migration_parity");
     assert(packet.recognized_proof_ids.includes("proof:temporal_split_check"), "verification matrix lint lists recognized exact proof IDs");
+    assert(packet.recognized_proof_ids.includes("proof:alpha_discovery_contract"), "verification matrix lint lists recognized alpha discovery proof ID");
     assert(packet.recognized_proof_ids.includes("proof:quant_results_validation"), "verification matrix lint lists recognized quant results proof ID");
     assert(packet.selected_table?.heading === "Verification Strategy", "verification matrix lint reports the selected table heading");
   } finally {
@@ -2011,7 +2087,7 @@ function scenarioVerificationMatrixCoversTableCriteriaAndProseProofRows() {
 ${goal}
 
 ## Problem Statement
-What happened: observed behavior showed realistic table-shaped success criteria and natural proof prose could be ignored by the matrix analyzer. Verification matrices should accept those rows without forcing every proof row to use exact proof IDs, while the quant persona still records target outcome, data source, odds snapshot as-of semantics, temporal leakage guard, and baseline controls.
+What happened: observed behavior showed realistic table-shaped success criteria and natural proof prose could be ignored by the matrix analyzer. Verification matrices should accept those rows without forcing every proof row to use exact proof IDs, while the quant persona still records target outcome, data source, odds snapshot as-of semantics, temporal leakage guard, and baseline controls. Candidate alpha hypothesis: stale injury-news odds create a temporary edge mechanism. Expected edge metric is positive CLV versus the closing-line benchmark. Falsification threshold: reject if CLV decays or the baseline control wins. Next experiment: run a liquidity-adjusted follow-up screen.
 
 ## Files To Modify
 - models/tennis_model.py
@@ -2938,7 +3014,7 @@ function scenarioReflectCloseRequiresQuantResultsValidationForResultClaims() {
       planContent: `# Plan
 
 ## Problem Statement
-What happened: observed behavior showed a quant model final-OOS ROI result claim could have only a report and no machine-readable validation artifact. Close should fail until the quant persona records the target outcome, data source, odds snapshot as-of timestamp, temporal leakage handling, and baseline controls.
+What happened: observed behavior showed a quant model final-OOS ROI result claim could have only a report and no machine-readable validation artifact. Close should fail until the quant persona records the target outcome, data source, odds snapshot as-of timestamp, temporal leakage handling, and baseline controls. Candidate alpha hypothesis: stale odds reaction creates a temporary edge mechanism. Expected edge metric is positive final-OOS ROI and CLV. Falsification threshold: reject if CLV decays or the baseline control wins. Next experiment: run a liquidity-adjusted follow-up screen.
 
 ## Files To Modify
 - reports/model_results.md

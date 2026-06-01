@@ -33,6 +33,14 @@ const RULE_DEFS = [
     remediation: "Add an odds snapshot matrix covering entry price, reference price, T-24/T-12/T-6/open/close availability, CLV availability, and label type.",
     engine: "js",
   },
+  {
+    id: "QT-004",
+    name: "CLV provenance repair route",
+    rationale: "CLV and closing-line claims are not interpretable unless entry, reference, book/market, and timestamp provenance are linked.",
+    false_positive: "CLV appears only as an explicitly rejected or unavailable limitation with no CLV-based claim.",
+    remediation: "Route missing CLV provenance to repair, ticket, accepted limitation, or claim block before interpreting CLV or market-microstructure claims.",
+    engine: "js",
+  },
 ];
 
 const QUANT_SCOPE_TERMS = [
@@ -136,6 +144,31 @@ const ODDS_MATRIX_GROUPS = Object.freeze([
   }),
 ]);
 
+const CLV_PROVENANCE_SIGNAL_TERMS = [
+  "clv", "closing line value", "closing-line value", "closing line",
+  "reference price", "entry price", "odds provenance", "price provenance",
+  "market microstructure",
+];
+
+const CLV_PROVENANCE_GROUPS = Object.freeze([
+  Object.freeze({
+    key: "book_or_market",
+    terms: ["book", "sportsbook", "bookmaker", "market id", "market", "exchange"],
+  }),
+  Object.freeze({
+    key: "entry_snapshot",
+    terms: ["entry price", "bet price", "price taken", "entry timestamp", "taken at", "t-24", "t-12", "t-6", "open"],
+  }),
+  Object.freeze({
+    key: "reference_snapshot",
+    terms: ["reference price", "closing price", "close", "closing", "final pre-event", "reference timestamp"],
+  }),
+  Object.freeze({
+    key: "timestamp_or_asof",
+    terms: ["timestamp", "as-of", "as of", "snapshot time", "odds snapshot", "price snapshot"],
+  }),
+]);
+
 function normalizeText(value) {
   return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
 }
@@ -194,6 +227,19 @@ function countCoveredGroups(text, groups) {
   return { covered, missing };
 }
 
+function iveMeta({ knowledgePack, factTemplates, conceptGuards, validNextActions, verificationRequired, memoryGuard }) {
+  return {
+    ive: {
+      knowledge_pack: knowledgePack,
+      fact_templates: factTemplates,
+      concept_guards: conceptGuards,
+      valid_next_actions: validNextActions,
+      verification_required: verificationRequired,
+      memory_guard: memoryGuard,
+    },
+  };
+}
+
 function roles(context) {
   return Array.isArray(context?.auditConfig?.roles) ? context.auditConfig.roles : [];
 }
@@ -221,7 +267,9 @@ function analyze(context) {
   const text = combinedContextText(context);
   const targetGroups = countCoveredGroups(text, TARGET_CONTRACT_GROUPS);
   const oddsGroups = countCoveredGroups(text, ODDS_MATRIX_GROUPS);
+  const clvProvenanceGroups = countCoveredGroups(text, CLV_PROVENANCE_GROUPS);
   const hasBettingSignal = textContainsAny(text, BETTING_SIGNAL_TERMS);
+  const hasClvProvenanceSignal = textContainsAny(text, CLV_PROVENANCE_SIGNAL_TERMS);
   const hasInefficiencySignal = textContainsAny(text, INEFFICIENCY_TERMS);
   const hasProxyLabel = textContainsAny(text, PROXY_LABEL_TERMS);
   const hasTargetClaimJustification = textContainsAny(text, [
@@ -234,7 +282,9 @@ function analyze(context) {
     text,
     targetGroups,
     oddsGroups,
+    clvProvenanceGroups,
     hasBettingSignal,
+    hasClvProvenanceSignal,
     hasInefficiencySignal,
     hasProxyLabel,
     hasTargetClaimJustification,
@@ -261,6 +311,15 @@ function oddsMatrixIsMissing(analysis) {
   );
 }
 
+function clvProvenanceIsMissing(analysis) {
+  return analysis.hasClvProvenanceSignal && (
+    analysis.clvProvenanceGroups.missing.includes("book_or_market") ||
+    analysis.clvProvenanceGroups.missing.includes("entry_snapshot") ||
+    analysis.clvProvenanceGroups.missing.includes("reference_snapshot") ||
+    analysis.clvProvenanceGroups.covered.length < 3
+  );
+}
+
 function targetClaimMismatch(analysis) {
   return analysis.hasInefficiencySignal && analysis.hasProxyLabel && !analysis.hasTargetClaimJustification;
 }
@@ -274,6 +333,7 @@ function makeRawFinding(ruleId, detail, recommendation, analysis, severity = SEV
     story_refs: analysis.storyRefs,
     missing_target_groups: analysis.targetGroups.missing,
     missing_odds_groups: analysis.oddsGroups.missing,
+    missing_clv_provenance_groups: analysis.clvProvenanceGroups?.missing || [],
   };
 }
 
@@ -320,6 +380,15 @@ const quantTargetPack = {
       ));
     }
 
+    if (clvProvenanceIsMissing(analysis)) {
+      findings.push(makeRawFinding(
+        "QT-004",
+        `CLV or closing-line language is present, but CLV provenance is incomplete (missing: ${analysis.clvProvenanceGroups.missing.join(", ")}).`,
+        "Route CLV provenance to repair, ticket, accepted limitation, or claim block with entry/reference/book/timestamp evidence before interpreting CLV claims.",
+        analysis
+      ));
+    }
+
     return findings;
   },
 
@@ -336,6 +405,7 @@ const quantTargetPack = {
         "Plan must include a model target contract: name, purpose, target, label formula, prediction horizon, prediction time, available-at-time data, forbidden future fields, controls, failure modes, and proof metric.",
         "If the claim uses market inefficiency, MIM, CLV, or betting prices, the plan must say whether the label is realized return, CLV, excess return, or a hybrid.",
         "Betting plans must include an odds snapshot matrix covering entry price, reference price, T-24/T-12/T-6/open/close availability, CLV availability, and label type.",
+        "CLV or closing-line plans must route entry/reference/book/timestamp provenance to repair, ticket, accepted limitation, or claim block before interpreting CLV.",
       ],
       execute: [
         "Before building features, verify each feature is available at the declared prediction time.",
@@ -345,11 +415,13 @@ const quantTargetPack = {
       reflect: [
         "Check whether the implemented target still supports the named claim, or whether the claim must be narrowed.",
         "Confirm CLV/excess-return/realized-return metrics are not being described interchangeably.",
+        "Treat clv_provenance_unrepaired as an unresolved ontology fact until it has a repair, ticket, accepted limitation, or claim block.",
         "Record any missing odds horizon as residual uncertainty instead of filling it with assumptions.",
       ],
       validate: [
         "Validate the target contract against the artifacts actually produced.",
         "Confirm betting-market claims cite the declared odds snapshot matrix and target-to-claim justification.",
+        "Block CLV-based claims while entry/reference/book/timestamp provenance remains unrouted.",
       ],
     };
     const lines = guidance[phase];
@@ -369,6 +441,14 @@ const quantTargetPack = {
         severity: "HIGH",
         rationale: "Without the target, label formula, prediction horizon, known-at-time data, forbidden future fields, controls, failure modes, proof metric, and target-to-claim bridge, the model name can imply more than the evidence proves.",
         story_refs: analysis.storyRefs,
+        meta: iveMeta({
+          knowledgePack: "experiment_charter",
+          factTemplates: ["model_target_contract_missing", "prediction_time_missing", "forbidden_future_fields_unbounded"],
+          conceptGuards: ["model names are hypotheses; target, label formula, prediction time, known-at-time data, and proof metric define the claim boundary"],
+          validNextActions: ["fix_now", "ticket_now", "accept_limitation"],
+          verificationRequired: "model target contract includes target, label formula, prediction horizon/time, available data, forbidden future fields, controls, failure modes, proof metric, and target-to-claim bridge",
+          memoryGuard: "future model claims must cite the target contract before interpretation",
+        }),
       }));
     }
 
@@ -380,6 +460,14 @@ const quantTargetPack = {
         severity: "HIGH",
         rationale: "positive_return and realized profit can reflect outcome variance, odds availability, or staking rules; they are not automatically evidence that a price was inefficient.",
         story_refs: analysis.storyRefs,
+        meta: iveMeta({
+          knowledgePack: "experiment_charter",
+          factTemplates: ["target_to_claim_bridge_missing", "allowed_claims_exceeded", "proxy_label_overclaimed"],
+          conceptGuards: ["positive_return, realized profit, CLV, and excess return are distinct targets with distinct allowed claims"],
+          validNextActions: ["fix_now", "ticket_now", "accept_limitation"],
+          verificationRequired: "target-to-claim bridge states whether the label is realized return, CLV, excess return, or hybrid, with controls for the named claim",
+          memoryGuard: "future inefficiency claims must separate proxy labels from claim evidence",
+        }),
       }));
     }
 
@@ -391,6 +479,33 @@ const quantTargetPack = {
         severity: "HIGH",
         rationale: "Entry price, reference price, close, open, and intermediate snapshots answer different questions; mixing them changes the target.",
         story_refs: analysis.storyRefs,
+        meta: iveMeta({
+          knowledgePack: "market_odds_provenance",
+          factTemplates: ["entry_price_missing", "reference_price_missing", "odds_snapshot_ambiguous"],
+          conceptGuards: ["entry, reference, open, close, CLV, and realized return are different market facts"],
+          validNextActions: ["fix_now", "ticket_now", "accept_limitation"],
+          verificationRequired: "odds snapshot matrix records entry price, reference price, T-24/T-12/T-6/open/close availability, CLV availability, and label type",
+          memoryGuard: "future betting claims must cite the odds snapshot matrix row being used",
+        }),
+      }));
+    }
+
+    if (clvProvenanceIsMissing(analysis)) {
+      constraints.push(makeConstraint({
+        id: "QT-C-004",
+        role: "quant_target",
+        constraint: "CLV or closing-line claims must route entry/reference/book/timestamp provenance to repair, ticket, accepted limitation, or claim block before interpretation",
+        severity: "HIGH",
+        rationale: "CLV provenance gaps are ontology facts; treating them as warnings in a report recreates IPBS-style report churn and can make unsupported market claims sound proven.",
+        story_refs: analysis.storyRefs,
+        meta: iveMeta({
+          knowledgePack: "market_odds_provenance",
+          factTemplates: ["clv_provenance_unrepaired", "entry_price_missing", "reference_price_missing", "odds_snapshot_ambiguous"],
+          conceptGuards: ["CLV requires linked entry price, reference/close price, book or market, and timestamp/as-of provenance"],
+          validNextActions: ["fix_now", "ticket_now", "accept_limitation"],
+          verificationRequired: "entry/reference/close timestamps are linked to book/market, or CLV claim is blocked by accepted limitation",
+          memoryGuard: "CLV claims stay disabled until provenance is repaired or explicitly limited",
+        }),
       }));
     }
 
@@ -412,6 +527,7 @@ const quantTargetPack = {
           rule_id: raw.ruleId,
           missing_target_groups: raw.missing_target_groups || [],
           missing_odds_groups: raw.missing_odds_groups || [],
+          missing_clv_provenance_groups: raw.missing_clv_provenance_groups || [],
           false_positive: rule.false_positive,
         },
       },

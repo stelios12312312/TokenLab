@@ -1,0 +1,10 @@
+{
+  "next": "Run red-team audit and regression audit to validate security and blast radius.",
+  "why": "No red-team or regression audits have ever been run, and the change is large with shared module modifications.",
+  "commands": [
+    "/red-team-audit",
+    "/safe-change"
+  ],
+  "supervisor_status": "fresh",
+  "source": "provider"
+}

@@ -55,12 +55,14 @@ export PLANNER_ROOT REGISTRY
 
 # Delegate everything to node — avoids shell word-splitting on paths with spaces
 "$NODE_BIN" --input-type=module << 'JSEOF'
+import { execFileSync } from 'child_process';
 import { existsSync, readFileSync, writeFileSync, copyFileSync, mkdirSync, chmodSync } from 'fs';
 import { join } from 'path';
 
 const PLANNER_ROOT    = process.env.PLANNER_ROOT;
 const REGISTRY        = process.env.REGISTRY;
 const SYNC_SCRIPT     = join(PLANNER_ROOT, '.agent/scripts/sync-instructions.sh');
+const MIGRATE_SCRIPT  = join(PLANNER_ROOT, '.agent/skills/iterative-planner/scripts/migrate.mjs');
 const TEMPLATE_CLAUDE = join(PLANNER_ROOT, 'CLAUDE.md');
 const RULES_SRC       = join(PLANNER_ROOT, '.agent/rules.md');
 const RULE0_MARKER    = '## 0. Use the Iterative Planner';
@@ -98,8 +100,6 @@ for (const entry of registry.projects) {
   const projectSync   = join(agentScripts, 'sync-instructions.sh');
   const projectRules  = join(PROJECT, '.agent/rules.md');
   const projectClaude = join(PROJECT, 'CLAUDE.md');
-  const projectGemini = join(PROJECT, 'GEMINI.md');
-  const projectAgents = join(PROJECT, 'AGENTS.md');
 
   // 1. Install sync script
   mkdirSync(agentScripts, { recursive: true });
@@ -136,10 +136,13 @@ for (const entry of registry.projects) {
     console.log('         CLAUDE.md — already exists (not overwritten)');
   }
 
-  // 4. Sync GEMINI.md and AGENTS.md from CLAUDE.md
-  copyFileSync(projectClaude, projectGemini);
-  copyFileSync(projectClaude, projectAgents);
-  console.log('         GEMINI.md + AGENTS.md — synced from CLAUDE.md');
+  // 4. Refresh managed root-instruction snapshots without overwriting host-owned text
+  execFileSync(process.execPath, [MIGRATE_SCRIPT, 'sync-instructions', PROJECT], {
+    cwd: PLANNER_ROOT,
+    stdio: 'pipe',
+    encoding: 'utf8',
+  });
+  console.log('         root instruction snapshots — synced');
 
   updated++;
   console.log('         [ DONE ]\n');

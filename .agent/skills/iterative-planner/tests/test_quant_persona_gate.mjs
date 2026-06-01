@@ -30,7 +30,9 @@ console.log("\nQuant Persona Gate Contracts\n");
   assert(result.required === true, "Polymarket/odds/model text activates quant gate");
   assert(result.status === "blocked", "high-level quant text blocks without required evidence");
   assert(result.summary.missing_guard_ids.includes("what_happened_overview"), "missing what-happened overview is a blocker");
+  assert(result.summary.missing_guard_ids.includes("alpha_discovery_loop"), "missing alpha discovery loop is a blocker");
   assert(blockers.some((entry) => entry.code === "quant_persona_what_happened_overview_missing"), "missing overview converts to deterministic blocker");
+  assert(blockers.some((entry) => entry.code === "quant_persona_alpha_discovery_loop_missing"), "missing alpha loop converts to deterministic blocker");
 }
 
 {
@@ -42,7 +44,7 @@ console.log("\nQuant Persona Gate Contracts\n");
     },
     acceptanceCriteria: [
       {
-        text: "Quant persona must verify data source, odds snapshot as-of timestamps, known-at-time coverage, temporal leakage handling, and baseline controls.",
+        text: "Quant persona must verify data source, odds snapshot as-of timestamps, known-at-time coverage, temporal leakage handling, and baseline controls. Candidate alpha hypothesis: slow odds reaction after injury news creates a temporary edge mechanism. Expected edge metric is positive CLV and ROI over the closing-line benchmark. Falsification threshold: reject if CLV decays or baseline control beats the strategy. Next experiment: run a follow-up screen on liquidity-adjusted markets.",
       },
     ],
     verificationRows: [
@@ -65,6 +67,15 @@ console.log("\nQuant Persona Gate Contracts\n");
   });
   assert(result.required === false, "planner-core work about quant gates does not masquerade as a quant project");
   assert(result.status === "not_applicable", "planner-core quant-gate maintenance is not blocked by quant project proof requirements");
+}
+
+{
+  const result = evaluateQuantPersonaGate({
+    sourceText: "Review the quant_research_protocol audit finding without changing model behavior.",
+    planShape: { primary: "analysis" },
+  });
+  assert(result.required === false, "analysis-shaped audit work may discuss quant findings without becoming a quant project");
+  assert(result.status === "not_applicable", "analysis-shaped audit work is not blocked by quant project proof requirements");
 }
 
 {

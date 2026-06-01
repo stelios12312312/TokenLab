@@ -22,12 +22,20 @@ import {
   analyzeIntentContract, loadIntentContract, resolveFindingsTruth, debugLog,
   PASS, WARN, FAIL, check
 } from "./lib/plan_utils.mjs";
+import { validateEnvelopeAgainstDisk, REASON_CODES as PLAN_CONTRACT_REASON_CODES } from "./lib/plan_contract.mjs";
 import { detectPlanShape, shapeRequiresField, shapeMinFindings } from "./lib/plan_shape.mjs";
 import { join } from "path";
 import { readFileSync, existsSync, statSync, realpathSync } from "fs";
 import { createHash } from "crypto";
 import { withFailureCode, readStateJson, NONCE_HEX_LEN, KB_SALT_HEX_LEN } from "./lib/determinism.mjs";
 import { refreshPlanArtifacts } from "./lib/plan_refresh.mjs";
+import {
+  computePlanApprovalIntegrityForState,
+  computePlanTamperFingerprint,
+  summarizePlanApprovalArtifacts,
+  summarizePlanTamperArtifacts,
+  usesPlanApprovalIntegrityBundle,
+} from "./lib/plan_integrity.mjs";
 import { extractNormalizedStoryIdsFromText } from "./lib/planner_canonicalizer.mjs";
 import {
   canonicalizeVerificationProofText,
@@ -478,6 +486,39 @@ function resolveQuantResultsValidationSignal(planDir) {
   };
 }
 
+function resolveReviewIntakeSignal(planDir) {
+  const closeSignals = getCloseSignals(planDir);
+  if (typeof closeSignals?.review_intake?.satisfied === "boolean") {
+    const signal = closeSignals.review_intake;
+    const unresolved = Array.isArray(signal.unresolved_required) ? signal.unresolved_required : [];
+    return {
+      required: signal.required === true,
+      satisfied: signal.satisfied === true,
+      status: signal.status || "unknown",
+      required_count: signal.required_count || 0,
+      unresolved_required_count: signal.unresolved_required_count || unresolved.length,
+      advisory_count: signal.advisory_count || 0,
+      unresolved_required: unresolved,
+      detail: signal.required !== true
+        ? `Structured close signal: review intake not required (${signal.advisory_count || 0} advisory item(s))`
+        : signal.satisfied
+          ? `Structured close signal: ${signal.required_count || 0} required review-intake item(s) have valid dispositions`
+          : `Review-intake items still need disposition: ${unresolved.map((item) => item.id).join(", ") || "unknown item"}`,
+    };
+  }
+
+  return {
+    required: false,
+    satisfied: true,
+    status: "legacy",
+    required_count: 0,
+    unresolved_required_count: 0,
+    advisory_count: 0,
+    unresolved_required: [],
+    detail: "Legacy plan without structured review-intake close signal",
+  };
+}
+
 function resolveQuantPersonaGateSignal(planDir, {
   planContent = null,
   stateJson = null,
@@ -600,6 +641,7 @@ function resolveLatePhaseAntiRitualAssessment(planDir, gateName) {
   const antiRecurrence = resolveAntiRecurrenceSignal(planDir);
   const learnedObligations = resolveLearnedObligationsSignal(planDir);
   const verificationObligationSynthesis = resolveVerificationObligationSynthesisSignal(planDir);
+  const reviewIntake = resolveReviewIntakeSignal(planDir);
   const kbSignal = resolveKBSignal(planDir);
 
   const semanticBlocks = (semanticSubstrate.blocking_gap_ids || []).map((gapId) => ({
@@ -624,7 +666,7 @@ function resolveLatePhaseAntiRitualAssessment(planDir, gateName) {
   }
 
   const requiredProofGaps = [];
-  for (const signal of [testEvidence, intentEvidence, antiRecurrence, learnedObligations, verificationObligationSynthesis]) {
+  for (const signal of [testEvidence, intentEvidence, antiRecurrence, learnedObligations, verificationObligationSynthesis, reviewIntake]) {
     if (signal?.required === true && signal?.satisfied !== true) {
       requiredProofGaps.push(signal.detail || "required proof signal missing");
     }
@@ -2257,28 +2299,27 @@ function gatePlanToExecute(planDir, options = {}) {
   // User adds [APPROVED:<nonce>] to decisions.md. Gate hashes it and compares.
   const stateJson = readStateJson(planDir);
 
-  // 7a. RT-DAEMON-V4-004 + V4-011: Plan hash verification — detect post-approval tampering.
-  // The approval daemon stores a SHA-256 hash of plan.md at approval time in state.json.
-  // If the plan was modified after approval, the hash won't match → FAIL.
-  const approvedPlanHash = stateJson?.approved_plan_hash;
-  if (!planningOnly && approvedPlanHash) {
-    const planPath = join(planDir, "plan.md");
-    let currentPlanHash = null;
-    if (existsSync(planPath)) {
-      // RT8-M3: Normalize line endings before hashing (consistent with approval_daemon.mjs)
-      const rawPlan = readFileSync(planPath, "utf-8").replace(/\r\n/g, "\n").replace(/\n+$/, "\n");
-      currentPlanHash = createHash("sha256").update(rawPlan).digest("hex").slice(0, 32);
-    }
-    const hashMatch = currentPlanHash === approvedPlanHash;
+  // 7a. Plan-approval envelope verification (US-086).
+  // Single decision point: envelope present AND valid AND matches disk → PASS;
+  // otherwise FAIL with the explicit reason code from the contract validator.
+  // No legacy hash fallback — backward compatibility for plans approved before
+  // the envelope contract is migrate.mjs upgrade-approval-envelope's job, not
+  // the verifier's. The verifier never accepts an envelope-less approval claim.
+  const stateClaimsApproval =
+    typeof stateJson?.approval_nonce_hash === "string" && stateJson.approval_nonce_hash.length > 0;
+  if (!planningOnly && stateClaimsApproval) {
+    const envelopeResult = validateEnvelopeAgainstDisk(planDir);
+    const ok = !!envelopeResult.ok;
     results.push(withFailureCode(check(
-      "Plan integrity (hash matches approved version)",
-      hashMatch ? PASS : FAIL,
-      hashMatch
-        ? "plan.md has not been modified since approval"
-        : "plan.md was modified after approval — re-approve the plan or re-run explore-to-plan"
+      "Plan-approval envelope integrity (US-086)",
+      ok ? PASS : FAIL,
+      ok
+        ? `envelope verified (schema_version=${envelopeResult.envelope.schema_version}, canonical_hash matches disk, projection equivalence ${envelopeResult.envelope.projection_check})`
+        : `[${envelopeResult.reason_code}] ${envelopeResult.detail}`
     ), "GATE-PLN-010"));
   }
-  // If no approved_plan_hash in state.json, skip check (backwards compatibility with older plans).
+  // If state.json does not claim approval (no nonce hash), the nonce checks
+  // below will handle the actual rejection; no envelope check is performed.
 
   // 7b. Nonce verification.
   const approvalNonceHash = stateJson?.approval_nonce_hash;
@@ -2846,6 +2887,13 @@ function gateValidateToClose(planDir) {
     summarizeQuantPersonaGate(quantPersonaGate)
   ), "GATE-VAL-017"));
 
+  const reviewIntake = resolveReviewIntakeSignal(planDir);
+  results.push(withFailureCode(check(
+    "Required review-intake findings have a valid disposition before close",
+    reviewIntake.satisfied ? PASS : FAIL,
+    reviewIntake.detail
+  ), "GATE-VAL-018"));
+
   return results;
 }
 
@@ -2971,6 +3019,13 @@ function gateReflectToCloseLegacy(planDir) {
     summarizeQuantPersonaGate(quantPersonaGate)
   ), "GATE-VAL-017"));
 
+  const reviewIntake = resolveReviewIntakeSignal(planDir);
+  results.push(withFailureCode(check(
+    "Required review-intake findings have a valid disposition before close",
+    reviewIntake.satisfied ? PASS : FAIL,
+    reviewIntake.detail
+  ), "GATE-VAL-018"));
+
   const semanticSubstrate = resolveSemanticSubstrateSignal(planDir);
   results.push(withFailureCode(check(
     "Task-relevant semantic substrate is complete enough to close",
@@ -3035,11 +3090,58 @@ const GATES = {
   "notify-user": gateNotifyUser,
 };
 
+function evaluateTamperFingerprintGate(planDir, gateName) {
+  if (!planDir || !gateName) return [];
+  const stateJson = readStateJson(planDir);
+  if (!stateJson) {
+    return [withFailureCode(check(
+      "Tamper fingerprint state readable",
+      WARN,
+      "state.json could not be read; tamper fingerprint check skipped"
+    ), "GATE-TMP-001")];
+  }
+
+  const current = computePlanTamperFingerprint(planDir, { stateJson });
+  if (!current?.hash) {
+    return [withFailureCode(check(
+      "Tamper fingerprint computed",
+      WARN,
+      "No tamper-tracked artifacts were available to fingerprint"
+    ), "GATE-TMP-001")];
+  }
+
+  const stored = stateJson.tamper_fingerprint;
+  if (!stored?.hash) {
+    return [withFailureCode(check(
+      "Tamper fingerprint present",
+      WARN,
+      `No stored tamper_fingerprint in state.json yet; the next successful transition will sign ${summarizePlanTamperArtifacts(current)}`
+    ), "GATE-TMP-001")];
+  }
+
+  const versionMatches = stored.version === current.version;
+  const hashMatches = stored.hash === current.hash;
+  if (!versionMatches || !hashMatches) {
+    return [withFailureCode(check(
+      "Tamper fingerprint matches signed gate snapshot",
+      WARN,
+      `Stored tamper fingerprint ${stored.hash || "missing"} (${stored.version || "unknown"}) does not match current ${current.hash} (${current.version}) for ${summarizePlanTamperArtifacts(current)}. If these edits are legitimate, a successful transition will refresh the signed fingerprint.`
+    ), "GATE-TMP-002")];
+  }
+
+  return [withFailureCode(check(
+    "Tamper fingerprint matches signed gate snapshot",
+    PASS,
+    `Signed fingerprint ${current.hash} covers ${summarizePlanTamperArtifacts(current)}`
+  ), "GATE-TMP-002")];
+}
+
 function evaluateGateResults(planDir, gateName, options = {}) {
   const gateFn = GATES[gateName];
   const baseResults = gateFn ? gateFn(planDir, options) : [];
+  const tamperResults = evaluateTamperFingerprintGate(planDir, gateName);
   const antiRitual = resolveLatePhaseAntiRitualAssessment(planDir, gateName);
-  const results = normalizeLatePhaseGateResults(baseResults, antiRitual);
+  const results = normalizeLatePhaseGateResults([...tamperResults, ...baseResults], antiRitual);
   return {
     results,
     anti_ritual: antiRitual,
@@ -3130,10 +3232,13 @@ if (__verify_gate_entry === __verify_gate_target) {
   }
 
   process.env._PLANNER_PLAN_TARGET = planDirName;
-  try {
-    refreshPlanArtifacts({ cwd, planDirName });
-  } catch (e) {
-    debugLog("verify_gate", `Plan refresh failed before ${gateName}: ${e.message}`);
+  // Skip refreshPlanArtifacts when called internally from transition.mjs to avoid timeout
+  if (!process.env._PLANNER_FAST_VERIFY) {
+    try {
+      refreshPlanArtifacts({ cwd, planDirName });
+    } catch (e) {
+      debugLog("verify_gate", `Plan refresh failed before ${gateName}: ${e.message}`);
+    }
   }
   console.log(`\n╔══════════════════════════════════════════════════════╗`);
   const gateLabel = planningOnly && gateName === "plan-to-execute"

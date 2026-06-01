@@ -161,10 +161,16 @@ invariant_violated('program_capability_removed_without_story', Capability) :-
     \+ capability_retired_by_story(Capability, _),
     \+ capability_replaced_by_story(Capability, _).
 
+% F-007 closure: narrow the rule to the non-null-path case. When child.plan_dir
+% is null, no child_plan_ref fact is emitted (see program_packet.mjs:665) and
+% the JS validator emits required_child_plan_dir_required as the canonical
+% error code. Without this guard, both this Prolog rule AND the JS validator
+% fire for the same underlying failure mode, confusing reviewers.
 invariant_violated('program_child_plan_not_closed', Ticket) :-
     ticket(Ticket, _, _, Lifecycle),
     verified_or_closed_lifecycle(Lifecycle),
     child_plan_policy(Ticket, 'required'),
+    child_plan_ref(Ticket, _),
     \+ child_plan_satisfied(Ticket).
 
 invariant_violated('program_close_ticket_unresolved', Program) :-

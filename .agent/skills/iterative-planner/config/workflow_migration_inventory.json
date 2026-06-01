@@ -31,6 +31,20 @@
       "notes": "Agent C can surface candidates, but the workflow stays user-driven."
     },
     {
+      "workflow": "/ignore-planner",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Human + Agent A",
+      "notes": "Explicit bounded bypass for trivial, operational, or analysis-only work where planner state machine overhead would be ritual."
+    },
+    {
+      "workflow": "/kb-update",
+      "v6_purpose": "Knowledge base update after a session",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Human + Agent A",
+      "notes": "Still the direct post-session knowledge-base update surface."
+    },
+    {
       "workflow": "/knowledge-steward",
       "v6_purpose": "N/A — new in v7",
       "v7_action": "New",
@@ -43,6 +57,13 @@
       "v7_action": "Updated",
       "v7_owner": "Human",
       "notes": "Now routes through migrate.mjs and version-aware rollout logic."
+    },
+    {
+      "workflow": "/program-manager",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "Updated",
+      "v7_owner": "Agent A + Human",
+      "notes": "v7.6.39 adds PASS-only verify --write status advancement, ticket review_status separation, submitted/review_ready lifecycle aliases, and compact DeepSeek status/summary/artifact proof by default."
     },
     {
       "workflow": "/ontology",
@@ -85,6 +106,13 @@
       "v7_action": "Restored",
       "v7_owner": "Agent A",
       "notes": "Restored by ADR 0042; consolidates ad-hoc operational scripts into project-owned recipe contracts."
+    },
+    {
+      "workflow": "/full-review-and-fix",
+      "v6_purpose": "Combined red-team, regression, and user-story audit remediation",
+      "v7_action": "Keep unchanged",
+      "v7_owner": "Agent A",
+      "notes": "Still the combined audit-and-remediate workflow for broad review/fix sessions."
     },
     {
       "workflow": "/red-team-audit",
@@ -143,6 +171,13 @@
       "notes": "Stops at PLAN with the YAML-first verification contract."
     },
     {
+      "workflow": "/roadmap-steward",
+      "v6_purpose": "Alias for roadmap/program-management prompts",
+      "v7_action": "Renamed",
+      "v7_owner": "Agent A",
+      "notes": "Alias to /program-manager when requests use roadmap-steward language."
+    },
+    {
       "workflow": "/sme-improvement",
       "v6_purpose": "Goal-aligned strategic or process improvement discovery",
       "v7_action": "Keep unchanged",
@@ -197,6 +232,13 @@
       "v7_action": "New",
       "v7_owner": "Agent A + Human",
       "notes": "Phase 2.8 recovery workflow for mini-reflect and human escalation after thrashing interrupts."
+    },
+    {
+      "workflow": "/ticket-traceability-repair",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Agent A",
+      "notes": "Repairs Program Packet tickets blocked by missing story traceability before child-plan implementation."
     },
     {
       "workflow": "/reflection",

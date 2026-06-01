@@ -1,6 +1,6 @@
 ---
 name: iterative-planner
-planner_version: "7.6.38"
+planner_version: "7.6.40"
 description: >
   State-machine driven iterative planning and execution for complex coding tasks.
   Cycle: Explore → Plan → Execute → Reflect → Validate → Close / Re-plan. Filesystem as persistent memory.
@@ -104,6 +104,7 @@ The returned contract is the shared routing surface used by `/safe-plan`, `/safe
 - `strictness_mode`
 - `audit_posture`
 - `recommended_path`
+- `operator_action` + `operator_question` when user input is required
 - `persona_activation_authority`
 
 ### Async Cheap-LLM Drift Steward
@@ -189,9 +190,9 @@ without marking it ready.
 Each intake result emits a **Ticket Intake Receipt** with the `/program-manager`
 front door, source/action, Program Packet path, ticket id, traceability refs,
 acceptance-criteria refs, verification refs, deterministic status, advisory
-DeepSeek status, ticket type, persona review status/packs, recurrence
-status/counts, quant persona gate status when applicable, and next required
-command. Intake packets include
+DeepSeek status/summary/artifact path, ticket type, persona review status/packs,
+recurrence status/counts, quant persona gate status when applicable, and next
+required command. Intake packets include
 `retro_recurrence_check`; trusted active mistakes and
 retro-promoted obligations can block tickets until the required guards or
 evidence are present. Quant-shaped intake also includes a deterministic
@@ -222,6 +223,14 @@ node <sp>/scripts/program_manager.mjs verify execution-to-program-validate --pro
 node <sp>/scripts/program_manager.mjs verify validate-to-program-close --program plans/programs/<program-id>/program_packet.json
 ```
 
+When `program_manager.mjs verify <gate> --write` passes deterministic Program
+Packet validation and ontology checks, it advances the program status:
+`design-to-ready -> ready`, `ready-to-execution -> executing`,
+`execution-to-program-validate -> validating`, and
+`validate-to-program-close -> closed`. Dry-runs and failed gates remain
+read-only. Output reports `previous_status`, `new_status`, and
+`transition_written`.
+
 `--remediate` on `check` or `verify` translates blocked-ticket advisory
 `recommended_actions` into local remediation task packets. Dry-run is default;
 `--write` writes a `remediation/remediation_<timestamp>.json` artifact. The CLI
@@ -234,6 +243,7 @@ visible mirror:
 ```bash
 node <sp>/scripts/github_ticket_review.mjs review --issue <n> --program <program-id-or-path> --ticket <ticket-id> --json
 node <sp>/scripts/github_ticket_review.mjs review --project-item <project-item-id-or-url> --program <program-id-or-path> --ticket <ticket-id> --write --json
+node <sp>/scripts/github_ticket_review.mjs review --issue <n> --program <program-id-or-path> --ticket <ticket-id> --show-deepseek-block --json
 ```
 
 Dry-run is the default. `--write` is required before the command edits the
@@ -241,14 +251,15 @@ Program Packet, writes `reviews/<ticket-id>_review_packet.json`, posts/updates a
 GitHub issue comment, applies planner lifecycle labels, or updates a GitHub
 Project Status field. It still will not close an issue unless
 `--close-github-issue` is passed. The command records ticket `external_refs`
-for GitHub mirrors plus local intake sources, `review_artifacts`, `github_sync`,
-and deterministic `last_review_status`.
-The metadata contract includes ticket `external_refs`, `review_artifacts`, `github_sync`, and deterministic `last_review_status`.
+for GitHub mirrors plus local intake sources. The metadata contract includes `review_artifacts`, `github_sync`, `review_status`, and deterministic `last_review_status`.
+Ticket lifecycle values `submitted` and `review_ready` are accepted as review-facing
+compatibility aliases, but Program Manager gates normalize them through
+effective lifecycle semantics so dispatch remains deterministic.
 Review and publish results also emit a Ticket Intake Receipt so the handoff
-shows the local ticket, deterministic status, advisory status, and GitHub mirror
-action that were used. Review Packets and GitHub review comments include a
-**Retro Recurrence Check** section before advisory findings so retros are
-predictive ticket guards, not only closeout history.
+shows the local ticket, deterministic status, advisory status/summary/artifact,
+and GitHub mirror action that were used. Review Packets and GitHub review
+comments include a **Retro Recurrence Check** section before advisory findings
+so retros are predictive ticket guards, not only closeout history.
 Quant-shaped Review Packets and comments also include a **Quant Persona Gate**
 section. DeepSeek sees that deterministic gate in its packet and may critique
 the risk, but it cannot clear missing quant/persona evidence or call a blocked
@@ -257,6 +268,10 @@ DeepSeek may classify the Review Packet as advisory (`needs_story`,
 `needs_annotation`, `needs_verification`, `ontology_conflict`, `blocked`,
 `review_ready`), but deterministic Program Packet, story, annotation, ontology,
 and test evidence remains authoritative.
+Default text output and GitHub comments show compact DeepSeek proof
+(`status`, one-line `summary`, and local artifact path). The full fenced verdict
+stays in local JSON artifacts and JSON fields; render it in text only when an
+operator explicitly requests `--show-deepseek-block`.
 
 Program gates are additive and do not add states to the iterative planner state machine.
 Missing Program Packets return `SKIP`. Executable tickets become child iterative plans

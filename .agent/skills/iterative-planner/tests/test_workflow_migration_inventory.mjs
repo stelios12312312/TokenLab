@@ -44,10 +44,12 @@ function scenarioKeyMappingsStayAnchored() {
   assert(byWorkflow.get("/story-bootstrap")?.alias_target === "/story-registry-bootstrap", "/story-bootstrap points at the new registry bootstrap alias target");
   assert(byWorkflow.get("/red-team-user-story-audit")?.v7_action === "Deprecated", "/red-team-user-story-audit is marked as deprecated");
   assert(byWorkflow.get("/red-team-user-story-audit")?.alias_target === "/story-verification", "/red-team-user-story-audit points at /story-verification");
-  assert(!byWorkflow.has("/kb-update"), "/kb-update is removed from the active migration inventory");
-  assert(!byWorkflow.has("/full-review-and-fix"), "/full-review-and-fix is merged out of the active migration inventory");
+  assert(byWorkflow.get("/kb-update")?.v7_action === "Keep unchanged", "/kb-update stays represented in the active migration inventory");
+  assert(byWorkflow.get("/full-review-and-fix")?.v7_action === "Keep unchanged", "/full-review-and-fix stays represented in the active migration inventory");
   assert(byWorkflow.get("/story-verification")?.v7_action === "New", "/story-verification is marked as a new v7 workflow");
   assert(byWorkflow.get("/story-review-agent")?.v7_action === "Keep unchanged", "story-review-agent stays explicitly represented in the migration inventory");
+  assert(byWorkflow.get("/roadmap-steward")?.v7_action === "Renamed", "/roadmap-steward is explicitly represented as a user-facing alias workflow");
+  assert(byWorkflow.get("/ticket-traceability-repair")?.v7_action === "New", "/ticket-traceability-repair is marked as a new v7 workflow");
 }
 
 function scenarioCommittedReportMatchesGenerator() {

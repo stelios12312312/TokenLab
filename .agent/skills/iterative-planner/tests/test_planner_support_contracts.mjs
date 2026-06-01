@@ -18,7 +18,7 @@ import { extractFilesToModify } from "../scripts/lib/plan_utils.mjs";
 import { createSession } from "../scripts/lib/prolog.mjs";
 import { summarizeProofTelemetry } from "../scripts/lib/proof_telemetry.mjs";
 import { createSemanticEngine } from "../scripts/lib/semantic_engine.mjs";
-import { loadRules, loadStateFacts } from "../scripts/lib/fact_loader.mjs";
+import { loadRules, loadStateFacts, loadStoryFacts } from "../scripts/lib/fact_loader.mjs";
 import { sanitizeAtom, sanitizeStrictId, sanitizeEnumAtom, formatReason } from "../scripts/lib/sanitize.mjs";
 import { computeVerificationObligationSynthesis } from "../scripts/lib/verification_obligations.mjs";
 import { auditTrace } from "../scripts/trace_auditor.mjs";
@@ -248,6 +248,37 @@ function scenarioStateValidationContracts() {
     assert(!!schema.properties?.close_signals?.properties?.quant_results_validation, "state.schema.json documents quant-results validation close signals");
     assert(!!schema.properties?.close_signals?.properties?.quant_results_validation?.properties?.blocking_issues, "state.schema.json documents quant-results blocking issues");
     assert(!!schema.properties?.close_signals?.properties?.intent_evidence, "state.schema.json documents structured intent-evidence close signals");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioStoryValidationRefsLoadIntoRuntimeFacts() {
+  const tmp = mkdtempSync(join(tmpdir(), "planner-story-facts-"));
+  try {
+    mkdirSync(join(tmp, "reports", "user_story_audit"), { recursive: true });
+    writeFileSync(join(tmp, "reports", "user_story_audit", "story_registry.json"), JSON.stringify({
+      version: 1,
+      stories: [
+        {
+          id: "US-055",
+          title: "M-Model Operator Strategy Report",
+          priority: "HIGH",
+          status: "FULLY_COVERED",
+          code_refs: ["src/report.py"],
+          test_refs: ["tests/test_report.py"],
+          validation_refs: ["reports/mmodel/strategy_report.html"],
+          postconditions: ["quant_advisor_narrative_required"],
+        },
+      ],
+    }, null, 2));
+
+    const session = createSession();
+    loadRules(session, { cwd: tmp, skillPath: plannerSkillPath });
+    loadStoryFacts(session, { cwd: tmp });
+
+    assert(session.check("validation_ref('US-055', 'reports/mmodel/strategy_report.html')"), "loadStoryFacts emits validation_ref facts from story_registry validation_refs");
+    assert(!session.check("invariant_violated(quant_advisor_narrative_without_validation, 'US-055')"), "quant advisor validation invariant stays clear when validation_refs exist");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -612,6 +643,110 @@ Config flag changes should declare contradictory runtime modes explicitly.
     assert(session.check("semantic_substrate_gap(missing_mutually_exclusive_facts)"), "loadStateFacts emits semantic_substrate_gap/1 facts from advisory gap ids");
     assert(session.check("semantic_substrate_blocking_gap(missing_mutually_exclusive_facts)"), "loadStateFacts emits semantic_substrate_blocking_gap/1 facts from blocking gap ids");
     assert(session.check("missing_guard(reflect, validate, semantic_substrate_incomplete)"), "Prolog reflect-to-validate guards fail when required semantic substrate remains incomplete");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioReviewIntakeCloseSignalPersistsAndLoadsIntoProlog() {
+  const tmp = mkdtempSync(join(tmpdir(), "planner-review-intake-"));
+  try {
+    const planName = "plan_2026-05-19_review_intake";
+    const planDir = join(tmp, "plans", planName);
+    mkdirSync(join(tmp, "plans", "knowledge"), { recursive: true });
+    mkdirSync(join(planDir, "review_intake_sources"), { recursive: true });
+    writeFileSync(join(tmp, "plans", ".current_plan"), `${planName}\n`);
+    writeFileSync(join(tmp, "plans", "knowledge", "index.md"), "# Knowledge Base Index\n");
+    writeFileSync(join(tmp, "plans", "knowledge", "mistakes.md"), "# Mistakes\n");
+    writeFileSync(join(tmp, "plans", "knowledge", "patterns.md"), "# Patterns\n");
+    writeFileSync(join(tmp, "plans", "knowledge", "gotchas.md"), "# Gotchas\n");
+    writeFileSync(join(planDir, "plan.md"), `# Plan
+
+## Goal
+Review intake close-signal fixture
+
+## Problem Statement
+Required review items must block close until disposition.
+
+## Files To Modify
+- docs/review.md
+
+## Verification Strategy
+Exercise review intake.
+`);
+    writeFileSync(join(planDir, "verification.md"), "# Verification\n\n## Notes\nFixture only.\n");
+    writeFileSync(join(planDir, "review_intake_sources", "llm_drift_gate_validate-to-close.json"), JSON.stringify({
+      status: "stale_blocking",
+      summary: "review item fixture",
+      findings: [
+        {
+          id: "review_fixture",
+          classification: "stale_blocking",
+          surface: "advisor",
+          file: "docs/review.md",
+          reason: "Advisor finding must be dispositioned",
+          runtime_truth_refs: ["verify_gate"],
+          recommended_action: "Reject with reason or verify",
+        },
+      ],
+    }, null, 2) + "\n");
+
+    const state = createInitialStateJson(planName, "Review intake close-signal fixture", { projectRoot: tmp });
+    state.state = "VALIDATE";
+    writeStateJson(planDir, state);
+
+    const refresh = refreshPlanArtifacts({
+      cwd: tmp,
+      skillPath: plannerSkillPath,
+      planDirName: planName,
+      refreshOntology: true,
+      persistOntology: true,
+      persistState: true,
+      syncFindings: false,
+    });
+    assert(refresh.refreshed === true, "refreshPlanArtifacts refreshes close signals for review-intake fixtures");
+    const reviewIntake = refresh.closeSignals?.review_intake || null;
+    assert(reviewIntake?.required === true, "review intake is required for stale_blocking findings");
+    assert(reviewIntake?.satisfied === false, "review intake remains unsatisfied without a valid disposition");
+    assert(reviewIntake?.unresolved_required_count === 1, "review intake counts unresolved required findings");
+
+    const session = createSession();
+    loadRules(session, { cwd: tmp, skillPath: plannerSkillPath });
+    loadStateFacts(session, { cwd: tmp, skillPath: plannerSkillPath });
+    assert(session.check("review_intake_required(true)"), "loadStateFacts emits review_intake_required(true)");
+    assert(session.check("review_intake_satisfied(false)"), "loadStateFacts emits review_intake_satisfied(false)");
+    assert(session.check("review_intake_unresolved_required_count(1)"), "loadStateFacts emits unresolved review-intake count");
+    assert(session.check("missing_guard(validate, close, review_intake_unresolved)"), "Prolog close guard blocks unresolved review-intake items");
+    assert(session.check("invariant_violated(review_intake_unresolved, count(1))"), "review-intake invariant hard-fails at VALIDATE");
+
+    writeFileSync(join(planDir, "review_intake.json"), JSON.stringify({
+      version: 1,
+      items: [
+        {
+          id: "llm:stale_blocking:review_fixture",
+          disposition: {
+            status: "rejected",
+            disposition_reason: "Fixture proves deterministic rejection reason handling.",
+            evidence_refs: [],
+          },
+        },
+      ],
+    }, null, 2) + "\n");
+
+    const satisfiedRefresh = refreshPlanArtifacts({
+      cwd: tmp,
+      skillPath: plannerSkillPath,
+      planDirName: planName,
+      refreshOntology: true,
+      persistOntology: true,
+      persistState: true,
+      syncFindings: false,
+    });
+    assert(satisfiedRefresh.closeSignals?.review_intake?.satisfied === true, "valid rejected disposition satisfies required review intake");
+    const satisfiedSession = createSession();
+    loadRules(satisfiedSession, { cwd: tmp, skillPath: plannerSkillPath });
+    loadStateFacts(satisfiedSession, { cwd: tmp, skillPath: plannerSkillPath });
+    assert(!satisfiedSession.check("missing_guard(validate, close, review_intake_unresolved)"), "Prolog close guard clears after valid disposition");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -1699,6 +1834,7 @@ scenarioRuleEngineSemantics();
 scenarioIDEDetection();
 scenarioSanitizeContracts();
 scenarioStateValidationContracts();
+scenarioStoryValidationRefsLoadIntoRuntimeFacts();
 scenarioVerificationObligationSynthesisContracts();
 scenarioFilesToModifyAcceptsCommonNonCanonicalEntries();
 scenarioChecklistIntegrityBaselineStaysSynced();
@@ -1706,6 +1842,7 @@ scenarioProjectPolicyFactsStayDeclarative();
 scenarioAuditPerspectiveDiversityUsesAuditSet();
 scenarioAntiRecurrenceInvariantEscalatesByPhase();
 scenarioSemanticSubstrateCloseSignalPersistsAndLoadsIntoProlog();
+scenarioReviewIntakeCloseSignalPersistsAndLoadsIntoProlog();
 scenarioMissingPlannedFilesKeepSemanticScopeDegradedAndBlocking();
 scenarioQuantResultsValidationFactsStayVisibleToOntology();
 scenarioBacktickedPlannerCorePathsStayScopedAndNonBlocking();

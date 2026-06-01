@@ -141,6 +141,15 @@ function loadAuthorityPlanContext(cwdOverride, opts = {}) {
   });
 }
 
+function inferProjectLevelPlanShape(base) {
+  const plannerSkillRoot = join(base, ".agent", "skills", "iterative-planner");
+  if (!existsSync(join(plannerSkillRoot, "scripts", "audit_runner.mjs"))) return null;
+  return {
+    primary: "planner-core",
+    source: "project_level_planner_repo",
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Project context builder
 // ---------------------------------------------------------------------------
@@ -194,7 +203,8 @@ export async function buildProjectContext(cwdOverride, skillPathOverride, auditC
   }
 
   const authorityContext = loadAuthorityPlanContext(base, opts);
-  const planShape = authorityContext?.plan_shape || null;
+  const hasExplicitPlanTarget = !!opts.plan || !!opts.env?.PLANNER_TARGET_PLAN;
+  const planShape = authorityContext?.plan_shape || (hasExplicitPlanTarget ? null : inferProjectLevelPlanShape(base));
 
   return {
     cwd:           base,
@@ -238,17 +248,17 @@ const EVIDENCE_COMMITTEE_BY_PACK = Object.freeze({
 // (instead of executing it and producing FAIL findings on unrelated concerns).
 // Agents can override per-project via `audit.config.json.force_packs: [...]`.
 const SHAPE_PACK_SKIPLIST = Object.freeze({
-  "integration":  new Set(["quant", "quant_target", "ux_ui"]),
-  "migration":    new Set(["quant", "quant_target", "ux_ui"]),
-  "planner-core": new Set(["quant", "quant_target", "tokenomics", "ux_ui"]),
-  "docs":         new Set(["quant", "quant_target", "ux_ui", "wiring_auditor"]),
+  "integration":  new Set(["quant", "quant_research_protocol", "quant_target", "ux_ui"]),
+  "migration":    new Set(["quant", "quant_research_protocol", "quant_target", "ux_ui"]),
+  "planner-core": new Set(["quant", "quant_research_protocol", "quant_target", "tokenomics", "ux_ui"]),
+  "docs":         new Set(["quant", "quant_research_protocol", "quant_target", "ux_ui", "wiring_auditor"]),
   // v7.4.3: chore shape skips all packs except traceability. Operational
   // tasks aren't engineering work — running quant / ux_ui / wiring_auditor
   // / assumptions_challenger / config_integrity audits on a chore plan
   // surfaces noise unrelated to the actual work.
-  "chore":        new Set(["quant", "quant_target", "tokenomics", "ux_ui", "wiring_auditor", "assumptions_challenger", "config_integrity"]),
+  "chore":        new Set(["quant", "quant_research_protocol", "quant_target", "tokenomics", "ux_ui", "wiring_auditor", "assumptions_challenger", "config_integrity"]),
   // v7.4.4: analysis shape (review/audit/explain) — same skip list.
-  "analysis":     new Set(["quant", "quant_target", "tokenomics", "ux_ui", "wiring_auditor", "assumptions_challenger", "config_integrity"]),
+  "analysis":     new Set(["quant", "quant_research_protocol", "quant_target", "tokenomics", "ux_ui", "wiring_auditor", "assumptions_challenger", "config_integrity"]),
 });
 
 function isShapeSkipped(role, shapePrimary, forcePacks) {

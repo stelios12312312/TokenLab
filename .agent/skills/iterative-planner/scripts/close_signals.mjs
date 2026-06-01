@@ -89,6 +89,19 @@ function suggestionsForSemanticSubstrate(signal) {
   return suggestions;
 }
 
+function suggestionsForReviewIntake(signal) {
+  const unresolved = Array.isArray(signal?.unresolved_required) ? signal.unresolved_required : [];
+  if (unresolved.length === 0) {
+    return [
+      "Keep review dispositions in review_intake.json when durable operator rationale is needed; source artifacts remain generated truth.",
+    ];
+  }
+  return [
+    "Run review_intake.mjs collect --write to materialize the ledger, then mark each required item verified, consumed, rejected with reason, or waived with approval.",
+    "Do not edit state.json.close_signals.review_intake directly; it is regenerated from source artifacts and review_intake.json.",
+  ];
+}
+
 function buildExplainResult({ cwd, planArg }) {
   const resolved = resolvePlan(cwd, planArg);
   if (!resolved.ok) {
@@ -126,6 +139,7 @@ function buildExplainResult({ cwd, planArg }) {
   }
   const afterState = readText(join(resolved.planDir, "state.json"));
   const semanticSubstrate = refresh.closeSignals?.semantic_substrate || null;
+  const reviewIntake = refresh.closeSignals?.review_intake || null;
 
   return {
     status: refresh.refreshed ? "pass" : "fail",
@@ -143,6 +157,7 @@ function buildExplainResult({ cwd, planArg }) {
       note: "Close signals are generated from plan artifacts, annotations, story registry, telemetry, and Prolog diagnostics.",
     },
     close_signals: refresh.closeSignals || null,
+    review_intake: reviewIntake,
     semantic_substrate: semanticSubstrate,
     diagnostics: {
       selected_source_artifacts: semanticSubstrate?.provenance?.source_artifacts || [
@@ -161,6 +176,11 @@ function buildExplainResult({ cwd, planArg }) {
       scan_scope_used: semanticSubstrate?.scan_scope_used || null,
       scope_degraded: semanticSubstrate?.scope_degraded === true,
       suggested_source_edits: suggestionsForSemanticSubstrate(semanticSubstrate),
+      review_intake: {
+        source_artifacts: reviewIntake?.source_artifacts || [],
+        unresolved_required: reviewIntake?.unresolved_required || [],
+        suggested_disposition_edits: suggestionsForReviewIntake(reviewIntake),
+      },
     },
   };
 }
@@ -171,9 +191,12 @@ function printHuman(result) {
     return;
   }
   const signal = result.semantic_substrate || {};
+  const reviewIntake = result.review_intake || {};
   console.log(`close_signals explain: ${result.plan.plan_dir_name}`);
   console.log(`  generated cache: ${result.generated_cache.path}`);
   console.log(`  state mutated: ${result.generated_cache.state_mutated ? "YES" : "NO"}`);
+  console.log(`  review intake: ${reviewIntake.status || "unknown"} (required=${reviewIntake.required === true}, satisfied=${reviewIntake.satisfied !== false})`);
+  console.log(`  review unresolved: ${reviewIntake.unresolved_required_count || 0}`);
   console.log(`  semantic substrate: ${signal.status || "unknown"} (required=${signal.required === true}, satisfied=${signal.satisfied !== false})`);
   console.log(`  relevance: config=${signal.relevance_evidence?.config || "none"}, story=${signal.relevance_evidence?.story_semantics || "none"}`);
   console.log(`  blocking gaps: ${(signal.blocking_gap_ids || []).join(", ") || "none"}`);

@@ -3,9 +3,9 @@
 // receipt promotion. Verifies that program_manager.mjs runIntake produces a
 // receipt with:
 //   - deepseek_advisory_block fenced by <<<DEEPSEEK_VERDICT_BEGIN/END>>>
-//   - verbatim_reproduction_contract field present
+//   - compact status/summary/artifact receipt fields present
 //   - block content includes findings + recommended_actions
-//   - text rendering of the result includes the block + contract line
+//   - full block remains available for explicit artifact/verbose review
 //
 // Uses a temporary Program Packet on disk because runIntake reads/writes
 // real files. Mock DeepSeek via PLANNER_DRIFT_LLM_MOCK_RESPONSE.
@@ -15,6 +15,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 
 import { runIntake } from "../scripts/program_manager.mjs";
+import { buildDeepSeekAdvisoryBlock } from "../scripts/lib/deepseek_advisory_block.mjs";
 
 let passed = 0;
 let failed = 0;
@@ -68,6 +69,28 @@ function cleanup(tmp) {
 console.log("\nDeepSeek Receipt Block Promotion (Phase C)\n");
 
 // ──────────────────────────────────────────────────────────────────────
+// Test 0: Non-invoked advisory is not provider unavailability
+// ──────────────────────────────────────────────────────────────────────
+await safeRun("non-invoked DeepSeek advisory renders not_run, not unavailable", async () => {
+  const block = buildDeepSeekAdvisoryBlock(null);
+  assert(block.includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "not-run block has BEGIN delimiter");
+  assert(block.includes("Status: not_run"), "not-run block carries not_run status");
+  assert(!block.includes("Status: unavailable"), "not-run block does not imply provider unavailability");
+  assert(block.includes("No DeepSeek advisory was run"), "not-run block explains advisory was not invoked");
+});
+
+await safeRun("explicit DeepSeek unavailable advisory still renders unavailable", async () => {
+  const block = buildDeepSeekAdvisoryBlock({
+    status: "unavailable",
+    summary: "DeepSeek advisory unavailable: missing API key",
+    findings: [],
+    recommended_actions: [],
+  });
+  assert(block.includes("Status: unavailable"), "explicit unavailable advisory preserves unavailable status");
+  assert(block.includes("missing API key"), "explicit unavailable advisory preserves failure summary");
+});
+
+// ──────────────────────────────────────────────────────────────────────
 // Test 1: Mock DeepSeek response produces a fenced block with findings
 // ──────────────────────────────────────────────────────────────────────
 await safeRun("mock DeepSeek -> fenced block in receipt", async () => {
@@ -99,9 +122,11 @@ await safeRun("mock DeepSeek -> fenced block in receipt", async () => {
     assert(receipt.deepseek_advisory_block.includes("Status: review_ready"), "block carries DeepSeek status");
     assert(receipt.deepseek_advisory_block.includes("Acceptance criteria are vague"), "block lists findings");
     assert(receipt.deepseek_advisory_block.includes("Add at least 3 acceptance criteria"), "block lists recommended actions");
-    assert(typeof receipt.verbatim_reproduction_contract === "string", "verbatim contract field exists");
-    assert(receipt.verbatim_reproduction_contract.toLowerCase().includes("verbatim"), "contract mentions verbatim");
-    assert(receipt.verbatim_reproduction_contract.toLowerCase().includes("paraphrase"), "contract mentions paraphrase prohibition");
+    assert(receipt.deepseek_advisory_summary.includes("Ticket looks well-formed"), "receipt carries compact DeepSeek summary");
+    assert(receipt.deepseek_advisory_artifact_path?.includes("intake"), "receipt points to the local intake artifact path");
+    assert(typeof receipt.verbatim_reproduction_contract === "string", "artifact contract field exists");
+    assert(receipt.verbatim_reproduction_contract.toLowerCase().includes("audit artifacts"), "contract describes artifact-first output");
+    assert(receipt.verbatim_reproduction_contract.includes("--show-deepseek-block"), "contract names the explicit verbose flag");
   } finally {
     cleanup(tmp);
   }

@@ -177,6 +177,11 @@ function scenarioFreshProject() {
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_triage.mjs")), "triage tests ship during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/lib/triage.mjs")), "triage library ships during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/lib/planner_phase_routing.mjs")), "planner_phase_routing.mjs ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/persona_manifest_ci.mjs")), "persona_manifest_ci command ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/lib/persona_manifest_ci.mjs")), "persona_manifest_ci library ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_persona_manifest_ci.mjs")), "persona_manifest_ci tests ship during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/ive/run.mjs")), "IVE conformance runner ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_ive_conformance_runner.mjs")), "IVE conformance runner tests ship during migration");
     const claudeContent = readFileSync(join(tmp, "CLAUDE.md"), "utf-8");
     assert(claudeContent.includes("notify-user"), "generated CLAUDE.md includes notify-user");
     assert(claudeContent.includes("## Domain Persona Autorun"), "generated CLAUDE.md includes the domain persona autorun front door");
@@ -531,6 +536,35 @@ function scenarioCustomizedRootInstructionsDoNotTriggerRepair() {
   }
 }
 
+function scenarioRootInstructionSyncPreservesHostContent() {
+  log("\n  Scenario 8b: Root instruction sync preserves target-owned host content");
+  const tmp = createTempProject("root-instruction-rendering");
+
+  try {
+    copyPlannerTo(tmp);
+    const setupResult = run(`${NODE} .agent/skills/iterative-planner/scripts/migrate.mjs setup .`, tmp);
+    assert(setupResult.ok, "initial setup exits cleanly before root instruction rendering fixture");
+
+    const claudePath = join(tmp, "CLAUDE.md");
+    const geminiPath = join(tmp, "GEMINI.md");
+    const agentsPath = join(tmp, "AGENTS.md");
+    writeFileSync(claudePath, `${readFileSync(claudePath, "utf-8")}\nCLAUDE PRIVATE HOST NOTE - should not propagate.\n`);
+    writeFileSync(geminiPath, `${readFileSync(geminiPath, "utf-8")}\nGEMINI PRIVATE HOST NOTE - should stay.\n`);
+    rmSync(agentsPath, { force: true });
+
+    const syncResult = run(`bash .agent/scripts/sync-instructions.sh`, tmp);
+    assert(syncResult.ok, "sync-instructions exits cleanly through migrate sync command");
+
+    const gemini = readFileSync(geminiPath, "utf-8");
+    const agents = readFileSync(agentsPath, "utf-8");
+    assert(gemini.includes("GEMINI PRIVATE HOST NOTE - should stay."), "sync preserves Gemini-owned host content");
+    assert(!gemini.includes("CLAUDE PRIVATE HOST NOTE - should not propagate."), "sync does not copy Claude-owned host content into Gemini");
+    assert(!agents.includes("CLAUDE PRIVATE HOST NOTE - should not propagate."), "sync creates AGENTS from managed template rather than local Claude content");
+  } finally {
+    cleanup(tmp);
+  }
+}
+
 function scenarioRegistryUpgradeMetadataDoesNotTriggerStaleVerify() {
   log("\n  Scenario 9: Registry runtime metadata does not trigger post-upgrade staleness");
   const sourceTmp = createTempProject("registry-source");
@@ -758,6 +792,7 @@ scenarioStaleFilesUpdated();
 scenarioQuotedPathUpgrade();
 scenarioStaleTargetSelfHeals();
 scenarioCustomizedRootInstructionsDoNotTriggerRepair();
+scenarioRootInstructionSyncPreservesHostContent();
 scenarioRegistryUpgradeMetadataDoesNotTriggerStaleVerify();
 scenarioSourceDrivenSelfUpdatePropagatesFullUpgrade();
 scenarioConflictedCopyArtifactsAreIgnoredDuringUpgrade();

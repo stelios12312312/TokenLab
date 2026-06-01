@@ -387,7 +387,9 @@
         "program_packet",
         "ticket_id",
         "ticket_intake_receipt_or_review_packet",
-        "deepseek_advisory_block"
+        "deepseek_advisory_status",
+        "deepseek_advisory_summary",
+        "deepseek_advisory_artifact_path"
       ],
       "canonical_outputs": [
         "repaired_program_packet",

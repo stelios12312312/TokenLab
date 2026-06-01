@@ -111,8 +111,8 @@ const cases = [
   { goal: "Open the router and fix the redirect bug",      min_score: 4,  path_one_of: ["standard_planner"] },
   { goal: "Open the page component and implement loading state", min_score: 4, path_one_of: ["standard_planner"] },
   { goal: "LinkedAPI connection is healthy; SSI check passed and connection retrieval passed. Failures were a hardcoded 60-second timeout in our code. Increase polling timeout to 5 minutes, add a 5-second delay, and improve logs.", max_score: 3, path: "lightweight" },
-  { goal: "What does the merger script do?",               max_score: 0,  path: "skip_planner_question" },
-];
+	  { goal: "What does the merger script do?",               max_score: 0,  path: "skip_planner_question" },
+	];
 for (const c of cases) {
   const t = computeTriage({ goalText: c.goal });
   if (typeof c.min_score === "number") {
@@ -123,15 +123,30 @@ for (const c of cases) {
     assert(t.complexity_score <= c.max_score,
       `"${c.goal.slice(0,50)}" score <= ${c.max_score} (got ${t.complexity_score})`);
   }
-  if (c.path) {
-    assert(t.recommended_path === c.path,
-      `"${c.goal.slice(0,50)}" path=${c.path} (got ${t.recommended_path})`);
-  }
+	  if (c.path) {
+	    assert(t.recommended_path === c.path,
+	      `"${c.goal.slice(0,50)}" path=${c.path} (got ${t.recommended_path})`);
+	  }
   if (c.path_one_of) {
     assert(c.path_one_of.includes(t.recommended_path),
       `"${c.goal.slice(0,50)}" path in [${c.path_one_of.join(", ")}] (got ${t.recommended_path})`);
   }
-}
+	}
+
+const directQuestion = computeTriage({ goalText: "What does the merger script do?" });
+assert(directQuestion.operator_action === "direct_answer", "question goals expose operator_action=direct_answer");
+const directOpen = computeTriage({ goalText: "Open https://example.com" });
+assert(directOpen.operator_action === "direct_action", "simple read-only open goals expose operator_action=direct_action");
+const askDelete = computeTriage({ goalText: "Delete it" });
+assert(askDelete.recommended_path === "skip_planner" && askDelete.operator_action === "ask_user", "ambiguous destructive goals ask the user instead of opening a planner");
+assert(askDelete.operator_question && askDelete.operator_question.includes("target"), "ask_user triage includes a concrete question");
+const askLive = computeTriage({ goalText: "Reset the production database" });
+assert(askLive.operator_action === "ask_user", "destructive live external writes ask the user before action");
+const plannerCoreAction = computeTriage({
+  goalText: "Tweak the gate threshold",
+  plannedFiles: [".agent/skills/iterative-planner/scripts/verify_gate.mjs"],
+});
+assert(plannerCoreAction.operator_action === "planner", "planner-core changes expose operator_action=planner");
 
 // ── Planner-core files boost the score ───────────────────────────────
 const plannerCoreT = computeTriage({
@@ -146,8 +161,12 @@ const t = computeTriage({ goalText: "What does X do?" });
 const rendered = renderTriage(t);
 assert(rendered.includes("TRIAGE:"), "renderTriage prints TRIAGE: header");
 assert(rendered.includes("skip_planner_question"), "renderTriage names the path");
+assert(rendered.includes("Operator action: direct_answer"), "renderTriage names the operator action");
 assert(/answer the user|don't open a plan/i.test(rendered),
   "renderTriage tells agents to answer questions directly");
+const askRendered = renderTriage(askDelete);
+assert(askRendered.includes("Operator action: ask_user"), "renderTriage names ask_user operator action");
+assert(askRendered.includes("Which exact target"), "renderTriage prints the concrete ask-user question");
 
 // ── bootstrap.mjs triage subcommand (read-only preview) ──────────────
 console.log("\n[bootstrap.mjs triage subcommand]");
@@ -163,6 +182,8 @@ try {
   const parsed = JSON.parse(outJson);
   assert(parsed.recommended_path === "skip_planner",
     "triage subcommand --json returns skip_planner for chore goal");
+  assert(parsed.operator_action === "direct_action",
+    "triage subcommand --json returns operator_action for direct chores");
   assert(typeof parsed.complexity_score === "number",
     "triage subcommand returns numeric complexity_score");
 

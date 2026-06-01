@@ -34,7 +34,44 @@ Built by economists and data scientists with deep expertise in both traditional 
 
 ## Getting Started
 
-Documentation is actively maintained with tutorials covering both foundational economic modeling concepts and advanced simulation techniques. Check the notebooks section for comprehensive examples across different economic domains.
+### Installation & Prerequisites
+Install the required packages:
+```bash
+pip install -r requirements.txt
+```
+
+### Directory Structure & Organization
+The repository is organized to maintain a clean layout while keeping all client projects perfectly isolated:
+- `src/`: Core Python package `TokenLab` containing the modular simulation framework.
+- `projects/`: Client-specific simulation directories (e.g. `friendocash/`, `andromeda/`) containing their respective Python scripts and custom datasets.
+- `resources/`: Persistent asset repository (archives, prompt templates, and logos).
+- `run_sim.py`: A unified, premium CLI simulation runner to list and execute simulations easily.
+
+### Unified Simulation Runner (`run_sim.py`)
+The unified `run_sim.py` runner script allows you to discover, inspect, and run simulations easily while cleanly resolving library import paths and local data relative directories:
+
+1. **List all available simulations**:
+   ```bash
+   python run_sim.py --list
+   ```
+
+2. **Execute a client simulation (Headless / Non-blocking - Recommended)**:
+   Runs the simulation with a headless matplotlib backend (`MPLBACKEND=Agg`) to ensure it executes to completion in background/headless setups:
+   ```bash
+   python run_sim.py --project friendocash
+   ```
+
+3. **Execute in Interactive mode (GUI Plot Popups)**:
+   Runs the simulation and opens interactive GUI windows to display plots on your desktop:
+   ```bash
+   python run_sim.py --project friendocash --interactive
+   ```
+
+4. **Specify a specific script**:
+   If a client folder contains multiple simulation scripts, specify the target file:
+   ```bash
+   python run_sim.py --project footboard --script footboard_tokenomics_2.py
+   ```
 
 ## Contact & Collaboration
 

@@ -915,8 +915,8 @@ if (_isMain && !flags.help && !flags.list) (async () => {
         await import("./audit_runner.mjs");
 
       const auditConfig  = loadAuditConfig(cwd) || { roles: ["core"], fail_on: ["HIGH", "CRITICAL"], role_options: {} };
-      let   packs        = await loadRolePacks(auditConfig, skillPath);
       const context      = await buildProjectContext(cwd, skillPath, auditConfig);
+      let   packs        = await loadRolePacks(auditConfig, skillPath, cwd, context.planShape);
       packs              = await enforceMinimumPersona(packs, context);
       const roleFindings = await runRoleAuditors(context, packs);
 

@@ -39,7 +39,9 @@ const QUANT_KEYWORDS = [
 const QUANT_RESEARCH_KEYWORDS = [
   ...QUANT_KEYWORDS,
   "lineage", "known-at-time", "known at time", "date range", "row count",
-  "coverage", "tape", "objective", "parameter surface",
+  "coverage", "tape", "objective", "parameter surface", "alpha hypothesis",
+  "edge hypothesis", "candidate alpha", "candidate edge", "next experiment",
+  "expected edge", "falsification threshold",
 ];
 
 const DATA_CONTRACT_TERMS = [
@@ -60,6 +62,57 @@ const OPTIMIZER_CONTRACT_TERMS = [
   "sampled", "smoke", "wiring", "serious",
 ];
 
+const EXPLORATION_SIGNAL_TERMS = [
+  "explore", "exploration", "exploratory", "hypothesis", "candidate",
+  "screen", "scout", "sweep", "breadth", "aggressive", "discovery",
+  "triage", "frontier", "falsification",
+];
+
+const EXPLORATION_CONTRACT_TERMS = [
+  "exploration lane", "hypothesis ledger", "candidate ledger",
+  "candidate funnel", "search breadth", "triage threshold",
+  "kill criteria", "graduate criteria", "promotion boundary",
+  "non-claim", "not claimed", "not run", "cheap falsification",
+  "falsification criteria", "negative findings",
+];
+
+const MODEL_FAMILY_SEARCH_SIGNAL_TERMS = [
+  "model family", "model families", "algorithm search", "model search",
+  "catboost", "xgboost", "lightgbm", "extra trees", "extra_trees",
+  "random forest", "gradient boosting", "hist gradient boosting",
+  "booster", "boosting", "ensemble", "ensembling", "stacking",
+  "stacker", "stackingclassifier", "voting", "weighted policy",
+];
+
+const MODEL_SEARCH_CONTRACT_GROUPS = [
+  [
+    "family-specific", "family specific", "model-family", "model families",
+    "searched knobs", "not searched", "parameter ranges", "search surface",
+    "parameter surface", "conditional parameter", "conditional parameters",
+  ],
+  [
+    "boosting_type", "boosting type", "bootstrap_type", "bootstrap type",
+    "grow_policy", "grow policy", "loss_function", "loss function",
+    "leaf_estimation", "leaf estimation", "ordered boosting", "plain boosting",
+    "bayesian bootstrap", "bernoulli", "mvs", "dart", "goss",
+  ],
+  [
+    "calibration curve", "brier", "log loss", "ece", "ev calibration",
+    "prediction correlation", "correlation matrix", "disagreement",
+    "feature importance", "permutation", "shap", "odds bucket",
+  ],
+  [
+    "paired lift", "paired", "control-adjusted", "control adjusted",
+    "confidence interval", "bootstrap", "fight bootstrap", "card-cluster",
+    "card cluster", "selection uncertainty", "top-k", "top k",
+    "ci method", "sample size",
+  ],
+  [
+    "stale", "fresh run", "fresh holdout", "not run", "not claimed",
+    "non-claim", "exploratory", "promotion boundary", "rerun required",
+  ],
+];
+
 const RESULT_CLAIM_TERMS = [
   "results", "report", "final-oos", "final oos", "out-of-sample", "out of sample",
   "roi", "pnl", "profit", "sharpe", "drawdown", "calibration", "clv",
@@ -72,6 +125,53 @@ const RESULTS_VALIDATION_TERMS = [
   "wiring_proof", "run class", "bootstrap", "confidence interval",
   "rolling", "yearly stability", "leakage audit", "strongest counterargument",
   "falsification criteria", "presentation stamp",
+];
+
+const STATISTICAL_RIGOR_SIGNAL_TERMS = [
+  "serious_search", "serious search", "promotion candidate", "promotable",
+  "best strategy", "selected strategy", "optimized strategy", "model selection",
+  "final-oos", "final oos", "out-of-sample", "out of sample", "oos roi",
+  "oos sharpe", "production-ready", "promotion-grade",
+];
+
+const STATISTICAL_RIGOR_CONTRACT_GROUPS = [
+  ["bootstrap", "confidence interval", "ci method", "selection uncertainty"],
+  ["dsr", "deflated sharpe", "multiple testing", "multiple-testing", "fdr", "bonferroni"],
+  ["sample floor", "sample size", "minimum sample", "min sample", "bets", "trades"],
+  ["control", "controls", "baseline", "placebo", "fresh holdout", "final-oos", "walk-forward", "walk forward"],
+];
+
+const DEGENERATE_OUTPUT_SIGNAL_TERMS = [
+  "policy selected zero bets", "selected zero bets", "zero bets", "0 bets",
+  "no bets", "zero trades", "0 trades", "no trades", "tiny sample",
+  "sample floor failed", "empty signal", "empty signal surface", "no signal",
+  "no qualifying bets", "no qualifying trades",
+];
+
+const DEGENERATE_OUTPUT_ROUTING_TERMS = [
+  "fix_now", "fix now", "ticket_now", "ticket now", "ticket", "diagnose",
+  "diagnosis", "accept_limitation", "accepted limitation", "claim block",
+  "diagnostic_only", "diagnostic only", "not_promotable", "not promotable",
+  "next experiment", "run_experiment", "run experiment", "deferred_with_ticket",
+];
+
+const METRIC_LINEAGE_SIGNAL_TERMS = [
+  "capped sharpe", "capped roi", "capped metric", "weighted coverage",
+  "weighted roi", "weighted metric", "unweighted", "transformed roi",
+  "transformed metric", "normalized roi", "metric lineage",
+];
+
+const METRIC_LINEAGE_CONTRACT_GROUPS = [
+  ["raw metric", "raw value", "raw roi", "raw sharpe", "uncapped", "unweighted"],
+  ["transformation", "transformed", "capped", "weighted", "winsorized", "normalized", "normalization"],
+  ["metric lineage", "formula", "calculation", "denominator", "sample count", "aggregation"],
+];
+
+const ALPHA_DISCOVERY_TERM_GROUPS = [
+  ["alpha hypothesis", "edge hypothesis", "candidate alpha", "candidate edge", "candidate signal", "edge mechanism", "signal mechanism", "market inefficiency mechanism"],
+  ["expected edge", "expected roi", "expected clv", "expected metric", "proof metric", "target metric"],
+  ["falsification threshold", "falsification criteria", "kill criterion", "fails if", "reject if"],
+  ["next experiment", "next alpha hypothesis", "follow-up experiment", "research queue", "next test"],
 ];
 
 const SOURCE_SCAN_EXTENSIONS = new Set([".py", ".r"]);
@@ -204,6 +304,23 @@ function textContainsAny(text, terms) {
 function countPresentTerms(text, terms) {
   const normalized = String(text || "").toLowerCase();
   return terms.filter(term => normalized.includes(term)).length;
+}
+
+function countSatisfiedTermGroups(text, termGroups) {
+  return termGroups.filter(group => textContainsAny(text, group)).length;
+}
+
+function iveMeta({ knowledgePack, factTemplates, conceptGuards, validNextActions, verificationRequired, memoryGuard }) {
+  return {
+    ive: {
+      knowledge_pack: knowledgePack,
+      fact_templates: factTemplates,
+      concept_guards: conceptGuards,
+      valid_next_actions: validNextActions,
+      verification_required: verificationRequired,
+      memory_guard: memoryGuard,
+    },
+  };
 }
 
 function normalizedPlanText(context) {
@@ -526,6 +643,8 @@ const quantPack = {
   getPhaseGuidance(phase, _context) {
     const guidance = {
       explore: [
+        "For alpha discovery, separate the exploration lane from the promotion lane: exploration maximizes hypothesis breadth and cheap falsification; promotion requires frozen-policy holdout proof.",
+        "Create or require a hypothesis ledger with candidate source, trade thesis, target/outcome, known-at-time data, expected failure mode, kill criteria, and graduate criteria.",
         "Name the data source/tape, lineage, date range, row counts, and known-at-time boundary before trusting any result.",
         "Search for look-ahead bias signals in any data pipeline code.",
         "Check whether train/test split method is documented (temporal_cutoff or walk_forward preferred).",
@@ -533,15 +652,22 @@ const quantPack = {
         "Look for feature provenance documentation — every feature must trace to a known-at-time source.",
       ],
       plan: [
+        "Plan must state the alpha discovery loop: candidate alpha/edge mechanism, expected edge metric, falsification threshold, and next experiment.",
+        "Aggressive exploration plans must state search breadth, candidate families, triage threshold, cheap falsification tests, kill criteria, graduate criteria, artifact ledger, and explicit non-claim boundary.",
         "Plan must state the data contract: source/tape, lineage, date range, row counts, coverage gaps, and known-at-time guarantees.",
         "For optimizer/search work, state run class, trial count, parameter surface, objective handling, frozen-vs-sampled inputs, and controls before interpreting output.",
+        "For model-family, booster, or ensemble work, state family-specific searched knobs and not-searched knobs, internal training modes, diagnostics, paired/control-adjusted comparisons, CI or selection-uncertainty method, and stale-result boundary before interpreting output.",
+        "For serious-search or promotion-grade claims, state bootstrap/CI or selection uncertainty, multiple-testing or DSR handling, sample floors, controls, and holdout/stability boundaries.",
+        "Route zero-bet, zero-trade, tiny-sample, or empty-signal outputs to diagnosis, repair ticket, next experiment, claim block, or accepted limitation before closure.",
+        "For capped, weighted, normalized, or transformed metrics, state raw values, transformation lineage, formula, denominator, and sample count.",
         "Include a dedicated leakage review step for any story that touches backtest data.",
         "Require temporal_cutoff or walk_forward as the split method — random shuffle on time-series is a critical error.",
         "Plan must specify minimum backtest window (default 252 days) and justify any shorter window.",
-        "If probability outputs are involved, include a calibration verification step.",
+        "If probability outputs are involved, include a calibration verification step with quality thresholds; artifact existence alone is not calibration proof.",
         "List required risk metrics (Sharpe ratio, max drawdown at minimum) as explicit acceptance criteria.",
       ],
       execute: [
+        "During exploration, prefer many small falsifiable screens over one overfit deep dive; log negative findings and killed candidates as first-class output.",
         "Always verify train/test split is temporal, not random shuffle — this is the #1 source of inflated backtest results.",
         "Check feature provenance before computing any backtest metric — no future data in feature construction.",
         "Never use in-sample data for evaluation. If walk-forward, ensure each fold respects temporal ordering.",
@@ -550,15 +676,26 @@ const quantPack = {
       ],
       reflect: [
         "Produce or review quant_results_validation.json before interpreting any quant/model/betting report as evidence.",
+        "For non-diagnostic result artifacts, require next_alpha_hypothesis and next_experiment so not-promotable runs still feed the research queue.",
         "Classify the run as smoke, wiring_proof, exploratory, serious_search, or promotion_candidate; stamp smoke and wiring runs as diagnostic_only when the search budget is too small for the parameter surface.",
+        "For model-family and ensemble results, report what was searched versus not searched, calibration/Brier/log-loss/ECE, calibration quality verdict, prediction correlation or disagreement, odds/EV buckets, top-K sensitivity, paired lift, and fight/card bootstrap or selection-uncertainty method.",
+        "When probability outputs feed thresholds, Kelly sizing, or betting policy, grade calibration bins/reliability evidence; high-support bucket error, weighted error, low-probability inversions, or non-monotonic observed rates must route to blocked_alarm/repair/non-use.",
+        "For exploratory runs, report the candidate funnel: requested, executed, killed, graduated, not run, and not claimed. Treat negative findings as useful signal, not cleanup.",
+        "For degenerate outputs, record the ontology fact and route it; a zero-action policy or tiny sample is not a closeable report footnote.",
+        "For transformed metrics, include raw-versus-transformed lineage so presentation cannot blur capped or weighted values into raw performance.",
         "Challenge empirical plausibility: controls, baselines, bootstrap/confidence intervals, rolling or yearly stability, leakage audit, sample size, date span, and split summary must all match the claim being made.",
         "If a control is profitable or beats the strategy, require a full-history stability audit and explanation before any promotion language is allowed.",
         "Require the strongest counterargument and falsification criteria in the validation artifact, not only in prose.",
       ],
       validate: [
         "Block closeout when quant/model/betting result claims exist but close_signals.quant_results_validation is missing or unsatisfied.",
+        "Block non-diagnostic no-alpha dead ends that omit the next alpha hypothesis or next experiment.",
         "Promotion candidates require bootstrap/confidence intervals, stability evidence, leakage audit, train/validation/final-OOS split summary, sample size, date span, controls, and a promotion verdict.",
-        "Smoke or wiring-proof runs may close only as diagnostic_only or not_promotable, with no best-strategy, optimized, production-ready, or promotion-grade language.",
+        "Smoke or wiring-proof runs may close only as diagnostic_only or not_promotable, with no best-strategy, optimized, production-ready, or promotion-grade language; diagnostic_only does not suppress explicit calibration-quality alarms.",
+        "Exploratory runs may close with useful discoveries only if the report visibly separates explored candidates, killed candidates, graduated candidates, not-run surfaces, and non-claims.",
+        "Block model-family exhaustion or ensemble-selection claims when the report omits family-specific search coverage, diagnostics, paired/control-adjusted comparison, CI/selection uncertainty, or a stale-result rerun boundary.",
+        "Block serious-search or promotion language when statistical rigor facts such as bootstrap_ci_missing, dsr_missing, multiple_testing_unrepaired, or sample_floor_failed remain unrouted.",
+        "Block closure when degenerate-output or metric-lineage facts remain unrouted; report_only is valid only after claim boundaries are explicit.",
         "For betting or inefficiency claims, require odds snapshot / CLV / reference-price evidence via the quant_target companion before accepting the result presentation.",
         "Treat markdown reports as presentation surfaces; the machine-readable quant_results_validation.json is the gate signal.",
       ],
@@ -583,6 +720,18 @@ const quantPack = {
     const quantStories = stories.filter(s => textContainsAny(storyText(s), QUANT_RESEARCH_KEYWORDS));
     const storyRefs = quantStories.map(s => s.id).filter(Boolean);
     const hasQuantResearchSignal = textContainsAny(combinedText, QUANT_RESEARCH_KEYWORDS);
+    const hasExplorationSignal = textContainsAny(combinedText, EXPLORATION_SIGNAL_TERMS);
+    const hasModelFamilySearchSignal =
+      textContainsAny(combinedText, MODEL_FAMILY_SEARCH_SIGNAL_TERMS) &&
+      (textContainsAny(combinedText, OPTIMIZER_SIGNAL_TERMS) ||
+        textContainsAny(combinedText, MODEL_FAMILY_SEARCH_SIGNAL_TERMS.filter(term => !["model family", "model families"].includes(term))));
+    const hasStatisticalRigorSignal =
+      textContainsAny(combinedText, STATISTICAL_RIGOR_SIGNAL_TERMS) ||
+      (textContainsAny(combinedText, RESULT_CLAIM_TERMS) && textContainsAny(combinedText, OPTIMIZER_SIGNAL_TERMS));
+    const hasDegenerateOutputSignal = textContainsAny(combinedText, DEGENERATE_OUTPUT_SIGNAL_TERMS);
+    const hasMetricLineageSignal =
+      textContainsAny(combinedText, METRIC_LINEAGE_SIGNAL_TERMS) &&
+      textContainsAny(combinedText, RESULT_CLAIM_TERMS);
 
     // Check for leakage mentions
     const hasLeakageMention = stories.some(s => {
@@ -645,6 +794,33 @@ const quantPack = {
         severity: "HIGH",
         rationale: "Quant research can look rigorous while resting on an unnamed or look-ahead-prone data source; the planner must force the data contract before model interpretation",
         story_refs: storyRefs,
+        meta: iveMeta({
+          knowledgePack: "experiment_charter",
+          factTemplates: ["data_contract_missing", "known_at_time_boundary_missing", "coverage_gap_unrouted"],
+          conceptGuards: ["data source/tape and known-at-time boundaries must be facts, not report prose"],
+          validNextActions: ["fix_now", "ticket_now", "accept_limitation"],
+          verificationRequired: "source/tape, lineage, date range, row counts, coverage gaps, and known-at-time proof recorded or limitation accepted",
+          memoryGuard: "future quant plans must carry a data contract before interpreting model output",
+        }),
+      }));
+    }
+
+    if (hasQuantResearchSignal && countSatisfiedTermGroups(combinedText, ALPHA_DISCOVERY_TERM_GROUPS) < 3) {
+      constraints.push(makeConstraint({
+        id: "QU-C-008",
+        role: "quant",
+        constraint: "Plan must state a candidate alpha/edge mechanism, expected edge metric, falsification threshold, and next experiment before quant work is review-ready",
+        severity: "HIGH",
+        rationale: "Quant research should not terminate at generic no-alpha wording; the planner must force the next falsifiable alpha-search step.",
+        story_refs: storyRefs,
+        meta: iveMeta({
+          knowledgePack: "research_queue",
+          factTemplates: ["candidate_unrouted", "falsification_rule_missing", "next_experiment_missing"],
+          conceptGuards: ["no-alpha reports must still route the next falsifiable research action or accepted limitation"],
+          validNextActions: ["run_experiment", "ticket_now", "accept_limitation"],
+          verificationRequired: "candidate mechanism, proof metric, falsification threshold, and next experiment are recorded",
+          memoryGuard: "negative findings and killed candidates remain in the research queue ledger",
+        }),
       }));
     }
 
@@ -659,6 +835,125 @@ const quantPack = {
         severity: "HIGH",
         rationale: "A smoke run, wiring run, and serious optimization run have different evidentiary value; optimizer output is not research evidence unless scale and objective handling are explicit",
         story_refs: storyRefs,
+        meta: iveMeta({
+          knowledgePack: "experiment_charter",
+          factTemplates: ["optimizer_scale_missing", "run_class_ambiguous", "search_surface_missing"],
+          conceptGuards: ["smoke, wiring_proof, exploratory, serious_search, and promotion_candidate runs carry different claim boundaries"],
+          validNextActions: ["fix_now", "ticket_now", "accept_limitation"],
+          verificationRequired: "run class, trial count, parameter/search surface, objective handling, frozen inputs, sampled inputs, and controls are explicit",
+          memoryGuard: "optimizer output cannot be promoted without the run-scale contract",
+        }),
+      }));
+    }
+
+    if (
+      hasModelFamilySearchSignal &&
+      countSatisfiedTermGroups(combinedText, MODEL_SEARCH_CONTRACT_GROUPS) < 3
+    ) {
+      constraints.push(makeConstraint({
+        id: "QU-C-009",
+        role: "quant",
+        constraint: "Model-family, booster, or ensemble search plans must disclose family-specific searched/not-searched knobs, internal training modes, diagnostics, paired/control-adjusted comparisons, CI or selection-uncertainty method, and stale-result boundaries before interpreting output",
+        severity: "HIGH",
+        rationale: "Saying a family such as CatBoost or an ensemble was tried is not enough; boosted libraries and stacking policies have meaningful internal modes, and reports must prove those surfaces were searched or explicitly mark them not run before drawing model-selection conclusions.",
+        story_refs: storyRefs,
+        meta: iveMeta({
+          knowledgePack: "model_family_search",
+          factTemplates: ["model_family_search_coverage_missing", "stale_result_boundary_missing", "selection_uncertainty_missing"],
+          conceptGuards: ["trying a model family is not proof that its meaningful internal modes or ensemble surfaces were searched"],
+          validNextActions: ["run_experiment", "ticket_now", "accept_limitation"],
+          verificationRequired: "searched and not-searched knobs, diagnostics, paired/control-adjusted comparison, CI or selection uncertainty, and stale-result boundary are explicit",
+          memoryGuard: "model-family exhaustion claims require a coverage and stale-boundary ledger",
+        }),
+      }));
+    }
+
+    if (
+      hasQuantResearchSignal &&
+      hasExplorationSignal &&
+      countPresentTerms(combinedText, EXPLORATION_CONTRACT_TERMS) < 3
+    ) {
+      constraints.push(makeConstraint({
+        id: "QU-C-007",
+        role: "quant",
+        constraint: "Aggressive quant exploration must define hypothesis breadth, candidate ledger, triage threshold, kill/graduate criteria, artifact ledger, and explicit non-claim or promotion boundary",
+        severity: "HIGH",
+        rationale: "Exploration should be wide and fast, but without a ledger and kill/graduate contract it becomes hype-prone and hard to distinguish from promotion evidence.",
+        story_refs: storyRefs,
+        meta: iveMeta({
+          knowledgePack: "research_queue",
+          factTemplates: ["candidate_unrouted", "negative_finding_unrecorded", "allowed_claims_exceeded"],
+          conceptGuards: ["exploration maximizes learning breadth; it is not promotion evidence until frozen proof exists"],
+          validNextActions: ["run_experiment", "ticket_now", "accept_limitation"],
+          verificationRequired: "candidate ledger, triage threshold, kill criteria, graduate criteria, artifact ledger, and non-claim boundary are present",
+          memoryGuard: "explored, killed, graduated, not-run, and non-claim surfaces remain visible",
+        }),
+      }));
+    }
+
+    if (
+      hasStatisticalRigorSignal &&
+      countSatisfiedTermGroups(combinedText, STATISTICAL_RIGOR_CONTRACT_GROUPS) < 2
+    ) {
+      constraints.push(makeConstraint({
+        id: "QU-C-010",
+        role: "quant",
+        constraint: "Serious-search, model-selection, or promotion-grade quant claims must state bootstrap/CI or selection uncertainty, multiple-testing or DSR handling, sample floors, controls, and holdout/stability boundaries",
+        severity: "HIGH",
+        rationale: "Thin search output can look persuasive when the report shows only point estimates; IVE must route missing statistical rigor before any serious interpretation.",
+        story_refs: storyRefs,
+        meta: iveMeta({
+          knowledgePack: "statistical_rigor",
+          factTemplates: ["bootstrap_ci_missing", "dsr_missing", "multiple_testing_unrepaired", "sample_floor_failed"],
+          conceptGuards: ["promotion and serious-search language require uncertainty, multiplicity, sample-floor, control, and holdout boundaries"],
+          validNextActions: ["run_experiment", "accept_limitation", "report_only"],
+          verificationRequired: "bootstrap/CI or selection uncertainty, multiplicity or DSR handling, sample floor, controls, and holdout/stability proof are present; report_only is valid only after claim block",
+          memoryGuard: "serious quant claims must carry statistical-rigor proof or explicit diagnostic-only limitation",
+        }),
+      }));
+    }
+
+    if (
+      hasDegenerateOutputSignal &&
+      countPresentTerms(combinedText, DEGENERATE_OUTPUT_ROUTING_TERMS) < 1
+    ) {
+      constraints.push(makeConstraint({
+        id: "QU-C-011",
+        role: "quant",
+        constraint: "Degenerate quant outputs such as zero bets, zero trades, tiny samples, or empty signal surfaces must be routed to diagnosis, repair ticket, next experiment, claim block, or accepted limitation",
+        severity: "HIGH",
+        rationale: "A no-action policy or tiny-sample result is an ontology fact, not a presentational footnote; leaving it unrouted recreates IPBS-style report churn.",
+        story_refs: storyRefs,
+        meta: iveMeta({
+          knowledgePack: "degenerate_output",
+          factTemplates: ["policy_selected_zero_bets", "zero_trade_strategy", "tiny_sample_result", "empty_signal_surface", "degenerate_output_unrouted"],
+          conceptGuards: ["policy results must be distinguished from diagnostic selector output; zero selected actions cannot be promoted as usable policy ROI"],
+          validNextActions: ["fix_now", "ticket_now", "run_experiment", "accept_limitation"],
+          verificationRequired: "policy trace, diagnosis, ticket acceptance criteria, next experiment, claim block, or accepted limitation routes the degenerate fact",
+          memoryGuard: "future reports must keep degenerate outputs in the fact-routing ledger until routed",
+        }),
+      }));
+    }
+
+    if (
+      hasMetricLineageSignal &&
+      countSatisfiedTermGroups(combinedText, METRIC_LINEAGE_CONTRACT_GROUPS) < 2
+    ) {
+      constraints.push(makeConstraint({
+        id: "QU-C-012",
+        role: "quant",
+        constraint: "Capped, weighted, normalized, or transformed quant metrics must state raw metric, transformation lineage, aggregation formula, denominator, and sample count before report claims are trusted",
+        severity: "HIGH",
+        rationale: "Metric presentation drift can turn diagnostic transformed values into apparent raw performance; IVE must force the metric lineage before action or closure.",
+        story_refs: storyRefs,
+        meta: iveMeta({
+          knowledgePack: "metric_lineage",
+          factTemplates: ["raw_metric_missing", "transformed_metric_reported_as_raw", "weighted_unweighted_mixed"],
+          conceptGuards: ["raw, capped, weighted, normalized, and transformed metrics are different claim surfaces"],
+          validNextActions: ["fix_now", "ticket_now", "accept_limitation"],
+          verificationRequired: "raw values, transformation/capping/weighting lineage, formula, denominator, aggregation, and sample count are documented or limitation accepted",
+          memoryGuard: "metric reports must preserve raw-versus-transformed lineage in future validation artifacts",
+        }),
       }));
     }
 
@@ -673,6 +968,14 @@ const quantPack = {
         severity: "HIGH",
         rationale: "The planner must not accept report existence as proof; post-run numbers need an adversarial evidence audit before closeout or promotion.",
         story_refs: storyRefs,
+        meta: iveMeta({
+          knowledgePack: "validation_wiring",
+          factTemplates: ["quant_results_validation_missing", "strongest_counterargument_missing", "promotion_verdict_missing"],
+          conceptGuards: ["a report is presentation; quant_results_validation.json is the evidence route for result claims"],
+          validNextActions: ["fix_now", "ticket_now", "accept_limitation"],
+          verificationRequired: "machine-readable validation artifact records run class, controls, stability, confidence, counterargument, falsification criteria, presentation stamp, residual risk, and promotion verdict",
+          memoryGuard: "future result claims must cite the validation artifact rather than only markdown report prose",
+        }),
       }));
     }
 

@@ -20,8 +20,8 @@ ticket. After repair, executable work still goes through `/safe-change` or
 - Program Packet path or id
 - Ticket id
 - Ticket Intake Receipt or Review Packet when available
-- The advisory block, reproduced verbatim if it contains
-  `<<<DEEPSEEK_VERDICT_BEGIN>>>` and `<<<DEEPSEEK_VERDICT_END>>>`
+- DeepSeek advisory status/summary/artifact path when present; include the full
+  advisory block only if the operator explicitly requested verbose review output
 
 If the request is still only a broad idea, backlog item, GitHub Issue, or GitHub
 Project item with no local Program Packet ticket, stop and use `/program-manager`
@@ -29,10 +29,11 @@ intake first.
 
 ## Phase 1: Preserve The Receipt
 
-If the input contains a `deepseek_advisory_block`, reproduce it verbatim in the
-user-facing reply before summarizing or acting on it. Deterministic Program
-Packet, story, annotation, ontology, and verification evidence remains
-authoritative; DeepSeek is advisory only.
+If the input contains DeepSeek review data, preserve the compact status, summary,
+and artifact path in the user-facing reply before acting on it. Deterministic
+Program Packet, story, annotation, ontology, and verification evidence remains
+authoritative; DeepSeek is advisory only. The full `deepseek_advisory_block`
+stays in the artifact unless the user asks to inspect it.
 
 Record:
 - program packet path

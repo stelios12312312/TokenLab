@@ -24,6 +24,21 @@ The legacy `[WORKFLOW_AUTORUN:/advisor]` stdout marker is still emitted **only a
 
 When `/advisor` recommends `/steward`, `/program-manager`, `/ticket-traceability-repair`, or `/sme-improvement`, log that recommendation explicitly via `escalation_check.mjs log-recommendation` (commands at the bottom of this file).
 
+## IVE Advisory Authority Ladder
+
+Advisor and supervisor output is an advisory operator handoff. It can recommend, summarize, and critique, but it does not own deterministic gate state.
+
+Use this ladder whenever advisor output appears beside IVE or Program Packet evidence:
+
+```text
+deterministic checks and blockers
+-> advisor/supervisor recommendation
+-> operator-visible next command
+-> deterministic command result owns the state change
+```
+
+If the supervisor says `review_ready` or gives a green recommendation while deterministic checks show failures, keep the deterministic failures visible and route the next action through the deterministic blocker. The advisor block is compact proof that a review happened, not proof that a gate, story, ontology invariant, or Program Packet item is clear.
+
 ---
 
 ## Manual Recipe (Fallback when supervisor is unavailable)

@@ -133,9 +133,10 @@ compact compliance proof agents should paste or summarize before creating,
 reviewing, or publishing tickets. It records the `/program-manager` front door,
 source/action, Program Packet path, ticket id, story/gap/defect refs,
 acceptance-criteria refs, verification refs, deterministic status, advisory
-DeepSeek status, recurrence status/counts, quant persona gate status when
-applicable, and next required command. If the receipt is missing, rerun the
-appropriate `program_manager.mjs intake` command before touching GitHub.
+DeepSeek status/summary/artifact path, recurrence status/counts, quant persona
+gate status when applicable, and next required command. If the receipt is
+missing, rerun the appropriate `program_manager.mjs intake` command before
+touching GitHub.
 
 **Parallel intake for multi-epic programs (recommended when ≥2 epics).** Spawn one Explore subagent per epic in a single message with multiple Agent tool calls. Each subagent investigates that epic's scope, related code, and existing stories independently, writing to `plans/programs/<program-id>/findings/epic-{epic-id}.md`. The main agent reconciles findings before drafting the Program Packet. Worked example:
 
@@ -175,6 +176,9 @@ proposed -> ready -> in_progress -> blocked -> done -> verified -> closed
 ```
 
 `deferred` is allowed from any non-closed state only with an explicit decision.
+`submitted` and `review_ready` are accepted as review-facing compatibility
+aliases, but gates normalize them through effective lifecycle semantics; use
+ticket `review_status` for review state instead of overloading dispatch state.
 
 ### External GitHub Tickets
 
@@ -189,6 +193,7 @@ Use the ticket review CLI for the executable loop:
 ```bash
 node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs review --issue <n> --program <program-id-or-path> --ticket <ticket-id> --json
 node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs review --project-item <project-item-id-or-url> --program <program-id-or-path> --ticket <ticket-id> --write --json
+node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs review --issue <n> --program <program-id-or-path> --ticket <ticket-id> --show-deepseek-block --json
 ```
 
 Publish local tickets to GitHub only through an explicit publish command:
@@ -208,13 +213,14 @@ publish` only when GitHub should mirror the local ticket.
 Dry-run is the default. `--write` is required for Program Packet edits, Review
 Packet artifact writes, GitHub comments, labels, or Project Status updates. The
 command writes or updates ticket metadata fields `external_refs`,
-`review_artifacts`, `github_sync`, and deterministic `last_review_status`. It
-must not close GitHub issues unless `--close-github-issue` is passed.
+`review_artifacts`, `github_sync`, `review_status`, and deterministic
+`last_review_status`. It must not close GitHub issues unless
+`--close-github-issue` is passed.
 Review and publish results also emit a Ticket Intake Receipt so agents can show
-which local ticket, deterministic status, advisory status, and GitHub mirror
-action were used. Review Packets and GitHub review comments must include a
-**Retro Recurrence Check** section before advisory findings so prior mistakes
-are treated as current ticket risks, not only closeout history.
+which local ticket, deterministic status, advisory status/summary/artifact, and
+GitHub mirror action were used. Review Packets and GitHub review comments must
+include a **Retro Recurrence Check** section before advisory findings so prior
+mistakes are treated as current ticket risks, not only closeout history.
 Quant-shaped Review Packets and comments must include a **Quant Persona Gate**
 section before advisory findings. DeepSeek receives that gate in the packet and
 may critique the ticket, but it cannot override deterministic quant blockers.
@@ -237,6 +243,21 @@ story conflicts, annotation validation/assist, ontology serialization, and
 invariant checks, plus the hard quant persona gate for quant-shaped tickets.
 GitHub comments/status must surface deterministic failures even when DeepSeek
 reports `review_ready`.
+Default text output and GitHub comments show DeepSeek as compact proof:
+`status`, one-line `summary`, and local artifact path. Full fenced verdicts stay
+in JSON artifacts unless an operator passes `--show-deepseek-block`.
+
+### IVE Advisory Authority Ladder
+
+For IVE tickets, the Program Packet is the source of lifecycle truth.
+
+| Surface | Authority |
+|---|---|
+| Program Packet validation, story checks, ontology invariants, recurrence checks, quant gates, and child-plan verification | Own blockers, readiness, verified/closed state, and required next actions |
+| DeepSeek, secondary agent review, AVA, or other advisory review | Propose, summarize, and critique; may classify advisory status such as `review_ready`, `needs_story`, or `stale_advisory` |
+| GitHub Issue/Project item | Collaboration mirror of the local deterministic state |
+
+When advisory status is `review_ready` and deterministic status is blocked or failing, the review packet, GitHub comment, and project status must keep the deterministic failure visible. Advisory review cannot clear blockers, close tickets, or move a child plan to verified without deterministic evidence.
 
 ## Phase 3: Validate Program Gates
 
@@ -248,6 +269,13 @@ node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program
 node .agent/skills/iterative-planner/scripts/program_manager.mjs verify design-to-ready --program plans/programs/<program-id>/program_packet.json
 node .agent/skills/iterative-planner/scripts/program_manager.mjs verify ready-to-execution --program plans/programs/<program-id>/program_packet.json
 ```
+
+When `verify <gate> --write` passes deterministic validation and ontology
+checks, it advances program status: `design-to-ready -> ready`,
+`ready-to-execution -> executing`, `execution-to-program-validate -> validating`,
+and `validate-to-program-close -> closed`. Dry-runs and failed gates stay
+read-only, and output reports `previous_status`, `new_status`, and
+`transition_written`.
 
 Use `--remediate` on `check` or `verify` to turn blocked ticket advisory
 recommendations into explicit remediation task packets. Dry-run is default.

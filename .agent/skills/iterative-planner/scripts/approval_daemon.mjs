@@ -31,6 +31,7 @@ import { createInterface } from "readline";
 import { createServer } from "net";
 import { readStateJson, writeStateJson, acquireStateLock, NONCE_HEX_LEN, KB_SALT_HEX_LEN } from "./lib/determinism.mjs";
 import { loadFindingsLedger, syncFindingsMarkdownFromLedger } from "./lib/plan_utils.mjs";
+import { buildEnvelope, getEnvelopePath, computeCanonicalHash, REASON_CODES as PLAN_CONTRACT_REASON_CODES } from "./lib/plan_contract.mjs";
 
 const NONCE_DIR = join(homedir(), ".config", "iterative-planner");
 const SOCKET_PATH = join(NONCE_DIR, ".daemon.sock");
@@ -97,39 +98,73 @@ function countPlanFilesFromContent(content) {
   }).length;
 }
 
+// hashContent is retained ONLY for TOCTOU comparison between the file-count
+// read and the envelope build. State.json no longer carries an approval hash —
+// the approval envelope file is authoritative.
 function hashContent(content) {
   if (!content) return null;
-  // C1-FIX: 128-bit hash (was 64-bit)
-  // RT8-M3: Normalize line endings before hashing — prevents false hash mismatches
-  // when editors convert CRLF↔LF or add/remove trailing newlines.
   const normalized = content.replace(/\r\n/g, "\n").replace(/\n+$/, "\n");
   return createHash("sha256").update(normalized).digest("hex").slice(0, 32);
 }
 
-function storePlanHash(planDir, planHash) {
-  if (!planDir || !planHash) return false;
+// Write the plan-approval envelope as a single content-addressed file. Returns
+// true on success. The envelope file is the single record of approval; state.json
+// only stores a pointer (envelope_path) so consumers can find it deterministically.
+function writeApprovalEnvelope(planDir, envelope) {
+  if (!planDir || !envelope) return false;
   const releaseLock = acquireStateLock(planDir, 2000);
   if (!releaseLock) return false;
   try {
+    writeFileSync(getEnvelopePath(planDir), JSON.stringify(envelope, null, 2) + "\n");
     const sj = readStateJson(planDir);
-    if (sj) { sj.approved_plan_hash = planHash; writeStateJson(planDir, sj); return true; }
+    if (sj) {
+      sj.approval_envelope_path = ENVELOPE_POINTER_FIELD_VALUE;
+      sj.approval_envelope_schema = envelope.schema_version;
+      writeStateJson(planDir, sj);
+    }
+    return true;
   } finally { releaseLock(); }
-  return false;
 }
 
+const ENVELOPE_POINTER_FIELD_VALUE = "approval_envelope.json";
+
+// F-002 + sc_5: showPlanSummary used to read raw plan.md, while the system
+// hashed plan.md+plan.json. An attacker could write a benign plan.md +
+// malicious plan.json and the human would approve the benign one. The new
+// envelope contract already FAILs construction on projection drift, so the
+// summary just reads plan.md (which is now guaranteed to be the projection).
+// We still warn explicitly if plan.json exists, so the operator knows the
+// envelope contract is the source of truth.
 function showPlanSummary(planDir) {
   const planPath = join(planDir, "plan.md");
   if (!existsSync(planPath)) { console.log(`  (plan.md not found)`); return; }
+  const hasJson = existsSync(join(planDir, "plan.json"));
   const lines = readFileSync(planPath, "utf-8").split("\n").slice(0, 30);
-  console.log("\n┌─── Plan Summary ───────────────────────────────────┐");
+  console.log(`\n┌─── Plan Summary ${hasJson ? "(plan.md + plan.json envelope) " : "(plan.md only) "}───────────┐`);
   for (const line of lines) console.log(`  ${line}`);
   console.log("└────────────────────────────────────────────────────┘");
+  if (hasJson) {
+    console.log("  ℹ plan.json present — approval will FAIL if plan.md does not match its projection.");
+  }
 }
 
-function approve(payload, { writeKbDigest = true, planHash = null, planDir = null } = {}) {
+function approve(payload, { writeKbDigest = true, planDir = null, approverOrigin = "interactive" } = {}) {
   const resolvedPlanDir = planDir || resolvePlanDir(payload);
   if (!resolvedPlanDir) {
     console.error(`  ERROR: Plan directory not found for "${payload.plan}"`);
+    return false;
+  }
+
+  // Build and validate the envelope. This is the single coherent contract
+  // construction point — projection equivalence, duplicate-key rejection,
+  // canonical hashing, and schema validation all happen here. No legacy
+  // approved_plan_hash fallback exists in the verifier.
+  const buildResult = buildEnvelope(resolvedPlanDir, {
+    approvalNonce: payload.approval_nonce,
+    approverOrigin,
+  });
+  if (!buildResult.envelope) {
+    console.error(`  ✗ Rejecting "${payload.plan}" — envelope construction failed: [${buildResult.reason_code}] ${buildResult.detail}`);
     return false;
   }
 
@@ -157,7 +192,12 @@ function approve(payload, { writeKbDigest = true, planHash = null, planDir = nul
   } else {
     writeFileSync(decisionsPath, `# Decisions\n${approvalTag}`);
   }
-  if (planHash) storePlanHash(resolvedPlanDir, planHash);
+  // Write the envelope file as the single record of approval.
+  if (!revalidatePath(resolvedPlanDir)) return false;
+  if (!writeApprovalEnvelope(resolvedPlanDir, buildResult.envelope)) {
+    console.error(`  ✗ Rejecting "${payload.plan}" — could not acquire lock to write envelope`);
+    return false;
+  }
   if (writeKbDigest && payload.kb_digest_salt) {
     const findingsPath = join(resolvedPlanDir, "findings.md");
     const kbTag = `\n[KB_DIGEST:${payload.kb_digest_salt}]\n`;
@@ -241,16 +281,19 @@ async function processPayload(payload, { fromSocket = false, noncePath = null } 
       return "skipped";
     }
     const planHash = hashContent(planContent);
-    // RT8-H3: TOCTOU defense — re-read and re-hash plan.md immediately before approve.
-    // Between the initial read (file count check) and approve(), plan.md could be modified
-    // to add more files, bypassing the MAX_AUTO_APPROVE_FILES safety gate.
+    const preSourceHash = computeCanonicalHash(planDir);
+    // RT8-H3 + sc_7: TOCTOU defense covering BOTH plan.md and plan.json. Re-read
+    // both files immediately before approve(); if either changed between the
+    // file-count check and now, refuse so the MAX_AUTO_APPROVE_FILES safety gate
+    // cannot be bypassed by an in-flight edit.
     const freshContent = readPlanContent(planDir);
     const freshHash = hashContent(freshContent);
-    if (freshHash !== planHash) {
-      console.log(`  ⚠ Rejecting "${payload.plan}" — plan.md was modified during approval check (TOCTOU defense).`);
+    const freshSourceHash = computeCanonicalHash(planDir);
+    if (freshHash !== planHash || freshSourceHash !== preSourceHash) {
+      console.log(`  ⚠ Rejecting "${payload.plan}" — plan.md or plan.json was modified during approval check (TOCTOU defense).`);
       return "error";
     }
-    if (approve(payload, { writeKbDigest: false, planHash, planDir })) {
+    if (approve(payload, { writeKbDigest: false, planDir, approverOrigin: "auto" })) {
       console.log(`  ✓ Auto-approved safe-change plan "${payload.plan}" (${fileCount} file${fileCount !== 1 ? "s" : ""})`);
       if (noncePath) try { unlinkSync(noncePath); } catch { /* gone */ }
       return "approved";
@@ -264,13 +307,26 @@ async function processPayload(payload, { fromSocket = false, noncePath = null } 
   if (payload.workflow_type) console.log(`  Workflow type: ${payload.workflow_type}`);
   if (planDir) showPlanSummary(planDir);
 
+  // sc_7: Snapshot plan.md AND plan.json hashes BEFORE asking the user. The
+  // interactive branch now mirrors the auto branch's TOCTOU defense — any
+  // mutation during the human pause aborts approval.
+  const preContent = readPlanContent(planDir);
+  const preHash = hashContent(preContent);
+  const preSourceHash = computeCanonicalHash(planDir);
+
   const answer = await ask(`\n  Approve plan "${payload.plan}"? [y/n]: `);
   if (answer === "y" || answer === "yes") {
-    const planContent = readPlanContent(planDir);
-    const planHash = hashContent(planContent);
-    if (approve(payload, { planHash, planDir })) {
+    const postContent = readPlanContent(planDir);
+    const postHash = hashContent(postContent);
+    const postSourceHash = computeCanonicalHash(planDir);
+    if (postHash !== preHash || postSourceHash !== preSourceHash) {
+      console.log(`  ⚠ Rejecting "${payload.plan}" — plan.md or plan.json was modified during the approval prompt (TOCTOU defense).`);
+      if (noncePath) try { unlinkSync(noncePath); } catch { /* gone */ }
+      return "error";
+    }
+    if (approve(payload, { planDir, approverOrigin: "interactive" })) {
       console.log(`  ✓ Approved — [APPROVED:***] written to decisions.md`);
-      if (planHash) console.log(`  ✓ Plan hash stored in state.json`);
+      console.log(`  ✓ Plan-approval envelope written to ${getEnvelopePath(planDir)}`);
       if (payload.kb_digest_salt) console.log(`  ✓ KB digest proof written to findings.md and findings_ledger.json when present`);
       if (noncePath) try { unlinkSync(noncePath); } catch { /* gone */ }
       return "approved";

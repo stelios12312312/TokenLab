@@ -15,6 +15,21 @@ Use this workflow when you need the planner ontology itself rather than a broade
 
 This workflow is intentionally deterministic. The ontology remains YAML-authored or YAML-induced; Prolog stays generated; the workflow never asks the LLM to invent ontology truth.
 
+## IVE Advisory Proposal Boundary
+
+Advisory reviewers may notice missing facts, stale routes, or contradictory claims, but those observations are proposals until this workflow or another planner-owned route validates them.
+
+Use this authority ladder:
+
+```text
+canonical ontology YAML or planner-owned source surface
+-> deterministic ontology validate/build/query
+-> advisory proposal attached as evidence
+-> planner-owned apply, rejection, rectification, or follow-up ticket
+```
+
+If an advisory reviewer reports `review_ready` while ontology validation fails, validation remains authoritative and the failure stays visible. Advisory output cannot mutate canonical YAML, generated Prolog, active ontology files, or blocker state.
+
 ## Phase 1: Validate The Current Surface
 
 Run these first:

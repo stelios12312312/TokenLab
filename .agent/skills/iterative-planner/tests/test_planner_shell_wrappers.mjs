@@ -182,10 +182,12 @@ function scenarioMigrateAllProjectsShell() {
   try {
     const localScript = join(tmp, ".agent/scripts/migrate-all-projects.sh");
     const localSync = join(tmp, ".agent/scripts/sync-instructions.sh");
+    const skillScriptsDir = join(tmp, ".agent/skills/iterative-planner/scripts");
     const skillConfigDir = join(tmp, ".agent/skills/iterative-planner/config");
     const target = join(tmp, "consumer project");
 
     mkdirSync(join(tmp, ".agent/scripts"), { recursive: true });
+    mkdirSync(skillScriptsDir, { recursive: true });
     mkdirSync(skillConfigDir, { recursive: true });
     mkdirSync(join(target, ".agent"), { recursive: true });
 
@@ -193,6 +195,17 @@ function scenarioMigrateAllProjectsShell() {
     chmodSync(localScript, 0o755);
     writeFileSync(localSync, "#!/usr/bin/env bash\necho sync\n");
     chmodSync(localSync, 0o755);
+    writeFileSync(join(skillScriptsDir, "migrate.mjs"), `#!/usr/bin/env node
+import { existsSync, readFileSync, writeFileSync } from 'fs';
+import { join } from 'path';
+const [, , command, target] = process.argv;
+if (command !== 'sync-instructions' || !target) process.exit(1);
+const template = readFileSync(join(process.cwd(), 'CLAUDE.md'), 'utf8');
+for (const name of ['GEMINI.md', 'AGENTS.md']) {
+  const path = join(target, name);
+  if (!existsSync(path)) writeFileSync(path, template);
+}
+`);
 
     writeFileSync(join(tmp, ".agent/rules.md"), `# Planner Rules
 
@@ -224,7 +237,7 @@ Preserve project-specific guidance.
     assert(existsSync(join(target, ".agent/scripts/sync-instructions.sh")), "migrate-all installs sync-instructions.sh into the target project");
     assert(readFileSync(join(target, ".agent/rules.md"), "utf-8").includes("## 0. Use the Iterative Planner"), "migrate-all injects Rule 0 into target rules.md");
     assert(readFileSync(join(target, "CLAUDE.md"), "utf-8") === "# Canonical planner instructions\n", "migrate-all creates CLAUDE.md from the planner template");
-    assert(existsSync(join(target, "GEMINI.md")) && existsSync(join(target, "AGENTS.md")), "migrate-all syncs GEMINI.md and AGENTS.md from CLAUDE.md");
+    assert(existsSync(join(target, "GEMINI.md")) && existsSync(join(target, "AGENTS.md")), "migrate-all delegates root instruction snapshot sync to migrate.mjs");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }

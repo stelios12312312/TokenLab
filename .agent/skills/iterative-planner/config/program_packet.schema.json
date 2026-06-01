@@ -90,7 +90,12 @@
           },
           "lifecycle": {
             "type": "string",
-            "enum": ["proposed", "ready", "in_progress", "blocked", "done", "verified", "closed", "deferred"]
+            "enum": ["proposed", "submitted", "review_ready", "ready", "in_progress", "blocked", "done", "verified", "closed", "deferred"]
+          },
+          "review_status": {
+            "type": "string",
+            "enum": ["not_run", "submitted", "fresh", "needs_story", "needs_annotation", "needs_verification", "ontology_conflict", "blocked", "review_ready", "unavailable"],
+            "description": "Deterministic/advisory ticket review status. Execution lifecycle remains authoritative for dispatch and close semantics."
           },
           "story_refs": { "type": "array", "items": { "type": "string" } },
           "defect_refs": { "type": "array", "items": { "type": "string" } },
@@ -145,7 +150,7 @@
                 "kind": { "type": "string" },
                 "status": {
                   "type": "string",
-                  "enum": ["fresh", "needs_story", "needs_annotation", "needs_verification", "ontology_conflict", "blocked", "review_ready", "unavailable"]
+                  "enum": ["not_run", "submitted", "fresh", "needs_story", "needs_annotation", "needs_verification", "ontology_conflict", "blocked", "review_ready", "unavailable"]
                 },
                 "generated_at": { "type": "string" }
               },
@@ -159,7 +164,7 @@
               "last_synced_at": { "type": "string" },
               "last_review_status": {
                 "type": "string",
-                "enum": ["blocked", "review_ready"]
+                "enum": ["not_run", "submitted", "fresh", "needs_story", "needs_annotation", "needs_verification", "ontology_conflict", "blocked", "review_ready", "unavailable"]
               },
               "last_issue_url": { "type": ["string", "null"] },
               "last_comment_url": { "type": ["string", "null"] },
@@ -170,7 +175,7 @@
           },
           "last_review_status": {
             "type": "string",
-            "enum": ["blocked", "review_ready"],
+            "enum": ["not_run", "submitted", "fresh", "needs_story", "needs_annotation", "needs_verification", "ontology_conflict", "blocked", "review_ready", "unavailable"],
             "description": "Deterministic ticket review status. Advisory LLM classifications do not mark tickets verified."
           }
         },

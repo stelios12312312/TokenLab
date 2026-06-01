@@ -22,6 +22,9 @@
 %%   anti_recurrence_required(true/false)
 %%   anti_recurrence_satisfied(true/false)
 %%   intent_evidence_satisfied(true/false)
+%%   review_intake_required(true/false)
+%%   review_intake_satisfied(true/false)
+%%   review_intake_unresolved_required_count(N)
 
 phase_index(explore, 1).
 phase_index(plan, 2).
@@ -111,6 +114,7 @@ can_transition(validate, close) :-
     test_evidence_satisfied(true),
     anti_recurrence_satisfied(true),
     intent_evidence_satisfied(true),
+    review_intake_satisfied(true),
     \+ learned_obligation_missing_now.
 
 %% REFLECT → RE_PLAN: always allowed (failure understood)
@@ -183,6 +187,9 @@ missing_guard(validate, close, anti_recurrence_guard_missing) :-
     \+ anti_recurrence_satisfied(true).
 missing_guard(validate, close, intent_evidence_missing) :-
     \+ intent_evidence_satisfied(true).
+missing_guard(validate, close, review_intake_unresolved) :-
+    review_intake_required(true),
+    \+ review_intake_satisfied(true).
 missing_guard(validate, close, learned_obligation_missing) :-
     learned_obligation_missing_now.
 

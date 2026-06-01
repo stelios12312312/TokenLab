@@ -9,6 +9,7 @@ import { execFileSync } from "child_process";
 import { tmpdir } from "os";
 import { createInitialStateJson, writeStateJson } from "../scripts/lib/determinism.mjs";
 import { parseSimpleYaml, resolveFindingsTruth } from "../scripts/lib/plan_utils.mjs";
+import { detectPlanShape } from "../scripts/lib/plan_shape.mjs";
 import { decidePersonaPackActivation } from "../scripts/lib/persona_activation_authority.mjs";
 import { computeVerificationObligationSynthesis } from "../scripts/lib/verification_obligations.mjs";
 import { analyzeVerificationMatrix, extractSuccessCriteria } from "../scripts/lib/verification_matrix.mjs";
@@ -624,7 +625,9 @@ The model will use positive_return to find market inefficiency in betting prices
     assert(constraintIds.includes("QU-C-004"), "quant constraints require data-source and lineage contracts");
     assert(constraintIds.includes("QU-C-005"), "quant constraints require optimizer run-scale disclosure");
     assert(constraintIds.includes("QU-C-006"), "quant constraints require post-run quant_results_validation.json for result claims");
+    assert(constraintIds.includes("QU-C-008"), "quant constraints require an alpha discovery loop for review-ready quant work");
     assert((quantPack.getPhaseGuidance("reflect", {}) || "").includes("quant_results_validation.json"), "quant reflect guidance requires machine-readable post-run validation");
+    assert((quantPack.getPhaseGuidance("reflect", {}) || "").includes("next_alpha_hypothesis"), "quant reflect guidance requires next-alpha learning from non-diagnostic results");
     assert((quantPack.getPhaseGuidance("validate", {}) || "").includes("close_signals.quant_results_validation"), "quant validate guidance checks the close signal");
 
     const targetConstraints = quantTargetPack.getPlanConstraints({
@@ -1049,7 +1052,7 @@ function scenarioPersonaAdaptation() {
 
   const activePlannerCore = makeTemp("active-planner-core-persona-authority");
   try {
-    writeAuditConfig(activePlannerCore, { roles: ["core", "quant", "assumptions_challenger", "config_integrity", "traceability"], auto_committee: true });
+    writeAuditConfig(activePlannerCore, { roles: ["core", "quant", "quant_research_protocol", "assumptions_challenger", "config_integrity", "traceability"], auto_committee: true });
     mkdirSync(join(activePlannerCore, "plans", "plan_authority"), { recursive: true });
     writeFileSync(join(activePlannerCore, "plans", ".current_plan"), "plan_authority\n");
     writeStateJson(join(activePlannerCore, "plans", "plan_authority"), {
@@ -1082,6 +1085,13 @@ Implement persona activation authority
     assert((report?.suppressed_domain_profiles || []).includes("quant"), "active planner-core persona scan reports quant as suppressed");
     assert((report?.suppressed_domain_profiles || []).includes("frontend"), "active planner-core persona scan reports frontend as suppressed");
     assert(!String(report?.recommended_command || "").includes("apply . --safe"), "active planner-core advisory does not emit a bogus safe-apply command");
+
+    const health = run([join(scriptDir, "project_health.mjs"), "--quick", "--json"], activePlannerCore);
+    const healthReport = parseJson(health);
+    const healthAnalyzers = (healthReport?.findings || []).map((entry) => String(entry?.analyzer || ""));
+    assert(!!healthReport, "project_health emits JSON for active planner-core persona authority fixture");
+    assert(!healthAnalyzers.some((name) => name.startsWith("[quant]")), "project_health suppresses quant findings for planner-core active plan");
+    assert(!healthAnalyzers.some((name) => name.startsWith("[ux_ui]")), "project_health suppresses ux_ui findings for planner-core active plan");
   } finally {
     try { rmSync(activePlannerCore, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -1139,10 +1149,21 @@ function scenarioPersonaActivationAuthority() {
     try { return JSON.parse(result.stdout); } catch { return null; }
   };
 
+  const personaAuthorityShape = detectPlanShape({ goalText: "Implement IVE ticket #9 Resolve persona config authority" });
+  assert(personaAuthorityShape.primary === "planner-core", "persona config authority goals classify as planner-core before files are listed");
+
   const plannerQuant = decidePersonaPackActivation("quant", { planShape: { primary: "planner-core" } });
   assert(plannerQuant.authority === "suppressed" && plannerQuant.may_load === false, "persona authority suppresses quant for planner-core scope");
+  const analysisQuantProtocol = decidePersonaPackActivation("quant_research_protocol", { planShape: { primary: "analysis" } });
+  assert(analysisQuantProtocol.authority === "suppressed" && analysisQuantProtocol.may_load === false, "persona authority suppresses project-local quant research protocol for analysis scope");
+  const plannerResearchProtocol = decidePersonaPackActivation("quant_research_protocol", { planShape: { primary: "planner-core" } });
+  assert(plannerResearchProtocol.authority === "suppressed" && plannerResearchProtocol.may_load === false, "persona authority suppresses project-local quant_research_protocol for planner-core scope");
   const forcedQuant = decidePersonaPackActivation("quant", { planShape: { primary: "planner-core" }, forcePacks: ["quant"] });
   assert(forcedQuant.authority === "forced" && forcedQuant.may_load === true, "persona authority preserves force_packs override");
+  const forcedQuantProtocol = decidePersonaPackActivation("quant_research_protocol", { planShape: { primary: "analysis" }, forcePacks: ["quant_research_protocol"] });
+  assert(forcedQuantProtocol.authority === "forced" && forcedQuantProtocol.may_load === true, "persona authority preserves force_packs override for project-local quant protocol");
+  const forcedResearchProtocol = decidePersonaPackActivation("quant_research_protocol", { planShape: { primary: "planner-core" }, forcePacks: ["quant_research_protocol"] });
+  assert(forcedResearchProtocol.authority === "forced" && forcedResearchProtocol.may_load === true, "persona authority preserves force_packs override for project-local research protocol");
   const scientificQuant = decidePersonaPackActivation("quant", { planShape: { primary: "scientific" } });
   assert(scientificQuant.authority === "active" && scientificQuant.may_synthesize_obligation === true, "persona authority keeps quant active for scientific scope");
 
@@ -3021,6 +3042,47 @@ Trace ontology smoke test
   }
 }
 
+function scenarioOntologySerializerReviewIntake() {
+  const tmp = makeTemp("ontology-review-intake");
+  try {
+    const planDir = seedActivePlan(tmp, "plan_ontology_review_intake");
+    mkdirSync(join(planDir, "review_intake_sources"), { recursive: true });
+    writeFileSync(join(planDir, "plan.md"), `# Plan v1
+
+## Goal
+Ensure review findings are represented in the ontology.
+
+## Success Criteria
+1. Required review findings block close until dispositioned.
+`);
+    writeFileSync(join(planDir, "review_intake_sources", "llm_drift_gate_validate-to-close.json"), JSON.stringify({
+      status: "stale_blocking",
+      findings: [
+        {
+          id: "serializer_fixture",
+          classification: "stale_blocking",
+          surface: "verify_gate.mjs",
+          claim: "Review finding must not disappear before close",
+          reason: "DeepSeek/advisor output needs a deterministic disposition path.",
+        },
+      ],
+    }, null, 2));
+
+    const result = run([join(scriptDir, "ontology_serializer.mjs"), "--json", "--dir", tmp], tmp);
+    assert(result.ok, "ontology_serializer exits cleanly with review-intake sources");
+    let parsed = null;
+    try { parsed = JSON.parse(result.stdout); } catch { /* asserted below */ }
+    assert(!!parsed, "ontology_serializer emits valid JSON for review-intake sources");
+    assert(parsed?.meta?.review_intake_items === 1, "ontology_serializer counts review-intake items in metadata");
+    assert(parsed?.facts?.some((fact) => fact.includes("review_intake_required(true)")), "ontology_serializer marks required review intake");
+    assert(parsed?.facts?.some((fact) => fact.includes("review_intake_satisfied(false)")), "ontology_serializer marks unresolved review intake as unsatisfied");
+    assert(parsed?.facts?.some((fact) => fact.includes("review_item_required('llm:stale_blocking:serializer_fixture')")), "ontology_serializer emits required review item facts");
+    assert(parsed?.facts?.some((fact) => fact.includes("review_item_unresolved('llm:stale_blocking:serializer_fixture')")), "ontology_serializer emits unresolved review item facts");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
 function scenarioOntologySerializerLedger() {
   const tmp = makeTemp("ontology-ledger");
   try {
@@ -3646,12 +3708,12 @@ function scenarioBootstrapStatusIgnoresRootInstructionSyncAdvisories() {
     let doctorJson = null;
     try { doctorJson = JSON.parse(doctor.stdout); } catch { /* asserted below */ }
     assert(!!doctorJson, "doctor emits valid JSON for root-instruction advisory drift");
-    assert(doctorJson?.needs_repair === false, "doctor does not mark root-instruction sync drift as repairable");
-    assert((doctorJson?.advisory_issues || []).some((entry) => entry.code === "root_instruction_sync_drift"), "doctor surfaces root-instruction sync drift as an advisory");
+    assert(doctorJson?.needs_repair === false, "doctor does not mark custom root instructions as repairable drift");
+    assert((doctorJson?.advisory_issues || []).length === 0, "doctor leaves unmarked custom root instructions advisory-clean");
 
     const result = run([join(tmp, ".agent", "skills", "iterative-planner", "scripts", "bootstrap.mjs"), "status"], tmp);
-    assert(result.ok, "bootstrap status exits cleanly when only root-instruction advisories exist");
-    assert(!(result.stdout + result.stderr).includes("Planner Self-Heal"), "bootstrap status skips self-heal for advisory-only root instruction drift");
+    assert(result.ok, "bootstrap status exits cleanly when custom root instructions are intentionally host-owned");
+    assert(!(result.stdout + result.stderr).includes("Planner Self-Heal"), "bootstrap status skips self-heal for host-owned custom root instructions");
     assert((result.stdout + result.stderr).includes("No active plan."), "bootstrap status still executes the requested command");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
@@ -4304,6 +4366,7 @@ scenarioSuggestNextFlagsMissingIntentCapture();
 scenarioSuggestNextReadsWorkflowAuditLog();
 scenarioSuggestNextRecommendsStewardForClusteredSignals();
 scenarioOntologySerializer();
+scenarioOntologySerializerReviewIntake();
 scenarioOntologySerializerLedger();
 scenarioOntologySerializerLearnedObligation();
 scenarioOntologySerializerIntentContract();

@@ -40,6 +40,26 @@ import {
   registryPathFromEnv,
 } from "./lib/persona_adaptation.mjs";
 import { attachSemanticHealth } from "./lib/semantic_maintenance.mjs";
+import {
+  buildEnvelope as buildPlanEnvelope,
+  getEnvelopePath as getPlanEnvelopePath,
+  validateEnvelopeAgainstDisk as validatePlanEnvelopeAgainstDisk,
+  assertProjectionEquivalence as assertPlanProjectionEquivalence,
+  assertNoDuplicateKeys as assertPlanNoDuplicateKeys,
+  REASON_CODES as PLAN_CONTRACT_REASON_CODES,
+} from "./lib/plan_contract.mjs";
+import { readStateJson as readPlanStateJson, writeStateJson as writePlanStateJson } from "./lib/determinism.mjs";
+import {
+  ROOT_INSTRUCTION_SOURCE_OF_TRUTH,
+  ROOT_INSTRUCTION_TARGETS,
+  ROOT_INSTRUCTION_SECTION_HEADINGS,
+  collectCanonicalRootInstructionSections,
+  rootInstructionsLookPlannerManaged,
+  rootInstructionSnapshotPresent,
+  rootInstructionsHaveCurrentFrontDoors,
+  renderRootInstructionTarget,
+  rootInstructionParityStatus,
+} from "./lib/root_instruction_renderer.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -58,15 +78,6 @@ const PRE_COMMIT_SECTION_MARKER = "# --- iterative-planner ripple-check hook ---
 const PRE_COMMIT_DIRECT_MARKER = "iterative-planner managed pre-commit hook";
 const LEGACY_PRE_COMMIT_SENTINEL = "Planner files staged — running ripple-through check...";
 const CONFLICTED_COPY_PATTERN = /conflicted copy/i;
-const ROOT_INSTRUCTION_CANONICAL_COMMENT = "Canonical source: CLAUDE.md. Synced to GEMINI.md and AGENTS.md via .agent/scripts/sync-instructions.sh";
-const ROOT_INSTRUCTION_SNAPSHOT_START = "<!-- BEGIN ITERATIVE-PLANNER MANAGED SNAPSHOT -->";
-const ROOT_INSTRUCTION_SNAPSHOT_END = "<!-- END ITERATIVE-PLANNER MANAGED SNAPSHOT -->";
-const ROOT_INSTRUCTION_SECTION_HEADINGS = [
-  "## Domain Persona Autorun",
-  "## Transition Gate Quick Reference",
-  "## Available Workflows",
-  "## Key References",
-];
 const RUN_NODE_COMMAND = "sh .agent/skills/iterative-planner/scripts/hooks/run-node.sh";
 const TELEMETRY_HOOK_COMMAND = `${RUN_NODE_COMMAND} .agent/skills/iterative-planner/scripts/hooks/post_tool_use.mjs`;
 const TELEMETRY_SETTINGS_CANDIDATES = [
@@ -198,80 +209,10 @@ function walkDir(dir, filter = () => true) {
 
 function findRootInstructionTemplatePath(targetBase) {
   const candidates = [
-    join(targetBase, "references", "CLAUDE.template.md"),
+    join(targetBase, "references", basename(ROOT_INSTRUCTION_SOURCE_OF_TRUTH.template_path)),
     join(agentDir, "..", "CLAUDE.md"),
   ];
   return candidates.find((candidate) => existsSync(candidate)) || null;
-}
-
-function extractMarkdownSection(content, heading) {
-  const text = String(content || "").replace(/\r\n/g, "\n");
-  const start = text.indexOf(heading);
-  if (start === -1) return null;
-
-  const nextHeadingRegex = /^##\s+/gm;
-  nextHeadingRegex.lastIndex = start + heading.length;
-  let end = text.length;
-  let match;
-  while ((match = nextHeadingRegex.exec(text))) {
-    if (match.index > start) {
-      end = match.index;
-      break;
-    }
-  }
-  return text.slice(start, end).trim();
-}
-
-function collectCanonicalRootInstructionSections(templateContent) {
-  return ROOT_INSTRUCTION_SECTION_HEADINGS
-    .map((heading) => extractMarkdownSection(templateContent, heading))
-    .filter(Boolean);
-}
-
-function rootInstructionsLookPlannerManaged(content) {
-  const text = String(content || "");
-  return text.includes(ROOT_INSTRUCTION_CANONICAL_COMMENT) || text.includes("# Project Instructions — Iterative Planner");
-}
-
-function rootInstructionSnapshotPresent(content) {
-  const text = String(content || "");
-  return text.includes(ROOT_INSTRUCTION_SNAPSHOT_START) && text.includes(ROOT_INSTRUCTION_SNAPSHOT_END);
-}
-
-function rootInstructionsHaveCurrentFrontDoors(content, canonicalSections) {
-  if (!String(content || "").trim()) return false;
-  return canonicalSections.every((section) => String(content || "").includes(section));
-}
-
-function buildManagedRootInstructionSnapshot(canonicalSections) {
-  return [
-    ROOT_INSTRUCTION_SNAPSHOT_START,
-    "## Planner Runtime Snapshot (Managed)",
-    "",
-    "This planner-managed snapshot is refreshed by `migrate.mjs setup` and `migrate.mjs upgrade`.",
-    "If older planner instructions elsewhere in this file disagree, follow this snapshot.",
-    "",
-    ...canonicalSections.flatMap((section, index) => index === 0 ? [section] : ["", section]),
-    ROOT_INSTRUCTION_SNAPSHOT_END,
-  ].join("\n");
-}
-
-function applyManagedRootInstructionSnapshot(content, canonicalSections) {
-  const text = String(content || "").replace(/\r\n/g, "\n");
-  const snapshot = buildManagedRootInstructionSnapshot(canonicalSections);
-  const start = text.indexOf(ROOT_INSTRUCTION_SNAPSHOT_START);
-  const end = text.indexOf(ROOT_INSTRUCTION_SNAPSHOT_END);
-
-  if (start !== -1 && end !== -1 && end > start) {
-    const before = text.slice(0, start).replace(/\s*$/, "");
-    const after = text.slice(end + ROOT_INSTRUCTION_SNAPSHOT_END.length).replace(/^\s*/, "");
-    return `${before}\n\n${snapshot}\n\n${after}`.replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
-  }
-
-  const prefixMatch = text.match(/^((?:#.*\n)?(?:<!--[\s\S]*?-->\n)?\n*)/);
-  const prefix = prefixMatch?.[1] || "";
-  const remainder = text.slice(prefix.length).replace(/^\s*/, "");
-  return `${prefix}${snapshot}\n\n${remainder}`.replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
 }
 
 // ---------------------------------------------------------------------------
@@ -337,7 +278,13 @@ function buildExpectedManifest(targetPath) {
     for (const f of listManagedDirNames(sourceConfigDir, (name) =>
       name.endsWith(".json") || name.endsWith(".schema.json") || name === ".checklist_integrity"
     )) {
-      entries.push({ path: join(base, "config", f), category: "config", critical: true });
+      const entry = { path: join(base, "config", f), category: "config", critical: true };
+      // persona_manifest.json is environment-specific: rebaselined_at timestamp and
+      // recommended_seed_roles depend on the target project's domain inference, not
+      // the source planner. Doctor/verify must not compare its byte content to the
+      // source — content drift here is expected after a successful upgrade.
+      if (f === "persona_manifest.json") entry.allow_content_drift = true;
+      entries.push(entry);
     }
   }
 
@@ -2208,44 +2155,127 @@ function findStaleFiles(manifest, targetPath) {
   return stale;
 }
 
-function findRootInstructionSyncIssues(targetPath) {
-  const claudePath = join(targetPath, "CLAUDE.md");
-  if (!existsSync(claudePath)) return [];
-
-  const advisories = [];
+function loadRootInstructionCanonical(targetPath) {
   const targetBase = join(targetPath, ".agent", "skills", "iterative-planner");
   const templatePath = findRootInstructionTemplatePath(targetBase);
   const templateContent = templatePath ? readFile(templatePath) : null;
   const canonicalSections = collectCanonicalRootInstructionSections(templateContent);
-  const claudeContent = readFile(claudePath);
-  if (
-    canonicalSections.length === ROOT_INSTRUCTION_SECTION_HEADINGS.length &&
-    rootInstructionsLookPlannerManaged(claudeContent) &&
-    !rootInstructionsHaveCurrentFrontDoors(claudeContent, canonicalSections)
-  ) {
-    advisories.push({
-      path: claudePath,
-      category: "root-instructions",
-      critical: false,
-      code: "stale_root_instruction_front_doors",
-      repair_via: "setup",
-    });
+  return {
+    targetBase,
+    templatePath,
+    templateContent,
+    canonicalSections,
+    valid: !!templateContent && canonicalSections.length === ROOT_INSTRUCTION_SECTION_HEADINGS.length,
+  };
+}
+
+function syncRootInstructionSurfaces(targetPath, { dryRun = false, log = null } = {}) {
+  const canonical = loadRootInstructionCanonical(targetPath);
+  const report = {
+    source_of_truth: ROOT_INSTRUCTION_SOURCE_OF_TRUTH,
+    template_path: canonical.templatePath,
+    status: canonical.valid ? "ok" : "invalid_template",
+    dry_run: dryRun,
+    targets: [],
+  };
+
+  if (!canonical.valid) {
+    if (log) log.push("  SKIP: root instruction template is missing required canonical sections");
+    return report;
   }
 
-  const claudeHash = fileHash(claudePath);
-  if (!claudeHash) return advisories;
+  for (const target of ROOT_INSTRUCTION_TARGETS) {
+    const targetPathAbs = join(targetPath, target.path);
+    const exists = existsSync(targetPathAbs);
+    if (!exists && !target.create_by_default) {
+      const entry = {
+        id: target.id,
+        path: target.path,
+        agents: target.agents,
+        status: "skipped_optional_absent",
+        changed: false,
+        managed: false,
+      };
+      report.targets.push(entry);
+      continue;
+    }
 
-  for (const name of ["GEMINI.md", "AGENTS.md"]) {
-    const otherPath = join(targetPath, name);
-    if (!existsSync(otherPath)) continue;
-    const otherHash = fileHash(otherPath);
-    if (otherHash && otherHash !== claudeHash) {
+    const existingContent = exists ? readFile(targetPathAbs) || "" : "";
+    const rendered = renderRootInstructionTarget({
+      target,
+      exists,
+      content: existingContent,
+      templateContent: canonical.templateContent,
+      canonicalSections: canonical.canonicalSections,
+    });
+    const entry = {
+      id: target.id,
+      path: target.path,
+      agents: target.agents,
+      status: rendered.status,
+      changed: rendered.changed,
+      managed: rendered.managed,
+    };
+    report.targets.push(entry);
+
+    if (rendered.changed && rendered.managed && !dryRun) {
+      ensureDir(dirname(targetPathAbs));
+      writeFileSync(targetPathAbs, rendered.content);
+    }
+  }
+
+  if (log) {
+    const changed = report.targets.filter((entry) => entry.changed).length;
+    const managed = report.targets.filter((entry) => entry.managed).length;
+    log.push(`  ROOT SNAPSHOT: ${changed} changed, ${managed} managed target(s), source=${ROOT_INSTRUCTION_SOURCE_OF_TRUTH.template_path}`);
+    for (const entry of report.targets) {
+      if (entry.status === "skipped_optional_absent") continue;
+      log.push(`    ${entry.status.toUpperCase()}: ${entry.path} (${entry.agents.join(", ")})`);
+    }
+  }
+
+  return report;
+}
+
+function findRootInstructionSyncIssues(targetPath) {
+  const canonical = loadRootInstructionCanonical(targetPath);
+  if (!canonical.valid) return [];
+
+  const advisories = [];
+  for (const target of ROOT_INSTRUCTION_TARGETS) {
+    const absolutePath = join(targetPath, target.path);
+    const exists = existsSync(absolutePath);
+    if (!exists && !target.create_by_default) continue;
+    const content = exists ? readFile(absolutePath) || "" : "";
+    const status = rootInstructionParityStatus({
+      target,
+      exists,
+      content,
+      canonicalSections: canonical.canonicalSections,
+    });
+
+    if (status === "stale_snapshot" || status === "missing_snapshot") {
       advisories.push({
-        path: otherPath,
+        path: absolutePath,
         category: "root-instructions",
         critical: false,
-        code: "root_instruction_sync_drift",
+        code: status === "stale_snapshot" ? "stale_root_instruction_snapshot" : "missing_root_instruction_snapshot",
         repair_via: "sync-instructions.sh",
+      });
+      continue;
+    }
+
+    if (
+      exists &&
+      rootInstructionsLookPlannerManaged(content) &&
+      !rootInstructionsHaveCurrentFrontDoors(content, canonical.canonicalSections)
+    ) {
+      advisories.push({
+        path: absolutePath,
+        category: "root-instructions",
+        critical: false,
+        code: "stale_root_instruction_front_doors",
+        repair_via: "setup",
       });
     }
   }
@@ -2578,10 +2608,6 @@ function runProjectSetup(targetPath, dryRun, log) {
   log.push("\n## Root Instruction Files (CLAUDE.md / GEMINI.md / AGENTS.md)");
   const syncScriptSrc  = join(agentDir, "scripts", "sync-instructions.sh");
   const syncScriptDest = join(targetPath, ".agent/scripts", "sync-instructions.sh");
-  const claudeMdSrc = findRootInstructionTemplatePath(targetBase);
-  const claudeMdDest   = join(targetPath, "CLAUDE.md");
-  const geminiMdDest   = join(targetPath, "GEMINI.md");
-  const agentsMdDest   = join(targetPath, "AGENTS.md");
 
   if (existsSync(syncScriptSrc)) {
     ensureDir(join(targetPath, ".agent/scripts"));
@@ -2591,51 +2617,7 @@ function runProjectSetup(targetPath, dryRun, log) {
     log.push(`  SKIP: sync-instructions.sh source not found`);
   }
 
-  if (!existsSync(claudeMdDest)) {
-    if (claudeMdSrc && existsSync(claudeMdSrc)) {
-      if (!dryRun) {
-        copyFileSync(claudeMdSrc, claudeMdDest);
-        log.push(`  CREATED: CLAUDE.md (from planner template — edit to customise for this project)`);
-      } else {
-        log.push(`  WOULD CREATE: CLAUDE.md`);
-      }
-    } else {
-      log.push(`  SKIP: CLAUDE.md template not found`);
-    }
-  } else {
-    log.push(`  OK: CLAUDE.md exists`);
-  }
-
-  const canonicalSections = collectCanonicalRootInstructionSections(readFile(claudeMdSrc));
-  if (
-    existsSync(claudeMdDest) &&
-    canonicalSections.length === ROOT_INSTRUCTION_SECTION_HEADINGS.length
-  ) {
-    const existingClaude = readFile(claudeMdDest) || "";
-    if (
-      rootInstructionsLookPlannerManaged(existingClaude) &&
-      !rootInstructionsHaveCurrentFrontDoors(existingClaude, canonicalSections)
-    ) {
-      const refreshedClaude = applyManagedRootInstructionSnapshot(existingClaude, canonicalSections);
-      if (!dryRun) {
-        writeFileSync(claudeMdDest, refreshedClaude);
-        log.push(`  REFRESHED: current planner snapshot in CLAUDE.md`);
-      } else {
-        log.push(`  WOULD REFRESH: current planner snapshot in CLAUDE.md`);
-      }
-    }
-  }
-
-  // Always sync GEMINI.md and AGENTS.md from CLAUDE.md (if it now exists)
-  if (existsSync(claudeMdDest)) {
-    if (!dryRun) {
-      copyFileSync(claudeMdDest, geminiMdDest);
-      copyFileSync(claudeMdDest, agentsMdDest);
-      log.push(`  SYNCED: GEMINI.md and AGENTS.md from CLAUDE.md`);
-    } else {
-      log.push(`  WOULD SYNC: GEMINI.md and AGENTS.md from CLAUDE.md`);
-    }
-  }
+  syncRootInstructionSurfaces(targetPath, { dryRun, log });
 
   // 6. Run ripple check
   log.push("\n## Ripple-Through Check");
@@ -3116,6 +3098,23 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
       console.log(`  ⚠️  CONFIG INTEGRITY: Could not re-baseline automatically. Delete .config_integrity manually if transitions block.`);
     }
 
+    // Re-baseline persona manifest (T-INTAKE-3B20A6BB / US-085) — migrate.mjs
+    // is a trusted file modifier, so persona pack hashes must be refreshed
+    // after upgrade or the next persona-manifest CI run would FAIL on drift.
+    try {
+      const personaVerifier = join(targetPath, ".agent/skills/iterative-planner/scripts/persona_manifest_verify.mjs");
+      if (existsSync(personaVerifier)) {
+        // F-003 closure: rebaseline is dry-run by default. Upgrade context is
+        // intentionally dirty (we just refreshed pack files), so --confirm
+        // --allow-uncommitted is required.
+        runNode([personaVerifier, "rebaseline", "--confirm", "--allow-uncommitted"], { cwd: targetPath, stdio: "pipe", timeout: 10000 });
+        console.log(`  ✅ PERSONA MANIFEST: Re-baselined after upgrade.`);
+      }
+    } catch (e) {
+      // persona_manifest_verify.mjs may not exist in older versions — not fatal
+      console.log(`  ⚠️  PERSONA MANIFEST: Could not re-baseline automatically. Run persona_manifest_verify.mjs rebaseline manually if CI blocks.`);
+    }
+
     console.log(`\n  ══ UPGRADE COMPLETE — ${version} → ${CURRENT_VERSION} ══`);
     console.log(`  IMPORTANT: Review SKILL.md changes manually.`);
     console.log(`  See MIGRATION.md for manual SKILL.md integration steps.`);
@@ -3216,6 +3215,27 @@ function cmdSetup(targetPath, dryRun) {
 
   console.log(`\n  ══ SETUP COMPLETE ══`);
   console.log(`  If audit.config.json was just created, edit it to add your domain role(s): "assumptions_challenger", "quant", "tokenomics", "ux_ui", etc.`);
+  console.log();
+}
+
+function cmdSyncInstructions(targetPath, dryRun, jsonOutput) {
+  const log = [];
+  const report = syncRootInstructionSurfaces(targetPath, { dryRun, log });
+
+  if (jsonOutput) {
+    console.log(JSON.stringify(report, null, 2));
+    process.exit(report.status === "ok" ? 0 : 1);
+  }
+
+  console.log(`\n╔══════════════════════════════════════════════════════╗`);
+  console.log(`║  ROOT INSTRUCTION SYNC ${dryRun ? "(DRY RUN) " : ""}                    ║`);
+  console.log(`╚══════════════════════════════════════════════════════╝\n`);
+  for (const line of log) console.log(line);
+  if (report.status !== "ok") {
+    console.log(`\n  ❌ Sync skipped: root instruction template is invalid.`);
+    process.exit(1);
+  }
+  console.log(`\n  ══ ROOT INSTRUCTION SYNC COMPLETE ══`);
   console.log();
 }
 
@@ -4545,6 +4565,7 @@ Commands:
   upgrade <path>             Apply upgrades (all components)
   upgrade <path> --seed-kb   Also seed knowledge base
   setup <path>               Project-level setup (audit config, hooks, version sync)
+  sync-instructions <path>   Refresh planner-managed root instruction snapshots
   annotate <path>            Bootstrap @planner: annotations (scan, apply, review)
   verify <path>              Post-upgrade integrity verification
   scaffold-discovery-policy <path>  Suggest or write a starter planner.discovery.json for matched archetypes
@@ -4561,7 +4582,7 @@ Commands:
 
 Options:
   --dry-run                  Preview changes without writing files
-  --json                     Emit JSON for commands that support it (doctor, verify-fleet, fleet-doctor, migration-wave, scaffold-discovery-policy, promote-knowledge, semantic-scan)
+  --json                     Emit JSON for commands that support it (doctor, sync-instructions, verify-fleet, fleet-doctor, migration-wave, scaffold-discovery-policy, promote-knowledge, semantic-scan)
   --write                    Write scaffold output for commands that support it
   --draft-candidates <path>  Reviewed draft-candidate surface relative to the target project (default: ${DEFAULT_DRAFT_CANDIDATES_REVIEW_RELATIVE_PATH})
   --manifest <path>          Migration wave manifest path (default: reports/migration_wave.json)
@@ -4577,6 +4598,266 @@ Components migrated:
 
 Design: Updates stale files (hash comparison), adds missing files.
 Current version: ${CURRENT_VERSION}`);
+}
+
+// ── Step 7 (US-086): upgrade-approval-envelope subcommand ───────────────────
+//
+// Materializes the plan-approval envelope contract for plans that were
+// approved under the legacy md-only hash. The previous approval_daemon wrote
+// state.json.approved_plan_hash; the new daemon writes
+// plans/<plan>/approval_envelope.json. This subcommand bridges the two:
+//
+//   - `ok`            — envelope present, schema-valid, matches disk
+//   - `needs_upgrade` — state has approval_nonce_hash, envelope absent,
+//                       projection equivalence holds, no duplicate keys
+//   - `expired`       — approval claimed but cannot construct envelope
+//                       (projection drift, duplicate keys, missing plan.md)
+//   - `not_approved`  — no approval_nonce_hash
+//   - `closed`        — plan was closed; no migration required
+//   - `unreadable`    — state.json missing or unparseable
+//
+// Caveat: the legacy `approved_plan_hash` only covered plan.md, so we cannot
+// reconstruct what plan.json looked like at approval. The envelope's
+// canonical_hash will lock down CURRENT plan.md+plan.json — the operator must
+// accept that the current pair is what they want to retroactively bless. This
+// is recorded in MIGRATION_APPROVAL_ENVELOPE.md as a known limitation.
+
+function classifyPlanForEnvelopeMigration(projectRoot, planDirName) {
+  const planDir = join(projectRoot, "plans", planDirName);
+  const statePath = join(planDir, "state.json");
+  if (!existsSync(statePath)) {
+    return { plan_dir_name: planDirName, status: "unreadable", reason: "state.json missing" };
+  }
+  let stateJson;
+  try { stateJson = JSON.parse(readFileSync(statePath, "utf-8")); }
+  catch (err) { return { plan_dir_name: planDirName, status: "unreadable", reason: `state.json parse failed: ${err.message}` }; }
+
+  const closed = stateJson.state === "CLOSED" || stateJson.closed === true;
+  const envelopePresent = existsSync(getPlanEnvelopePath(planDir));
+  const nonceHash = typeof stateJson.approval_nonce_hash === "string" && stateJson.approval_nonce_hash.length > 0
+    ? stateJson.approval_nonce_hash : null;
+  const legacyHash = typeof stateJson.approved_plan_hash === "string" && stateJson.approved_plan_hash.length > 0
+    ? stateJson.approved_plan_hash : null;
+
+  if (envelopePresent) {
+    const envCheck = validatePlanEnvelopeAgainstDisk(planDir);
+    if (envCheck.ok) return { plan_dir_name: planDirName, status: "ok", reason: "envelope present and matches disk" };
+    return { plan_dir_name: planDirName, status: "envelope_invalid", reason: `[${envCheck.reason_code}] ${envCheck.detail}` };
+  }
+
+  if (closed) {
+    return { plan_dir_name: planDirName, status: "closed", reason: "plan is closed; envelope migration not required" };
+  }
+
+  if (!nonceHash) {
+    return { plan_dir_name: planDirName, status: "not_approved", reason: "no approval_nonce_hash in state.json" };
+  }
+
+  const dupDrift = assertPlanNoDuplicateKeys(planDir);
+  if (dupDrift) {
+    return {
+      plan_dir_name: planDirName,
+      status: "expired",
+      reason: `cannot upgrade: ${dupDrift.detail}; re-approve after fixing plan.json`,
+    };
+  }
+  const projectionDrift = assertPlanProjectionEquivalence(planDir);
+  if (projectionDrift) {
+    return {
+      plan_dir_name: planDirName,
+      status: "expired",
+      reason: `cannot upgrade: ${projectionDrift.detail}; re-approve after regenerating plan.md`,
+    };
+  }
+
+  // NF-001 fix: when the legacy approved_plan_hash is present, the
+  // operator's original approval only blessed plan.md (not plan.json).
+  // We MUST verify that plan.md still matches that hash before blessing
+  // current disk state with a new envelope. Otherwise an attacker can
+  // mutate plan.md between original approval and migration; the migration
+  // would silently materialize an envelope binding the mutated content.
+  if (legacyHash) {
+    const planMdPath = join(planDir, "plan.md");
+    if (existsSync(planMdPath)) {
+      const rawMd = readFileSync(planMdPath, "utf-8")
+        .replace(/\r\n/g, "\n")
+        .replace(/\n+$/, "\n");
+      const currentMdHash = createHash("sha256").update(rawMd).digest("hex").slice(0, 32);
+      if (currentMdHash !== legacyHash) {
+        return {
+          plan_dir_name: planDirName,
+          status: "expired",
+          reason: `cannot upgrade: plan.md hash drift since legacy approval (legacy=${legacyHash}, current=${currentMdHash}); re-approve to bless current content`,
+          legacy_hash_present: true,
+          legacy_hash_drift: true,
+        };
+      }
+    }
+  }
+
+  return {
+    plan_dir_name: planDirName,
+    status: "needs_upgrade",
+    reason: legacyHash
+      ? "legacy approved_plan_hash present and matches current plan.md; envelope can be materialized"
+      : "approval_nonce_hash present without legacy hash; envelope can be materialized but origin is ambiguous",
+    legacy_hash_present: !!legacyHash,
+  };
+}
+
+function upgradeOnePlanToEnvelope(projectRoot, planDirName, classification) {
+  const planDir = join(projectRoot, "plans", planDirName);
+  const statePath = join(planDir, "state.json");
+  let stateJson;
+  try { stateJson = JSON.parse(readFileSync(statePath, "utf-8")); }
+  catch (err) { return { ok: false, reason: `state.json parse failed: ${err.message}` }; }
+
+  const nonceHash = stateJson.approval_nonce_hash;
+  if (typeof nonceHash !== "string" || nonceHash.length === 0) {
+    return { ok: false, reason: "no approval_nonce_hash to anchor the upgrade" };
+  }
+
+  // The legacy daemon stored only the nonce HASH, not the nonce. We use the
+  // hash directly as the approval_nonce_hash field on the new envelope.
+  // buildEnvelope normally hashes the raw nonce; here we patch the result.
+  const fakeNonce = "0".repeat(64); // placeholder; we overwrite the hash below
+  const build = buildPlanEnvelope(planDir, { approvalNonce: fakeNonce, approverOrigin: "interactive" });
+  if (!build.envelope) {
+    return { ok: false, reason: `envelope construction failed: [${build.reason_code}] ${build.detail}` };
+  }
+  build.envelope.approval_nonce_hash = nonceHash;
+  // Mark the envelope as a migration so audits can distinguish it from fresh approvals.
+  build.envelope.migration_origin = "legacy_approved_plan_hash";
+  // NF-008: prefer the original nonce_generated_at as approved_at when available
+  // so the migration does not collapse the audit timeline into "all approved at
+  // migration time". Falls back to current time only when the legacy field is
+  // absent (which means the plan predates the nonce-TTL feature).
+  if (typeof stateJson.nonce_generated_at === "string"
+      && !isNaN(new Date(stateJson.nonce_generated_at).getTime())) {
+    build.envelope.approved_at = stateJson.nonce_generated_at;
+  }
+
+  try {
+    writeFileSync(getPlanEnvelopePath(planDir), JSON.stringify(build.envelope, null, 2) + "\n");
+  } catch (err) {
+    return { ok: false, reason: `failed to write envelope: ${err.message}` };
+  }
+
+  // Update state.json pointer and remove the legacy hash to prevent confusion.
+  // Keep approval_nonce_hash (still used by verify_gate's nonce check).
+  // Route through writeStateJson so the _state_hash integrity field is
+  // recomputed — direct writeFileSync would invalidate the gate's tamper check.
+  delete stateJson.approved_plan_hash;
+  stateJson.approval_envelope_path = "approval_envelope.json";
+  stateJson.approval_envelope_schema = build.envelope.schema_version;
+  if (!writePlanStateJson(planDir, stateJson)) {
+    return { ok: false, reason: "failed to update state.json (could not recompute _state_hash)" };
+  }
+
+  return { ok: true, envelope_path: getPlanEnvelopePath(planDir) };
+}
+
+function rollbackOnePlanEnvelope(projectRoot, planDirName) {
+  const planDir = join(projectRoot, "plans", planDirName);
+  const statePath = join(planDir, "state.json");
+  const envPath = getPlanEnvelopePath(planDir);
+  if (!existsSync(envPath)) {
+    return { ok: false, reason: "no envelope to roll back" };
+  }
+  try { unlinkSync(envPath); } catch (err) { return { ok: false, reason: `failed to remove envelope: ${err.message}` }; }
+  if (existsSync(statePath)) {
+    try {
+      const sj = readPlanStateJson(planDir);
+      if (sj) {
+        delete sj.approval_envelope_path;
+        delete sj.approval_envelope_schema;
+        writePlanStateJson(planDir, sj);
+      }
+    } catch { /* non-fatal — state.json untouched */ }
+  }
+  return { ok: true, removed: envPath };
+}
+
+function cmdUpgradeApprovalEnvelope(projectRoot, { dryRun, jsonOutput, rollback }) {
+  const plansDir = join(projectRoot, "plans");
+  if (!existsSync(plansDir)) {
+    if (jsonOutput) { console.log(JSON.stringify({ ok: false, reason: "no plans/ directory" }, null, 2)); }
+    else { console.error("ERROR: no plans/ directory at " + plansDir); }
+    process.exit(1);
+  }
+  const planDirNames = readdirSync(plansDir, { withFileTypes: true })
+    .filter(d => d.isDirectory() && d.name.startsWith("plan_"))
+    .map(d => d.name)
+    .sort();
+
+  const classifications = planDirNames.map(name => classifyPlanForEnvelopeMigration(projectRoot, name));
+
+  if (rollback) {
+    const rolledBack = [];
+    const skipped = [];
+    for (const cls of classifications) {
+      if (cls.status === "ok" || cls.status === "envelope_invalid") {
+        if (dryRun) { skipped.push({ ...cls, rollback: "would_remove_envelope" }); continue; }
+        const result = rollbackOnePlanEnvelope(projectRoot, cls.plan_dir_name);
+        rolledBack.push({ ...cls, rollback_result: result });
+      } else {
+        skipped.push({ ...cls, rollback: "no_envelope_to_remove" });
+      }
+    }
+    const summary = { ok: true, action: "rollback", dry_run: !!dryRun, rolled_back: rolledBack.length, skipped: skipped.length, plans: [...rolledBack, ...skipped] };
+    if (jsonOutput) console.log(JSON.stringify(summary, null, 2));
+    else {
+      console.log(`upgrade-approval-envelope --rollback ${dryRun ? "(dry-run) " : ""}`);
+      console.log(`  rolled back: ${rolledBack.length}`);
+      console.log(`  skipped:     ${skipped.length}`);
+      for (const r of rolledBack) console.log(`  - ${r.plan_dir_name} [${r.status}] ${JSON.stringify(r.rollback_result)}`);
+      for (const s of skipped) console.log(`  - ${s.plan_dir_name} [${s.status}] ${s.reason}`);
+    }
+    return;
+  }
+
+  const counts = { ok: 0, needs_upgrade: 0, expired: 0, not_approved: 0, closed: 0, unreadable: 0, envelope_invalid: 0 };
+  for (const c of classifications) counts[c.status] = (counts[c.status] || 0) + 1;
+
+  const upgrades = [];
+  for (const cls of classifications) {
+    if (cls.status !== "needs_upgrade") continue;
+    if (dryRun) { upgrades.push({ ...cls, upgrade: "would_upgrade" }); continue; }
+    const result = upgradeOnePlanToEnvelope(projectRoot, cls.plan_dir_name, cls);
+    upgrades.push({ ...cls, upgrade_result: result });
+  }
+
+  const summary = {
+    ok: true,
+    action: "upgrade",
+    dry_run: !!dryRun,
+    project_root: projectRoot,
+    counts,
+    total: classifications.length,
+    plans: classifications.map(c => {
+      const up = upgrades.find(u => u.plan_dir_name === c.plan_dir_name);
+      return up || c;
+    }),
+  };
+
+  if (jsonOutput) { console.log(JSON.stringify(summary, null, 2)); return; }
+
+  console.log(`upgrade-approval-envelope ${dryRun ? "(dry-run) " : ""}`);
+  console.log(`  total plans:      ${summary.total}`);
+  console.log(`  ok (envelope):    ${counts.ok}`);
+  console.log(`  needs upgrade:    ${counts.needs_upgrade}${dryRun ? " (would upgrade)" : " (upgraded this run)"}`);
+  console.log(`  expired:          ${counts.expired}`);
+  console.log(`  not approved:     ${counts.not_approved}`);
+  console.log(`  closed:           ${counts.closed}`);
+  console.log(`  envelope invalid: ${counts.envelope_invalid}`);
+  console.log(`  unreadable:       ${counts.unreadable}`);
+  for (const c of classifications) {
+    if (c.status === "needs_upgrade" || c.status === "expired" || c.status === "envelope_invalid") {
+      const up = upgrades.find(u => u.plan_dir_name === c.plan_dir_name);
+      const tag = up?.upgrade_result?.ok ? "UPGRADED" : up?.upgrade === "would_upgrade" ? "WOULD UPGRADE" : c.status.toUpperCase();
+      console.log(`  - ${c.plan_dir_name} [${tag}] ${c.reason}`);
+    }
+  }
 }
 
 const args = process.argv.slice(2);
@@ -4656,7 +4937,7 @@ if (!["scan", "verify-fleet", "fleet-doctor", "migration-wave", "upgrade-all", "
 // ---------------------------------------------------------------------------
 const selfSource = __filename;
 const selfTarget = targetPath ? join(targetPath, ".agent/skills/iterative-planner/scripts/migrate.mjs") : null;
-const selfUpdatingCommands = new Set(["upgrade", "setup", "annotate", "promote-knowledge"]);
+const selfUpdatingCommands = new Set(["upgrade", "setup", "sync-instructions", "annotate", "promote-knowledge"]);
 if (selfUpdatingCommands.has(command) && selfTarget && resolve(selfSource) !== resolve(selfTarget) && existsSync(selfTarget)) {
   const srcHash = fileHash(selfSource);
   const destHash = fileHash(selfTarget);
@@ -4671,7 +4952,10 @@ if (selfUpdatingCommands.has(command) && selfTarget && resolve(selfSource) !== r
   }
 }
 
-if (command === "detect") {
+if (command === "upgrade-approval-envelope") {
+  const rollback = args.includes("--rollback");
+  cmdUpgradeApprovalEnvelope(targetPath, { dryRun, jsonOutput, rollback });
+} else if (command === "detect") {
   cmdDetect(targetPath);
 } else if (command === "doctor") {
   cmdDoctor(targetPath, jsonOutput);
@@ -4682,6 +4966,8 @@ if (command === "detect") {
   }
 } else if (command === "setup") {
   cmdSetup(targetPath, dryRun);
+} else if (command === "sync-instructions") {
+  cmdSyncInstructions(targetPath, dryRun, jsonOutput);
 } else if (command === "annotate") {
   cmdAnnotate(targetPath, dryRun);
 } else if (command === "verify") {

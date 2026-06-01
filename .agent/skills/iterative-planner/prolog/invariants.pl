@@ -291,6 +291,50 @@ invariant_violated(deliverable_missing_quality_contract, DeliverableId) :-
     \+ deliverable_anti_goal(DeliverableId, _).
 
 %% ═══════════════════════════════════════════════════════════
+%% PLAN-APPROVAL ENVELOPE INVARIANTS (I-057, I-058) — US-086
+%% Facts asserted by fact_loader.mjs after computing
+%% validateEnvelopeAgainstDisk(planDir):
+%%   approval_envelope_present(true|false)
+%%   approval_envelope_status(Atom)
+%%     atoms: ok, absent, missing_but_approval_claimed,
+%%            no_envelope, envelope_invalid, envelope_disk_mismatch,
+%%            plan_json_duplicate_key, plan_json_schema_invalid,
+%%            projection_drift, plan_md_missing
+%% ═══════════════════════════════════════════════════════════
+
+%% I-057: schema-version downgrade resistance — when the plan claims to be
+%% approved (state.json carries approval_nonce_hash) but the envelope file is
+%% missing, FAIL. The legacy md-only hash fallback no longer exists; backward
+%% compat for pre-redesign plans is migrate.mjs upgrade-approval-envelope's
+%% job, not the verifier's.
+invariant_violated(envelope_schema_downgrade, Status) :-
+    approval_envelope_status(Status),
+    Status = missing_but_approval_claimed.
+
+%% I-058: projection equivalence — plan.md MUST equal the deterministic
+%% projection of plan.json at every gate, when plan.json is present. Drift
+%% means a benign plan.md could hide a malicious plan.json (F-002).
+invariant_violated(plan_projection_drift, Status) :-
+    approval_envelope_status(Status),
+    member(Status, [projection_drift, plan_md_missing, plan_json_duplicate_key, plan_json_schema_invalid]).
+
+%% Additional envelope tamper coverage — envelope file edited or substituted
+%% post-approval. Treated as a separate diagnostic from I-057 so the operator
+%% can see which class of tamper fired.
+invariant_violated(approval_envelope_tampered, Status) :-
+    approval_envelope_status(Status),
+    member(Status, [envelope_invalid, envelope_disk_mismatch]).
+
+%% NF-007: Prolog/runtime truth parity — an envelope can validate against disk
+%% even when state.json lacks the approval_nonce_hash that originally anchored
+%% the approval. Runtime gate FAILs (correctly) via the nonce check, but Prolog
+%% would otherwise report envelope_status=ok and mislead static-only readers.
+%% This invariant ensures the two truth surfaces report the same verdict.
+invariant_violated(envelope_orphan_no_state_approval, no_state_approval_nonce) :-
+    approval_envelope_status(ok),
+    user_approved(false).
+
+%% ═══════════════════════════════════════════════════════════
 %% DOMAIN HOOK — Projects add their own invariants below.
 %% Examples:
 %%
@@ -517,6 +561,18 @@ invariant_violated(source_registry_degraded_for_learned_obligation, ObligationId
 invariant_warning(source_registry_degraded_for_learned_obligation, ObligationId) :-
     learned_obligation_source_registry_degraded(ObligationId, _, RequiredPhase),
     \+ phase_reached(RequiredPhase).
+
+invariant_violated(review_intake_unresolved, count(N)) :-
+    review_intake_required(true),
+    review_intake_unresolved_required_count(N),
+    N > 0,
+    phase_reached(validate).
+
+invariant_warning(review_intake_unresolved, count(N)) :-
+    review_intake_required(true),
+    review_intake_unresolved_required_count(N),
+    N > 0,
+    \+ phase_reached(validate).
 
 invariant_warning(obligation_source_mistake_unregistered, ObligationId) :-
     obligation_source(ObligationId, learned_obligation, _),

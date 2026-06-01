@@ -346,6 +346,11 @@
       "check": "quant_persona_gate",
       "message": "Quant-shaped work must preserve the hard quant persona gate before close"
     },
+    "GATE-VAL-018": {
+      "gate": "validate-to-close",
+      "check": "review_intake",
+      "message": "Required review-intake findings must be verified, consumed with evidence/rationale, rejected with reason, or waived with approval before close"
+    },
     "GATE-NTF-001": {
       "gate": "notify-user",
       "check": "kb_notification",
@@ -503,6 +508,18 @@
       "gate": "guard",
       "check": "non_active_plan_read",
       "message": "Recent reads targeted a non-active plans/plan_* directory \u2014 verify the active plan via plans/ACTIVE_PLAN.md before continuing",
+      "severity": "warn"
+    },
+    "GATE-TMP-001": {
+      "gate": "guard",
+      "check": "tamper_fingerprint_missing",
+      "message": "No signed tamper fingerprint is stored yet; the next successful transition will refresh it",
+      "severity": "warn"
+    },
+    "GATE-TMP-002": {
+      "gate": "guard",
+      "check": "tamper_fingerprint_mismatch",
+      "message": "Signed tamper fingerprint does not match current sensitive planner artifacts; intentional edits are refreshed by a successful transition",
       "severity": "warn"
     },
     "GATE-GAR-001": {

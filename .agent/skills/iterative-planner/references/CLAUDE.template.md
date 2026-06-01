@@ -90,7 +90,8 @@ If a request mentions broad ideas, backlog, roadmap tickets, GitHub Issues, GitH
 1. Run `node .agent/skills/iterative-planner/scripts/program_manager.mjs intake --program <program-id-or-path> ... --json` to create or update the local Program Packet ticket first.
 2. Do not create GitHub tickets directly from an idea/backlog prompt. Use `github_ticket_review.mjs publish` only after local intake exists and GitHub should mirror it.
 3. Surface the **Ticket Intake Receipt** from intake, review, or publish results. The receipt must show `/program-manager`, source/action, Program Packet path, ticket id, story/gap/defect refs, acceptance-criteria refs, verification refs, deterministic status, advisory status, `retro_recurrence_status`, recurrence blocker/advisory counts, and next command.
-4. Deterministic Program Packet, story, annotation, ontology, and verification evidence stays authoritative. DeepSeek or other LLM review is advisory only.
+4. Surface DeepSeek review as compact proof by default: show `deepseek_advisory_status`, `deepseek_advisory_summary`, and the local artifact path. Full `deepseek_advisory_block` content remains in JSON artifacts; reproduce it verbatim only when explicitly requested or when `--show-deepseek-block` was used.
+5. Deterministic Program Packet, story, annotation, ontology, and verification evidence stays authoritative. DeepSeek or other LLM review is advisory only.
 
 ### Starting the Iterative Planner
 
