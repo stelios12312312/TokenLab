@@ -239,8 +239,11 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
             if name not in getattr(self.config, 'cohort_population_shares', {}).keys(): continue
             pool.bas_score = (self.config.bas_lambda * pool.pcs_score) + ((1 - self.config.bas_lambda) * pool.bas_score)
             effective_settle_fraction = pool.bas_score * self.config.velocity_scale
-            
-            vest_acr(self, name, throttle_multiplier=self.throttle_multiplier)
+            # Apply vesting extension factor under stress (slowing down vesting by an extra 10%)
+            vest_throttle = self.throttle_multiplier
+            if self.throttle_multiplier < 1.0:
+                vest_throttle = self.throttle_multiplier * (1.0 - self.config.vesting_extension_factor)
+            vest_acr(self, name, throttle_multiplier=vest_throttle)
             
             requested_acr = pool.acr_available * min(1.0, effective_settle_fraction * panic_multiplier)
             pool_sr = self.current_settlement_ratio * self.config.tier_sr_modifiers.get(pool.tier, 1.0)
@@ -316,15 +319,17 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         # Treasury AMM Buybacks (L8)
         buyback_ratio = getattr(self.config, 'treasury_buyback_ratio', 0.0)
         if buyback_ratio > 0.0 and self.treasury > 0:
-            target_reserves = current_live_supply * self.config.treasury_topup_target_ratio
-            surplus = max(0.0, self.treasury - target_reserves)
-            if surplus > 0:
-                usd_to_spend = (surplus * buyback_ratio) * self.amm.spot_price
-                burn_amount = surplus * buyback_ratio
-                self.treasury -= burn_amount
-                self.total_z1u_burned += burn_amount
-                z1u_bought = self.amm.buy_z1u(usd_to_spend)
-                self.treasury += z1u_bought
+            # Only trigger peg defense if spot price falls below the peg ($0.10)
+            if self.amm.spot_price < self.amm.initial_spot_price:
+                target_reserves = self.config.treasury_initial * self.config.treasury_topup_target_ratio
+                surplus = max(0.0, self.treasury - target_reserves)
+                if surplus > 0:
+                    usd_to_spend = (surplus * buyback_ratio) * self.amm.spot_price
+                    burn_amount = surplus * buyback_ratio
+                    self.treasury -= burn_amount
+                    self.total_z1u_burned += burn_amount
+                    z1u_bought = self.amm.buy_z1u(usd_to_spend)
+                    self.treasury += z1u_bought
 
         # Throttle Trigger Signal
         demand = total_requested_z1u

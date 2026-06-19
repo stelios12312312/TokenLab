@@ -49,11 +49,11 @@ class M3EconomyConfig:
     pcs_tenure_weight: float = 0.5
     pcs_activity_weight: float = 0.5
     bas_lambda: float = 0.3
-    velocity_scale: float = 0.1 # Scales BAS to a propensity [0,1]
+    velocity_scale: float = 1.0 # Scales BAS to a propensity [0,1]
 
     # Tier System (GAP-04)
     tier_sr_modifiers: Dict[str, float] = field(
-        default_factory=lambda: {"Bronze": 1.0, "Silver": 1.05, "Gold": 1.10, "Platinum": 1.15}
+        default_factory=lambda: {"Bronze": 1.0, "Silver": 1.10, "Gold": 1.20, "Platinum": 1.30}
     )
     tier_thresholds_pcs: Dict[str, float] = field(
         default_factory=lambda: {"Bronze": 0.0, "Silver": 100.0, "Gold": 500.0, "Platinum": 1500.0}
@@ -88,7 +88,7 @@ class M3EconomyConfig:
     
     throttle_threshold_ratio: float = 0.3
     throttle_multiplier_when_stressed: float = 0.5
-    vesting_extension_factor: float = 2.0 # Multiplier for vesting lag under stress
+    vesting_extension_factor: float = 0.10 # Multiplier for vesting lag under stress
 
     # M2 Market Dynamics parameters
     amm_initial_z1u: float = 10_000_000.0
@@ -98,7 +98,7 @@ class M3EconomyConfig:
     campaign_fee_percentage: float = 0.25
     campaign_burn_share: float = 0.10 # GAP-06: Burn portion of campaign fees
     campaign_deposit_per_epoch: float = 112_000.0  # Aligning M2 campaigns with M1 optimal brand inflow
-    treasury_buyback_ratio: float = 0.0 # Ratio of Treasury surplus used to buy Z1U on AMM
+    treasury_buyback_ratio: float = 0.10 # Ratio of Treasury surplus used to buy Z1U on AMM
     
     use_dynamic_settlement_ratio: bool = True
     

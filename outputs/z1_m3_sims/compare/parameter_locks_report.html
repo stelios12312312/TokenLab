@@ -568,22 +568,22 @@
       <div class="summary-card">
         <p class="summary-title">Locks Status</p>
         <p class="summary-value" style="color: var(--text-primary)">
-          <span style="color:var(--success-color)">7</span>
+          <span style="color:var(--success-color)">8</span>
           <span style="font-size:0.9rem;font-weight:400;color:var(--text-muted)">/ 8 Passed</span>
         </p>
         <div style="display:flex;gap:1rem;margin-top:0.5rem;font-size:0.85rem">
           <span style="color:var(--warning-color)">⚠️ 0 Warning</span>
-          <span style="color:var(--danger-color)">❌ 1 Deficient</span>
+          <span style="color:var(--danger-color)">❌ 0 Deficient</span>
         </div>
       </div>
 
-      <div class="summary-card" style="border-color: var(--danger-border)">
+      <div class="summary-card" style="border-color: var(--success-border)">
         <p class="summary-title">Overall Verdict</p>
-        <p class="summary-value" style="color: var(--danger-color); font-size:1.6rem">
-          DEFICIENT (Peg Undefended)
+        <p class="summary-value" style="color: var(--success-color); font-size:1.6rem">
+          STRUCTURALLY SOUND
         </p>
         <p style="margin:0.5rem 0 0 0;font-size:0.8rem;color:var(--text-secondary)">
-          L8 failed: Treasury buyback ratio is 0.00.
+          All hard locks are satisfied.
         </p>
       </div>
     </div>
@@ -594,7 +594,7 @@
         <button class="tab-btn active" id="btn-all" onclick="filterLocks('all')">All Locks</button>
         <button class="tab-btn" id="btn-hard" onclick="filterLocks('HARD')">Hard Locks</button>
         <button class="tab-btn" id="btn-soft" onclick="filterLocks('SOFT')">Soft Locks</button>
-        <button class="tab-btn" id="btn-fail" onclick="filterLocks('FAIL')">Deficient (1)</button>
+        <button class="tab-btn" id="btn-fail" onclick="filterLocks('FAIL')">Deficient (0)</button>
       </div>
       <div class="search-box">
         <input type="text" id="lock-search" oninput="searchLocks()" placeholder="Search by name or formula...">
@@ -766,7 +766,7 @@
         </div>
       </div>
 
-      <div class="lock-card" data-type="HARD" data-status="FAIL" id="card-L8">
+      <div class="lock-card" data-type="HARD" data-status="PASS" id="card-L8">
         <div class="lock-id-col">
           <span class="lock-id">L8</span>
           <span class="lock-id-type type-hard">HARD</span>
@@ -778,17 +778,17 @@
           </h3>
           <p class="lock-desc">Defends pricing peg. The treasury must allocate a portion of its surplus to dynamic buybacks to sustain the price floor.</p>
           <div class="lock-details">
-            Treasury Buyback Ratio: 0.0000
+            Treasury Buyback Ratio: 0.1000
           </div>
         </div>
         <div class="lock-badge-col">
-          <span class="status-badge fail">FAIL</span>
+          <span class="status-badge pass">PASS</span>
           <div class="lock-value-row">
-            <span>Value: <strong>0.0000</strong></span>
+            <span>Value: <strong>0.1000</strong></span>
             <span>Limit: <strong>> 0.0000</strong></span>
           </div>
           <div class="progress-bar-container">
-            <div class="progress-bar fail" style="width: 0%"></div>
+            <div class="progress-bar pass" style="width: 100%"></div>
           </div>
         </div>
       </div>
@@ -928,12 +928,12 @@
   "pcs_tenure_weight": 0.5,
   "pcs_activity_weight": 0.5,
   "bas_lambda": 0.3,
-  "velocity_scale": 0.1,
+  "velocity_scale": 1.0,
   "tier_sr_modifiers": {
     "Bronze": 1.0,
-    "Silver": 1.05,
-    "Gold": 1.1,
-    "Platinum": 1.15
+    "Silver": 1.1,
+    "Gold": 1.2,
+    "Platinum": 1.3
   },
   "tier_thresholds_pcs": {
     "Bronze": 0.0,
@@ -976,14 +976,14 @@
   "treasury_topup_cap_ratio_per_epoch": 0.1,
   "throttle_threshold_ratio": 0.3,
   "throttle_multiplier_when_stressed": 0.5,
-  "vesting_extension_factor": 2.0,
+  "vesting_extension_factor": 0.1,
   "amm_initial_z1u": 10000000.0,
   "amm_initial_usd": 1000000.0,
   "amm_fee_rate": 0.003,
   "campaign_fee_percentage": 0.25,
   "campaign_burn_share": 0.1,
   "campaign_deposit_per_epoch": 112000.0,
-  "treasury_buyback_ratio": 0.0,
+  "treasury_buyback_ratio": 0.1,
   "use_dynamic_settlement_ratio": true,
   "cip_budget_per_epoch": 10000.0,
   "vrp_budget_per_epoch": 5000.0,
@@ -1048,7 +1048,7 @@
     </div>
 
     <footer>
-      <p>Report generated at 2026-06-19 11:39:33 • Z1 TokenLab Automation Engine</p>
+      <p>Report generated at 2026-06-19 19:06:45 • Z1 TokenLab Automation Engine</p>
     </footer>
   </div>
 
