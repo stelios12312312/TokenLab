@@ -1,7 +1,0 @@
-{
-  "suggested_fix_command": "/safe-change",
-  "auto_repair_safe": false,
-  "explanation": "The approval envelope tampered invariant suggests a security issue; /safe-change can audit and potentially revert unauthorized modifications.",
-  "supervisor_status": "fresh",
-  "source": "provider"
-}

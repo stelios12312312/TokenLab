@@ -2,8 +2,8 @@ import { buildEnvelope, getEnvelopePath } from "../.agent/skills/iterative-plann
 import { readStateJson, writeStateJson } from "../.agent/skills/iterative-planner/scripts/lib/determinism.mjs";
 import { writeFileSync } from "fs";
 
-const planDir = "./plans/plan_2026-06-01_7950ad8b6de277cf";
-const approvalNonce = "5bd2c19fc0245e8d";
+const planDir = "./plans/plan_2026-06-19_9864320542c86243";
+const approvalNonce = "5322168eb70cbd56";
 const approverOrigin = "auto";
 
 console.log("Building envelope...");

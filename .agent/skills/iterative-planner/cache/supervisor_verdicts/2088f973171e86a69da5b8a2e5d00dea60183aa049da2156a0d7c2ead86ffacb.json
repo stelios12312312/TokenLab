@@ -1,7 +1,0 @@
-{
-  "suggested_fix_command": "/advisor",
-  "auto_repair_safe": false,
-  "explanation": "The invariant M-001 indicates a missing verification hook; /advisor can assess the situation and recommend a safe fix.",
-  "supervisor_status": "fresh",
-  "source": "provider"
-}

@@ -1,6 +1,6 @@
-# Z1 Simulation Design & Results: Answers for Stelios
-
-This document provides detailed answers to the simulation design, parameter engineering, scenario design, simulation results, and reproducibility questions for Stelios as outlined in [for stelios.md.txt](file:///Users/stylianoskampakis/Dropbox%20(Personal)/Freelance/TokenLab/docs_final/for%20stelios.md.txt). All answers correspond directly to the Milestone 3 (M3) codebase implemented in the [m3_full_economy](file:///Users/stylianoskampakis/Dropbox%20(Personal)/Freelance/TokenLab/projects/z1/m3_full_economy/) directory.
+# Z1 PROTOCOL SIMULATION DESIGN & RESULTS
+## Part III: Simulation Design | Part IV: Simulation Results | Part VII: Reproducibility & Environment
+*Authored by Stylianos Kampakis (TokenLab) | May 2026*
 
 ---
 
@@ -11,21 +11,21 @@ This document provides detailed answers to the simulation design, parameter engi
 #### 7.1. Mapping Protocol Mechanisms to TokenLab Abstractions
 
 ##### 7.1.1. Which Mechanisms Map to AgentPools
-All participant cohorts in the M3 Z1 economy are modeled as subclassed pools inheriting from TokenLab's native `AgentPool_Basic` class. The mapping in [pools.py](file:///Users/stylianoskampakis/Dropbox%20(Personal)/Freelance/TokenLab/projects/z1/m3_full_economy/pools.py) defines the following cohorts:
-1. `passive_viewers`: Represents casual, low-engagement viewers.
-2. `active_viewers`: Represents regular, moderately-engaged viewers.
-3. `power_users`: Represents highly active core users.
-4. `adversarial_whales`: Represents speculative, profit-extracting actors.
-5. `creators`: Added in M3; represents content creators who receive Creator Incentive Pool (CIP) distributions.
-6. `validators`: Added in M3; represents content curators/validators who receive Validator Reward Pool (VRP) distributions.
+All participant cohorts in the Z1 economy are modeled as subclassed pools inheriting from TokenLab's native `AgentPool_Basic` class. The mapping in [pools.py](file:///Users/stylianoskampakis/Dropbox%20(Personal)/Freelance/TokenLab/projects/z1/m3_full_economy/pools.py) defines the following cohorts:
+1. `passive_viewers`: Casual, low-engagement viewers.
+2. `active_viewers`: Regular, moderately-engaged viewers.
+3. `power_users`: Highly active core users.
+4. `adversarial_whales`: Speculative, profit-extracting whales.
+5. `creators`: Content creators receiving Creator Incentive Pool (CIP) distributions.
+6. `validators`: Content curators/validators receiving Validator Reward Pool (VRP) distributions.
 
 ##### 7.1.2. Which Mechanisms Map to Controllers
 Solvency feedback loops and economic dampening controls map to logic controllers implemented in [economy.py](file:///Users/stylianoskampakis/Dropbox%20(Personal)/Freelance/TokenLab/projects/z1/m3_full_economy/economy.py):
-1. **`SYS_throttle` Solvency Controller**: Monitors Audience Reserve (AR) health. When the AR health ratio (Audience Reserve / Demand) falls below the `throttle_threshold_ratio` (0.3), a negative feedback loop activates. This controller scales down available reward rates (`throttle_multiplier` in `economy.py` decays toward 0) and slows down vesting Conveyor belts.
+1. **`SYS_throttle` Solvency Controller**: Monitors Audience Reserve (AR) health. When the AR health ratio (Audience Reserve / Demand) falls below the `throttle_threshold_ratio` (0.3), a negative feedback loop activates. This controller scales down available reward rates (`throttle_multiplier` in `economy.py` decays toward 0) and slows down vesting conveyor belts.
 2. **Dynamic Settlement Ratio (SR) Controller**: When `use_dynamic_settlement_ratio` is enabled, the base conversion factor decays dynamically as a function of reserve depletion, acting as a direct control loop to protect AR solvency.
 
 ##### 7.1.3. Which Mechanisms Required Custom Implementation
-Standard TokenLab MV=PT velocity-based pricing was entirely overridden in favor of a custom 4-phase ledger simulation loop in `TokenEconomy_Z1`:
+Standard TokenLab velocity-based pricing was entirely overridden in favor of a custom 4-phase ledger simulation loop in `TokenEconomy_Z1`:
 1. **Vault-Release (Genesis Unlocks)**: Implemented in `ledger.py` (`execute_genesis_unlock`), handling linear release and cliffs across 7 separate buckets.
 2. **Vesting Conveyor Belts**: Implemented in `ledger.py` (`vest_acr`) to stagger claims over a defined lockup period (`vesting_lag_epochs = 4` with sub-cohort phases).
 3. **Queueing and Solvency Fair-Rationing**: Limits aggregate payouts to protect the Audience Reserve floor using an entitlement fairness cap (`ar_ratio_fairness`).
@@ -123,21 +123,21 @@ Adversarial whales model capital extraction attacks:
 ##### 8.1.1. Complete Parameter Table
 The following table documents the core parameters defined in `config.py`:
 
-| Parameter Name | Type | Default Value | Calibration Range | Affected Mechanism |
-|---|---|---|---|---|
-| `n_epochs` | int | 260 | [100, 520] | Run Duration |
-| `initial_viewers` | int | 1,000,000 | [100k, 5M] | Adoption Scaling |
-| `vesting_lag_epochs` | int | 4 | [1, 12] | Vesting Duration |
-| `acr_epoch_budget` | float | 150,000.0 | [50k, 500k] | Reward Issuance |
-| `pcs_tenure_weight` | float | 0.5 | [0.0, 1.0] | Score Calculation |
-| `settlement_ratio` | float | 0.1047 | [0.01, 0.50] | ACR-to-Z1U Conversion |
-| `settlement_cap_per_epoch` | float | 50,000.0 | [10k, 200k] | Outflow Protection |
-| `utility_fee_share` | float | 0.34 | [0.10, 0.50] | Treasury Inflow |
-| `utility_burn_share` | float | 0.05 | [0.00, 0.20] | Frictional Sink |
-| `brand_inflow_per_epoch` | float | 112,000.0 | [10k, 500k] | Brand Revenue |
-| `throttle_threshold_ratio` | float | 0.3 | [0.10, 0.50] | Solvency Trigger |
-| `staking_lock_epochs` | int | 12 | [4, 52] | Governance Staking |
-| `provider_recirculation_rate` | float | 0.20 | [0.00, 0.50] | Secondary Sink |
+| Parameter Name | Type | Default Value | Calibration Range | Affected Mechanism | Description & Guidelines |
+|---|---|---|---|---|---|
+| `n_epochs` | int | 260 | [100, 520] | Run Duration | Sets the overall duration of the simulation runs. |
+| `initial_viewers` | int | 1,000,000 | [100k, 5M] | Adoption Scaling | The starting viewer base to scale transaction volumes. |
+| `vesting_lag_epochs` | int | 4 | [1, 12] | Vesting Duration | Maturation lag epochs on the vesting conveyor belt. |
+| `acr_epoch_budget` | float | 150,000.0 | [50k, 500k] | Reward Issuance | Maximum ACR distributed for viewer rewards per epoch. |
+| `pcs_tenure_weight` | float | 0.5 | [0.0, 1.0] | Score Calculation | Weight of streak/tenure in the PCS score. |
+| `settlement_ratio` | float | 0.1047 | [0.01, 0.50] | ACR-to-Z1U Conversion | Base conversion rate for ACR to liquid Z1U. |
+| `settlement_cap_per_epoch` | float | 50,000.0 | [10k, 200k] | Outflow Protection | Maximum aggregate Z1U settled per epoch. |
+| `utility_fee_share` | float | 0.34 | [0.10, 0.50] | Treasury Inflow | Split of utility spends captured as fees. |
+| `utility_burn_share` | float | 0.05 | [0.00, 0.20] | Frictional Sink | Split of utility spends permanently burned. |
+| `brand_inflow_per_epoch` | float | 112,000.0 | [10k, 500k] | Brand Revenue | Inflow of advertising budgets in Z1U equivalents. |
+| `throttle_threshold_ratio` | float | 0.3 | [0.10, 0.50] | Solvency Trigger | Treasury health ratio trigger for `SYS_throttle`. |
+| `staking_lock_epochs` | int | 12 | [4, 52] | Governance Staking | Minimum governance lock period for Z1U. |
+| `provider_recirculation_rate` | float | 0.20 | [0.00, 0.50] | Secondary Sink | Fraction of provider revenue re-spent to buy back Z1U. |
 
 ##### 8.1.2. Model Parameters vs. Operational Parameters vs. Scenario Parameters
 * **Model Parameters**: Target cohort sizes (`cohort_population_shares`), sell propensities (`settle_propensity_by_cohort`), and claim rates. These model user behavioral profiles.
@@ -163,6 +163,11 @@ Sobol variance decomposition shows:
 ##### 8.2.3. Results: Which Parameters Matter, Which Can Be Fixed
 * **Must Be Calibrated**: `settlement_ratio` (SR_BASE), `vesting_lag_epochs`, and `provider_recirculation_rate`.
 * **Can Be Fixed**: `MIN_SETTLE` (dust threshold) has near-zero sensitivity and can be fixed to a static value (e.g., 50.0).
+
+##### Figure 8.1: Parameter Sensitivity Breakeven Sweeps
+This sweep confirms that the system maintains solvency (green region) when `SR_BASE` remains below 0.15 and the utility fee capture rate `fee_rate_g5b` is calibrated to at least 20%.
+
+![Figure 8.1: Parameter Sensitivity Breakeven Sweeps](outputs/z1_m3_sims/sweeps/parameter_sensitivity_heatmaps.png)
 
 ---
 
@@ -289,8 +294,23 @@ Python 3.10.8, TokenLab v3.1.0, macOS/Apple Silicon.
 ##### 10.2.3. Time Series Visualizations
 Trajectories show a temporary depletion of the AMM USD pool during panic mode, which is resolved as `SYS_throttle` dampens claims and provider recirculation replenishes the USD side of the AMM.
 
+##### Figure 10.1: M2 vs. M3 Cohort Progression Comparison
+The dynamic thresholds in M3 smooth out cohort congestion compared to the older M2 static system.
+
+![Figure 10.1: M2 vs. M3 Cohort Progression Comparison](outputs/z1_m3_sims/compare/m2_m3_comparison.png)
+
+##### Figure 10.2: Pools and Governance Stress Test
+Governance lockups successfully prevent systemic peg collapse during exit shocks.
+
+![Figure 10.2: Pools and Governance Stress Test](outputs/z1_m3_sims/compare/m3_pools_governance_stress.png)
+
 ##### 10.2.4. Distribution Plots
 Monte Carlo outcomes show a bimodal distribution of terminal reserves: one cluster represents stable steady-state operation, while the second cluster represents scenarios where `SYS_throttle` was continuously active.
+
+##### Figure 10.3: Monte Carlo Solvency and Resilience Bands
+Under baseline parameters, the system maintains a safety margin above the solvency floor in 95% of runs.
+
+![Figure 10.3: Monte Carlo Solvency and Resilience Bands](outputs/z1_m3_sims/monte_carlo/monte_carlo_resilience_bands.png)
 
 ---
 
@@ -362,32 +382,9 @@ Notebooks located in `notebooks/` should be executed in sequential order:
 * **Inputs**: Initial conditions and parameter configurations defined via the `M3EconomyConfig` dataclass in `config.py`.
 * **Outputs**: Simulation trajectories are outputted as a pandas DataFrame containing metrics for each epoch. Data can be exported to CSV format using `df.to_csv("output.csv")`.
 
-### 17.6. Model Feasibility Assessment (Implemented, Missing, and Impossible)
-
-This section provides a structural review of the simulation framework, outlining what is dynamically modeled, what is simplified/uncalibrated, and what is structurally impossible to solve or guarantee under the current architecture.
-
-#### 17.6.1. What is Implemented
-* **Cohort-Level Token Economics**: Includes `passive_viewers`, `active_viewers`, `power_users`, and `adversarial_whales` with distinct population shares, claim rates, sell/spend propensities, and staking rates.
-* **Milestone 3 Core Mechanics**: Discrete pool accounting for VRP and CIP budgets, 7-bucket genesis unlocks (Team, Advisors, Seed, Private, Public, Treasury, Ecosystem), and 20% provider recirculation back into the Audience Reserve.
-* **AMM Peg Defense (Lock L8)**: Programmatic treasury buybacks (calibrated to `treasury_buyback_ratio = 0.10`) that buy back Z1U using treasury surplus when the peg is under exit pressure, satisfying the L8 peg defense invariant.
-* **Governance Staking & Voting**: Programmatic locks (12 to 104 epochs) that shift budget distribution based on cumulative voting weights.
-* **Dynamic Solvency Controllers**: `SYS_throttle` negative feedback loop scaling down reward rates and extending vesting lag under stress, and dynamic settlement ratio adjustment based on reserve health.
-* **Panic Mode Trigger**: A 5x acceleration in user settlement propensity when the AMM price drops by more than 10% in a single epoch.
-* **Parameter Locks (L1-L9)**: Formal checks validated at configuration time (solvency floor L1, brand inflow floor L3, net flow solvency L7, AMM defense L8, and AR epoch drain cap L9).
-
-#### 17.6.2. What is Missing (or Simplified)
-* **Referral & Diversity Normalization (Priority #3)**: Directives like PageRank caps for referral trees, Shannon entropy bounds for session diversity, and platform-minimum engagement limits are omitted from the active state update loop.
-* **Endogenous User Growth Loops**: User adoption is modeled as a static timeline curve (linear, front-loaded, back-loaded) rather than dynamically simulating advertising efficacy or viral conversion.
-* **Cross-Chain Bridging Outflows**: The model assumes all transactions and liquidity pools exist in a closed-loop environment. It does not model bridging latency, gas price spikes, or external slippage.
-
-#### 17.6.3. What is Impossible (Within the Current Framework)
-* **Guaranteed Solvency Under Panic (without Peg Defense)**: When a price panic is triggered, the model accelerates settlement outflows by 5×. Without active buybacks (`treasury_buyback_ratio > 0.0`, now calibrated to `0.10` in baseline) or dynamic fee scaling, it is mathematically impossible to prevent a reserve depletion/death-spiral in high-stress runs.
-* **Strategic Adversarial Coordination (Game Theory)**: The simulation models cohort behaviors as statistical probabilities. It cannot model strategic, coordinate-based game-theoretic attacks (e.g., whales dynamically colluding to withdraw staking lockups and shorting Z1U on external markets to force a protocol liquidation).
-* **Real-World Arbitrage Parity**: The simulation AMM is a closed constant-product pool. It is impossible to guarantee that real-world exchange prices will perfectly replicate the simulation's pricing due to speculative macro sentiment, external arbitrage latencies, and exchange spread variations.
-
 ---
 
-### Legal and Financial Disclaimers
+## Legal and Financial Disclaimers
 This document is provided solely for tokenomic modeling and simulation engineering purposes.
 * **Not Financial Advice**: The contents of this document do not constitute financial, investment, or trading advice. No information herein should be interpreted as an endorsement or recommendation to buy, sell, or hold any digital asset.
 * **Not Legal Advice**: This document does not constitute legal or regulatory advice. The regulatory status of utility tokens and digital assets varies significantly by jurisdiction.

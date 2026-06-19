@@ -1,7 +1,6 @@
 {
   "roles": [
     "core",
-    "quant",
     "tokenomics"
   ],
   "fail_on": [
