@@ -362,6 +362,29 @@ Notebooks located in `notebooks/` should be executed in sequential order:
 * **Inputs**: Initial conditions and parameter configurations defined via the `M3EconomyConfig` dataclass in `config.py`.
 * **Outputs**: Simulation trajectories are outputted as a pandas DataFrame containing metrics for each epoch. Data can be exported to CSV format using `df.to_csv("output.csv")`.
 
+### 17.6. Model Feasibility Assessment (Implemented, Missing, and Impossible)
+
+This section provides a structural review of the simulation framework, outlining what is dynamically modeled, what is simplified/uncalibrated, and what is structurally impossible to solve or guarantee under the current architecture.
+
+#### 17.6.1. What is Implemented
+* **Cohort-Level Token Economics**: Includes `passive_viewers`, `active_viewers`, `power_users`, and `adversarial_whales` with distinct population shares, claim rates, sell/spend propensities, and staking rates.
+* **Milestone 3 Core Mechanics**: Discrete pool accounting for VRP and CIP budgets, 7-bucket genesis unlocks (Team, Advisors, Seed, Private, Public, Treasury, Ecosystem), and 20% provider recirculation back into the Audience Reserve.
+* **Governance Staking & Voting**: Programmatic locks (12 to 104 epochs) that shift budget distribution based on cumulative voting weights.
+* **Dynamic Solvency Controllers**: `SYS_throttle` negative feedback loop scaling down reward rates and extending vesting lag under stress, and dynamic settlement ratio adjustment based on reserve health.
+* **Panic Mode Trigger**: A 5x acceleration in user settlement propensity when the AMM price drops by more than 10% in a single epoch.
+* **Parameter Locks (L1-L9)**: Formal checks validated at configuration time (solvency floor L1, brand inflow floor L3, net flow solvency L7, AMM defense L8, and AR epoch drain cap L9).
+
+#### 17.6.2. What is Missing (or Simplified)
+* **Active Peg Defense Tuning (Lock L8)**: The default config sets `treasury_buyback_ratio = 0.0`. Peg defense is therefore structurally inactive, failing Lock L8.
+* **Referral & Diversity Normalization (Priority #3)**: Directives like PageRank caps for referral trees, Shannon entropy bounds for session diversity, and platform-minimum engagement limits are omitted from the active state update loop.
+* **Endogenous User Growth Loops**: User adoption is modeled as a static timeline curve (linear, front-loaded, back-loaded) rather than dynamically simulating advertising efficacy or viral conversion.
+* **Cross-Chain Bridging Outflows**: The model assumes all transactions and liquidity pools exist in a closed-loop environment. It does not model bridging latency, gas price spikes, or external slippage.
+
+#### 17.6.3. What is Impossible (Within the Current Framework)
+* **Guaranteed Solvency Under Panic (without L8)**: When a price panic is triggered, the model accelerates settlement outflows by 5×. Without active buybacks (`treasury_buyback_ratio > 0.0`) or dynamic fee scaling, it is mathematically impossible to prevent a reserve depletion/death-spiral in high-stress runs.
+* **Strategic Adversarial Coordination (Game Theory)**: The simulation models cohort behaviors as statistical probabilities. It cannot model strategic, coordinate-based game-theoretic attacks (e.g., whales dynamically colluding to withdraw staking lockups and shorting Z1U on external markets to force a protocol liquidation).
+* **Real-World Arbitrage Parity**: The simulation AMM is a closed constant-product pool. It is impossible to guarantee that real-world exchange prices will perfectly replicate the simulation's pricing due to speculative macro sentiment, external arbitrage latencies, and exchange spread variations.
+
 ---
 
 ### Legal and Financial Disclaimers
