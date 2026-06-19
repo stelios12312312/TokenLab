@@ -14,7 +14,7 @@
 import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { getPaths, getActivePlan, debugLog } from "./lib/plan_utils.mjs";
+import { getPaths, resolvePlanTarget, debugLog } from "./lib/plan_utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -190,7 +190,7 @@ function status(planDir) {
 // ---------------------------------------------------------------------------
 
 const { plansDir } = getPaths();
-const { planDir } = getActivePlan(plansDir, { exitOnMissing: false });
+const { planDir } = resolvePlanTarget(plansDir, { exitOnMissing: false });
 
 const cmd = process.argv[2];
 const arg = process.argv[3];

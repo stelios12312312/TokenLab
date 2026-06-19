@@ -4,25 +4,31 @@ import {
   mkdtempSync,
   symlinkSync,
   writeFileSync,
-  readFileSync,
   mkdirSync,
   rmSync,
 } from "fs";
-import { basename, join } from "path";
+import { basename, dirname, join, resolve } from "path";
 import { execFileSync } from "child_process";
 import { tmpdir } from "os";
-import { pathToFileURL } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
+import {
+  createInitialStateJson,
+  readStateJson,
+  writeStateJson,
+} from "../scripts/lib/determinism.mjs";
 import {
   REFLECTION_GUIDE_SECTION_ORDER,
   REFLECTION_GUIDE_SECTION_TITLES,
   REFLECTION_GUIDE_VERSION,
 } from "../scripts/lib/reflection_guide.mjs";
+import { normalizeReflectionDecisionAnswer } from "../scripts/lib/reflection_validation.mjs";
 
 const NODE = process.execPath;
-const repoRoot = "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Iterative Planner";
+const __filename = fileURLToPath(import.meta.url);
+const testDir = dirname(__filename);
+const repoRoot = resolve(testDir, "..", "..", "..", "..");
 const agentDir = join(repoRoot, ".agent");
-const bootstrapScript = join(agentDir, "skills", "iterative-planner", "scripts", "bootstrap.mjs");
 const ruleEngineScript = join(agentDir, "skills", "iterative-planner", "scripts", "rule_engine.mjs");
 
 let passed = 0;
@@ -75,10 +81,13 @@ function seedProject(tmp, goal) {
     roles: ["core", "assumptions_challenger"],
     fail_on: ["CRITICAL"],
   }, null, 2) + "\n");
-  const bootstrap = runNode([bootstrapScript, "new", goal], tmp);
-  assert(bootstrap.ok, `bootstrap new succeeds for "${goal}"`);
-  const planName = readFileSync(join(tmp, "plans", ".current_plan"), "utf-8").trim();
-  return join(tmp, "plans", planName);
+  const planName = `plan_${goal.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 48) || "reflection_fixture"}`;
+  const plansDir = join(tmp, "plans");
+  const planDir = join(plansDir, planName);
+  mkdirSync(planDir, { recursive: true });
+  writeFileSync(join(plansDir, ".current_plan"), `${planName}\n`);
+  writeStateJson(planDir, createInitialStateJson(planName, goal, { projectRoot: tmp }));
+  return planDir;
 }
 
 function writeJson(path, value) {
@@ -101,8 +110,7 @@ Exercise the structured reflection invariant surface.
 `);
   writeFileSync(join(planDir, "summary.md"), "# Summary\n\n[KB_NO_NEW_LEARNINGS]\n");
 
-  const statePath = join(planDir, "state.json");
-  const state = JSON.parse(readFileSync(statePath, "utf-8"));
+  const state = readStateJson(planDir);
   state.state = "REFLECT";
   state.close_signals = {
     kb: { satisfied: true, status: "no_new_learnings" },
@@ -121,7 +129,7 @@ Exercise the structured reflection invariant surface.
       blocking_gap_ids: [],
     },
   };
-  writeJson(statePath, state);
+  writeStateJson(planDir, state);
   writeStoryRegistry(planDir, [
     {
       id: "US-001",
@@ -144,7 +152,7 @@ function writeStoryRegistry(planDir, stories = []) {
   });
 }
 
-function writeReflectionGuide(planDir, { includeRequiredRetro = false } = {}) {
+function writeReflectionGuide(planDir, { includeRequiredRetro = false, noModeQuestion = false } = {}) {
   const planName = basename(planDir);
   const sections = {};
   for (const sectionId of REFLECTION_GUIDE_SECTION_ORDER) {
@@ -154,13 +162,23 @@ function writeReflectionGuide(planDir, { includeRequiredRetro = false } = {}) {
     };
   }
 
-  sections.edge_case_coverage.questions.push({
-    id: "edge_case_coverage:uncovered_edge_cases",
-    title: "Resolve uncovered edge cases",
-    subject_id: "uncovered_edge_cases",
-    required: true,
-    answer_modes: ["pivot_back_to_execute", "accept_as_known_limitation", "out_of_scope"],
-  });
+  if (noModeQuestion) {
+    sections.pattern_application_check.questions.push({
+      id: "pattern_application_check:regression_verdict",
+      title: "Regression verdict",
+      subject_id: "regression_verdict",
+      required: true,
+      answer_modes: [],
+    });
+  } else {
+    sections.edge_case_coverage.questions.push({
+      id: "edge_case_coverage:uncovered_edge_cases",
+      title: "Resolve uncovered edge cases",
+      subject_id: "uncovered_edge_cases",
+      required: true,
+      answer_modes: ["pivot_back_to_execute", "accept_as_known_limitation", "out_of_scope"],
+    });
+  }
 
   if (includeRequiredRetro) {
     sections.relevant_retros.retros = [
@@ -181,7 +199,10 @@ function writeReflectionGuide(planDir, { includeRequiredRetro = false } = {}) {
     sections.relevant_retros.retros = [];
   }
 
-  const requiredQuestionCount = sections.edge_case_coverage.questions.length + sections.relevant_retros.questions.length;
+  const requiredQuestionCount = Object.values(sections)
+    .flatMap((section) => section.questions || [])
+    .filter((question) => question.required !== false)
+    .length;
 
   writeJson(join(planDir, "reflection_guide.yaml"), {
     reflection_guide: {
@@ -201,6 +222,7 @@ function buildReflectionDocument(planDir, {
   answeredCount = "1/1",
   edgeCaseCoverage = "out_of_scope — This fixture only exercises the invariant surface, so no uncovered runtime edge case remains after the required reflection answer is recorded.",
   relevantRetros = "The surrounding planner contract changed, but this paragraph intentionally avoids naming the required retro id so the invariant can detect the gap.",
+  patternApplicationCheck = "The deterministic parser-first pattern stayed intact because the same structured reflection contract now feeds both the CLI validator and the semantic layer.",
   nextMove = "VALIDATE — The reflection is structured, answered, and ready for proof review.",
 } = {}) {
   const planName = basename(planDir);
@@ -233,7 +255,7 @@ ${relevantRetros}
 ${edgeCaseCoverage}
 
 ## Pattern Application Check
-The deterministic parser-first pattern stayed intact because the same structured reflection contract now feeds both the CLI validator and the semantic layer.
+${patternApplicationCheck}
 
 ## Thrashing & Process Signals
 No execute-time thrashing signal fired in this focused fixture, and the guide-backed reflection stayed bounded enough not to create fresh churn.
@@ -393,12 +415,143 @@ function scenarioI047RequiredRetroInvariant() {
   }
 }
 
+function scenarioAnswerModeQuestionsRejectKeywordFill() {
+  const tmp = makeTemp("keyword-fill");
+  try {
+    const planDir = seedProject(tmp, "reflection keyword-fill fixture");
+    prepareReflectFixture(planDir);
+    writeReflectionGuide(planDir);
+    writeReflection(planDir, {
+      edgeCaseCoverage: "This is addressed and handled appropriately here today.",
+    });
+    const invariants = runNode([ruleEngineScript, "check-invariants", "--json"], tmp);
+    assert(!invariants.ok && invariants.status === 1, "answer-mode questions reject generic keyword-fill prose");
+    const parsed = parseJson(invariants.stdout);
+    const violationNames = new Set((parsed?.violations || []).map((entry) => entry?.name));
+    assert(violationNames.has("reflection_required_questions_unanswered"), "keyword-fill answer surfaces as an unanswered required reflection question");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioDecisionEvasionStillRequiresFollowupStory() {
+  const tmp = makeTemp("decision-evasion");
+  try {
+    const planDir = seedProject(tmp, "reflection decision-evasion fixture");
+    prepareReflectFixture(planDir);
+    writeStoryRegistry(planDir, [
+      {
+        id: "US-001",
+        title: "Unrelated story",
+        status: "FULLY_COVERED",
+        code_refs: [],
+        test_refs: [],
+        validation_refs: [],
+      },
+    ]);
+    writeReflectionGuide(planDir);
+    writeReflection(planDir, {
+      edgeCaseCoverage: "We are choosing not to resolve this within the current iteration, and US-999 should follow later.",
+    });
+    const invariants = runNode([ruleEngineScript, "check-invariants", "--json"], tmp);
+    assert(!invariants.ok && invariants.status === 1, "known-limitation decision evasion still fails without a filed follow-up story");
+    const parsed = parseJson(invariants.stdout);
+    const violationNames = new Set((parsed?.violations || []).map((entry) => entry?.name));
+    assert(violationNames.has("reflection_known_limitation_missing_followup"), "decision-evasion answer surfaces I-045 instead of silently passing");
+    assert((parsed?.violations || []).some((entry) => String(entry?.detail || "").includes("US-999")), "decision-evasion I-045 names the missing follow-up story");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioHistoricalReturnToExecuteDoesNotCreateLivePivot() {
+  const tmp = makeTemp("historical-pivot");
+  try {
+    const planDir = seedProject(tmp, "reflection historical pivot fixture");
+    prepareReflectFixture(planDir);
+    writeReflectionGuide(planDir);
+    writeReflection(planDir, {
+      edgeCaseCoverage: "out_of_scope — We were returning to execute to fix the missing case earlier, and that work is now done.",
+    });
+    const semantic = runNode([
+      "--input-type=module",
+      "-e",
+      `import { runSemanticChecks } from ${JSON.stringify(pathToFileURL(ruleEngineScript).href)};
+const results = runSemanticChecks("reflect-to-validate", ${JSON.stringify(planDir)});
+console.log(JSON.stringify(results));`,
+    ], tmp);
+    assert(semantic.ok, "runSemanticChecks executes for historical pivot narration fixture");
+    const results = parseJson(semantic.stdout) || [];
+    assert(
+      !results.some((entry) => String(entry?.detail || "").includes("reflection_pivot_not_reverted")),
+      "historical return-to-execute narration is not treated as a live pivot"
+    );
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioTerseVerdictAcceptedForNoModeQuestion() {
+  const tmp = makeTemp("terse-verdict");
+  try {
+    const planDir = seedProject(tmp, "reflection terse verdict fixture");
+    prepareReflectFixture(planDir);
+    writeReflectionGuide(planDir, { noModeQuestion: true });
+    writeReflection(planDir, {
+      patternApplicationCheck: "Pass",
+    });
+    const invariants = runNode([ruleEngineScript, "check-invariants", "--json"], tmp);
+    const parsed = parseJson(invariants.stdout);
+    assert(invariants.ok && parsed?.status === "PASS", "terse verdict is accepted for a single required question without answer modes");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+// Deferral classification must distinguish deferring RESOLUTION (a known
+// limitation → I-045 follow-up gate) from "defer to <authority/default>"
+// (yielding upstream, NOT a deferral of work). The earlier `defer ... (to|until|
+// for)` pattern false-tagged the latter, producing a narrow I-045 false-red.
+function scenarioDeferToAuthorityIsNotAKnownLimitation() {
+  const knownLimitations = [
+    "deferred for now",
+    "defer this until the next release",
+    "defer fixing to a later iteration",
+    "we are deferring resolution to v2",
+    "defer the fix until later",
+  ];
+  for (const answer of knownLimitations) {
+    assert(
+      normalizeReflectionDecisionAnswer(answer) === "accept_as_known_limitation",
+      `deferring resolution is a known limitation: "${answer}"`
+    );
+  }
+  const notLimitations = [
+    "defer to upstream defaults",
+    "we defer to the team for the final call",
+    "defer to the maintainer",
+    "defer to existing conventions",
+    "the calculation defers to the library default rounding",
+  ];
+  for (const answer of notLimitations) {
+    assert(
+      normalizeReflectionDecisionAnswer(answer) !== "accept_as_known_limitation",
+      `deferring to an authority/default is NOT a known limitation (no false-red): "${answer}"`
+    );
+  }
+}
+
 console.log("\nReflection Invariants Test\n");
 
+scenarioDeferToAuthorityIsNotAKnownLimitation();
 scenarioI044AnsweredCountInvariant();
 scenarioI045KnownLimitationInvariant();
 scenarioI046PivotInvariant();
 scenarioI047RequiredRetroInvariant();
+scenarioAnswerModeQuestionsRejectKeywordFill();
+scenarioDecisionEvasionStillRequiresFollowupStory();
+scenarioHistoricalReturnToExecuteDoesNotCreateLivePivot();
+scenarioTerseVerdictAcceptedForNoModeQuestion();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

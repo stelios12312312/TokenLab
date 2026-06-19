@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "quant_results_communication",
+  "pack": "quant_results_communication",
+  "title": "Quant Results Communication Pack",
+  "version": 1,
+  "trust_tier": "bundled",
+  "dependencies": [
+    "machine_learning"
+  ],
+  "applies_when": {
+    "dependency_loaded_any": [
+      "machine_learning"
+    ]
+  },
+  "provenance": {
+    "writer": "knowledge_pack",
+    "source": "knowledge_pack:quant_results_communication@v1"
+  },
+  "entry_files": [
+    "floors.json",
+    "pitfalls.json"
+  ]
+}

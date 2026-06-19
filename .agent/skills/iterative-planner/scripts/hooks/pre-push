@@ -1,0 +1,21 @@
+#!/bin/sh
+# iterative-planner managed pre-push hook
+# pre-push hook - refuses pushes to main when IVE conformance is red.
+# Install: node .agent/skills/iterative-planner/scripts/hooks/install.mjs pre-push
+
+GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || exit 0
+SKILL_DIR="${ITERATIVE_PLANNER_SKILL_DIR:-$GIT_ROOT/.agent/skills/iterative-planner}"
+CHECK_SCRIPT="$SKILL_DIR/scripts/hooks/pre_push_conformance.mjs"
+RUN_NODE="$SKILL_DIR/scripts/hooks/run-node.sh"
+
+[ -f "$CHECK_SCRIPT" ] || {
+  echo "ERROR: iterative-planner pre-push conformance helper not found: $CHECK_SCRIPT" >&2
+  exit 1
+}
+
+if [ -f "$RUN_NODE" ]; then
+  ITERATIVE_PLANNER_PROJECT_ROOT="$GIT_ROOT" sh "$RUN_NODE" "$CHECK_SCRIPT"
+else
+  ITERATIVE_PLANNER_PROJECT_ROOT="$GIT_ROOT" node "$CHECK_SCRIPT"
+fi
+exit $?

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "ML-PIT-001",
+    "title": "Temporal leakage through feature construction",
+    "summary": "Features, labels, or joins can accidentally see future data unless the split and feature windows are enforced before model evaluation.",
+    "severity": "high",
+    "polarity": "risk",
+    "tags": [
+      "leakage",
+      "temporal_split"
+    ]
+  },
+  {
+    "id": "ML-PIT-002",
+    "title": "Offline metric improves while decision utility falls",
+    "summary": "Proxy metrics can drift away from the operator decision unless the plan states the target, baseline, and falsification path.",
+    "severity": "medium",
+    "polarity": "risk",
+    "tags": [
+      "metric_drift",
+      "decision_support"
+    ]
+  }
+]

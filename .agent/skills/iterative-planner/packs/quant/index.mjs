@@ -34,6 +34,11 @@ const QUANT_KEYWORDS = [
   "feature_provenance", "time_series", "timeseries", "optimizer",
   "optimization", "optuna", "trial", "search_space", "search space",
   "parameter", "trueskill", "model", "dataset", "data source",
+  "vig", "overround", "de-vig", "devig", "fair probability",
+  "rating period", "markov", "settled bet", "settled bets",
+  "crypto", "perpetual", "perp", "perps", "funding rate",
+  "liquidation", "maker fee", "taker fee", "slippage", "dex",
+  "cex", "gas", "mev", "amm", "delisting", "survivorship",
 ];
 
 const QUANT_RESEARCH_KEYWORDS = [
@@ -42,6 +47,8 @@ const QUANT_RESEARCH_KEYWORDS = [
   "coverage", "tape", "objective", "parameter surface", "alpha hypothesis",
   "edge hypothesis", "candidate alpha", "candidate edge", "next experiment",
   "expected edge", "falsification threshold",
+  "execution realism", "transaction cost", "maker/taker", "net-of-cost",
+  "funding-rate", "liquidation model", "amm price impact",
 ];
 
 const DATA_CONTRACT_TERMS = [
@@ -180,7 +187,8 @@ const MAX_SOURCE_SCAN_BYTES = 250_000;
 const SOURCE_LEAKAGE_CONTEXT_TERMS = [
   "backtest", "model", "signal", "strategy", "prediction", "predict",
   "temporal", "time_series", "timeseries", "odds", "clv", "trueskill",
-  "tennis", "atp", "ipbs", "mim",
+  "tennis", "atp", "ipbs", "mim", "crypto", "perp", "funding",
+  "liquidation", "slippage", "maker", "taker", "gas", "mev", "amm",
 ];
 
 // ---------------------------------------------------------------------------
@@ -265,6 +273,60 @@ function collectQuantFacts(context, session) {
   const planText = Object.values(context.planFiles || {}).join(" ").toLowerCase();
   if (planText.includes("backtest")) {
     session.consult("quant_meta(plan_mentions, backtest).");
+  }
+
+  // 5. e03 — calibration bands (QU-007). Assert IVE's own band thresholds and any
+  //    MEASURED metrics, scaled to integers (the interpreter is integer-only) and
+  //    direction-aware, so metric_implausible/2 fires on a leakage-tell result.
+  collectCalibrationFacts(context, session);
+}
+
+const CALIBRATION_SCALE = 1000;
+function scaleBand(value) {
+  return Math.round(Number(value) * CALIBRATION_SCALE);
+}
+
+function collectCalibrationFacts(context, session) {
+  let bands;
+  try {
+    bands = JSON.parse(readFileSync(join(__dirname, "calibration.json"), "utf-8"));
+  } catch {
+    return; // calibration pack data absent — skip silently
+  }
+
+  // Resolve the active domain from quant_metadata.json (default betting).
+  let domain = "betting";
+  let measured = {};
+  const metaPaths = [
+    join(context.cwd || ".", "quant_metadata.json"),
+    join(context.cwd || ".", ".agent", "quant_metadata.json"),
+    join(context.cwd || ".", "plans", "knowledge", "quant_metadata.json"),
+  ];
+  for (const mp of metaPaths) {
+    if (!existsSync(mp)) continue;
+    try {
+      const meta = JSON.parse(readFileSync(mp, "utf-8"));
+      if (typeof meta.domain === "string" && bands.domains?.[meta.domain]) domain = meta.domain;
+      if (meta.measured_metrics && typeof meta.measured_metrics === "object") measured = meta.measured_metrics;
+    } catch { /* ignore */ }
+    break;
+  }
+
+  const domainBands = bands.domains?.[domain]?.metrics || {};
+  for (const [metric, band] of Object.entries(domainBands)) {
+    const m = sanitize(metric);
+    if (band.direction === "lower") {
+      session.consult(`calibration_suspicious_low(${m}, ${scaleBand(band.suspicious)}).`);
+      session.consult(`calibration_plausible_high(${m}, ${scaleBand(band.plausible_high)}).`);
+    } else {
+      session.consult(`calibration_suspicious(${m}, ${scaleBand(band.suspicious)}).`);
+      session.consult(`calibration_plausible_low(${m}, ${scaleBand(band.plausible_low)}).`);
+    }
+  }
+  for (const [metric, value] of Object.entries(measured)) {
+    if (typeof value === "number" && Number.isFinite(value)) {
+      session.consult(`measured_metric(${sanitize(metric)}, ${scaleBand(value)}).`);
+    }
   }
 }
 
@@ -508,6 +570,14 @@ const RULE_DEFS = [
     false_positive: "Future label construction is target-only, random split is used in a non-temporal fixture, or preprocessing is fold-local despite compact code.",
     remediation: "Trace known-at-time feature boundaries, remove future-derived fields from features, use temporal/walk-forward splits, and fit preprocessing only inside train folds.",
     engine: "source_scan",
+  },
+  {
+    id: "QU-007",
+    name: "Calibration band implausibility",
+    rationale: "A measured metric outside IVE's clean-room plausibility band (too-good or implausibly bad) is a leakage/units tell and must be a hard failure, not a green check.",
+    false_positive: "A genuinely exceptional but verified result with an attached leakage/units re-audit artifact; a metric whose domain band is not yet defined.",
+    remediation: "Recompute the metric from raw arrays, re-audit feature provenance and units, and attach the leakage re-audit artifact before acceptance.",
+    engine: "prolog",
   },
 ];
 
@@ -1027,8 +1097,24 @@ function ruleCategory(ruleId) {
     "QU-004": "data_integrity",
     "QU-005": "model_quality",
     "QU-006": "data_integrity",
+    "QU-007": "backtest_validity",
   };
   return map[ruleId] || "quant";
 }
 
 export default quantPack;
+export {
+  ARCHETYPE_ACCOMPLICE_REGISTRY,
+  detectQuantArchetype,
+  evaluateAccompliceObligations,
+  evaluateArchetypeAccompliceGate,
+  evaluateResidualScopeGap,
+  renderArchetypeAccomplicePlanSection,
+} from "./archetype_accomplices.mjs";
+export {
+  BETTING_MARKET_DEVIG_METHODS,
+  DEFAULT_SPORTS_SAMPLE_FLOOR,
+  evaluateBettingMarketGate,
+  impliedProbabilityFromOdds,
+  removeOverround,
+} from "./betting_market.mjs";

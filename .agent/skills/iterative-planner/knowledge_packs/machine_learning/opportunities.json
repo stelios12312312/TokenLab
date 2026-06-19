@@ -1,0 +1,13 @@
+[
+  {
+    "id": "ML-OPP-001",
+    "title": "Use held-out slices as product language",
+    "summary": "Reporting performance by meaningful scenario slice helps reviewers see whether the model improves the real workflow or only the aggregate.",
+    "severity": "medium",
+    "polarity": "opportunity",
+    "tags": [
+      "slice_analysis",
+      "reviewability"
+    ]
+  }
+]

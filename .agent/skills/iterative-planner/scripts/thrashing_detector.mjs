@@ -15,6 +15,7 @@ import {
 import { fileURLToPath } from "url";
 
 import { readStateJson } from "./lib/determinism.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 import {
   extractFilesToModify,
   extractMarkdownSection,
@@ -1870,7 +1871,7 @@ export function main(argv = process.argv.slice(2)) {
       error: "missing_plan",
       details: "Pass --plan <plan-dir> or set an active plan.",
     };
-    console.error(cli.flags.compact ? JSON.stringify(payload) : JSON.stringify(payload, null, 2));
+    emitJson(payload, { fd: 2, space: cli.flags.compact ? 0 : 2 });
     return 1;
   }
 
@@ -1881,20 +1882,16 @@ export function main(argv = process.argv.slice(2)) {
     now: cli.now || new Date().toISOString(),
   });
 
-  const output = cli.flags.compact
-    ? JSON.stringify(result)
-    : JSON.stringify(result, null, 2);
-
   if (result.ok) {
-    console.log(output);
+    emitJson(result, { space: cli.flags.compact ? 0 : 2 });
     return 0;
   }
 
-  console.error(output);
+  emitJson(result, { fd: 2, space: cli.flags.compact ? 0 : 2 });
   return 1;
 }
 
 const isDirectRun = process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
 if (isDirectRun) {
-  process.exit(main());
+  process.exitCode = main();
 }

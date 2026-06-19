@@ -138,3 +138,40 @@ quant_violation('QU-005', Id,
     Status \= retired,
     postcondition(Id, outputs_probability(_)),
     \+ story_mentions(Id, calibrat).
+
+%% -----------------------------------------------------------------------
+%% QU-007 (e03): Calibration band implausibility on MEASURED metrics.
+%%
+%% A measured metric that exceeds its suspicious bound or falls below its
+%% plausible floor is a leakage/units tell — a hard failure, not a green check.
+%% The interpreter is integer-only, so packs/quant/index.mjs asserts metric
+%% values and bands scaled by 1000 (direction-aware):
+%%   measured_metric(Metric, ScaledValue)
+%%   calibration_suspicious(Metric, Scaled)      -- higher-is-better: too-good ceiling
+%%   calibration_plausible_low(Metric, Scaled)   -- higher-is-better: broken floor
+%%   calibration_suspicious_low(Metric, Scaled)  -- lower-is-better: too-good floor
+%%   calibration_plausible_high(Metric, Scaled)  -- lower-is-better: bad ceiling
+%% Bands are IVE's own clean-room numbers (packs/quant/calibration.json).
+%% -----------------------------------------------------------------------
+
+metric_implausible(Metric, Value) :-
+    measured_metric(Metric, Value),
+    calibration_suspicious(Metric, S),
+    Value >= S.
+metric_implausible(Metric, Value) :-
+    measured_metric(Metric, Value),
+    calibration_plausible_low(Metric, L),
+    Value < L.
+metric_implausible(Metric, Value) :-
+    measured_metric(Metric, Value),
+    calibration_suspicious_low(Metric, S),
+    Value =< S.
+metric_implausible(Metric, Value) :-
+    measured_metric(Metric, Value),
+    calibration_plausible_high(Metric, H),
+    Value > H.
+
+quant_violation('QU-007', Metric,
+    'Measured metric is outside its calibration band -- leakage/units re-audit required before acceptance (recompute, do not assert)',
+    'CRITICAL') :-
+    metric_implausible(Metric, _).

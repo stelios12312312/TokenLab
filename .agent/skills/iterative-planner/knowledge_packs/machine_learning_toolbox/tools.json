@@ -1,0 +1,20 @@
+[
+  {
+    "id": "MLT-TOOL-001",
+    "title": "Gradient boosting baseline",
+    "summary": "Use XGBoost, LightGBM, or CatBoost as a strong tabular baseline before escalating to bespoke model families.",
+    "family": "gradient_boosting",
+    "landscape_age": "current",
+    "severity": "medium",
+    "polarity": "opportunity"
+  },
+  {
+    "id": "MLT-TOOL-002",
+    "title": "Time-series validation harness",
+    "summary": "Prefer walk-forward and blocked temporal splits for time-dependent data instead of random train/test splits.",
+    "family": "time_series_validation",
+    "landscape_age": "current",
+    "severity": "high",
+    "polarity": "risk"
+  }
+]

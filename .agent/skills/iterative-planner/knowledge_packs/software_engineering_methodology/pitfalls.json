@@ -1,0 +1,16 @@
+[
+  {
+    "id": "SWE-PIT-001",
+    "title": "Patch stack instead of abstraction",
+    "summary": "Three or more patches on the same behavior surface usually mean the abstraction is wrong.",
+    "severity": "high",
+    "polarity": "risk"
+  },
+  {
+    "id": "SWE-PIT-002",
+    "title": "Observable behavior not exercised",
+    "summary": "A code change that only passes source inspection can still fail the user journey.",
+    "severity": "medium",
+    "polarity": "risk"
+  }
+]

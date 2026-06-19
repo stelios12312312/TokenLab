@@ -1,0 +1,16 @@
+[
+  {
+    "id": "UX-PIT-001",
+    "title": "Screenshot without DOM proof",
+    "summary": "A screenshot without DOM or interaction assertions is rendering evidence, not workflow proof.",
+    "severity": "medium",
+    "polarity": "risk"
+  },
+  {
+    "id": "UX-PIT-002",
+    "title": "Happy-path-only state proof",
+    "summary": "UI tests need loading, empty, error, disabled, responsive, and success states where the workflow depends on them.",
+    "severity": "high",
+    "polarity": "risk"
+  }
+]

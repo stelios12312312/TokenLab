@@ -4,6 +4,7 @@ import { realpathSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 
+import { emitJson } from "./lib/emit_json.mjs";
 import { validateReflection } from "./lib/reflection_validation.mjs";
 
 function usage() {
@@ -105,19 +106,17 @@ export function main(argv = process.argv.slice(2)) {
     filePath: cli.filePath,
   });
 
-  const output = cli.json
-    ? JSON.stringify(result, null, 2)
-    : renderHuman(result);
-
   if (result.ok) {
-    console.log(output);
+    if (cli.json) emitJson(result);
+    else console.log(renderHuman(result));
     return 0;
   }
 
-  console.error(output);
+  if (cli.json) emitJson(result, { fd: 2 });
+  else console.error(renderHuman(result));
   return 1;
 }
 
 if (isDirectRun()) {
-  process.exit(main());
+  process.exitCode = main();
 }

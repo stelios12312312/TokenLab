@@ -6,7 +6,7 @@
 import { basename, dirname, join, sep } from "path";
 import { createHash } from "crypto";
 import { fileURLToPath } from "url";
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "fs";
 import { isAbsolute, relative, resolve } from "path";
 import { createSession } from "./lib/prolog.mjs";
 import { formatReason } from "./lib/sanitize.mjs";
@@ -96,11 +96,14 @@ function parseArgs(argv) {
     else if (arg === "--ticket-type") parsed.ticketType = args[++i] || "";
     else if (arg === "--persona-review") parsed.personaReview = true;
     else if (arg === "--persona-packs") parsed.personaPacks = args[++i] || "";
+    else if (arg === "--quant-scope") parsed.quantScope = args[++i] || "";
     else if (arg === "--auto-story") parsed.autoStory = true;
     else if (arg === "--remediate") parsed.remediate = true;
     else if (arg === "--force") parsed.force = true;
     else if (arg === "--write") parsed.write = true;
     else if (arg === "--show-deepseek-block") parsed.showDeepSeekBlock = true;
+    else if (arg === "--llm-review") parsed.llmReview = true;
+    else if (arg === "--allow-duplicate") parsed.allowDuplicate = true;
     else if (!parsed.program) parsed.program = arg;
   }
   return parsed;
@@ -111,8 +114,8 @@ function usage() {
 
 Usage:
   node program_manager.mjs init --program <name-or-path> [--title "<program title>"] [--goal "<program goal>"] [--force] [--json]
-  node program_manager.mjs intake --program <path-or-id> (--from-text "<idea>"|--from-file <path>|--from-json-array '[{"title":"...","text":"..."}]'|--issue <n>|--project-item <id/url>) [--title "<short title>"] [--ticket-type <type>] [--persona-review] [--persona-packs <csv>] [--repo owner/name] [--write] [--show-deepseek-block] [--json]
-  node program_manager.mjs intake --program <path-or-id> --from-text "<idea>" [--auto-story] [--write] [--show-deepseek-block] [--json]
+  node program_manager.mjs intake --program <path-or-id> (--from-text "<idea>"|--from-file <path>|--from-json-array '[{"title":"...","text":"..."}]'|--issue <n>|--project-item <id/url>) [--title "<short title>"] [--ticket-type <type>] [--persona-review] [--persona-packs <csv>] [--quant-scope planner_core|meta|tooling] [--repo owner/name] [--write] [--llm-review] [--allow-duplicate] [--show-deepseek-block] [--json]
+  node program_manager.mjs intake --program <path-or-id> --from-text "<idea>" [--auto-story] [--write] [--llm-review] [--allow-duplicate] [--show-deepseek-block] [--json]
   node program_manager.mjs check [--program <path-or-id>] [--remediate] [--write] [--json]
   node program_manager.mjs verify <gate> [--program <path-or-id>] [--remediate] [--write] [--json]
   node program_manager.mjs facts [--program <path-or-id>]
@@ -142,7 +145,17 @@ review metadata, and --persona-packs overrides the default packs. --from-json-ar
 accepts a JSON array string of ticket objects; each object needs
 text/body/description/content and may include title, id, ticket_type/type,
 persona_review, and persona_packs. --write updates only the local Program Packet
-and local intake artifact(s). --show-deepseek-block renders the full fenced
+and local intake artifact(s).
+
+Duplicate scan: intake deterministically compares the candidate title against
+every ticket in the target packet AND every sibling Program Packet under
+plans/programs/. High-similarity matches BLOCK the intake (exit 3) unless
+--allow-duplicate is passed after confirming the candidate is genuinely new.
+
+LLM review: per-ticket DeepSeek advisory is OPT-IN via --llm-review (2026-06-10
+consolidation audit: default-on advisories paraphrased deterministic blockers
+and had zero downstream consumers). Without the flag the intake packet records
+an honest not_run status. --show-deepseek-block renders the full fenced
 advisory verdict in text output; default output shows compact status/summary/artifact
 proof. --auto-story appends review-needed NOT_IMPLEMENTED draft stories to
 reports/user_story_audit/story_registry.json and links them to the ticket when
@@ -339,6 +352,7 @@ function intakeMetadataDefaults(args) {
   const explicitPacks = parsePersonaPacks(args.personaPacks || args.persona_packs);
   const profile = ticketTypeProfile(ticketType, baseType);
   const inferredPacks = ticketType ? asArray(profile?.persona_packs) : [];
+  const rawQuantScope = args.quantScope || args.quant_scope || null;
   return {
     ticket_type: ticketType || "",
     base_ticket_type: baseType || "",
@@ -346,6 +360,7 @@ function intakeMetadataDefaults(args) {
     persona_review_enabled: args.personaReview === true || args.persona_review === true,
     persona_packs: explicitPacks.length > 0 ? explicitPacks : inferredPacks,
     persona_packs_explicit: explicitPacks.length > 0,
+    quant_scope: rawQuantScope ? String(rawQuantScope).trim().toLowerCase().replace(/-/g, "_") : null,
   };
 }
 
@@ -373,6 +388,9 @@ function resolveSourceTicketMetadata(item = {}, defaults = {}) {
   const personaReview = itemHasReview
     ? booleanOverride(hasOwn(item, "persona_review") ? item.persona_review : item.personaReview, defaults.persona_review_enabled)
     : defaults.persona_review_enabled === true;
+  const rawQuantScope = hasOwn(item, "quant_scope")
+    ? item.quant_scope
+    : (hasOwn(item, "quantScope") ? item.quantScope : (defaults.quant_scope || null));
   return {
     ticket_type: ticketType,
     base_ticket_type: baseType,
@@ -381,6 +399,7 @@ function resolveSourceTicketMetadata(item = {}, defaults = {}) {
     persona_packs: personaPacks,
     persona_packs_explicit: itemHasPacks || defaults.persona_packs_explicit === true,
     ticket_type_profile: profile ? normalizeTicketType(ticketType) : "generic",
+    quant_scope: rawQuantScope ? String(rawQuantScope).trim().toLowerCase().replace(/-/g, "_") : null,
   };
 }
 
@@ -1028,6 +1047,41 @@ function intakeArtifactPath(packetPath, ticketId) {
   return join(dirname(packetPath), "intake", `${sanitizeIdSegment(ticketId).toLowerCase()}_intake_packet.json`);
 }
 
+// Right-altitude recurrence handling: a predictive recurrence guard (e.g. M-001
+// "planner-core gate rollout missed ripple-through") should be CARRIED into a
+// proposed ticket's verification plan at intake, not hard-block scoping for evidence
+// that can only be produced at implementation. We auto-add a verification row naming
+// the missing guards so the obligation is recorded (and the child-plan must still
+// satisfy it downstream), which clears the intake block exactly as a hand-written
+// guard row would. The recurrence semantics are unchanged — this just stops the
+// scoper being blocked to do by hand what the system can carry for them.
+function carryRecurrenceGuardsIntoDraft(draft, recurrenceCheck) {
+  const blocking = asArray(recurrenceCheck?.matches).filter((entry) => entry?.blocking);
+  if (blocking.length === 0) return false;
+  const guards = uniqueStrings(blocking.flatMap((entry) => asArray(entry.missing_proof)));
+  if (guards.length === 0) return false;
+  const ticketId = asString(draft?.ticket?.id);
+  if (!ticketId) return false;
+  const acceptanceId = asString(draft?.acceptance_criteria?.[0]?.id) || null;
+  const rowId = `vm-${ticketId}-recurrence-guard`.toLowerCase();
+  const guardList = guards.join(", ");
+  const carriedFrom = uniqueStrings(blocking.map((entry) => asString(entry.id)).filter(Boolean));
+  const row = {
+    id: rowId,
+    scope: "ticket",
+    subject_ref: ticketId,
+    acceptance_criterion_ref: acceptanceId,
+    proof_type: "proof:migration_parity",
+    command_or_action: `Carry recurrence guard (auto-added from matched prior lessons ${carriedFrom.join(", ")}): the child plan must produce ${guardList}.`,
+    pass_means: `${guardList} are produced and pass before the child plan closes.`,
+    auto_carried_from: carriedFrom,
+  };
+  draft.packet.verification_matrix = upsertById(draft.packet.verification_matrix, row);
+  draft.ticket.verification_refs = uniqueStrings([...asArray(draft.ticket.verification_refs), rowId]);
+  draft.verification_rows = [...asArray(draft.verification_rows), row];
+  return true;
+}
+
 function buildIntakeDraft({ packet, source, timestamp, artifactRelPath, additionalStoryRefs = [] }) {
   const storyRefs = uniqueStrings([...extractStoryRefs(source.text), ...additionalStoryRefs]);
   const suffix = sha256(`${source.kind}:${source.source_arg || ""}:${source.external?.url || ""}:${source.text}`).slice(0, 8).toUpperCase();
@@ -1094,16 +1148,29 @@ function buildIntakeDraft({ packet, source, timestamp, artifactRelPath, addition
     persona_packs: personaPacks,
   };
   if (personaReview) ticket.persona_review = personaReview;
+  const quantScope = source.quant_scope || existingTicket.quant_scope || null;
+  if (quantScope) ticket.quant_scope = quantScope;
   next.tickets = upsertById(next.tickets, ticket);
-  next.acceptance_criteria = upsertById(next.acceptance_criteria, {
+  const existingAcceptance = asArray(next.acceptance_criteria)
+    .find((entry) => asString(entry?.id) === acceptanceId) || null;
+  const acceptanceRow = {
     id: acceptanceId,
     scope: "ticket",
     subject_ref: ticketId,
     text: "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
     story_refs: storyRefs,
     maintenance_rationale: storyRefs.length > 0 ? null : "Draft intake gap requires story linkage before ready.",
-  });
-  next.verification_matrix = upsertById(next.verification_matrix, {
+    ...(existingAcceptance || {}),
+  };
+  acceptanceRow.story_refs = uniqueStrings([
+    ...storyRefs,
+    ...asArray(existingAcceptance?.story_refs),
+  ]);
+  next.acceptance_criteria = upsertById(next.acceptance_criteria, acceptanceRow);
+
+  const existingVerification = asArray(next.verification_matrix)
+    .find((entry) => asString(entry?.id) === verificationId) || null;
+  const verificationRow = {
     id: verificationId,
     scope: "ticket",
     subject_ref: ticketId,
@@ -1111,7 +1178,9 @@ function buildIntakeDraft({ packet, source, timestamp, artifactRelPath, addition
     proof_type: "proof:artifact_review",
     command_or_action: `Review ${artifactRelPath}`,
     pass_means: "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers.",
-  });
+    ...(existingVerification || {}),
+  };
+  next.verification_matrix = upsertById(next.verification_matrix, verificationRow);
 
   return {
     packet: next,
@@ -1161,6 +1230,85 @@ function normalizeIntakeAdvisoryPayload(parsed) {
   };
 }
 
+const DUPLICATE_TITLE_STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "to", "of", "in", "for", "on", "with", "into",
+  "from", "via", "by", "at", "is", "are", "be", "as", "not", "no", "its", "it",
+]);
+const DUPLICATE_SIMILARITY_THRESHOLD = 0.7;
+
+function duplicateTitleTokens(value) {
+  return new Set(
+    String(value || "")
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word.length > 2 && !DUPLICATE_TITLE_STOPWORDS.has(word)),
+  );
+}
+
+function duplicateTitleSimilarity(a, b) {
+  const tokensA = duplicateTitleTokens(a);
+  const tokensB = duplicateTitleTokens(b);
+  if (tokensA.size === 0 || tokensB.size === 0) return 0;
+  let intersection = 0;
+  for (const token of tokensA) if (tokensB.has(token)) intersection += 1;
+  // Overlap coefficient (intersection / smaller set) so a candidate that is a
+  // strict subset/superset of an existing ticket title still flags.
+  return intersection / Math.min(tokensA.size, tokensB.size);
+}
+
+/**
+ * Deterministic cross-program duplicate scan (consolidation 2026-06-10, PM-2).
+ * Compares the candidate title against tickets in the target packet and every
+ * sibling Program Packet under plans/programs/. This is a BLOCKING check, not
+ * a silent advisory: bypass requires the explicit --allow-duplicate flag.
+ */
+function scanForDuplicateTickets({ candidateTitle, candidateId, packet, packetPath, cwd }) {
+  const matches = [];
+  const seenPackets = new Set();
+  const considerTicket = (ticket, programId, packetRel) => {
+    const ticketId = asString(ticket?.id);
+    if (!ticketId || ticketId === candidateId) return;
+    const similarity = duplicateTitleSimilarity(candidateTitle, ticket?.title);
+    if (similarity >= DUPLICATE_SIMILARITY_THRESHOLD) {
+      matches.push({
+        id: ticketId,
+        title: asString(ticket?.title),
+        lifecycle: asString(ticket?.lifecycle) || null,
+        program_id: programId || null,
+        packet_path: packetRel,
+        similarity: Number(similarity.toFixed(3)),
+      });
+    }
+  };
+  const targetRel = relativePath(cwd, packetPath);
+  seenPackets.add(resolve(packetPath));
+  for (const ticket of asArray(packet?.tickets)) considerTicket(ticket, packet?.id, targetRel);
+
+  const programsRoot = join(cwd, "plans", "programs");
+  if (existsSync(programsRoot)) {
+    for (const entry of readdirSync(programsRoot)) {
+      const siblingPath = join(programsRoot, entry, "program_packet.json");
+      if (!existsSync(siblingPath) || seenPackets.has(resolve(siblingPath))) continue;
+      seenPackets.add(resolve(siblingPath));
+      try {
+        const sibling = JSON.parse(readFileSync(siblingPath, "utf-8"));
+        const siblingRel = relativePath(cwd, siblingPath);
+        for (const ticket of asArray(sibling?.tickets)) considerTicket(ticket, sibling?.id, siblingRel);
+      } catch {
+        // Unreadable sibling packets are reported by `check`, not by intake.
+      }
+    }
+  }
+  matches.sort((a, b) => b.similarity - a.similarity);
+  return {
+    status: matches.length > 0 ? "matches_found" : "clear",
+    threshold: DUPLICATE_SIMILARITY_THRESHOLD,
+    scanned_packets: seenPackets.size,
+    matches: matches.slice(0, 10),
+  };
+}
+
 async function runIntakeDeepSeekAdvisory({ intakePacket, cwd, env, fetchImpl }) {
   const config = loadDriftLlmConfig(env, { cwd });
   const publicConfig = publicDriftConfig(config);
@@ -1202,7 +1350,7 @@ async function runIntakeDeepSeekAdvisory({ intakePacket, cwd, env, fetchImpl }) 
   }
 }
 
-function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPath, ticket, acceptanceCriteria, verificationRows, deterministic, deepseekAdvisory }) {
+function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPath, ticket, acceptanceCriteria, verificationRows, deterministic, deepseekAdvisory, duplicateScan = null }) {
   const blockerCount = asArray(deterministic?.blockers).length;
   const recurrence = deterministic?.retro_recurrence_check || null;
   const quantGate = deterministic?.quant_persona_gate || null;
@@ -1248,7 +1396,11 @@ function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPat
     retro_recurrence_advisory_count: recurrence?.summary?.advisory_count || 0,
     quant_persona_gate_status: quantGate?.status || "not_run",
     quant_persona_gate_required: quantGate?.required === true,
+    quant_persona_gate_reason: quantGate?.reason || null,
+    quant_persona_gate_declared_scope: quantGate?.declared_scope || null,
     quant_persona_gate_missing_count: quantGate?.summary?.missing_guard_count || 0,
+    duplicate_scan_status: duplicateScan?.status || "not_run",
+    duplicate_scan_matches: asArray(duplicateScan?.matches).map((match) => match.id),
     deepseek_advisory_status: deepseekAdvisory?.status || DEEPSEEK_ADVISORY_NOT_RUN_STATUS,
     deepseek_advisory_summary: oneLine(deepseekAdvisory?.summary || (!deepseekAdvisory ? DEEPSEEK_ADVISORY_NOT_RUN_SUMMARY : "")),
     deepseek_advisory_artifact_path: intakeArtifactPath,
@@ -1263,7 +1415,7 @@ function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPat
   };
 }
 
-async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cwd, env, fetchImpl, write, autoStoryEnabled = false }) {
+async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cwd, env, fetchImpl, write, autoStoryEnabled = false, llmReview = false, allowDuplicate = false }) {
   const preparedSource = await summarizeLongTitle({ source, cwd, env, fetchImpl });
   const autoStory = await prepareAutoStory({
     enabled: autoStoryEnabled,
@@ -1282,8 +1434,33 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
     artifactRelPath,
     additionalStoryRefs: autoStory.story_refs,
   });
-  const deterministic = runIntakeOntology(draft.packet, cwd, { extraStoryIds: autoStory.story_refs });
-  const recurrenceCheck = evaluateRetroRecurrenceCheck({
+  const duplicateScan = scanForDuplicateTickets({
+    candidateTitle: draft.ticket?.title || preparedSource.title,
+    candidateId: draft.ticket?.id,
+    packet,
+    packetPath,
+    cwd,
+  });
+  if (duplicateScan.matches.length > 0 && !allowDuplicate) {
+    return {
+      status: "BLOCKED",
+      blocked_reason: "duplicate_candidates",
+      dry_run: !write,
+      write: false,
+      packet_updated: false,
+      program_packet_path: relativePath(cwd, packetPath),
+      intake_artifact_path: null,
+      candidate_ticket: draft.ticket,
+      duplicate_scan: duplicateScan,
+      message: `Intake blocked: candidate resembles ${duplicateScan.matches.length} existing ticket(s): ${duplicateScan.matches.map((m) => `${m.id} (${m.similarity})`).join(", ")}. Consolidate with the existing ticket, or re-run with --allow-duplicate if it is genuinely new.`,
+      packet,
+    };
+  }
+  if (duplicateScan.matches.length > 0 && allowDuplicate) {
+    duplicateScan.status = "overridden";
+  }
+  let deterministic = runIntakeOntology(draft.packet, cwd, { extraStoryIds: autoStory.story_refs });
+  const recurrenceArgs = () => ({
     cwd,
     sourceText: preparedSource.text,
     packet: draft.packet,
@@ -1292,12 +1469,21 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
     verificationRows: draft.verification_rows,
     env,
   });
+  let recurrenceCheck = evaluateRetroRecurrenceCheck(recurrenceArgs());
+  // Carry predictive recurrence guards into the proposed ticket's verification plan
+  // rather than hard-blocking scoping; re-evaluate once carried. The guard is now an
+  // obligation on the ticket the child-plan must satisfy at implementation.
+  if ((recurrenceCheck?.summary?.blocking_count || 0) > 0 && carryRecurrenceGuardsIntoDraft(draft, recurrenceCheck)) {
+    deterministic = runIntakeOntology(draft.packet, cwd, { extraStoryIds: autoStory.story_refs });
+    recurrenceCheck = evaluateRetroRecurrenceCheck(recurrenceArgs());
+  }
   const quantPersonaGate = evaluateQuantPersonaGate({
     sourceText: preparedSource.text,
     packet: draft.packet,
     ticket: draft.ticket,
     acceptanceCriteria: draft.acceptance_criteria,
     verificationRows: draft.verification_rows,
+    ticketScope: preparedSource.quant_scope || draft.ticket?.quant_scope || null,
   });
   deterministic.retro_recurrence_check = recurrenceCheck;
   deterministic.quant_persona_gate = quantPersonaGate;
@@ -1371,6 +1557,7 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
     retro_recurrence_check: recurrenceCheck,
     quant_persona_gate: quantPersonaGate,
     deterministic,
+    duplicate_scan: duplicateScan,
     deepseek_advisory: {
       status: "unavailable",
       summary: "not_run",
@@ -1379,7 +1566,17 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
     },
     final_status: deterministic.blockers.length > 0 ? "blocked" : "proposed",
   };
-  intakePacket.deepseek_advisory = await runIntakeDeepSeekAdvisory({ intakePacket, cwd, env, fetchImpl });
+  // PM-3 (consolidation 2026-06-10): LLM intake review is opt-in. The default
+  // path records an honest not_run instead of a paraphrase nobody consumes.
+  intakePacket.deepseek_advisory = llmReview
+    ? await runIntakeDeepSeekAdvisory({ intakePacket, cwd, env, fetchImpl })
+    : {
+        available: false,
+        status: DEEPSEEK_ADVISORY_NOT_RUN_STATUS,
+        summary: "LLM intake review skipped (opt-in via --llm-review); deterministic results are authoritative.",
+        findings: [],
+        recommended_actions: [],
+      };
   intakePacket.ticket_intake_receipt = buildTicketIntakeReceipt({
     source: preparedSource,
     programPacketPath: relativePath(cwd, packetPath),
@@ -1389,6 +1586,7 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
     verificationRows: draft.verification_rows,
     deterministic,
     deepseekAdvisory: intakePacket.deepseek_advisory,
+    duplicateScan,
   });
 
   if (write) {
@@ -1412,6 +1610,7 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
     acceptance_criteria: draft.acceptance_criteria,
     verification_rows: draft.verification_rows,
     deterministic,
+    duplicate_scan: duplicateScan,
     deepseek_advisory: intakePacket.deepseek_advisory,
     ticket_intake_receipt: intakePacket.ticket_intake_receipt,
     intake_packet: intakePacket,
@@ -1575,6 +1774,8 @@ export async function runIntake(inputArgs, options = {}) {
       fetchImpl,
       write: args.write,
       autoStoryEnabled: args.autoStory,
+      llmReview: args.llmReview === true,
+      allowDuplicate: args.allowDuplicate === true,
     });
     workingPacket = result.packet;
     results.push(result);
@@ -1611,6 +1812,57 @@ function ticketSummary(packet, ticketId) {
     depends_on: Array.isArray(ticket.depends_on) ? ticket.depends_on : [],
     child_plan_policy: ticket.child_plan?.policy || null,
   };
+}
+
+function dependencySource(dep) {
+  return asString(dep?.from_ref || dep?.source_ref || dep?.source || dep?.blocked_by);
+}
+
+function dependencyTarget(dep) {
+  return asString(dep?.to_ref || dep?.target_ref || dep?.target || dep?.blocks);
+}
+
+function dispatchOrderTickets(packet) {
+  const tickets = asArray(packet?.tickets);
+  const ticketsById = new Map();
+  const depsById = new Map();
+  for (const ticket of tickets) {
+    const ticketId = asString(ticket?.id);
+    if (!ticketId) continue;
+    ticketsById.set(ticketId, ticket);
+    depsById.set(ticketId, []);
+  }
+
+  for (const ticket of tickets) {
+    const ticketId = asString(ticket?.id);
+    if (!ticketId || !depsById.has(ticketId)) continue;
+    for (const depId of asArray(ticket.depends_on).map(asString).filter(Boolean)) {
+      if (ticketsById.has(depId)) depsById.get(ticketId).push(depId);
+    }
+  }
+  for (const dep of asArray(packet?.dependencies)) {
+    const source = dependencySource(dep);
+    const target = dependencyTarget(dep);
+    if (source && target && depsById.has(source) && ticketsById.has(target)) {
+      depsById.get(source).push(target);
+    }
+  }
+
+  const ordered = [];
+  const visiting = new Set();
+  const visited = new Set();
+  function visit(ticketId) {
+    if (visited.has(ticketId)) return;
+    if (visiting.has(ticketId)) return;
+    visiting.add(ticketId);
+    for (const depId of depsById.get(ticketId) || []) visit(depId);
+    visiting.delete(ticketId);
+    visited.add(ticketId);
+    ordered.push(ticketId);
+  }
+
+  for (const ticket of tickets) visit(asString(ticket?.id));
+  return ordered.filter(Boolean).map((ticketId) => ticketSummary(packet, ticketId));
 }
 
 function collectStoryIds(cwd) {
@@ -1653,18 +1905,27 @@ function programStatusAfterGate(gate) {
   return null;
 }
 
+const PROGRAM_STATUS_ORDER = ["design", "ready", "executing", "validating", "closed"];
+
+function isProgramStatusPastGate(previousStatus, nextStatus) {
+  const previousIndex = PROGRAM_STATUS_ORDER.indexOf(asString(previousStatus));
+  const nextIndex = PROGRAM_STATUS_ORDER.indexOf(asString(nextStatus));
+  return previousIndex >= 0 && nextIndex >= 0 && previousIndex > nextIndex;
+}
+
 function buildProgramStatusTransition({ target, gate, write, env }) {
   const previousStatus = asString(target?.packet?.status) || null;
   const newStatus = programStatusAfterGate(gate);
   const supported = !!newStatus;
-  const changed = supported && previousStatus !== newStatus;
+  const alreadyPastGate = supported && isProgramStatusPastGate(previousStatus, newStatus);
+  const changed = supported && previousStatus !== newStatus && !alreadyPastGate;
   const transition = {
     gate: gate || null,
     previous_status: previousStatus,
     new_status: supported ? newStatus : previousStatus,
     write_requested: write === true,
     transition_written: false,
-    status: supported ? (changed ? "pending" : "already_current") : "unsupported_gate",
+    status: supported ? (alreadyPastGate ? "already_past_gate" : (changed ? "pending" : "already_current")) : "unsupported_gate",
   };
   if (!supported || !write || !changed) return transition;
   const nextPacket = clone(target.packet);
@@ -1916,6 +2177,10 @@ function renderIntakeText(result, { showDeepSeekBlock = false } = {}) {
     ];
     for (const item of result.results) {
       lines.push(`- ${item.candidate_ticket?.id || "unknown"} — ${item.candidate_ticket?.title || ""}`);
+      if (item.blocked_reason === "duplicate_candidates") {
+        lines.push(`  BLOCKED duplicate of: ${asArray(item.duplicate_scan?.matches).map((m) => m.id).join(", ")} (re-run with --allow-duplicate if genuinely new)`);
+        continue;
+      }
       lines.push(`  Ticket type: ${item.ticket_intake_receipt?.ticket_type || item.candidate_ticket?.ticket_type || "unknown"} (${item.ticket_intake_receipt?.base_ticket_type || item.candidate_ticket?.type || "unknown"})`);
       lines.push(`  Persona review: ${item.ticket_intake_receipt?.persona_review_status || "not_run"}`);
       lines.push(`  Intake packet: ${item.intake_artifact_path}`);
@@ -1930,12 +2195,28 @@ function renderIntakeText(result, { showDeepSeekBlock = false } = {}) {
     }
     return lines.join("\n");
   }
+  if (result.status === "BLOCKED" && result.blocked_reason === "duplicate_candidates") {
+    const lines = [
+      "Program Manager intake: BLOCKED (duplicate candidates)",
+      `Program packet: ${result.program_packet_path}`,
+      `Candidate ticket: ${result.candidate_ticket?.id || "unknown"} — ${result.candidate_ticket?.title || ""}`,
+      "Possible duplicates:",
+    ];
+    for (const match of asArray(result.duplicate_scan?.matches)) {
+      lines.push(`- ${match.id} [${match.lifecycle || "?"}] (${match.similarity}) ${match.title} — ${match.packet_path}`);
+    }
+    lines.push("Consolidate with the existing ticket, or re-run with --allow-duplicate if genuinely new.");
+    return lines.join("\n");
+  }
   const lines = [
     `Program Manager intake: ${result.dry_run ? "dry-run" : "write"}`,
     `Program packet: ${result.program_packet_path}`,
     `Intake packet: ${result.intake_artifact_path}`,
     `Candidate ticket: ${result.candidate_ticket?.id || "unknown"} — ${result.candidate_ticket?.title || ""}`,
   ];
+  if (result.duplicate_scan?.status === "overridden") {
+    lines.push(`Duplicate scan: overridden via --allow-duplicate (${asArray(result.duplicate_scan?.matches).map((m) => m.id).join(", ")})`);
+  }
   const blockers = asArray(result.deterministic?.blockers);
   const receipt = result.ticket_intake_receipt;
   if (receipt) {
@@ -1991,6 +2272,9 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
     try {
       const result = await runIntake(args, { cwd });
       console.log(args.json ? JSON.stringify(result, null, 2) : renderIntakeText(result, { showDeepSeekBlock: args.showDeepSeekBlock }));
+      const blockedDuplicate = result?.blocked_reason === "duplicate_candidates"
+        || asArray(result?.results).some((entry) => entry?.blocked_reason === "duplicate_candidates");
+      if (blockedDuplicate) return 3;
       return 0;
     } catch (error) {
       const payload = { status: "FAIL", error: error?.message || String(error) };
@@ -2053,7 +2337,10 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
 
   if (FORWARD_COMMANDS.has(args.command)) {
     const tickets = (() => {
-      if (args.command === "next-ready" || args.command === "dispatch-order") {
+      if (args.command === "dispatch-order") {
+        return dispatchOrderTickets(target.packet);
+      }
+      if (args.command === "next-ready") {
         const rows = runForwardReasoning(target.packet, cwd, "next_ready_ticket(Ticket)");
         const ids = rows.map((row) => String(row.Ticket)).filter(Boolean);
         return ids.map((id) => ticketSummary(target.packet, id));
@@ -2113,23 +2400,22 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
     ontology,
   });
   if (args.command === "verify") {
-    result.program_status_transition = {
-      gate: args.gate,
-      previous_status: target.packet?.status || null,
-      new_status: programStatusAfterGate(args.gate) || target.packet?.status || null,
-      write_requested: args.write === true,
-      transition_written: false,
-      status: result.status === "PASS" ? "dry_run" : "not_written_gate_failed",
-    };
-    if (result.status === "PASS" && args.write) {
-      result.program_status_transition = buildProgramStatusTransition({
+    result.program_status_transition = result.status === "PASS"
+      ? buildProgramStatusTransition({
         target,
         gate: args.gate,
-        write: true,
+        write: args.write === true,
         env,
-      });
-      result.program.status = target.packet?.status || result.program.status;
-    }
+      })
+      : {
+        gate: args.gate,
+        previous_status: target.packet?.status || null,
+        new_status: programStatusAfterGate(args.gate) || target.packet?.status || null,
+        write_requested: args.write === true,
+        transition_written: false,
+        status: "not_written_gate_failed",
+      };
+    result.program.status = target.packet?.status || result.program.status;
   }
   if (args.remediate) {
     result.remediation = buildRemediationPlan({

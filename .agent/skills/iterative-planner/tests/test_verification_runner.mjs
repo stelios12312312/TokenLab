@@ -6,11 +6,12 @@
 // global env lock), the dry-run path, the write-back path, and the
 // result_source distinction in gate audit.
 
-import { mkdtempSync, copyFileSync, readFileSync, rmSync } from "fs";
+import { mkdtempSync, copyFileSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { tmpdir } from "os";
 import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
+import { createHash } from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -51,6 +52,60 @@ function copyFixtureToTmp() {
   const dest = join(tmp, "auto_executor.json");
   copyFileSync(fixturePath, dest);
   return { tmp, dest };
+}
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.keys(value)
+      .filter((key) => key !== "run_record")
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`);
+    return `{${entries.join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function payloadHash(value) {
+  return createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
+function makeArtifactProgram() {
+  const tmp = mkdtempSync(join(tmpdir(), "verification-runner-artifacts-"));
+  const artifact = join(tmp, "metric artifact.json");
+  const dest = join(tmp, "auto_artifact_executor.json");
+  writeFileSync(artifact, `${JSON.stringify({ schema_version: 1, metric: "roi", value: 0.12 }, null, 2)}\n`);
+  writeFileSync(dest, `${JSON.stringify({
+    version: 1,
+    id: "PGM-AUTO-ARTIFACT",
+    title: "Auto artifact executor fixture",
+    status: "validating",
+    goal: "Exercise runner-bound artifact records.",
+    story_refs: ["US-003"],
+    epics: [],
+    tickets: [],
+    acceptance_criteria: [],
+    dependencies: [],
+    compatibility_contracts: [],
+    migration_boundaries: [],
+    deletion_move_census: [],
+    verification_matrix: [
+      {
+        id: "VM-AUTO-ARTIFACT",
+        scope: "ticket",
+        subject_ref: "T-AUTO-ARTIFACT",
+        acceptance_criterion_ref: "AC-AUTO-ARTIFACT",
+        proof_type: "proof:command_smoke",
+        command_or_action: "/bin/sh -c 'echo artifact-ok && exit 0'",
+        pass_means: "Exit 0 and artifact receives a runner-bound record",
+        executor: "auto",
+        timeout_seconds: 10,
+        artifact_refs: ["metric artifact.json"],
+      },
+    ],
+    decisions: [],
+  }, null, 2)}\n`);
+  return { tmp, dest, artifact };
 }
 
 console.log("\nVerification Runner Contracts\n");
@@ -98,7 +153,24 @@ try {
 result = run(["run", "--program", fixturePath, "--row", "VM-AUTO-PASS", "--dry-run", "--json"]);
 assert(result.parsed?.eligible_count === 1 && result.parsed?.executions?.[0]?.row_id === "VM-AUTO-PASS", "--row filters to a single row");
 
-// 7. Help text mentions all three locks.
+// 7. Runner-bound artifact refs receive content-hashed run records.
+const artifactFixture = makeArtifactProgram();
+try {
+  result = run(["run", "--program", artifactFixture.dest, "--write", "--json"], { PLANNER_VERIFICATION_EXECUTE: "1" });
+  const artifactDoc = JSON.parse(readFileSync(artifactFixture.artifact, "utf-8"));
+  assert(result.parsed?.status === "PASS", "artifact-stamping fixture command passes");
+  assert(artifactDoc.run_record?.producer === "verification_runner", "runner stamps JSON artifact with producer");
+  assert(artifactDoc.run_record?.command === "/bin/sh -c 'echo artifact-ok && exit 0'", "run record includes executed command");
+  assert(artifactDoc.run_record?.exit_code === 0, "run record includes exit code");
+  assert(typeof artifactDoc.run_record?.timestamp === "string" && artifactDoc.run_record.timestamp.includes("T"), "run record includes timestamp");
+  assert(artifactDoc.run_record?.content_hash === payloadHash(artifactDoc), "run record content hash binds artifact payload");
+  artifactDoc.value = 0.99;
+  assert(artifactDoc.run_record?.content_hash !== payloadHash(artifactDoc), "editing artifact payload invalidates run-record hash");
+} finally {
+  rmSync(artifactFixture.tmp, { recursive: true, force: true });
+}
+
+// 8. Help text mentions all three locks.
 result = run(["help"]);
 assert(/executor='auto'|executor.*auto/.test(result.stdout), "help mentions per-row opt-in");
 assert(/PLANNER_VERIFICATION_EXECUTE=1/.test(result.stdout), "help mentions env lock");

@@ -109,6 +109,7 @@ await safeRun("mock DeepSeek -> fenced block in receipt", async () => {
       command: "intake",
       program: packetPath,
       fromText: "Test ticket idea: add a new feature to improve X.",
+      llmReview: true,
     }, {
       cwd: tmp,
       env: { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock },
@@ -133,26 +134,30 @@ await safeRun("mock DeepSeek -> fenced block in receipt", async () => {
 });
 
 // ──────────────────────────────────────────────────────────────────────
-// Test 2: DeepSeek unavailable -> still produces a block (with unavailable status)
+// Test 2: LLM review is OPT-IN (PM-3, consolidation 2026-06-10).
+// Without --llm-review the intake must NOT call the LLM and must record an
+// honest not_run status — even when a mock provider is configured.
 // ──────────────────────────────────────────────────────────────────────
-await safeRun("DeepSeek unavailable -> block still emitted with unavailable status", async () => {
+await safeRun("default intake skips LLM review with honest not_run status", async () => {
   const { tmp, packetPath } = setupTestRepo();
   try {
-    // No mock response provided AND PLANNER_DRIFT_LLM_API_KEY absent
-    // -> the LLM client returns "unavailable", which becomes the receipt's advisory status
+    const mock = JSON.stringify({ status: "review_ready", summary: "should never be used" });
     const result = await runIntake({
       command: "intake",
       program: packetPath,
       fromText: "Another test ticket idea.",
+      // no llmReview flag
     }, {
       cwd: tmp,
-      env: { /* deliberately empty - no API key, no mock */ },
+      env: { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock },
     });
 
     const receipt = result?.ticket_intake_receipt;
-    assert(typeof receipt?.deepseek_advisory_block === "string", "block emitted even when DeepSeek unavailable");
+    assert(receipt?.deepseek_advisory_status === "not_run", "default advisory status is not_run");
+    assert(String(receipt?.deepseek_advisory_summary || "").includes("--llm-review"), "summary names the opt-in flag");
+    assert(!String(receipt?.deepseek_advisory_block || "").includes("should never be used"), "mock LLM output was never consulted");
+    assert(typeof receipt?.deepseek_advisory_block === "string", "block still emitted for audit format stability");
     assert(receipt.deepseek_advisory_block.includes("<<<DEEPSEEK_VERDICT_BEGIN>>>"), "delimiters present");
-    assert(receipt.deepseek_advisory_block.includes("Status:"), "status line present (some value)");
     assert(receipt.verbatim_reproduction_contract, "contract still present");
   } finally {
     cleanup(tmp);
@@ -175,6 +180,7 @@ await safeRun("delimiters appear on their own lines (grep-friendly)", async () =
       command: "intake",
       program: packetPath,
       fromText: "Another idea.",
+      llmReview: true,
     }, {
       cwd: tmp,
       env: { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock },
@@ -204,6 +210,7 @@ await safeRun("dry_run result has the block in receipt JSON", async () => {
       command: "intake",
       program: packetPath,
       fromText: "Yet another idea.",
+      llmReview: true,
     }, {
       cwd: tmp,
       env: { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock },
@@ -245,6 +252,7 @@ await safeRun("LLM-emitted DEEPSEEK_VERDICT_END inside finding is scrubbed", asy
       command: "intake",
       program: packetPath,
       fromText: "test idea for delimiter scrubbing",
+      llmReview: true,
     }, {
       cwd: tmp,
       env: { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock },
@@ -283,6 +291,7 @@ await safeRun("LLM-emitted DEEPSEEK_VERDICT_BEGIN inside summary is scrubbed", a
       command: "intake",
       program: packetPath,
       fromText: "begin-delimiter injection test",
+      llmReview: true,
     }, {
       cwd: tmp,
       env: { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock },
@@ -311,6 +320,7 @@ await safeRun("scrubbed delimiter does not affect benign content", async () => {
       command: "intake",
       program: packetPath,
       fromText: "benign mock",
+      llmReview: true,
     }, {
       cwd: tmp,
       env: { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock },

@@ -1,0 +1,13 @@
+[
+  {
+    "id": "ML-ART-001",
+    "title": "Leakage and split proof",
+    "summary": "A compact artifact that records target, features, split policy, and the exact command or fixture that exercises the split.",
+    "severity": "high",
+    "polarity": "artifact",
+    "tags": [
+      "verification",
+      "leakage"
+    ]
+  }
+]

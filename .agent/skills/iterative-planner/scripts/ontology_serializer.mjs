@@ -1586,6 +1586,39 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     for (const issue of Array.isArray(quantResultsValidation.blocking_issues) ? quantResultsValidation.blocking_issues : []) {
       facts.push(`quant_results_blocking_issue(${sanitizeEnumAtom(issue)}).`);
     }
+    const semanticGates = Array.isArray(quantResultsValidation.semantic_gates) ? quantResultsValidation.semantic_gates : [];
+    facts.push(`quant_semantic_gate_count(${semanticGates.length}).`);
+    for (const gate of semanticGates) {
+      const gateId = sanitizeId(gate?.id || "unknown_gate");
+      facts.push(`quant_semantic_gate(${gateId}, ${gate?.satisfied ? "true" : "false"}).`);
+      facts.push(`quant_semantic_gate_measured(${gateId}, ${sanitize(JSON.stringify(gate?.measured ?? null))}).`);
+      const threshold = gate?.threshold && typeof gate.threshold === "object" ? gate.threshold : {};
+      facts.push(`quant_semantic_gate_threshold(${gateId}, ${sanitize(threshold.op || "missing")}, ${sanitize(JSON.stringify(threshold.value ?? null))}).`);
+      for (const criterion of Array.isArray(gate?.per_criterion) ? gate.per_criterion : []) {
+        const criterionId = sanitizeId(criterion?.id || "unknown_criterion");
+        facts.push(`quant_semantic_gate_criterion(${gateId}, ${criterionId}, ${criterion?.satisfied ? "true" : "false"}).`);
+        facts.push(`quant_semantic_gate_criterion_measured(${gateId}, ${criterionId}, ${sanitize(JSON.stringify(criterion?.measured ?? null))}).`);
+      }
+    }
+    const claims = Array.isArray(quantResultsValidation.claim_ledgers) ? quantResultsValidation.claim_ledgers : [];
+    facts.push(`quant_claim_ledger_count(${claims.length}).`);
+    let auditOverrideCount = 0;
+    for (const claim of claims) {
+      const claimId = sanitizeId(claim?.id || "unknown_claim");
+      auditOverrideCount += Array.isArray(claim?.audit) ? claim.audit.length : 0;
+      facts.push(`quant_claim_status(${claimId}, ${sanitizeEnumAtom(claim?.status || "unknown")}).`);
+      facts.push(`quant_claim_posterior(${claimId}, ${sanitize(JSON.stringify(claim?.posterior ?? null))}).`);
+      facts.push(`quant_claim_threshold(${claimId}, ${sanitize(JSON.stringify(claim?.threshold ?? null))}).`);
+      facts.push(`quant_claim_evidence_count(${claimId}, ${Number.isInteger(claim?.evidence_count) ? claim.evidence_count : 0}).`);
+      facts.push(`quant_claim_disconfirming_count(${claimId}, ${Number.isInteger(claim?.disconfirming_count) ? claim.disconfirming_count : 0}).`);
+      for (const evidence of Array.isArray(claim?.evidence) ? claim.evidence : []) {
+        const evidenceId = sanitizeId(evidence?.id || "unknown_evidence");
+        facts.push(`quant_claim_evidence_provenance(${claimId}, ${evidenceId}, ${sanitizeEnumAtom(evidence?.provenance || "unknown")}).`);
+        facts.push(`quant_claim_evidence_lr(${claimId}, ${evidenceId}, ${sanitize(JSON.stringify(evidence?.likelihood_ratio ?? null))}).`);
+        facts.push(`quant_claim_evidence_cap_applied(${claimId}, ${evidenceId}, ${evidence?.lr_cap_applied ? "true" : "false"}).`);
+      }
+    }
+    facts.push(`quant_claim_audit_override_count(${auditOverrideCount}).`);
     meta.quant_results_validation++;
     facts.push("");
   }

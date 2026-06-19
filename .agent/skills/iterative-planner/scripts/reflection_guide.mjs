@@ -4,6 +4,7 @@ import { realpathSync } from "fs";
 import { resolve } from "path";
 import { fileURLToPath } from "url";
 
+import { emitJson } from "./lib/emit_json.mjs";
 import { getPaths, resolvePlanTarget } from "./lib/plan_utils.mjs";
 import { writeReflectionGuide } from "./lib/reflection_guide.mjs";
 
@@ -95,7 +96,7 @@ export function main(argv = process.argv.slice(2)) {
       error: "missing_plan",
       details: "Pass --plan <plan-dir> or set an active plan.",
     };
-    console.error(cli.json ? JSON.stringify(payload) : JSON.stringify(payload, null, 2));
+    emitJson(payload, { fd: 2, space: cli.json ? 0 : 2 });
     return 1;
   }
 
@@ -104,8 +105,7 @@ export function main(argv = process.argv.slice(2)) {
     planDir: target.planDir,
   });
 
-  const output = cli.json
-    ? JSON.stringify({
+  const payload = {
       ok: result.ok,
       plan_id: result.plan_id,
       path: result.path,
@@ -114,18 +114,19 @@ export function main(argv = process.argv.slice(2)) {
       section_ids: result.section_ids,
       warnings: result.warnings,
       issues: result.issues,
-    }, null, 2)
-    : renderHuman(result);
+    };
 
   if (result.ok) {
-    console.log(output);
+    if (cli.json) emitJson(payload);
+    else console.log(renderHuman(result));
     return 0;
   }
 
-  console.error(output);
+  if (cli.json) emitJson(payload, { fd: 2 });
+  else console.error(renderHuman(result));
   return 1;
 }
 
 if (isDirectRun()) {
-  process.exit(main());
+  process.exitCode = main();
 }

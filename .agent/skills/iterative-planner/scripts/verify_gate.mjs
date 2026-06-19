@@ -29,6 +29,8 @@ import { readFileSync, existsSync, statSync, realpathSync } from "fs";
 import { createHash } from "crypto";
 import { withFailureCode, readStateJson, NONCE_HEX_LEN, KB_SALT_HEX_LEN } from "./lib/determinism.mjs";
 import { refreshPlanArtifacts } from "./lib/plan_refresh.mjs";
+import { loadGateRepairTemplate } from "./lib/repair_packet.mjs";
+import { analyzeAnnotationDiscipline } from "./lib/annotation_discipline.mjs";
 import {
   computePlanApprovalIntegrityForState,
   computePlanTamperFingerprint,
@@ -66,6 +68,9 @@ import { buildPhaseContract, resolveAuthorityProfile, resolveProofPosture } from
 import { resolveKnowledgeFromContext } from "./knowledge_resolver.mjs";
 import { collectKbSignoff } from "./lib/kb_signoff.mjs";
 import { evaluateQuantPersonaGate, summarizeQuantPersonaGate } from "./lib/quant_persona_gate.mjs";
+import { formatSessionAssumptionBlockers, loadSessionObligations } from "./lib/session_obligations.mjs";
+import { resolveExecutedTestEvidenceSignal } from "./lib/autonomous_driver.mjs";
+import { evaluateAvaGate } from "./lib/autonomous_verification_agents.mjs";
 
 const cwd = process.cwd();
 const { plansDir, knowledgeDir } = getPaths(cwd);
@@ -334,7 +339,18 @@ function resolvePlannerCoreSignal(planDir) {
   };
 }
 
-function resolveTestEvidenceSignal(planDir) {
+function resolveTestEvidenceSignal(planDir, gateName = null) {
+  if (gateName) {
+    const executed = resolveExecutedTestEvidenceSignal(planDir, gateName);
+    if (executed.present) {
+      return {
+        required: executed.required,
+        satisfied: executed.satisfied,
+        detail: `${executed.detail}; structured close_signals.test_evidence is advisory when executed gate evidence exists`,
+      };
+    }
+  }
+
   const closeSignals = getCloseSignals(planDir);
   if (typeof closeSignals?.test_evidence?.satisfied === "boolean") {
     const required = closeSignals.test_evidence.required === true;
@@ -348,7 +364,7 @@ function resolveTestEvidenceSignal(planDir) {
         ? closeSignals.test_evidence.satisfied
           ? status === "waived"
             ? `Structured close signal: test evidence waived by ${closeSignals.test_evidence.waiver_approved_by || "unknown"}`
-            : `Structured close signal: ${testPaths.length} planned test file(s) + passing test command recorded`
+            : `Structured close signal: ${testPaths.length} planned test file(s) + passing test command recorded (advisory unless executed gate evidence exists)`
           : `Code changes require test evidence — status=${status}; code paths=${codePaths.length}, test paths=${testPaths.length}`
         : status === "static_ui_intent_manual_observation"
           ? "Structured close signal: static UI deliverable uses intent/manual evidence instead of test-file coverage"
@@ -429,6 +445,24 @@ function resolveLearnedObligationsSignal(planDir) {
     required: false,
     satisfied: true,
     detail: "Legacy plan without structured learned-obligations signal",
+  };
+}
+
+function resolveSessionObligationsSignal(planDir) {
+  const obligations = loadSessionObligations(planDir);
+  if (!obligations.present || obligations.assumptions.length === 0) {
+    return {
+      required: false,
+      satisfied: true,
+      detail: "No structured session assumptions recorded",
+    };
+  }
+  return {
+    required: obligations.blockers.length > 0,
+    satisfied: obligations.blockers.length === 0,
+    detail: obligations.blockers.length === 0
+      ? `${obligations.assumptions.length} structured session assumption(s) resolved or retired`
+      : `Unresolved support assumptions: ${formatSessionAssumptionBlockers(obligations.blockers)}`,
   };
 }
 
@@ -516,6 +550,16 @@ function resolveReviewIntakeSignal(planDir) {
     advisory_count: 0,
     unresolved_required: [],
     detail: "Legacy plan without structured review-intake close signal",
+  };
+}
+
+function resolveAvaGateSignal(planDir) {
+  const signal = evaluateAvaGate({ planDir, repoRoot: cwd });
+  return {
+    required: signal.required,
+    satisfied: signal.satisfied,
+    blocking_issues: signal.blocking_issues || [],
+    detail: signal.detail,
   };
 }
 
@@ -1571,12 +1615,30 @@ function buildGenericGateRepairLines({ planDirName, gateName, results, planningO
         "- Or update `plans/knowledge/mistakes.md`, `patterns.md`, or `gotchas.md` when there is a real reusable learning.",
       ]
     : [];
+  // For failed codes that ship a gate_templates/<code>.json scaffold, teach the
+  // exact accepted shapes + a worked example in the compact packet too — not
+  // only in the full renderRepairPacket output. Without this the agent sees the
+  // diagnosis but not the precise format (e.g. `**Attack**:` accepted vs
+  // `**Attack:**` rejected), which is the recurring authoring trap.
+  const scaffoldLines = [];
+  for (const code of codes) {
+    const tmpl = loadGateRepairTemplate(code);
+    if (!tmpl) continue;
+    if (Array.isArray(tmpl.accepted_patterns) && tmpl.accepted_patterns.length > 0) {
+      scaffoldLines.push(`[${code}] Accepted patterns:`, ...tmpl.accepted_patterns);
+    }
+    if (typeof tmpl.worked_example === "string" && tmpl.worked_example.trim()) {
+      scaffoldLines.push(`[${code}] Worked example: ${tmpl.worked_example}`);
+    }
+  }
+
   return [
     `Gate: ${gateArg}`,
     "Failed checks:",
     ...failed.slice(0, 8).map((result) => `- ${formatFailedResultForPacket(result)}`),
     failed.length > 8 ? `- ... ${failed.length - 8} more failed check(s) omitted from the compact packet.` : null,
     ...kbReflectLines,
+    ...scaffoldLines,
     `Truth command: node .agent/skills/iterative-planner/scripts/verify_gate.mjs ${gateArg} --plan ${planArg}${planningFlag}`,
     `Deep diagnostics: node .agent/skills/iterative-planner/scripts/planner_findings.mjs --dir . --plan ${planArg} --gate ${gateArg} --json`,
     "Loop recovery: node .agent/skills/iterative-planner/scripts/bootstrap.mjs fix-stuck --json",
@@ -2233,6 +2295,42 @@ function gatePlanToExecute(planDir, options = {}) {
     hasFileList && filesNotTemplate ? `File list found (${plannedFiles.length} owned file(s))` : "File list missing or still template"
   ), "GATE-PLN-002"));
 
+  // GATE-PLN-ANN-001: annotation traceability for owned files. Every existing
+  // annotation-worthy file listed in `## Files To Modify` must carry a minimum
+  // identity annotation (`@planner:module` or `@planner:capability`) unless the
+  // plan declares an exact, substantive waiver:
+  // [KB_NOT_APPLICABLE: annotation: <file>: <reason>].
+  {
+    if (planningOnly) {
+      results.push(withFailureCode(check(
+        "Annotation-worthy owned files declare @planner:module/capability or exact waiver",
+        PASS,
+        "Planning-only handoff does not enter EXECUTE; annotation discipline is enforced when running plan-to-execute for implementation."
+      ), "GATE-PLN-ANN-001"));
+    } else {
+      const annotationDiscipline = analyzeAnnotationDiscipline({ planContent, cwd, env: process.env });
+      const annGaps = annotationDiscipline.violations || [];
+      const status = !annotationDiscipline.enabled && annotationDiscipline.required
+        ? WARN
+        : annGaps.length === 0
+          ? PASS
+          : FAIL;
+      const violationDetail = annGaps
+        .slice(0, 5)
+        .map((entry) => `${entry.path} (${entry.kind})`)
+        .join(", ");
+      results.push(withFailureCode(check(
+        "Annotation-worthy owned files declare @planner:module/capability or exact waiver",
+        status,
+        status === WARN
+          ? "Annotation discipline is disabled by PLANNER_ANNOTATION_DISCIPLINE=off; worthy files are advisory only"
+          : annGaps.length === 0
+            ? "All existing annotation-worthy owned files declare @planner:module/capability or are exactly waived"
+            : `Annotation discipline violation(s) — add @planner:module or @planner:capability, or declare an exact substantive [KB_NOT_APPLICABLE: annotation: <file>: <reason>] waiver: ${violationDetail}`
+      ), "GATE-PLN-ANN-001"));
+    }
+  }
+
   const scopeContract = buildScopeContract({ cwd, planDir, planContent });
   const ambientAck = planHasAmbientDirtyScopeAcknowledgement(planContent);
   if (scopeContractRequiresAmbientAcknowledgement(scopeContract)) {
@@ -2718,6 +2816,15 @@ function gateExecuteToReflect(planDir) {
     summarizeQuantPersonaGate(quantPersonaGate)
   ), "GATE-ETR-011"));
 
+  const executedTestEvidence = resolveExecutedTestEvidenceSignal(planDir, "execute-to-reflect");
+  if (executedTestEvidence.present) {
+    results.push(withFailureCode(check(
+      "Executed test baseline gate passed before REFLECT",
+      executedTestEvidence.satisfied ? PASS : FAIL,
+      executedTestEvidence.detail
+    ), "GATE-ETR-012"));
+  }
+
   return results;
 }
 
@@ -2836,7 +2943,7 @@ function gateValidateToClose(planDir) {
     plannerCoreMigration.detail
   ), "GATE-VAL-010"));
 
-  const testEvidence = resolveTestEvidenceSignal(planDir);
+  const testEvidence = resolveTestEvidenceSignal(planDir, "validate-to-close");
   results.push(withFailureCode(check(
     "Code changes have test evidence or approved waiver",
     testEvidence.satisfied ? PASS : FAIL,
@@ -2863,6 +2970,13 @@ function gateValidateToClose(planDir) {
     learnedObligations.satisfied ? PASS : FAIL,
     learnedObligations.detail
   ), "GATE-VAL-014"));
+
+  const sessionObligations = resolveSessionObligationsSignal(planDir);
+  results.push(withFailureCode(check(
+    "Load-bearing assumptions resolved",
+    sessionObligations.satisfied ? PASS : FAIL,
+    sessionObligations.detail
+  ), "GATE-VAL-019"));
 
   const verificationObligationSynthesis = resolveVerificationObligationSynthesisSignal(planDir);
   results.push(withFailureCode(check(
@@ -2893,6 +3007,15 @@ function gateValidateToClose(planDir) {
     reviewIntake.satisfied ? PASS : FAIL,
     reviewIntake.detail
   ), "GATE-VAL-018"));
+
+  const avaGate = resolveAvaGateSignal(planDir);
+  results.push(withFailureCode(check(
+    "AVA-discovered defects are resolved and anchored before close",
+    avaGate.satisfied ? PASS : FAIL,
+    avaGate.required
+      ? avaGate.detail
+      : "No AVA defect artifact present"
+  ), "GATE-VAL-020"));
 
   return results;
 }
@@ -3090,6 +3213,52 @@ const GATES = {
   "notify-user": gateNotifyUser,
 };
 
+function tamperApprovalPath(planDir) {
+  return join(planDir, "..", "..", ".git", "iterative-planner", "tamper-fingerprint-approval.json");
+}
+
+function hashTamperApprovalNonce(nonce) {
+  return createHash("sha256").update(String(nonce || "")).digest("hex");
+}
+
+function readTamperFingerprintApproval(planDir, current, gateName) {
+  const nonce = process.env.PLANNER_TAMPER_APPROVAL_NONCE || "";
+  if (!nonce) return { ok: false, reason: "No PLANNER_TAMPER_APPROVAL_NONCE was provided." };
+
+  const approvalPath = tamperApprovalPath(planDir);
+  if (!existsSync(approvalPath)) {
+    return { ok: false, reason: `No tamper approval file found at ${approvalPath}.` };
+  }
+
+  let approval;
+  try {
+    approval = JSON.parse(readFileSync(approvalPath, "utf-8"));
+  } catch (e) {
+    return { ok: false, reason: `Tamper approval file is unreadable: ${e.message}.` };
+  }
+
+  if (approval?.purpose !== "plan_tamper_fingerprint_refresh") {
+    return { ok: false, reason: "Tamper approval purpose mismatch." };
+  }
+  if (typeof approval.expires_at !== "string" || Number.isNaN(Date.parse(approval.expires_at))) {
+    return { ok: false, reason: "Tamper approval is missing a valid expires_at timestamp." };
+  }
+  if (Date.parse(approval.expires_at) < Date.now()) {
+    return { ok: false, reason: "Tamper approval nonce has expired." };
+  }
+  if (approval.gate && approval.gate !== "*" && approval.gate !== gateName) {
+    return { ok: false, reason: `Tamper approval is for gate ${approval.gate}, not ${gateName}.` };
+  }
+  if (approval.fingerprint_version !== current.version || approval.fingerprint_hash !== current.hash) {
+    return { ok: false, reason: "Tamper approval does not match the current fingerprint." };
+  }
+  if (approval.approval_nonce_hash !== hashTamperApprovalNonce(nonce)) {
+    return { ok: false, reason: "Tamper approval nonce hash mismatch." };
+  }
+
+  return { ok: true, path: approvalPath };
+}
+
 function evaluateTamperFingerprintGate(planDir, gateName) {
   if (!planDir || !gateName) return [];
   const stateJson = readStateJson(planDir);
@@ -3122,10 +3291,18 @@ function evaluateTamperFingerprintGate(planDir, gateName) {
   const versionMatches = stored.version === current.version;
   const hashMatches = stored.hash === current.hash;
   if (!versionMatches || !hashMatches) {
+    const approval = readTamperFingerprintApproval(planDir, current, gateName);
+    if (approval.ok) {
+      return [withFailureCode(check(
+        "Tamper fingerprint matches signed gate snapshot",
+        PASS,
+        `Stored tamper fingerprint ${stored.hash || "missing"} (${stored.version || "unknown"}) differs from current ${current.hash} (${current.version}), but a fresh out-of-band tamper approval authorizes this exact fingerprint for ${gateName}.`
+      ), "GATE-TMP-002")];
+    }
     return [withFailureCode(check(
       "Tamper fingerprint matches signed gate snapshot",
-      WARN,
-      `Stored tamper fingerprint ${stored.hash || "missing"} (${stored.version || "unknown"}) does not match current ${current.hash} (${current.version}) for ${summarizePlanTamperArtifacts(current)}. If these edits are legitimate, a successful transition will refresh the signed fingerprint.`
+      FAIL,
+      `Stored tamper fingerprint ${stored.hash || "missing"} (${stored.version || "unknown"}) does not match current ${current.hash} (${current.version}) for ${summarizePlanTamperArtifacts(current)}. A fresh out-of-band tamper approval nonce is required before this gate may refresh the signed fingerprint. ${approval.reason}`
     ), "GATE-TMP-002")];
   }
 

@@ -1,0 +1,16 @@
+[
+  {
+    "id": "PM-PIT-001",
+    "title": "Feature without user problem",
+    "summary": "A product feature that lacks a named user problem and segment is scope drift, even if implementation tests pass.",
+    "severity": "high",
+    "polarity": "risk"
+  },
+  {
+    "id": "PM-PIT-002",
+    "title": "Implementation-only acceptance criteria",
+    "summary": "Acceptance criteria that only describe implementation do not prove user-visible success.",
+    "severity": "medium",
+    "polarity": "risk"
+  }
+]

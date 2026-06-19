@@ -1,0 +1,9 @@
+[
+  {
+    "id": "COACH-PIT-001",
+    "title": "Unsupported coaching claim",
+    "summary": "Coaching recommendations must be grounded in transcript, user-stated goal, or measured behavior before being presented as advice.",
+    "severity": "high",
+    "polarity": "risk"
+  }
+]

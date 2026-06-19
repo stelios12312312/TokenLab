@@ -60,6 +60,14 @@ import {
   renderRootInstructionTarget,
   rootInstructionParityStatus,
 } from "./lib/root_instruction_renderer.mjs";
+import {
+  DEFAULT_IVE_PHASE,
+  DEFAULT_VALIDATE_PLAN_COUNT,
+  runIveRecover,
+  runIveRollback,
+  runIveUpgrade,
+  runIveValidateMigration,
+} from "./lib/ive_migration_bootstrap.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -334,6 +342,24 @@ function buildExpectedManifest(targetPath) {
     for (const f of walkDir(sourcePacksDir, (name) => name.endsWith(".mjs") || name.endsWith(".pl") || name.endsWith(".md") || name.endsWith(".json"))) {
       const relPath = relative(sourcePacksDir, f);
       entries.push({ path: join(base, "packs", relPath), category: "packs", critical: false });
+    }
+  }
+
+  // IVE runtime profiles
+  const sourceProfilesDir = join(skillDir, "profiles");
+  if (existsSync(sourceProfilesDir)) {
+    for (const f of walkDir(sourceProfilesDir, (name) => name.endsWith(".json") || name.endsWith(".md"))) {
+      const relPath = relative(sourceProfilesDir, f);
+      entries.push({ path: join(base, "profiles", relPath), category: "profiles", critical: false });
+    }
+  }
+
+  // IVE reference knowledge packs
+  const sourceKnowledgePacksDir = join(skillDir, "knowledge_packs");
+  if (existsSync(sourceKnowledgePacksDir)) {
+    for (const f of walkDir(sourceKnowledgePacksDir, (name) => name.endsWith(".json") || name.endsWith(".md"))) {
+      const relPath = relative(sourceKnowledgePacksDir, f);
+      entries.push({ path: join(base, "knowledge_packs", relPath), category: "knowledge-packs", critical: false });
     }
   }
 
@@ -2917,6 +2943,24 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     dryRun, log
   );
 
+  // --- IVE Profiles ---
+  log.push("\n## IVE Profiles");
+  copyDirTree(
+    join(skillDir, "profiles"),
+    join(targetBase, "profiles"),
+    (name) => name.endsWith(".json") || name.endsWith(".md"),
+    dryRun, log
+  );
+
+  // --- IVE Knowledge Packs ---
+  log.push("\n## IVE Knowledge Packs");
+  copyDirTree(
+    join(skillDir, "knowledge_packs"),
+    join(targetBase, "knowledge_packs"),
+    (name) => name.endsWith(".json") || name.endsWith(".md"),
+    dryRun, log
+  );
+
   // --- Standalone files ---
   log.push("\n## Skill Files");
   copyIfMissing(join(skillDir, "SKILL.md"), join(targetBase, "SKILL.md"), dryRun, log);
@@ -3081,21 +3125,27 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     } else {
       console.log(`  ⚠️  POST-UPGRADE VERIFICATION: ${stillMissing.length} optional file(s) still missing.`);
     }
-    // Re-baseline config integrity hashes after upgrade (RETRO M-005).
-    // migrate.mjs is a trusted file modifier — updated files must not trigger
-    // integrity violations on the next transition.
-    const configIntegrityPath = join(targetPath, ".agent/skills/iterative-planner/config/.config_integrity");
-    if (existsSync(configIntegrityPath)) {
-      try { unlinkSync(configIntegrityPath); } catch { /* ignore */ }
-    }
+    // Config integrity baselines are signed trust anchors. Migration may create
+    // a missing first baseline, but existing baselines require an out-of-band
+    // nonce before re-baselining so a tampered in-tree rule file is not laundered.
     try {
-      const rebaseline = `import{updateConfigIntegrity}from'./scripts/lib/determinism.mjs';process.exit(updateConfigIntegrity({force:true})?0:1)`;
+      const integrityProbe = [
+        "import{checkConfigIntegrity,updateConfigIntegrity}from'./scripts/lib/determinism.mjs';",
+        "const status=checkConfigIntegrity();",
+        "if(status.intact){console.log(JSON.stringify({status:'verified'}));process.exit(0);}",
+        "if(String(status.reason||'').includes('baseline missing')){process.exit(updateConfigIntegrity()?0:1);}",
+        "console.error(JSON.stringify(status));process.exit(2);",
+      ].join("");
       const skillBase = join(targetPath, ".agent/skills/iterative-planner");
-      runNode(["--input-type=module", "-e", rebaseline], { cwd: skillBase, stdio: "pipe", timeout: 10000 });
-      console.log(`  ✅ CONFIG INTEGRITY: Re-baselined after upgrade.`);
+      const output = runNode(["--input-type=module", "-e", integrityProbe], { cwd: skillBase, stdio: "pipe", timeout: 10000 });
+      const status = output.trim() ? JSON.parse(output.trim()) : { status: "created" };
+      if (status.status === "verified") {
+        console.log(`  ✅ CONFIG INTEGRITY: Existing baseline verified; no rebaseline performed.`);
+      } else {
+        console.log(`  ✅ CONFIG INTEGRITY: Created missing baseline.`);
+      }
     } catch (e) {
-      // determinism.mjs may not exist or export updateConfigIntegrity in older versions — not fatal
-      console.log(`  ⚠️  CONFIG INTEGRITY: Could not re-baseline automatically. Delete .config_integrity manually if transitions block.`);
+      console.log(`  ⚠️  CONFIG INTEGRITY: Existing baseline not rebaselined; out-of-band approval is required for config/rule hash changes.`);
     }
 
     // Re-baseline persona manifest (T-INTAKE-3B20A6BB / US-085) — migrate.mjs
@@ -4564,6 +4614,14 @@ Commands:
   doctor <path>              Machine-readable repair diagnosis for self-heal entrypoints
   upgrade <path>             Apply upgrades (all components)
   upgrade <path> --seed-kb   Also seed knowledge base
+  upgrade <path> --to-ive [--phase <N>] [--dry-run]
+                             Explicitly opt a project into IVE migration bootstrap/adoption
+  rollback <path> --phase <N> [--keep-deltas]
+                             Roll back one IVE adoption phase from the latest backup
+  validate-migration <path> [--plans <N>]
+                             Replay recent historical plans and write migration parity proof
+  recover <path> [--phase <N>]
+                             Resolve an interrupted IVE migration marker
   setup <path>               Project-level setup (audit config, hooks, version sync)
   sync-instructions <path>   Refresh planner-managed root instruction snapshots
   annotate <path>            Bootstrap @planner: annotations (scan, apply, review)
@@ -4583,6 +4641,11 @@ Commands:
 Options:
   --dry-run                  Preview changes without writing files
   --json                     Emit JSON for commands that support it (doctor, sync-instructions, verify-fleet, fleet-doctor, migration-wave, scaffold-discovery-policy, promote-knowledge, semantic-scan)
+  --to-ive                   Select the explicit IVE adoption path for upgrade
+  --phase <N>                IVE migration phase selector (default: ${DEFAULT_IVE_PHASE})
+  --plans <N>                validate-migration historical plan count (default: ${DEFAULT_VALIDATE_PLAN_COUNT})
+  --recover                  Alias for recover . when run from a target project root
+  --keep-deltas              Retain rollback delta/audit artifacts when supported
   --write                    Write scaffold output for commands that support it
   --draft-candidates <path>  Reviewed draft-candidate surface relative to the target project (default: ${DEFAULT_DRAFT_CANDIDATES_REVIEW_RELATIVE_PATH})
   --manifest <path>          Migration wave manifest path (default: reports/migration_wave.json)
@@ -4860,20 +4923,63 @@ function cmdUpgradeApprovalEnvelope(projectRoot, { dryRun, jsonOutput, rollback 
   }
 }
 
+function emitIveMigrationResult(result, jsonOutput) {
+  if (jsonOutput) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    const statusLabel = result.ok ? (result.status || "PASS") : "FAIL";
+    console.log(`\n╔══════════════════════════════════════════════════════╗`);
+    console.log(`║  IVE MIGRATION ${statusLabel.padEnd(36)}║`);
+    console.log(`╚══════════════════════════════════════════════════════╝\n`);
+    console.log(`  Operation: ${result.operation || "unknown"}`);
+    if (result.phase) console.log(`  Phase:     ${result.phase}`);
+    if (result.reason) console.log(`  Reason:    ${result.reason}`);
+    if (result.backup_manifest) console.log(`  Backup:    ${result.backup_manifest}`);
+    if (result.backup_dir) console.log(`  Backup dir:${result.backup_dir}`);
+    if (result.report?.json_path) console.log(`  Report:    ${result.report.json_path}`);
+    if (result.report?.md_path) console.log(`  Plan:      ${result.report.md_path}`);
+    if (result.config_integrity?.status) {
+      console.log(`  Config integrity: ${result.config_integrity.status}${result.config_integrity.path ? ` (${result.config_integrity.path})` : ""}`);
+    }
+    if (result.restored_files?.length) console.log(`  Restored:  ${result.restored_files.length} file(s)`);
+    if (result.plans_replayed !== undefined) {
+      console.log(`  Plans replayed: ${result.plans_replayed}/${result.plans_requested}`);
+      console.log(`  Drift count:    ${result.drift_count}`);
+    }
+    console.log();
+  }
+  if (!result.ok) process.exit(1);
+}
+
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
 const seedKB = args.includes("--seed-kb");
 const jsonOutput = args.includes("--json");
 const writePolicy = args.includes("--write");
+const toIve = args.includes("--to-ive");
+const recoverRequested = args.includes("--recover");
+const keepDeltas = args.includes("--keep-deltas");
 let draftCandidatesPathArg = null;
 let waveManifestPathArg = null;
 let waveExpectedVersion = null;
 let waveDeferredVersion = null;
 let waveReason = null;
+let ivePhaseArg = DEFAULT_IVE_PHASE;
+let validatePlansArg = DEFAULT_VALIDATE_PLAN_COUNT;
 const waveExclusions = [];
 const filteredArgs = [];
 for (let index = 0; index < args.length; index++) {
   const arg = args[index];
+  if (arg === "--phase") {
+    ivePhaseArg = args[index + 1] || DEFAULT_IVE_PHASE;
+    if (args[index + 1]) index++;
+    continue;
+  }
+  if (arg === "--plans") {
+    validatePlansArg = args[index + 1] || DEFAULT_VALIDATE_PLAN_COUNT;
+    if (args[index + 1]) index++;
+    continue;
+  }
   if (arg === "--draft-candidates") {
     draftCandidatesPathArg = args[index + 1] || null;
     if (args[index + 1]) index++;
@@ -4908,6 +5014,14 @@ for (let index = 0; index < args.length; index++) {
   }
   if (arg.startsWith("--")) continue;
   filteredArgs.push(arg);
+}
+
+if (recoverRequested && filteredArgs[0] !== "recover") {
+  if (filteredArgs.length === 0) {
+    filteredArgs.push("recover", ".");
+  } else {
+    filteredArgs.unshift("recover");
+  }
 }
 
 if (filteredArgs.length === 0 || args.includes("--help") || args.includes("help")) {
@@ -4960,10 +5074,24 @@ if (command === "upgrade-approval-envelope") {
 } else if (command === "doctor") {
   cmdDoctor(targetPath, jsonOutput);
 } else if (command === "upgrade") {
-  const upgradeResult = cmdUpgrade(targetPath, seedKB, dryRun);
-  if (!dryRun && upgradeResult?.setupNeeded) {
-    cmdSetup(targetPath, false);
+  if (toIve) {
+    const result = runIveUpgrade(targetPath, { phase: ivePhaseArg, dryRun, jsonOutput });
+    emitIveMigrationResult(result, jsonOutput);
+  } else {
+    const upgradeResult = cmdUpgrade(targetPath, seedKB, dryRun);
+    if (!dryRun && upgradeResult?.setupNeeded) {
+      cmdSetup(targetPath, false);
+    }
   }
+} else if (command === "rollback") {
+  const result = runIveRollback(targetPath, { phase: ivePhaseArg, keepDeltas });
+  emitIveMigrationResult(result, jsonOutput);
+} else if (command === "validate-migration") {
+  const result = runIveValidateMigration(targetPath, { plans: validatePlansArg });
+  emitIveMigrationResult(result, jsonOutput);
+} else if (command === "recover") {
+  const result = runIveRecover(targetPath, { phase: ivePhaseArg });
+  emitIveMigrationResult(result, jsonOutput);
 } else if (command === "setup") {
   cmdSetup(targetPath, dryRun);
 } else if (command === "sync-instructions") {

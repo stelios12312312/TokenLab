@@ -146,27 +146,26 @@ try {
 
   mkdirSync(join(tmp, "plans", planName, "review_intake_sources"), { recursive: true });
   writeFileSync(join(tmp, "plans", planName, "review_intake_sources", "llm_drift_gate_plan-to-execute.json"), stale.stdout);
-  const intakeBlocked = run([reviewIntakeScript, "status", "--plan", planName, "--json"], tmp);
-  const intakeBlockedJson = parseJson(intakeBlocked.stdout);
-  assert(intakeBlocked.ok, "review_intake status exits cleanly for persisted stale_blocking source");
-  assert(intakeBlockedJson?.review_intake?.required_count === 1, "review_intake turns stale_blocking finding into a required item");
-  assert(intakeBlockedJson?.review_intake?.unresolved_required_count === 1, "review_intake reports stale_blocking item unresolved without disposition");
+  const intakeAdvisory = run([reviewIntakeScript, "status", "--plan", planName, "--json"], tmp);
+  const intakeAdvisoryJson = parseJson(intakeAdvisory.stdout);
+  assert(intakeAdvisory.ok, "review_intake status exits cleanly for persisted stale_blocking source");
+  assert(intakeAdvisoryJson?.review_intake?.required_count === 0, "review_intake keeps stale_blocking LLM findings out of required items");
+  assert(intakeAdvisoryJson?.review_intake?.unresolved_required_count === 0, "review_intake has no unresolved required items for LLM stale_blocking");
+  assert(intakeAdvisoryJson?.review_intake?.advisory_count === 1, "review_intake keeps LLM stale_blocking visible as advisory");
+  assert(intakeAdvisoryJson?.review_intake?.satisfied === true, "advisory-only stale_blocking review intake is satisfied");
 
   const intakeCollect = run([reviewIntakeScript, "collect", "--plan", planName, "--write", "--json"], tmp);
   const intakeCollectJson = parseJson(intakeCollect.stdout);
   assert(intakeCollect.ok, "review_intake collect --write exits cleanly");
   assert(existsSync(join(tmp, "plans", planName, "review_intake.json")), "review_intake collect writes the ledger");
   const ledger = JSON.parse(readFileSync(join(tmp, "plans", planName, "review_intake.json"), "utf-8"));
-  ledger.items[0].disposition = {
-    status: "rejected",
-    disposition_reason: "Fixture rejection has a deterministic reason.",
-    evidence_refs: [],
-  };
-  writeFileSync(join(tmp, "plans", planName, "review_intake.json"), JSON.stringify(ledger, null, 2) + "\n");
-  const intakeSatisfied = run([reviewIntakeScript, "status", "--plan", planName, "--json"], tmp);
-  const intakeSatisfiedJson = parseJson(intakeSatisfied.stdout);
+  assert(ledger?.summary?.required_count === 0, "review_intake ledger summary records zero required LLM stale_blocking items");
+  assert(ledger?.summary?.advisory_count === 1, "review_intake ledger summary records the LLM stale_blocking advisory item");
+  assert(ledger?.items?.[0]?.required === false, "review_intake ledger materializes stale_blocking LLM item as advisory");
+  assert(ledger?.items?.[0]?.classification === "stale_blocking", "review_intake ledger preserves the stale_blocking classification");
+  assert(String(ledger?.items?.[0]?.id || "").startsWith("llm:stale_blocking:"), "review_intake ledger preserves the LLM stale_blocking item id");
   assert(intakeCollectJson?.review_intake?.ledger_written === true, "review_intake collect reports ledger_written");
-  assert(intakeSatisfiedJson?.review_intake?.satisfied === true, "valid rejected disposition satisfies persisted stale_blocking intake item");
+  assert(intakeCollectJson?.review_intake?.satisfied === true, "advisory-only stale_blocking intake stays satisfied after ledger materialization");
 
   const invalid = run([auditorScript, "--mode", "gate", "--gate", "plan-to-execute", "--plan", planName, "--json"], tmp, {
     PLANNER_DRIFT_LLM_MOCK_RESPONSE: "not json",

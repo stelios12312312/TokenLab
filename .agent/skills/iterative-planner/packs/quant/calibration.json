@@ -1,0 +1,34 @@
+{
+  "$schema_note": "IVE's OWN clean-room plausibility bands. Derived from quant domain reasoning, NOT copied from any external table. Per metric: direction (higher|lower = better), plausible_low/plausible_high (the normal achievable range), excellent (top-decile, distrust beyond it), suspicious (implausibly-good threshold = a leakage/units tell). For higher-is-better, implausible = value >= suspicious OR value < plausible_low. For lower-is-better, implausible = value <= suspicious OR value > plausible_high.",
+  "version": 1,
+  "epsilon": 0.02,
+  "domains": {
+    "betting": {
+      "metrics": {
+        "sharpe":               { "direction": "higher", "plausible_low": 0.30,  "plausible_high": 2.00, "excellent": 2.80, "suspicious": 3.50 },
+        "roi_per_bet":          { "direction": "higher", "plausible_low": 0.01,  "plausible_high": 0.07, "excellent": 0.11, "suspicious": 0.18 },
+        "directional_accuracy": { "direction": "higher", "plausible_low": 0.505, "plausible_high": 0.57, "excellent": 0.61, "suspicious": 0.66 },
+        "clv":                  { "direction": "higher", "plausible_low": 0.003, "plausible_high": 0.03, "excellent": 0.05, "suspicious": 0.07 },
+        "brier_score":          { "direction": "lower",  "plausible_low": 0.00,  "plausible_high": 0.27, "excellent": 0.18, "suspicious": 0.12 },
+        "max_drawdown":         { "direction": "lower",  "plausible_low": 0.00,  "plausible_high": 0.45, "excellent": 0.18, "suspicious": 0.05 }
+      }
+    },
+    "crypto": {
+      "metrics": {
+        "sharpe":         { "direction": "higher", "plausible_low": 0.40, "plausible_high": 2.20, "excellent": 3.00, "suspicious": 4.00 },
+        "annual_return":  { "direction": "higher", "plausible_low": 0.05, "plausible_high": 1.50, "excellent": 3.00, "suspicious": 6.00 },
+        "win_rate":       { "direction": "higher", "plausible_low": 0.45, "plausible_high": 0.60, "excellent": 0.65, "suspicious": 0.75 },
+        "profit_factor":  { "direction": "higher", "plausible_low": 1.05, "plausible_high": 1.80, "excellent": 2.50, "suspicious": 3.50 },
+        "max_drawdown":   { "direction": "lower",  "plausible_low": 0.00, "plausible_high": 0.70, "excellent": 0.30, "suspicious": 0.08 }
+      }
+    },
+    "tokenomics": {
+      "metrics": {
+        "staking_apy":            { "direction": "higher", "plausible_low": 0.02, "plausible_high": 0.25, "excellent": 0.50, "suspicious": 1.00 },
+        "treasury_runway_years":  { "direction": "higher", "plausible_low": 1.0,  "plausible_high": 8.0,  "excellent": 15.0, "suspicious": 40.0 }
+      }
+    }
+  },
+  "proper_scoring_metrics": ["brier", "brier_score", "log_loss", "logloss", "calibration", "ece", "crps"],
+  "probabilistic_task_types": ["probability", "probabilistic", "odds", "classification_proba", "calibration"]
+}

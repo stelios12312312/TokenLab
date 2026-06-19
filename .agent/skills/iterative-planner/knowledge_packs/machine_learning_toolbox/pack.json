@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "machine_learning_toolbox",
+  "pack": "machine_learning_toolbox",
+  "title": "Machine Learning Toolbox Pack",
+  "version": 1,
+  "trust_tier": "bundled",
+  "dependencies": [
+    "machine_learning"
+  ],
+  "applies_when": {
+    "dependency_loaded_any": [
+      "machine_learning"
+    ]
+  },
+  "provenance": {
+    "writer": "knowledge_pack",
+    "source": "knowledge_pack:machine_learning_toolbox@v1"
+  },
+  "entry_files": [
+    "tools.json",
+    "constraints.json"
+  ]
+}

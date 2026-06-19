@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "id": "quant_alpha",
+  "title": "Quant Alpha Runtime Profile",
+  "description": "Reference IVE profile for quantitative and machine-learning shaped planner work.",
+  "trust_tier": "bundled",
+  "applies_when": {
+    "file_exists_any": [
+      "docs/ive-engine-plan.md",
+      "docs/ive-redesign/09_roadmap.md"
+    ]
+  },
+  "gate_overrides": {
+    "plan-to-execute": {
+      "severity_overrides": {
+        "qa_forbidden_sentinel": "warn"
+      }
+    }
+  },
+  "required_artifacts": [
+    {
+      "id": "qa_engine_plan_exists",
+      "kind": "file_exists",
+      "path": "docs/ive-engine-plan.md",
+      "severity": "fail"
+    }
+  ],
+  "required_metrics": [
+    {
+      "id": "qa_engine_plan_min_size",
+      "kind": "file_min_size",
+      "path": "docs/ive-engine-plan.md",
+      "min_bytes": 100,
+      "severity": "fail"
+    }
+  ],
+  "forbidden_patterns": [
+    {
+      "id": "qa_forbidden_sentinel",
+      "kind": "regex_not_in_glob",
+      "glob": "docs/ive-engine-plan.md",
+      "pattern": "IVE_PROFILE_FORBIDDEN_SENTINEL_DO_NOT_USE",
+      "severity": "fail"
+    }
+  ],
+  "required_ontology_triples": [],
+  "required_decorators": [
+    {
+      "id": "qa_projection_cli_not_disabled",
+      "kind": "decorator_absent",
+      "path": ".agent/skills/iterative-planner/scripts/project_ive.mjs",
+      "decorator": "@planner:disabled",
+      "severity": "fail"
+    }
+  ]
+}

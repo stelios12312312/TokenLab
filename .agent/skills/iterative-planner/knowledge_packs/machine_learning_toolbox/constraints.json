@@ -1,0 +1,9 @@
+[
+  {
+    "id": "MLT-CON-001",
+    "title": "Tool choice requires baseline",
+    "summary": "A specialized ML tool recommendation must name the simpler baseline it beats or explain why the baseline is inapplicable.",
+    "severity": "medium",
+    "polarity": "guardrail"
+  }
+]

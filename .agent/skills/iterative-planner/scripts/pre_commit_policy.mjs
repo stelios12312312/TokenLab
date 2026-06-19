@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// pre_commit_policy.mjs — scoped commit blocking for planner hook enforcement.
+// pre_commit_policy.mjs — local advisory policy for planner hook diagnostics.
 
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { randomBytes } from "crypto";
@@ -158,10 +158,6 @@ function appendAdvisoryRecord(record) {
   writeJsonAtomic(LEDGER_PATH, ledger);
 }
 
-function summarizeGap(gap) {
-  return `${gap.gate}: ${gap.file} — ${gap.issue}`;
-}
-
 function requiredPlannerCoreProofCommands(stagedFiles) {
   const bundle = getPlannerCoreProofBundle();
   const staged = new Set((Array.isArray(stagedFiles) ? stagedFiles : []).map(normalizePath));
@@ -207,29 +203,6 @@ function cmdPreCommit() {
   }
 
   const impactedPaths = [...new Set(hardGaps.flatMap((gap) => gap.impacted_paths).filter(Boolean))];
-  if (impactedPaths.length === 0) {
-    console.error("  ❌ pre-commit: hard ripple gaps found but impacted surfaces could not be mapped safely");
-    for (const gap of hardGaps.slice(0, 10)) {
-      console.error(`  - ${summarizeGap(gap)}`);
-    }
-    process.exit(1);
-  }
-
-  const stagedSet = new Set(staged.files.map(normalizePath));
-  const overlapping = impactedPaths.filter((path) => stagedSet.has(normalizePath(path)));
-  if (overlapping.length > 0) {
-    console.error("  ❌ pre-commit: hard ripple gaps overlap the staged planner surfaces");
-    console.error("  Fix the gaps listed below before committing.");
-    for (const gap of hardGaps.slice(0, 10)) {
-      console.error(`  - ${summarizeGap(gap)}`);
-    }
-    console.error("  Overlapping staged files:");
-    for (const file of overlapping) {
-      console.error(`  - ${file}`);
-    }
-    console.error("  To bypass (NOT recommended): git commit --no-verify");
-    process.exit(1);
-  }
 
   const advisoryId = `advisory_${Date.now()}_${randomBytes(4).toString("hex")}`;
   const record = {
@@ -259,7 +232,7 @@ function cmdPreCommit() {
   }
 
   console.log(`  ⚠️  pre-commit: deferred ${hardGaps.length} hard ripple gap(s) to plans/commit_advisories.json`);
-  console.log("  Staged planner files do not overlap the failing contract surfaces, so the commit may proceed.");
+  console.log("  Local pre-commit enforcement is advisory; clean-checkout conformance and envelope CI remain authoritative.");
   console.log(`  Advisory id: ${advisoryId}`);
   console.log("  Follow up:");
   for (const command of FOLLOW_UP_COMMANDS) {

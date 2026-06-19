@@ -75,7 +75,7 @@
           },
           "persona_review": {
             "type": "object",
-            "description": "Advisory Program Manager persona-review guidance. Deterministic Program Packet validation, story checks, and gate proof remain authoritative.",
+            "description": "Advisory Program Manager persona-review guidance. Deterministic Program Packet validation, story checks, and gate proof remain authoritative; tickets cannot be closed while this metadata explicitly says status needs_evidence.",
             "properties": {
               "version": { "type": "integer" },
               "status": { "type": "string" },
@@ -95,7 +95,7 @@
           "review_status": {
             "type": "string",
             "enum": ["not_run", "submitted", "fresh", "needs_story", "needs_annotation", "needs_verification", "ontology_conflict", "blocked", "review_ready", "unavailable"],
-            "description": "Deterministic/advisory ticket review status. Execution lifecycle remains authoritative for dispatch and close semantics."
+            "description": "Deterministic/advisory ticket review status. Execution lifecycle remains authoritative for dispatch and close semantics; tickets cannot be closed while this value is explicitly not_run."
           },
           "story_refs": { "type": "array", "items": { "type": "string" } },
           "defect_refs": { "type": "array", "items": { "type": "string" } },
@@ -106,7 +106,7 @@
             "type": "object",
             "required": ["policy", "reason"],
             "properties": {
-              "policy": { "type": "string", "enum": ["required", "not_required", "waived"] },
+              "policy": { "type": "string", "enum": ["required", "lightweight", "not_required", "waived"] },
               "plan_dir": { "type": ["string", "null"] },
               "state": { "type": "string" },
               "waiver_decision_ref": { "type": "string" },
@@ -282,6 +282,21 @@
           "executed_at": { "type": "string", "description": "ISO timestamp when verification_runner.mjs ran this row. Set automatically; do not edit manually." },
           "exit_code": { "type": "number", "description": "Exit code of the executed command. Set automatically; do not edit manually." },
           "stdout_excerpt": { "type": "string", "description": "First lines of stdout captured by the runner (truncated). Set automatically." },
+          "artifact_refs": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "JSON artifact paths the verification runner should stamp with a runner-bound run_record when this auto row is executed with --write. Relative paths resolve from the Program Packet directory first."
+          },
+          "output_artifacts": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Alias for artifact_refs when a row names produced JSON output artifacts."
+          },
+          "artifact_records": {
+            "type": "array",
+            "items": { "type": "object" },
+            "description": "Runner-written metadata for artifact_refs/output_artifacts, including stamp status and content hashes. Set automatically; do not edit manually."
+          },
           "timeout_seconds": { "type": "number", "description": "Max seconds the runner will let command_or_action run before killing it. Default 60." }
         },
         "additionalProperties": true

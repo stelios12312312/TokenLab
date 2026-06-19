@@ -32,6 +32,20 @@ function packetText(lines) {
   return (Array.isArray(lines) ? lines : []).join("\n");
 }
 
+function runDepthCheckForVectorBody(body, title = "Depth fixture") {
+  const tmp = mkdtempSync(join(tmpdir(), "planner-etr-depth-"));
+  const planDir = join(tmp, "plans", "plan_etr_depth");
+  try {
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "progress.md"), "# Progress\n\n## Completed\n- [x] fixture\n");
+    const vectors = [1, 2, 3].map((n) => `## Vector ${n}: ${title}\n${body}`);
+    writeFileSync(join(planDir, "red_team_notes.md"), vectors.join("\n\n"));
+    return gateExecuteToReflect(planDir).find((r) => r.code === "GATE-ETR-008");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
 function scenarioRendererModes() {
   assert(normalizeScaffoldMode({ PLANNER_SCAFFOLDS: "off" }) === "off", "PLANNER_SCAFFOLDS=off is recognized");
   assert(normalizeScaffoldMode({ PLANNER_SCAFFOLDS: "examples-only" }) === "examples-only", "PLANNER_SCAFFOLDS=examples-only is recognized");
@@ -195,10 +209,57 @@ function scenarioFillMarkerRejection() {
   }
 }
 
+function scenarioTrailingAnglePlaceholderRejection() {
+  // A bare "<...>" placeholder decorated with ANY trailing punctuation run is an
+  // evasion, not real prose. The earlier fix only tolerated a single ".!?"; these
+  // variants (comma, semicolon, colon, ellipsis, mixed) must all still FAIL.
+  const trailers = [".", ",", ";", ":", "...", " .", "?!"];
+  for (const trail of trailers) {
+    const body = [
+      `Attack: <one-paragraph adversarial scenario; name trigger, input, and fault>${trail}`,
+      "",
+      "Impact: This copied placeholder can look filled because punctuation makes the template marker evade a too-narrow bare-angle detector.",
+      "",
+      "Mitigation: The analyzer should still classify the attack section as placeholder content and require a real scenario.",
+    ].join("\n");
+    const depth = runDepthCheckForVectorBody(body, `Trailing placeholder '${trail}'`);
+    assert(
+      depth?.status === "FAIL",
+      `trailing angle-bracket placeholder '${trail}' FAILS GATE-ETR-008 (got ${depth?.status})`
+    );
+    assert(
+      String(depth?.detail || "").toLowerCase().includes("placeholder"),
+      `trailing placeholder '${trail}' failure detail mentions placeholder content`
+    );
+  }
+}
+
+function scenarioKeywordSaladRejection() {
+  const repeated = "auth bypass token replay auth bypass token replay";
+  const body = [
+    `Attack: ${repeated}`,
+    "",
+    `Impact: ${repeated}`,
+    "",
+    `Mitigation: ${repeated}`,
+  ].join("\n");
+  const depth = runDepthCheckForVectorBody(body, "Repeated token salad");
+  assert(
+    depth?.status === "FAIL",
+    `repeated-token keyword salad FAILS GATE-ETR-008 (got ${depth?.status})`
+  );
+  assert(
+    String(depth?.detail || "").toLowerCase().includes("unique words"),
+    "keyword-salad failure detail mentions unique-word depth"
+  );
+}
+
 scenarioRendererModes();
 scenarioGateEtr008Packet();
 scenarioPasteTemplateRejection();
 scenarioFillMarkerRejection();
+scenarioTrailingAnglePlaceholderRejection();
+scenarioKeywordSaladRejection();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

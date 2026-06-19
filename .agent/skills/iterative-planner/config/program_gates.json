@@ -32,6 +32,7 @@
       "purpose": "Confirm non-deferred executable tickets are done or verified and required child plans are closed.",
       "required_checks": [
         "ticket_completion_status",
+        "ticket_verification_rows_passed",
         "required_child_plan_closed",
         "deferred_ticket_decisions"
       ]
@@ -43,6 +44,7 @@
       "required_checks": [
         "all_tickets_closed_or_deferred",
         "program_level_verification",
+        "ticket_level_verification",
         "compatibility_verification",
         "regression_verification",
         "residual_risk_recorded"

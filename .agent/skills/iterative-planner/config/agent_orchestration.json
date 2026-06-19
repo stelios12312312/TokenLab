@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "schema_version": 1,
+  "orchestrator": {
+    "id": "planner_orchestrator",
+    "single_foreground_writer": true,
+    "no_nested_subagents": true
+  },
+  "agents": [
+    {
+      "id": "phase_planner",
+      "phase": "PLAN",
+      "authority": "foreground_writer",
+      "model": "gpt-5",
+      "effort": "high",
+      "tools": ["Read", "Grep", "Edit"],
+      "writes_shared_state": true,
+      "allow_nested_agents": false
+    },
+    {
+      "id": "executor",
+      "phase": "EXECUTE",
+      "authority": "foreground_writer",
+      "model": "gpt-5",
+      "effort": "high",
+      "tools": ["Read", "Grep", "Edit", "Bash"],
+      "writes_shared_state": true,
+      "allow_nested_agents": false
+    },
+    {
+      "id": "assumptions_challenger",
+      "phase": "PLAN",
+      "authority": "background_reader",
+      "model": "gpt-5-mini",
+      "effort": "medium",
+      "tools": ["Read", "Grep"],
+      "writes_shared_state": false,
+      "allow_nested_agents": false
+    },
+    {
+      "id": "wiring_auditor",
+      "phase": "REFLECT",
+      "authority": "background_reader",
+      "model": "gpt-5-mini",
+      "effort": "medium",
+      "tools": ["Read", "Grep"],
+      "writes_shared_state": false,
+      "allow_nested_agents": false
+    },
+    {
+      "id": "traceability_specialist",
+      "phase": "VALIDATE",
+      "authority": "background_reader",
+      "model": "gpt-5-mini",
+      "effort": "medium",
+      "tools": ["Read", "Grep"],
+      "writes_shared_state": false,
+      "allow_nested_agents": false
+    },
+    {
+      "id": "config_integrity_specialist",
+      "phase": "VALIDATE",
+      "authority": "background_reader",
+      "model": "gpt-5-mini",
+      "effort": "medium",
+      "tools": ["Read", "Grep"],
+      "writes_shared_state": false,
+      "allow_nested_agents": false
+    },
+    {
+      "id": "isolated_adversarial_auditor",
+      "phase": "VALIDATE",
+      "authority": "adversarial_auditor",
+      "model": "gpt-5-mini",
+      "effort": "medium",
+      "tools": ["Read", "Grep"],
+      "writes_shared_state": false,
+      "allow_nested_agents": false
+    }
+  ]
+}

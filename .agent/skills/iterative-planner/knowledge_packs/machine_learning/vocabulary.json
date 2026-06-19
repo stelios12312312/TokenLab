@@ -1,0 +1,22 @@
+[
+  {
+    "id": "ML-VOC-001",
+    "term": "temporal_split",
+    "summary": "A split that preserves time order so training evidence cannot include future observations.",
+    "severity": "medium",
+    "polarity": "neutral",
+    "tags": [
+      "definition"
+    ]
+  },
+  {
+    "id": "ML-VOC-002",
+    "term": "calibration",
+    "summary": "The relationship between predicted confidence and observed frequency on held-out data.",
+    "severity": "medium",
+    "polarity": "neutral",
+    "tags": [
+      "definition"
+    ]
+  }
+]

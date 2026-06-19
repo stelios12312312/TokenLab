@@ -47,6 +47,11 @@
       "enabled": true,
       "description": "RT-REDTEAM-C4: Capture tool call traces via IDE hooks and verify file-read coverage at gate transitions (enabled by default)"
     },
+    "gate_retry_cooldown": {
+      "enabled": false,
+      "cooldown_ms": 10000,
+      "description": "AV-19 time-based same-gate retry cooldown. DISABLED by default per ceremony-reduction ticket T-INTAKE-8CD950E7 (decision 2026-06-10): the persistent circuit breaker (CIRCUIT_BREAKER_OPEN at 10 total fails) and the GATE-RETRY-001 consecutive-thrash guard already catch brute-force retry loops, while the wall-clock cooldown only added dead time to honest fix-and-retry loops (dogfood friction_log F5: two attempts wasted purely on cooldown). Set enabled:true to restore the 10s cooldown."
+    },
     "proof_telemetry": {
       "enabled": true,
       "description": "Advisory-first proof telemetry: capture compact trusted work signals under plans/<plan>/telemetry/ so planner_findings can detect missing proof from actual work."

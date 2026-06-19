@@ -20,6 +20,7 @@ const ROUTES = new Map([
   ["fix-stuck", "bootstrap.mjs"],
   ["install-health", "bootstrap.mjs"],
   ["story-review", "bootstrap.mjs"],
+  ["run", "autonomous_driver.mjs"],
   ["doctor", "project_health.mjs"],
   ["health", "project_health.mjs"],
   ["preflight", "planner_preflight.mjs"],
@@ -41,6 +42,7 @@ Usage:
   node .agent/skills/iterative-planner/scripts/planner.mjs status
   node .agent/skills/iterative-planner/scripts/planner.mjs new "<goal>"
   node .agent/skills/iterative-planner/scripts/planner.mjs resume
+  node .agent/skills/iterative-planner/scripts/planner.mjs run --until close [--plan <plan-dir>] [--json]
   node .agent/skills/iterative-planner/scripts/planner.mjs migration-wave <create|verify> [--json]
   node .agent/skills/iterative-planner/scripts/planner.mjs verify-fleet [--json]
   node .agent/skills/iterative-planner/scripts/planner.mjs fleet doctor [--json]
@@ -48,6 +50,14 @@ Usage:
   node .agent/skills/iterative-planner/scripts/planner.mjs drift-audit --mode gate --gate <gate> [--json]
   node .agent/skills/iterative-planner/scripts/planner.mjs drift-maintenance enqueue --plan <plan-dir> [--json]
   node .agent/skills/iterative-planner/scripts/planner.mjs install-hook [--uninstall]
+  node .agent/skills/iterative-planner/scripts/planner.mjs ontology build [--induce] [--incremental] [--dry-run] [--json]
+  node .agent/skills/iterative-planner/scripts/planner.mjs ontology query "<prolog>" [--json]
+  node .agent/skills/iterative-planner/scripts/planner.mjs ontology facts --entity <type> [--domain <domain>] [--json]
+  node .agent/skills/iterative-planner/scripts/planner.mjs ontology validate [--json]
+  node .agent/skills/iterative-planner/scripts/planner.mjs conventions <list|check|promote|demote> [--json]
+  node .agent/skills/iterative-planner/scripts/planner.mjs context --task "<task>" [--dir <path>] [--json]
+  node .agent/skills/iterative-planner/scripts/planner.mjs spot-checks <status|latest|run> [--json]
+  node .agent/skills/iterative-planner/scripts/planner.mjs sidekick commit-message
 `);
 }
 
@@ -99,6 +109,28 @@ if (command === "drift-maintenance") {
 
 if (command === "install-hook") {
   runScript(join("hooks", "install.mjs"), args.slice(1));
+}
+
+// Sub-tool aliases: forward the remaining args (drop the dispatcher command word)
+// to the tool, which reads its own subcommand from argv[0].
+if (command === "sidekick") {
+  runScript("sidekick.mjs", args.slice(1));
+}
+
+if (command === "conventions") {
+  runScript("conventions.mjs", args.slice(1));
+}
+
+if (command === "context") {
+  runScript("ontology_context.mjs", args.slice(1));
+}
+
+if (command === "spot-checks") {
+  runScript("spot_check_worker.mjs", args.slice(1));
+}
+
+if (command === "ontology") {
+  runScript("ontology_cli.mjs", args.slice(1));
 }
 
 if (ROUTES.has(command)) {

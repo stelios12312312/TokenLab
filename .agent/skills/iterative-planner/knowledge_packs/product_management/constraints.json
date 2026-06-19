@@ -1,0 +1,9 @@
+[
+  {
+    "id": "PM-CON-001",
+    "title": "User problem bound",
+    "summary": "Product stories should bind to a ProductProblem and UserSegment or be marked technical-enabler.",
+    "severity": "high",
+    "polarity": "guardrail"
+  }
+]
