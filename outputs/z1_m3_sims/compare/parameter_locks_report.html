@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Z1 Tokenomics Parameter Locks Report</title>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #0b0f19;
+      --bg-secondary: #111827;
+      --bg-tertiary: #1f2937;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      
+      --text-primary: #f8fafc;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      
+      --accent-color: #0ea5e9;
+      --accent-gradient: linear-gradient(135deg, #0ea5e9, #6366f1);
+      
+      --success-color: #10b981;
+      --success-bg: rgba(16, 185, 129, 0.1);
+      --success-border: rgba(16, 185, 129, 0.2);
+      
+      --warning-color: #f59e0b;
+      --warning-bg: rgba(245, 158, 11, 0.1);
+      --warning-border: rgba(245, 158, 11, 0.2);
+      
+      --danger-color: #ef4444;
+      --danger-bg: rgba(239, 68, 68, 0.1);
+      --danger-border: rgba(239, 68, 68, 0.2);
+      
+      --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+    }
+
+    * {
+      box-sizing: border-box;
+      transition: all 0.2s ease-in-out;
+    }
+
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem;
+    }
+
+    /* Header Styling */
+    header {
+      margin-bottom: 3rem;
+      position: relative;
+    }
+
+    header::after {
+      content: '';
+      position: absolute;
+      bottom: -1rem;
+      left: 0;
+      width: 60px;
+      height: 4px;
+      background: var(--accent-gradient);
+      border-radius: 2px;
+    }
+
+    h1 {
+      font-family: 'Outfit', sans-serif;
+      font-size: 2.8rem;
+      font-weight: 700;
+      margin: 0 0 0.5rem 0;
+      letter-spacing: -0.02em;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      color: var(--text-secondary);
+      font-size: 1.1rem;
+      margin: 0;
+      font-weight: 300;
+    }
+
+    /* Summary Grid */
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+
+    .summary-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      box-shadow: var(--card-shadow);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .summary-card:hover {
+      transform: translateY(-4px);
+      border-color: #475569;
+    }
+
+    .summary-title {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      margin-bottom: 1rem;
+      font-weight: 600;
+    }
+
+    .summary-value {
+      font-size: 2.2rem;
+      font-family: 'Outfit', sans-serif;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    /* Circular Solvency Ratio Ring */
+    .gauge-wrapper {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+    }
+
+    .solvency-gauge {
+      position: relative;
+      width: 80px;
+      height: 80px;
+    }
+
+    .solvency-gauge svg {
+      transform: rotate(-90deg);
+      width: 100%;
+      height: 100%;
+    }
+
+    .solvency-gauge circle {
+      fill: none;
+      stroke-width: 6px;
+    }
+
+    .solvency-gauge .bg-ring {
+      stroke: #334155;
+    }
+
+    .solvency-gauge .progress-ring {
+      stroke: var(--success-color);
+      stroke-linecap: round;
+      stroke-dasharray: 226;
+      stroke-dashoffset: 213.2;
+    }
+
+    .solvency-gauge .value-label {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-weight: 700;
+      font-size: 1.05rem;
+      font-family: 'Outfit', sans-serif;
+      color: var(--success-color);
+    }
+
+    /* Filter Controls */
+    .controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .filter-tabs {
+      display: flex;
+      background: var(--bg-secondary);
+      padding: 0.3rem;
+      border-radius: 8px;
+      border: 1px solid var(--card-border);
+    }
+
+    .tab-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      padding: 0.5rem 1.2rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      cursor: pointer;
+      font-weight: 500;
+    }
+
+    .tab-btn.active {
+      background: var(--accent-gradient);
+      color: var(--text-primary);
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+    }
+
+    .search-box {
+      position: relative;
+    }
+
+    .search-box input {
+      background: var(--bg-secondary);
+      border: 1px solid var(--card-border);
+      border-radius: 8px;
+      padding: 0.6rem 1rem 0.6rem 2.5rem;
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      width: 250px;
+    }
+
+    .search-box input:focus {
+      outline: none;
+      border-color: var(--accent-color);
+      box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
+    }
+
+    .search-box::before {
+      content: '🔍';
+      position: absolute;
+      left: 0.9rem;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    /* Locks Grid */
+    .locks-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+
+    .lock-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      box-shadow: var(--card-shadow);
+      overflow: hidden;
+      display: grid;
+      grid-template-columns: 80px 1fr 200px;
+      align-items: center;
+    }
+
+    @media (max-width: 768px) {
+      .lock-card {
+        grid-template-columns: 1fr;
+        padding: 1.5rem;
+      }
+      .lock-badge-col {
+        text-align: left !important;
+        margin-top: 1rem;
+      }
+      .lock-id-col {
+        margin-bottom: 0.5rem;
+      }
+    }
+
+    .lock-id-col {
+      height: 100%;
+      background: rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      border-right: 1px solid var(--card-border);
+      padding: 1rem;
+    }
+
+    .lock-id {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--text-secondary);
+    }
+
+    .lock-id-type {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 0.15rem 0.4rem;
+      border-radius: 4px;
+      margin-top: 0.25rem;
+    }
+
+    .type-hard {
+      background: rgba(239, 68, 68, 0.1);
+      color: var(--danger-color);
+    }
+
+    .type-soft {
+      background: rgba(14, 165, 233, 0.1);
+      color: var(--accent-color);
+    }
+
+    .lock-body-col {
+      padding: 1.5rem;
+    }
+
+    .lock-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin: 0 0 0.5rem 0;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .lock-formula {
+      font-family: monospace;
+      background: rgba(0,0,0,0.2);
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      font-size: 0.85rem;
+      color: var(--accent-color);
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .lock-desc {
+      color: var(--text-secondary);
+      font-size: 0.95rem;
+      margin: 0 0 1rem 0;
+    }
+
+    .lock-details {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      border-top: 1px solid rgba(255,255,255,0.05);
+      padding-top: 0.75rem;
+      line-height: 1.5;
+    }
+
+    .lock-badge-col {
+      padding: 1.5rem;
+      border-left: 1px solid rgba(255,255,255,0.05);
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+    }
+
+    @media (max-width: 768px) {
+      .lock-badge-col {
+        border-left: none;
+        border-top: 1px solid rgba(255,255,255,0.05);
+        align-items: flex-start;
+        padding-top: 1rem;
+      }
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.8rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      padding: 0.35rem 1rem;
+      border-radius: 20px;
+      margin-bottom: 0.75rem;
+      width: 100px;
+    }
+
+    .status-badge.pass {
+      background: var(--success-bg);
+      color: var(--success-color);
+      border: 1px solid var(--success-border);
+    }
+
+    .status-badge.warn {
+      background: var(--warning-bg);
+      color: var(--warning-color);
+      border: 1px solid var(--warning-border);
+    }
+
+    .status-badge.fail {
+      background: var(--danger-bg);
+      color: var(--danger-color);
+      border: 1px solid var(--danger-border);
+    }
+
+    .lock-value-row {
+      display: flex;
+      justify-content: space-between;
+      width: 100%;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      margin-top: 0.25rem;
+    }
+
+    .progress-bar-container {
+      width: 100%;
+      height: 6px;
+      background: #334155;
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+
+    .progress-bar {
+      height: 100%;
+      border-radius: 3px;
+    }
+
+    .progress-bar.pass { background-color: var(--success-color); }
+    .progress-bar.warn { background-color: var(--warning-color); }
+    .progress-bar.fail { background-color: var(--danger-color); }
+
+    /* Cohort Matrix Section */
+    .matrix-section {
+      margin-top: 4rem;
+      background: var(--bg-secondary);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 2rem;
+      box-shadow: var(--card-shadow);
+    }
+
+    .section-title {
+      font-family: 'Outfit', sans-serif;
+      font-size: 1.8rem;
+      font-weight: 600;
+      margin: 0 0 1.5rem 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      font-size: 0.95rem;
+    }
+
+    th {
+      text-align: left;
+      color: var(--text-secondary);
+      font-weight: 600;
+      padding: 1rem;
+      border-bottom: 2px solid var(--card-border);
+    }
+
+    td {
+      padding: 1rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    tr:hover td {
+      background: rgba(255,255,255,0.02);
+    }
+
+    .cohort-name {
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    /* Raw Config Section */
+    .collapsible {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--text-primary);
+      cursor: pointer;
+      padding: 1.2rem;
+      width: 100%;
+      text-align: left;
+      outline: none;
+      font-size: 1.1rem;
+      font-weight: 600;
+      border-radius: 12px;
+      margin-top: 2rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .collapsible::after {
+      content: '➕';
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .collapsible.active::after {
+      content: '➖';
+    }
+
+    .collapsible-content {
+      padding: 0 1.2rem;
+      max-height: 0;
+      overflow: hidden;
+      background-color: rgba(0,0,0,0.15);
+      border-radius: 0 0 12px 12px;
+      border: 1px solid transparent;
+      border-top: none;
+    }
+
+    .collapsible-content.show {
+      max-height: 1000px;
+      padding: 1.5rem;
+      border-color: var(--card-border);
+    }
+
+    pre {
+      margin: 0;
+      font-family: monospace;
+      font-size: 0.85rem;
+      color: var(--accent-color);
+      overflow-x: auto;
+    }
+
+    footer {
+      margin-top: 5rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      border-top: 1px solid var(--card-border);
+      padding-top: 2rem;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <header>
+      <h1>Z1 Parameter Locks Status</h1>
+      <p class="subtitle">Milestone 3 Simulation Parameter Invariant Validator</p>
+    </header>
+
+    <!-- Summary Widgets -->
+    <div class="summary-grid">
+      <div class="summary-card">
+        <p class="summary-title">L1 Solvency Ratio</p>
+        <div class="gauge-wrapper">
+          <div class="solvency-gauge">
+            <svg>
+              <circle class="bg-ring" cx="40" cy="40" r="36"></circle>
+              <circle class="progress-ring" cx="40" cy="40" r="36"></circle>
+            </svg>
+            <div class="value-label">0.045</div>
+          </div>
+          <div>
+            <p style="margin:0;font-weight:600;font-size:1rem;color:var(--success-color)">Structurally Stable</p>
+            <p style="margin:0.25rem 0 0 0;font-size:0.8rem;color:var(--text-secondary)">Limit threshold: 0.800</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="summary-card">
+        <p class="summary-title">Locks Status</p>
+        <p class="summary-value" style="color: var(--text-primary)">
+          <span style="color:var(--success-color)">7</span>
+          <span style="font-size:0.9rem;font-weight:400;color:var(--text-muted)">/ 8 Passed</span>
+        </p>
+        <div style="display:flex;gap:1rem;margin-top:0.5rem;font-size:0.85rem">
+          <span style="color:var(--warning-color)">⚠️ 0 Warning</span>
+          <span style="color:var(--danger-color)">❌ 1 Deficient</span>
+        </div>
+      </div>
+
+      <div class="summary-card" style="border-color: var(--danger-border)">
+        <p class="summary-title">Overall Verdict</p>
+        <p class="summary-value" style="color: var(--danger-color); font-size:1.6rem">
+          DEFICIENT (Peg Undefended)
+        </p>
+        <p style="margin:0.5rem 0 0 0;font-size:0.8rem;color:var(--text-secondary)">
+          L8 failed: Treasury buyback ratio is 0.00.
+        </p>
+      </div>
+    </div>
+
+    <!-- Filter Buttons & Search -->
+    <div class="controls">
+      <div class="filter-tabs">
+        <button class="tab-btn active" id="btn-all" onclick="filterLocks('all')">All Locks</button>
+        <button class="tab-btn" id="btn-hard" onclick="filterLocks('HARD')">Hard Locks</button>
+        <button class="tab-btn" id="btn-soft" onclick="filterLocks('SOFT')">Soft Locks</button>
+        <button class="tab-btn" id="btn-fail" onclick="filterLocks('FAIL')">Deficient (1)</button>
+      </div>
+      <div class="search-box">
+        <input type="text" id="lock-search" oninput="searchLocks()" placeholder="Search by name or formula...">
+      </div>
+    </div>
+
+    <!-- Locks Cards Grid -->
+    <div class="locks-grid" id="locks-container">
+
+      <div class="lock-card" data-type="HARD" data-status="PASS" id="card-L1">
+        <div class="lock-id-col">
+          <span class="lock-id">L1</span>
+          <span class="lock-id-type type-hard">HARD</span>
+        </div>
+        <div class="lock-body-col">
+          <h3 class="lock-title">
+            Solvency Floor Invariant
+            <span class="lock-formula">Outflow / Inflow < 0.8</span>
+          </h3>
+          <p class="lock-desc">Predicts solvency collapse. Total claim and settlement pressure must be less than 80% of backflow fee revenue and brand inflow.</p>
+          <div class="lock-details">
+            Outflow Rate: 0.002945<br>Inflow Rate: 0.065016
+          </div>
+        </div>
+        <div class="lock-badge-col">
+          <span class="status-badge pass">PASS</span>
+          <div class="lock-value-row">
+            <span>Value: <strong>0.0453</strong></span>
+            <span>Limit: <strong>0.8000</strong></span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar pass" style="width: 5%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-card" data-type="SOFT" data-status="PASS" id="card-L2">
+        <div class="lock-id-col">
+          <span class="lock-id">L2</span>
+          <span class="lock-id-type type-soft">SOFT</span>
+        </div>
+        <div class="lock-body-col">
+          <h3 class="lock-title">
+            Settlement-Fee Ratio
+            <span class="lock-formula">settlement_ratio ≤ 2 × utility_fee_share</span>
+          </h3>
+          <p class="lock-desc">Prevents structural drain. If settlement is more than 2x the fee share, the system drains faster than it replenishes.</p>
+          <div class="lock-details">
+            Settlement Ratio: 0.1047<br>Utility Fee Share: 0.3400 (Limit: 0.6800)
+          </div>
+        </div>
+        <div class="lock-badge-col">
+          <span class="status-badge pass">PASS</span>
+          <div class="lock-value-row">
+            <span>Value: <strong>0.1047</strong></span>
+            <span>Limit: <strong>0.6800</strong></span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar pass" style="width: 15%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-card" data-type="HARD" data-status="PASS" id="card-L3">
+        <div class="lock-id-col">
+          <span class="lock-id">L3</span>
+          <span class="lock-id-type type-hard">HARD</span>
+        </div>
+        <div class="lock-body-col">
+          <h3 class="lock-title">
+            Brand Inflow Floor
+            <span class="lock-formula">brand_inflow_per_epoch ≥ 1% of AR_initial</span>
+          </h3>
+          <p class="lock-desc">Critical backstop. No simulated scenarios remained stable when brand inflows dropped below 1% of the initial Audience Reserve.</p>
+          <div class="lock-details">
+            Brand Inflow: 112,000 Z1U / epoch<br>Initial AR: 5,000,000 Z1U
+          </div>
+        </div>
+        <div class="lock-badge-col">
+          <span class="status-badge pass">PASS</span>
+          <div class="lock-value-row">
+            <span>Value: <strong>2.24%</strong></span>
+            <span>Limit: <strong>1.00%</strong></span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar pass" style="width: 100%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-card" data-type="SOFT" data-status="PASS" id="card-L4">
+        <div class="lock-id-col">
+          <span class="lock-id">L4</span>
+          <span class="lock-id-type type-soft">SOFT</span>
+        </div>
+        <div class="lock-body-col">
+          <h3 class="lock-title">
+            Cohort Net-Drain Check
+            <span class="lock-formula">settle_propensity[c] ≤ 0.5 × spend[c]</span>
+          </h3>
+          <p class="lock-desc">For each cohort, settle propensity must be ≤ 50% of utility spend rate to ensure they are net contributors.</p>
+          <div class="lock-details">
+            <strong>passive_viewers</strong>: settle=0.0051, spend=0.0456<br><strong>active_viewers</strong>: settle=0.0102, spend=0.1823<br><strong>power_users</strong>: settle=0.0203, spend=0.4557<br><strong>adversarial_whales</strong>: settle=0.5000, spend=0.0000
+          </div>
+        </div>
+        <div class="lock-badge-col">
+          <span class="status-badge pass">PASS</span>
+          <div class="lock-value-row">
+            <span>Value: <strong>Compliant</strong></span>
+            <span>Limit: <strong>Settle ≤ 50% Spend</strong></span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar pass" style="width: 100%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-card" data-type="SOFT" data-status="PASS" id="card-L5">
+        <div class="lock-id-col">
+          <span class="lock-id">L5</span>
+          <span class="lock-id-type type-soft">SOFT</span>
+        </div>
+        <div class="lock-body-col">
+          <h3 class="lock-title">
+            Treasury Funding Check
+            <span class="lock-formula">topup budget ≤ cumulative inflows</span>
+          </h3>
+          <p class="lock-desc">Prevents unfunded topup promises. Total target budget must be supported by projected epoch revenues.</p>
+          <div class="lock-details">
+            Target Topup: 2,000,000 Z1U<br>Projected Inflow: 29,180,430 Z1U
+          </div>
+        </div>
+        <div class="lock-badge-col">
+          <span class="status-badge pass">PASS</span>
+          <div class="lock-value-row">
+            <span>Value: <strong>2,000,000</strong></span>
+            <span>Limit: <strong>29,180,430</strong></span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar pass" style="width: 6%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-card" data-type="HARD" data-status="PASS" id="card-L7">
+        <div class="lock-id-col">
+          <span class="lock-id">L7</span>
+          <span class="lock-id-type type-hard">HARD</span>
+        </div>
+        <div class="lock-body-col">
+          <h3 class="lock-title">
+            Treasury Net Flow Lock
+            <span class="lock-formula">Inflow ≥ Outflow (Steady State)</span>
+          </h3>
+          <p class="lock-desc">Prevents Zombie State. Structural inflows (RWA Yield + Campaign fees) must exceed ongoing validator and operational subsidies.</p>
+          <div class="lock-details">
+            Structural Inflow: 29,000 Z1U/epoch<br>Subsidies/Outflow: 15,000 Z1U/epoch
+          </div>
+        </div>
+        <div class="lock-badge-col">
+          <span class="status-badge pass">PASS</span>
+          <div class="lock-value-row">
+            <span>Value: <strong>+14,000</strong></span>
+            <span>Limit: <strong>≥ 0</strong></span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar pass" style="width: 100%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-card" data-type="HARD" data-status="FAIL" id="card-L8">
+        <div class="lock-id-col">
+          <span class="lock-id">L8</span>
+          <span class="lock-id-type type-hard">HARD</span>
+        </div>
+        <div class="lock-body-col">
+          <h3 class="lock-title">
+            AMM Peg Defense Lock
+            <span class="lock-formula">treasury_buyback_ratio > 0.0</span>
+          </h3>
+          <p class="lock-desc">Defends pricing peg. The treasury must allocate a portion of its surplus to dynamic buybacks to sustain the price floor.</p>
+          <div class="lock-details">
+            Treasury Buyback Ratio: 0.0000
+          </div>
+        </div>
+        <div class="lock-badge-col">
+          <span class="status-badge fail">FAIL</span>
+          <div class="lock-value-row">
+            <span>Value: <strong>0.0000</strong></span>
+            <span>Limit: <strong>> 0.0000</strong></span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar fail" style="width: 0%"></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="lock-card" data-type="HARD" data-status="PASS" id="card-L9">
+        <div class="lock-id-col">
+          <span class="lock-id">L9</span>
+          <span class="lock-id-type type-hard">HARD</span>
+        </div>
+        <div class="lock-body-col">
+          <h3 class="lock-title">
+            AR Epoch Drain Cap
+            <span class="lock-formula">Max Settle Outflow ≤ 10% AR_initial</span>
+          </h3>
+          <p class="lock-desc">Anti-stampede constraint. Caps maximum potential outflow per epoch to 10% of the initial reserve.</p>
+          <div class="lock-details">
+            Max Outflow: 5,235 Z1U/epoch<br>Limit (10% AR): 500,000 Z1U
+          </div>
+        </div>
+        <div class="lock-badge-col">
+          <span class="status-badge pass">PASS</span>
+          <div class="lock-value-row">
+            <span>Value: <strong>5,235</strong></span>
+            <span>Limit: <strong>500,000</strong></span>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar pass" style="width: 1%"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Cohort parameters matrix -->
+    <div class="matrix-section">
+      <h2 class="section-title">Cohort Economics Matrix</h2>
+      <p style="color:var(--text-secondary);font-size:0.95rem;margin-bottom:1.5rem">Displays key parameters defining claim rates, settle propensities, and utility spend rates for all configured user cohorts.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Cohort</th>
+            <th>Population Share</th>
+            <th>Claim Rate</th>
+            <th>Settle Propensity</th>
+            <th>Utility Spend Rate</th>
+            <th>Staking Rate</th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <tr>
+            <td class="cohort-name">Passive Viewers</td>
+            <td>55.0%</td>
+            <td>0.10</td>
+            <td>0.0051</td>
+            <td>0.0456</td>
+            <td>0.0%</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">Active Viewers</td>
+            <td>30.0%</td>
+            <td>0.40</td>
+            <td>0.0102</td>
+            <td>0.1823</td>
+            <td>5.0%</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">Power Users</td>
+            <td>10.0%</td>
+            <td>0.80</td>
+            <td>0.0203</td>
+            <td>0.4557</td>
+            <td>30.0%</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">Adversarial Whales</td>
+            <td>5.0%</td>
+            <td>1.00</td>
+            <td>0.5000</td>
+            <td>0.0000</td>
+            <td>0.0%</td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Raw Config Inspector -->
+    <button class="collapsible" id="config-collapse-btn" onclick="toggleConfig()">View Config Variables</button>
+    <div class="collapsible-content" id="config-content">
+      <pre>{
+  "n_epochs": 260,
+  "random_seed": 42,
+  "repetitions": 1,
+  "initial_viewers": 1000000,
+  "adoption_profile": "linear",
+  "creator_population": 5000,
+  "validator_population": 100,
+  "creator_sell_propensity": 0.5,
+  "validator_sell_propensity": 0.2,
+  "cohort_population_shares": {
+    "passive_viewers": 0.55,
+    "active_viewers": 0.3,
+    "power_users": 0.1,
+    "adversarial_whales": 0.05
+  },
+  "claim_rate_by_cohort": {
+    "passive_viewers": 0.1,
+    "active_viewers": 0.4,
+    "power_users": 0.8,
+    "adversarial_whales": 1.0
+  },
+  "verification_pass_rate_by_cohort": {
+    "passive_viewers": 0.5,
+    "active_viewers": 0.7,
+    "power_users": 0.9,
+    "adversarial_whales": 1.0
+  },
+  "acr_issue_rate_by_cohort": {
+    "passive_viewers": 10.0,
+    "active_viewers": 50.0,
+    "power_users": 200.0,
+    "adversarial_whales": 100.0
+  },
+  "ongoing_acr_issue_rate_by_cohort": {
+    "passive_viewers": 1.0,
+    "active_viewers": 5.0,
+    "power_users": 20.0,
+    "adversarial_whales": 10.0
+  },
+  "vesting_lag_epochs": 4,
+  "vesting_sub_cohort_phases": 4,
+  "acr_epoch_budget": 150000.0,
+  "pcs_tenure_weight": 0.5,
+  "pcs_activity_weight": 0.5,
+  "bas_lambda": 0.3,
+  "velocity_scale": 0.1,
+  "tier_sr_modifiers": {
+    "Bronze": 1.0,
+    "Silver": 1.05,
+    "Gold": 1.1,
+    "Platinum": 1.15
+  },
+  "tier_thresholds_pcs": {
+    "Bronze": 0.0,
+    "Silver": 100.0,
+    "Gold": 500.0,
+    "Platinum": 1500.0
+  },
+  "tier_min_tenure_epochs": {
+    "Bronze": 0,
+    "Silver": 4,
+    "Gold": 8,
+    "Platinum": 12
+  },
+  "tier_budget_allocations": {
+    "Bronze": 0.4,
+    "Silver": 0.25,
+    "Gold": 0.2,
+    "Platinum": 0.15
+  },
+  "settle_propensity_by_cohort": {
+    "passive_viewers": 0.0051,
+    "active_viewers": 0.0102,
+    "power_users": 0.0203,
+    "adversarial_whales": 0.5
+  },
+  "settlement_ratio": 0.1047,
+  "settlement_cap_per_epoch": 50000.0,
+  "utility_spend_rate_by_cohort": {
+    "passive_viewers": 0.0456,
+    "active_viewers": 0.1823,
+    "power_users": 0.4557,
+    "adversarial_whales": 0.0
+  },
+  "utility_fee_share": 0.34,
+  "utility_burn_share": 0.05,
+  "burn_enabled": true,
+  "brand_inflow_per_epoch": 112000.0,
+  "treasury_topup_threshold_ratio": 0.3,
+  "treasury_topup_target_ratio": 0.4,
+  "treasury_topup_cap_ratio_per_epoch": 0.1,
+  "throttle_threshold_ratio": 0.3,
+  "throttle_multiplier_when_stressed": 0.5,
+  "vesting_extension_factor": 2.0,
+  "amm_initial_z1u": 10000000.0,
+  "amm_initial_usd": 1000000.0,
+  "amm_fee_rate": 0.003,
+  "campaign_fee_percentage": 0.25,
+  "campaign_burn_share": 0.1,
+  "campaign_deposit_per_epoch": 112000.0,
+  "treasury_buyback_ratio": 0.0,
+  "use_dynamic_settlement_ratio": true,
+  "cip_budget_per_epoch": 10000.0,
+  "vrp_budget_per_epoch": 5000.0,
+  "cip_replenishment_per_epoch": 10000.0,
+  "operational_cost_per_epoch": 5000.0,
+  "rwa_yield_per_epoch": 1000.0,
+  "governance_staking_enabled": true,
+  "governance_voting_enabled": true,
+  "governance_max_budget_shift_rate": 0.05,
+  "staking_lock_epochs": 12,
+  "staking_rate_by_cohort": {
+    "passive_viewers": 0.0,
+    "active_viewers": 0.05,
+    "power_users": 0.3,
+    "adversarial_whales": 0.0
+  },
+  "panic_price_drop_threshold": 0.1,
+  "panic_settlement_multiplier": 5.0,
+  "genesis_buckets": {
+    "team": {
+      "total": 1000000.0,
+      "cliff_epochs": 12,
+      "duration_epochs": 36
+    },
+    "advisors": {
+      "total": 500000.0,
+      "cliff_epochs": 6,
+      "duration_epochs": 24
+    },
+    "seed": {
+      "total": 1500000.0,
+      "cliff_epochs": 12,
+      "duration_epochs": 24
+    },
+    "private": {
+      "total": 2000000.0,
+      "cliff_epochs": 6,
+      "duration_epochs": 24
+    },
+    "public": {
+      "total": 1000000.0,
+      "cliff_epochs": 0,
+      "duration_epochs": 12
+    },
+    "treasury": {
+      "total": 3000000.0,
+      "cliff_epochs": 0,
+      "duration_epochs": 48
+    },
+    "ecosystem": {
+      "total": 2000000.0,
+      "cliff_epochs": 0,
+      "duration_epochs": 48
+    }
+  },
+  "provider_recirculation_rate": 0.2,
+  "composite_sr_amm_weight": 0.7,
+  "composite_sr_ar_weight": 0.3,
+  "audience_reserve_initial": 5000000.0,
+  "treasury_initial": 2500000.0
+}</pre>
+    </div>
+
+    <footer>
+      <p>Report generated at 2026-06-19 11:39:33 • Z1 TokenLab Automation Engine</p>
+    </footer>
+  </div>
+
+  <script>
+    // Tab filtering
+    function filterLocks(type) {
+      const cards = document.querySelectorAll('.lock-card');
+      const tabs = document.querySelectorAll('.tab-btn');
+      
+      // Update active tab styling
+      tabs.forEach(tab => tab.classList.remove('active'));
+      const activeId = type === 'all' ? 'btn-all' : type === 'HARD' ? 'btn-hard' : type === 'SOFT' ? 'btn-soft' : 'btn-fail';
+      document.getElementById(activeId).classList.add('active');
+      
+      cards.forEach(card => {
+        const cardType = card.getAttribute('data-type');
+        const cardStatus = card.getAttribute('data-status');
+        
+        if (type === 'all') {
+          card.style.display = 'grid';
+        } else if (type === 'FAIL') {
+          if (cardStatus === 'FAIL') {
+            card.style.display = 'grid';
+          } else {
+            card.style.display = 'none';
+          }
+        } else {
+          if (cardType === type) {
+            card.style.display = 'grid';
+          } else {
+            card.style.display = 'none';
+          }
+        }
+      });
+    }
+
+    // Search filtering
+    function searchLocks() {
+      const query = document.getElementById('lock-search').value.toLowerCase();
+      const cards = document.querySelectorAll('.lock-card');
+      
+      cards.forEach(card => {
+        const text = card.textContent.toLowerCase();
+        if (text.includes(query)) {
+          card.style.display = 'grid';
+        } else {
+          card.style.display = 'none';
+        }
+      });
+    }
+
+    // Collapsible Config
+    function toggleConfig() {
+      const btn = document.getElementById('config-collapse-btn');
+      const content = document.getElementById('config-content');
+      btn.classList.toggle('active');
+      content.classList.toggle('show');
+    }
+  </script>
+</body>
+</html>
