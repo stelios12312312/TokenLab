@@ -834,8 +834,76 @@ def generate_report():
       </div>
 """
         
-    # 4. Add Parameter Calibration Registry table
+    # 4. Add Simulation Scale & Cohort Assumptions section
     html_template += f"""
+    </div>
+
+    <!-- Simulation Scale & Cohort Assumptions -->
+    <div class="matrix-section">
+      <h2 class="section-title">Simulation Scale & Cohort Assumptions</h2>
+      <p style="color:var(--text-secondary);font-size:0.95rem;margin-bottom:1.5rem">Summary of the active user base scaling, cohort breakdowns, and structural assumptions used in this simulation run.</p>
+      
+      <div class="summary-grid" style="margin-bottom: 2rem;">
+        <div class="summary-card" style="padding: 1.2rem;">
+          <p class="summary-title" style="margin-bottom: 0.5rem;">Initial Viewers (t=0)</p>
+          <p class="summary-value" style="font-size: 1.8rem; color: var(--accent-color);">{cfg.initial_viewers:,.0f}</p>
+          <p style="margin: 0.25rem 0 0 0; font-size: 0.8rem; color: var(--text-muted);">{cfg.adoption_profile.replace('_', ' ').title()} adoption curve</p>
+        </div>
+        <div class="summary-card" style="padding: 1.2rem;">
+          <p class="summary-title" style="margin-bottom: 0.5rem;">Creators Pool</p>
+          <p class="summary-value" style="font-size: 1.8rem; color: var(--accent-color);">{cfg.creator_population:,.0f}</p>
+          <p style="margin: 0.25rem 0 0 0; font-size: 0.8rem; color: var(--text-muted);">{cfg.creator_sell_propensity * 100:.1f}% baseline sell propensity</p>
+        </div>
+        <div class="summary-card" style="padding: 1.2rem;">
+          <p class="summary-title" style="margin-bottom: 0.5rem;">Validators Pool</p>
+          <p class="summary-value" style="font-size: 1.8rem; color: var(--accent-color);">{cfg.validator_population:,.0f}</p>
+          <p style="margin: 0.25rem 0 0 0; font-size: 0.8rem; color: var(--text-muted);">{cfg.validator_sell_propensity * 100:.1f}% baseline sell propensity</p>
+        </div>
+        <div class="summary-card" style="padding: 1.2rem;">
+          <p class="summary-title" style="margin-bottom: 0.5rem;">Run Horizon</p>
+          <p class="summary-value" style="font-size: 1.8rem; color: var(--accent-color);">{cfg.n_epochs:,.0f} Epochs</p>
+          <p style="margin: 0.25rem 0 0 0; font-size: 0.8rem; color: var(--text-muted);">~5 years of simulated economic activity</p>
+        </div>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>User Cohort</th>
+            <th>Assumed Population Share</th>
+            <th>Assumed User Count</th>
+            <th>Earning Profile</th>
+            <th>Utility Spend Profile</th>
+          </tr>
+        </thead>
+        <tbody>
+"""
+
+    cohort_profiles = {
+        "passive_viewers": ("Low Claim Rate (10%)", "Low Utility spend (4.56%)"),
+        "active_viewers": ("Medium Claim Rate (40%)", "Medium Utility spend (18.23%)"),
+        "power_users": ("High Claim Rate (80%)", "High Utility spend (45.57%)"),
+        "adversarial_whales": ("Max Claim Rate (100%)", "No Utility spend (0.00%)")
+    }
+
+    for name in COHORT_NAMES:
+        share = cfg.cohort_population_shares.get(name, 0)
+        count = int(cfg.initial_viewers * share)
+        earn, spend = cohort_profiles.get(name, ("Custom", "Custom"))
+        
+        html_template += f"""
+          <tr>
+            <td class="cohort-name">{name.replace('_', ' ').title()}</td>
+            <td>{share * 100:.1f}%</td>
+            <td><strong>{count:,.0f}</strong></td>
+            <td>{earn}</td>
+            <td>{spend}</td>
+          </tr>
+"""
+
+    html_template += f"""
+        </tbody>
+      </table>
     </div>
 
     <!-- Parameter Calibration Registry -->
