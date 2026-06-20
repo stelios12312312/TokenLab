@@ -46,8 +46,20 @@ class M3EconomyConfig:
 
     # PCS & BAS (GAP-01, GAP-02)
     acr_epoch_budget: float = 150_000.0
-    pcs_tenure_weight: float = 0.5
-    pcs_activity_weight: float = 0.5
+    pcs_tenure_weight: float = 0.35
+    pcs_activity_weight: float = 0.35
+    pcs_referral_weight: float = 0.15
+    pcs_diversity_weight: float = 0.15
+    pcs_action_cap: float = 0.30
+    pcs_ml_anomaly_gamma: float = 0.95
+    pcs_calibration_factor: float = 200.0
+    pagerank_cap: float = 0.80
+    cohort_referral_scores: Dict[str, float] = field(
+        default_factory=lambda: {"passive_viewers": 0.05, "active_viewers": 0.20, "power_users": 0.80, "adversarial_whales": 0.10}
+    )
+    cohort_diversity_scores: Dict[str, float] = field(
+        default_factory=lambda: {"passive_viewers": 0.10, "active_viewers": 0.50, "power_users": 0.90, "adversarial_whales": 0.30}
+    )
     bas_lambda: float = 0.3
     velocity_scale: float = 1.0 # Scales BAS to a propensity [0,1]
 
@@ -117,6 +129,10 @@ class M3EconomyConfig:
     staking_rate_by_cohort: Dict[str, float] = field(
         default_factory=lambda: {"passive_viewers": 0.0, "active_viewers": 0.05, "power_users": 0.30, "adversarial_whales": 0.0}
     )
+    governance_staking_tier_shares: Dict[str, float] = field(
+        default_factory=lambda: {"3_epoch": 0.40, "6_epoch": 0.35, "12_epoch": 0.25}
+    )
+    governance_acr_requirement: float = 100.0    # PAR-10
     
     panic_price_drop_threshold: float = 0.10  # 10% drop triggers panic
     panic_settlement_multiplier: float = 5.0  # Settle 5x faster in panic

@@ -19,7 +19,8 @@ def reset_document(doc):
                 found = True
         
         if found:
-            to_remove.append(child)
+            if not child.tag.endswith('sectPr'):
+                to_remove.append(child)
             
     if to_remove:
         print(f"Found {len(to_remove)} existing Section 14 elements to remove.")

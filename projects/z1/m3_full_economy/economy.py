@@ -186,12 +186,46 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         # Calculate PCS and Tiers, and aggregate tier PCS
         tier_total_pcs = {tier: 0.0 for tier in getattr(self.config, 'tier_budget_allocations', {"Bronze": 1.0}).keys()}
         
+        import math
         for name, pool in cohort_pools.items():
             if name not in getattr(self.config, 'cohort_population_shares', {}).keys(): continue
             pool.tenure_epochs += 1
             pool.activity_score = pool.claim_rate * pool.utility_spend_rate
-            pool.pcs_score = (pool.tenure_epochs * self.config.pcs_tenure_weight) + (pool.activity_score * self.config.pcs_activity_weight)
             
+            # Stage 1: Signal Normalization
+            # Tenure log-scaling bounded between [0.0, 1.0] over n_epochs
+            norm_tenure = math.log1p(pool.tenure_epochs) / math.log1p(self.config.n_epochs)
+            
+            # Activity sigmoid-scaling centering at 0.5
+            norm_activity = 1 / (1 + math.exp(-pool.activity_score))
+            
+            # Referral PageRank proxy capped by pagerank_cap
+            ref_score = getattr(self.config, 'cohort_referral_scores', {}).get(name, 0.0)
+            norm_referral = min(ref_score, getattr(self.config, 'pagerank_cap', 0.80))
+            
+            # Diversity Shannon diversity proxy sigmoid-scaled
+            div_score = getattr(self.config, 'cohort_diversity_scores', {}).get(name, 0.0)
+            norm_diversity = 1 / (1 + math.exp(-div_score))
+            
+            # Stage 2: Weighted Aggregation with ACTION_CAP = 0.30
+            w_tenure = self.config.pcs_tenure_weight
+            w_activity = self.config.pcs_activity_weight
+            w_referral = getattr(self.config, 'pcs_referral_weight', 0.15)
+            w_diversity = getattr(self.config, 'pcs_diversity_weight', 0.15)
+            action_cap = getattr(self.config, 'pcs_action_cap', 0.30)
+            
+            agg_score = (
+                min(w_tenure * norm_tenure, action_cap) +
+                min(w_activity * norm_activity, action_cap) +
+                min(w_referral * norm_referral, action_cap) +
+                min(w_diversity * norm_diversity, action_cap)
+            )
+            
+            # Stage 3: ML Anomaly Damper and Calibration
+            ml_anomaly_gamma = getattr(self.config, 'pcs_ml_anomaly_gamma', 0.95)
+            calib_factor = getattr(self.config, 'pcs_calibration_factor', 200.0)
+            
+            pool.pcs_score = agg_score * ml_anomaly_gamma * calib_factor
             pool.cumulative_pcs += pool.pcs_score
             
             # Tier advancement with tenure gate
@@ -350,13 +384,20 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         # M3 Phase 5: Governance Voting (US-Z1-M3-06)
         # ==================================================
         if getattr(self.config, 'governance_voting_enabled', False):
-            creators_staked = cohort_pools['creators'].staked_z1u if 'creators' in cohort_pools else 0.0
-            validators_staked = cohort_pools['validators'].staked_z1u if 'validators' in cohort_pools else 0.0
-            total_voting_weight = creators_staked + validators_staked
+            # Helper to calculate voting weight based on 1x, 2x, 3x multipliers for 3, 6, 12 epoch locks
+            def get_weighted_voting_power(pool):
+                s3 = sum(pool.staking_buckets_3) if hasattr(pool, 'staking_buckets_3') else 0.0
+                s6 = sum(pool.staking_buckets_6) if hasattr(pool, 'staking_buckets_6') else 0.0
+                s12 = sum(pool.staking_buckets_12) if hasattr(pool, 'staking_buckets_12') else 0.0
+                return 1.0 * s3 + 2.0 * s6 + 3.0 * s12
+                
+            creators_weight = get_weighted_voting_power(cohort_pools['creators']) if 'creators' in cohort_pools else 0.0
+            validators_weight = get_weighted_voting_power(cohort_pools['validators']) if 'validators' in cohort_pools else 0.0
+            total_voting_weight = creators_weight + validators_weight
             
             if total_voting_weight > 0:
                 # Target split based on vote weight
-                cip_vote_share = creators_staked / total_voting_weight
+                cip_vote_share = creators_weight / total_voting_weight
                 
                 total_budget = self.config.cip_budget_per_epoch + self.config.vrp_budget_per_epoch
                 target_cip_budget = total_budget * cip_vote_share

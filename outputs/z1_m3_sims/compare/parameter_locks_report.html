@@ -1220,8 +1220,26 @@
   "vesting_lag_epochs": 4,
   "vesting_sub_cohort_phases": 4,
   "acr_epoch_budget": 150000.0,
-  "pcs_tenure_weight": 0.5,
-  "pcs_activity_weight": 0.5,
+  "pcs_tenure_weight": 0.35,
+  "pcs_activity_weight": 0.35,
+  "pcs_referral_weight": 0.15,
+  "pcs_diversity_weight": 0.15,
+  "pcs_action_cap": 0.3,
+  "pcs_ml_anomaly_gamma": 0.95,
+  "pcs_calibration_factor": 200.0,
+  "pagerank_cap": 0.8,
+  "cohort_referral_scores": {
+    "passive_viewers": 0.05,
+    "active_viewers": 0.2,
+    "power_users": 0.8,
+    "adversarial_whales": 0.1
+  },
+  "cohort_diversity_scores": {
+    "passive_viewers": 0.1,
+    "active_viewers": 0.5,
+    "power_users": 0.9,
+    "adversarial_whales": 0.3
+  },
   "bas_lambda": 0.3,
   "velocity_scale": 1.0,
   "tier_sr_modifiers": {
@@ -1295,6 +1313,12 @@
     "power_users": 0.3,
     "adversarial_whales": 0.0
   },
+  "governance_staking_tier_shares": {
+    "3_epoch": 0.4,
+    "6_epoch": 0.35,
+    "12_epoch": 0.25
+  },
+  "governance_acr_requirement": 100.0,
   "panic_price_drop_threshold": 0.1,
   "panic_settlement_multiplier": 5.0,
   "genesis_buckets": {
@@ -1343,7 +1367,7 @@
     </div>
 
     <footer>
-      <p>Report generated at 2026-06-20 10:33:56 • Z1 TokenLab Automation Engine</p>
+      <p>Report generated at 2026-06-21 00:41:31 • Z1 TokenLab Automation Engine</p>
     </footer>
   </div>
 

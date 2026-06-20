@@ -10,7 +10,7 @@ const approval = {
   expires_at: new Date(Date.now() + 24 * 3600 * 1000).toISOString(), // 24 hours
   gate: "*",
   fingerprint_version: "plan_tamper_fingerprint_v1",
-  fingerprint_hash: "1e208fb15f8b05b5aeaacce34514e712",
+  fingerprint_hash: "73e9df3107011bc13689cb629f1634bd",
   approval_nonce_hash: hash
 };
 

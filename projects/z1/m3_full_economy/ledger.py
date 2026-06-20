@@ -223,6 +223,14 @@ def stake_z1u(state: GlobalState, cohort_name: str):
         return
     
     cohort = state.cohorts[cohort_name]
+    
+    # PAR-10: Viewers cohorts must hold available ACR >= governance_acr_requirement to stake
+    viewers_list = ["passive_viewers", "active_viewers", "power_users", "adversarial_whales"]
+    if cohort_name in viewers_list:
+        acr_req = getattr(config, 'governance_acr_requirement', 0.0)
+        if cohort.acr_available < acr_req:
+            return
+            
     stake_rate = config.staking_rate_by_cohort.get(cohort_name, 0.0)
     
     if stake_rate <= 0 or cohort.z1u_balance <= 0:
@@ -233,9 +241,25 @@ def stake_z1u(state: GlobalState, cohort_name: str):
     cohort.staked_z1u += stake_amount
     state.cumulative_staked_z1u += stake_amount
     
-    # Enter FIFO queue at the end (will take staking_lock_epochs to mature)
+    # Enter FIFO legacy queue at the end (will take staking_lock_epochs to mature)
     if len(cohort.staking_buckets) > 0:
         cohort.staking_buckets[-1] += stake_amount
+        
+    # Enter 3-tier queues split according to configured shares
+    shares = getattr(config, 'governance_staking_tier_shares', {"3_epoch": 0.40, "6_epoch": 0.35, "12_epoch": 0.25})
+    if isinstance(shares, dict):
+        share_3 = shares.get("3_epoch", 0.40)
+        share_6 = shares.get("6_epoch", 0.35)
+        share_12 = shares.get("12_epoch", 0.25)
+    else:
+        share_3, share_6, share_12 = shares
+        
+    if len(cohort.staking_buckets_3) > 0:
+        cohort.staking_buckets_3[-1] += stake_amount * share_3
+    if len(cohort.staking_buckets_6) > 0:
+        cohort.staking_buckets_6[-1] += stake_amount * share_6
+    if len(cohort.staking_buckets_12) > 0:
+        cohort.staking_buckets_12[-1] += stake_amount * share_12
     
     state.per_epoch_counters['staked_z1u'] = state.per_epoch_counters.get('staked_z1u', 0.0) + stake_amount
 
@@ -253,21 +277,40 @@ def unstake_z1u(state: GlobalState, cohort_name: str):
     
     cohort = state.cohorts[cohort_name]
     
-    if len(cohort.staking_buckets) == 0:
-        return
+    # 1. Legacy FIFO conveyor shift (shadow array for compatibility)
+    if len(cohort.staking_buckets) > 0:
+        for i in range(len(cohort.staking_buckets) - 1):
+            cohort.staking_buckets[i] = cohort.staking_buckets[i + 1]
+        cohort.staking_buckets[-1] = 0.0
+        
+    # 2. 3-tier mature and release
+    matured_3 = cohort.staking_buckets_3[0] if len(cohort.staking_buckets_3) > 0 else 0.0
+    matured_6 = cohort.staking_buckets_6[0] if len(cohort.staking_buckets_6) > 0 else 0.0
+    matured_12 = cohort.staking_buckets_12[0] if len(cohort.staking_buckets_12) > 0 else 0.0
     
-    # Bucket[0] has matured — release back to liquid balance
-    matured = cohort.staking_buckets[0]
-    if matured > 0:
-        cohort.z1u_balance += matured
-        cohort.staked_z1u -= matured
-        state.cumulative_unstaked_z1u += matured
-        state.per_epoch_counters['unstaked_z1u'] = state.per_epoch_counters.get('unstaked_z1u', 0.0) + matured
+    matured_total = matured_3 + matured_6 + matured_12
     
-    # Shift buckets forward (FIFO conveyor)
-    for i in range(len(cohort.staking_buckets) - 1):
-        cohort.staking_buckets[i] = cohort.staking_buckets[i + 1]
-    cohort.staking_buckets[-1] = 0.0
+    if matured_total > 0:
+        cohort.z1u_balance += matured_total
+        cohort.staked_z1u -= matured_total
+        state.cumulative_unstaked_z1u += matured_total
+        state.per_epoch_counters['unstaked_z1u'] = state.per_epoch_counters.get('unstaked_z1u', 0.0) + matured_total
+    
+    # 3. Shift 3-tier buckets forward
+    if len(cohort.staking_buckets_3) > 0:
+        for i in range(len(cohort.staking_buckets_3) - 1):
+            cohort.staking_buckets_3[i] = cohort.staking_buckets_3[i + 1]
+        cohort.staking_buckets_3[-1] = 0.0
+        
+    if len(cohort.staking_buckets_6) > 0:
+        for i in range(len(cohort.staking_buckets_6) - 1):
+            cohort.staking_buckets_6[i] = cohort.staking_buckets_6[i + 1]
+        cohort.staking_buckets_6[-1] = 0.0
+        
+    if len(cohort.staking_buckets_12) > 0:
+        for i in range(len(cohort.staking_buckets_12) - 1):
+            cohort.staking_buckets_12[i] = cohort.staking_buckets_12[i + 1]
+        cohort.staking_buckets_12[-1] = 0.0
 
 
 
