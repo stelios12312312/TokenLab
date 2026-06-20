@@ -834,8 +834,69 @@ def generate_report():
       </div>
 """
         
-    # 4. Add Cohort breakdown table & config inspector
+    # 4. Add Parameter Calibration Registry table
     html_template += f"""
+    </div>
+
+    <!-- Parameter Calibration Registry -->
+    <div class="matrix-section">
+      <h2 class="section-title">Parameter Calibration Registry</h2>
+      <p style="color:var(--text-secondary);font-size:0.95rem;margin-bottom:1.5rem">Documents the parameters, unit classifications, default values, sensitivity levels, sweeping ranges, and calibration guidelines.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Unit</th>
+            <th>Baseline / Default</th>
+            <th>Calibration Range</th>
+            <th>Sensitivity</th>
+            <th>Description & Calibration Guidelines</th>
+          </tr>
+        </thead>
+        <tbody>
+"""
+
+    registry_data = [
+        ["TAU_1", "score", "0.20", "[0.10, 0.40]", "Medium", "PCS Cutoff (Casual to Engaged): Cutoff score for casual participants. Value is calibrated based on simulated population score distributions to ensure active audience progression."],
+        ["TAU_2", "score", "0.60", "[0.50, 0.80]", "High", "PCS Cutoff (Engaged to Core): Controls access to higher Settlement Ratio (SR) tiers, governance rights, and core eligibility. Extremely sensitive for core cohort retention."],
+        ["RELEASE_RATE_E0", "ratio", "0.10", "[0.05, 0.20]", "Medium", "Air-Claim Reserve Fraction: Fraction of Audience Reserve (AR) released at launch for Air-Claim. High rates drain AR too early; low rates underwhelm launch."],
+        ["WAVE_SIZE", "count", "5,000", "[1,000, 10,000]", "Low", "Air-Claim Batch Size: Number of claims processed in a batch before PCS recalculation. Calibrates computational overhead against relative fairness."],
+        ["THETA_MIN", "ratio", "0.30", "[0.20, 0.50]", "Critical", "Treasury Health Solvency Floor: Solvency boundary for the entire system. Below this, SYS_throttle is activated to preserve solvency."],
+        ["SR_BASE", "ratio", "0.1047", "[0.01, 0.50]", "Highest", "ACR-to-Z1U Conversion Rate: Base conversion factor for settlements. Primary control over Z1U drain rate. The most sensitive parameter in the system."],
+        ["settlement_cap_epoch", "Z1U", "50,000", "[10k, 200k]", "High", "Solvency Settlement Cap: Maximum aggregate Z1U settled per epoch across all users. Essential anti-stampede mechanism."],
+        ["MIN_SETTLE", "ACR", "50.0", "[10.0, 100.0]", "Low", "Minimum Settlement Threshold: Dust threshold to prevent micro-settlement transaction spam."],
+        ["LM_RATE", "multiplier/epoch", "0.05", "[0.01, 0.10]", "Medium", "Loyalty Multiplier Increase Rate: Determines the rate of loyalty multiplier increase per active epoch. Drives long-term user retention."],
+        ["LM_MAX", "multiplier", "1.50", "[1.20, 2.00]", "Medium", "Maximum Loyalty Multiplier Cap: Bounds maximum loyalty advantage of tenure."],
+        ["STREAK_BONUS", "multiplier", "0.10", "[0.05, 0.25]", "Low", "Streak Activity Bonus: Incremental bonus multiplier for unbroken active epochs. Rewards consistent engagement."],
+        ["STREAK_WINDOW", "epochs", "8", "[4, 12]", "Low", "Streak Qualification Window: Number of consecutive active epochs required to qualify for the streak bonus."],
+        ["sku_prices", "USD", "Dynamic", "[0.99, 999.00]", "Medium", "Utility SKU Pricing: USD-denominated price points. Adjusts Z1U amount dynamically via internal reference rate (similar to Helium Data Credits)."],
+        ["fee_rate_g5b", "ratio", "0.34", "[0.10, 0.50]", "High", "Utility Treasury Capture Rate: Capture rate on utility transactions. Primary revenue channel; must be balanced against systemic solvency."],
+        ["PAR-28 min_lock_period", "epochs", "12", "[4, 26]", "Medium", "Minimum Governance Lock Period: Prevents flash-governance and vote-and-dump attacks by locking staked Z1U."],
+        ["PAR-29 max_lock_period", "epochs", "104", "[26, 156]", "Medium", "Maximum Governance Lock Period: Upper bound on locking duration to cap maximum vote weight accumulation."],
+        ["revocation_cooldown", "epochs", "4", "[1, 8]", "Low", "Delegation Revocation Cooldown: Cooldown period on delegation revocation when active votes are open. Prevents manipulation."],
+        ["fee_rate_g9b", "ratio", "0.25", "[0.05, 0.50]", "Medium", "Campaign Treasury Capture Rate: Secondary revenue channel capturing a fraction of campaign settlements."],
+        ["campaign_min_budget", "Z1U", "5,000", "[1k, 50k]", "Low", "Minimum Campaign Budget: Floor budget to prevent campaign spam and ensure network quality."],
+        ["pagerank_cap", "score", "0.05", "[0.01, 0.10]", "High", "PageRank Referral Cap: Upper limit for PageRank-based referral scores to prevent sybil/referral tree gaming."],
+        ["min_shannon_entropy", "bits", "2.00", "[1.50, 3.50]", "Medium", "Minimum Shannon Entropy: Threshold for session diversity. Prevents single-action agricultural farming."],
+        ["platform_min_engagement", "threshold", "0.10", "[0.05, 0.25]", "Medium", "Platform Minimum Engagement: Threshold to prevent platform-concentration attacks and encourage cross-platform diversity."]
+    ]
+
+    for param, unit, base, range_val, sens, desc in registry_data:
+        sens_color = "var(--danger-color)" if sens in ["Critical", "Highest"] else "var(--warning-color)" if sens == "High" else "var(--text-primary)"
+        html_template += f"""
+          <tr>
+            <td class="cohort-name">{param}</td>
+            <td>{unit}</td>
+            <td><strong>{base}</strong></td>
+            <td><code>{range_val}</code></td>
+            <td><span style="color:{sens_color}; font-weight: 600;">{sens}</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">{desc}</td>
+          </tr>
+"""
+
+    html_template += f"""
+        </tbody>
+      </table>
     </div>
 
     <!-- Cohort parameters matrix -->

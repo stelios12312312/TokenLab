@@ -822,6 +822,225 @@
 
     </div>
 
+    <!-- Parameter Calibration Registry -->
+    <div class="matrix-section">
+      <h2 class="section-title">Parameter Calibration Registry</h2>
+      <p style="color:var(--text-secondary);font-size:0.95rem;margin-bottom:1.5rem">Documents the parameters, unit classifications, default values, sensitivity levels, sweeping ranges, and calibration guidelines.</p>
+      <table>
+        <thead>
+          <tr>
+            <th>Parameter</th>
+            <th>Unit</th>
+            <th>Baseline / Default</th>
+            <th>Calibration Range</th>
+            <th>Sensitivity</th>
+            <th>Description & Calibration Guidelines</th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <tr>
+            <td class="cohort-name">TAU_1</td>
+            <td>score</td>
+            <td><strong>0.20</strong></td>
+            <td><code>[0.10, 0.40]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Medium</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">PCS Cutoff (Casual to Engaged): Cutoff score for casual participants. Value is calibrated based on simulated population score distributions to ensure active audience progression.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">TAU_2</td>
+            <td>score</td>
+            <td><strong>0.60</strong></td>
+            <td><code>[0.50, 0.80]</code></td>
+            <td><span style="color:var(--warning-color); font-weight: 600;">High</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">PCS Cutoff (Engaged to Core): Controls access to higher Settlement Ratio (SR) tiers, governance rights, and core eligibility. Extremely sensitive for core cohort retention.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">RELEASE_RATE_E0</td>
+            <td>ratio</td>
+            <td><strong>0.10</strong></td>
+            <td><code>[0.05, 0.20]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Medium</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Air-Claim Reserve Fraction: Fraction of Audience Reserve (AR) released at launch for Air-Claim. High rates drain AR too early; low rates underwhelm launch.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">WAVE_SIZE</td>
+            <td>count</td>
+            <td><strong>5,000</strong></td>
+            <td><code>[1,000, 10,000]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Low</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Air-Claim Batch Size: Number of claims processed in a batch before PCS recalculation. Calibrates computational overhead against relative fairness.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">THETA_MIN</td>
+            <td>ratio</td>
+            <td><strong>0.30</strong></td>
+            <td><code>[0.20, 0.50]</code></td>
+            <td><span style="color:var(--danger-color); font-weight: 600;">Critical</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Treasury Health Solvency Floor: Solvency boundary for the entire system. Below this, SYS_throttle is activated to preserve solvency.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">SR_BASE</td>
+            <td>ratio</td>
+            <td><strong>0.1047</strong></td>
+            <td><code>[0.01, 0.50]</code></td>
+            <td><span style="color:var(--danger-color); font-weight: 600;">Highest</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">ACR-to-Z1U Conversion Rate: Base conversion factor for settlements. Primary control over Z1U drain rate. The most sensitive parameter in the system.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">settlement_cap_epoch</td>
+            <td>Z1U</td>
+            <td><strong>50,000</strong></td>
+            <td><code>[10k, 200k]</code></td>
+            <td><span style="color:var(--warning-color); font-weight: 600;">High</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Solvency Settlement Cap: Maximum aggregate Z1U settled per epoch across all users. Essential anti-stampede mechanism.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">MIN_SETTLE</td>
+            <td>ACR</td>
+            <td><strong>50.0</strong></td>
+            <td><code>[10.0, 100.0]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Low</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Minimum Settlement Threshold: Dust threshold to prevent micro-settlement transaction spam.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">LM_RATE</td>
+            <td>multiplier/epoch</td>
+            <td><strong>0.05</strong></td>
+            <td><code>[0.01, 0.10]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Medium</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Loyalty Multiplier Increase Rate: Determines the rate of loyalty multiplier increase per active epoch. Drives long-term user retention.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">LM_MAX</td>
+            <td>multiplier</td>
+            <td><strong>1.50</strong></td>
+            <td><code>[1.20, 2.00]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Medium</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Maximum Loyalty Multiplier Cap: Bounds maximum loyalty advantage of tenure.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">STREAK_BONUS</td>
+            <td>multiplier</td>
+            <td><strong>0.10</strong></td>
+            <td><code>[0.05, 0.25]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Low</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Streak Activity Bonus: Incremental bonus multiplier for unbroken active epochs. Rewards consistent engagement.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">STREAK_WINDOW</td>
+            <td>epochs</td>
+            <td><strong>8</strong></td>
+            <td><code>[4, 12]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Low</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Streak Qualification Window: Number of consecutive active epochs required to qualify for the streak bonus.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">sku_prices</td>
+            <td>USD</td>
+            <td><strong>Dynamic</strong></td>
+            <td><code>[0.99, 999.00]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Medium</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Utility SKU Pricing: USD-denominated price points. Adjusts Z1U amount dynamically via internal reference rate (similar to Helium Data Credits).</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">fee_rate_g5b</td>
+            <td>ratio</td>
+            <td><strong>0.34</strong></td>
+            <td><code>[0.10, 0.50]</code></td>
+            <td><span style="color:var(--warning-color); font-weight: 600;">High</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Utility Treasury Capture Rate: Capture rate on utility transactions. Primary revenue channel; must be balanced against systemic solvency.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">PAR-28 min_lock_period</td>
+            <td>epochs</td>
+            <td><strong>12</strong></td>
+            <td><code>[4, 26]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Medium</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Minimum Governance Lock Period: Prevents flash-governance and vote-and-dump attacks by locking staked Z1U.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">PAR-29 max_lock_period</td>
+            <td>epochs</td>
+            <td><strong>104</strong></td>
+            <td><code>[26, 156]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Medium</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Maximum Governance Lock Period: Upper bound on locking duration to cap maximum vote weight accumulation.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">revocation_cooldown</td>
+            <td>epochs</td>
+            <td><strong>4</strong></td>
+            <td><code>[1, 8]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Low</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Delegation Revocation Cooldown: Cooldown period on delegation revocation when active votes are open. Prevents manipulation.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">fee_rate_g9b</td>
+            <td>ratio</td>
+            <td><strong>0.25</strong></td>
+            <td><code>[0.05, 0.50]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Medium</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Campaign Treasury Capture Rate: Secondary revenue channel capturing a fraction of campaign settlements.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">campaign_min_budget</td>
+            <td>Z1U</td>
+            <td><strong>5,000</strong></td>
+            <td><code>[1k, 50k]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Low</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Minimum Campaign Budget: Floor budget to prevent campaign spam and ensure network quality.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">pagerank_cap</td>
+            <td>score</td>
+            <td><strong>0.05</strong></td>
+            <td><code>[0.01, 0.10]</code></td>
+            <td><span style="color:var(--warning-color); font-weight: 600;">High</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">PageRank Referral Cap: Upper limit for PageRank-based referral scores to prevent sybil/referral tree gaming.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">min_shannon_entropy</td>
+            <td>bits</td>
+            <td><strong>2.00</strong></td>
+            <td><code>[1.50, 3.50]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Medium</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Minimum Shannon Entropy: Threshold for session diversity. Prevents single-action agricultural farming.</td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">platform_min_engagement</td>
+            <td>threshold</td>
+            <td><strong>0.10</strong></td>
+            <td><code>[0.05, 0.25]</code></td>
+            <td><span style="color:var(--text-primary); font-weight: 600;">Medium</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Platform Minimum Engagement: Threshold to prevent platform-concentration attacks and encourage cross-platform diversity.</td>
+          </tr>
+
+        </tbody>
+      </table>
+    </div>
+
     <!-- Cohort parameters matrix -->
     <div class="matrix-section">
       <h2 class="section-title">Cohort Economics Matrix</h2>
@@ -1048,7 +1267,7 @@
     </div>
 
     <footer>
-      <p>Report generated at 2026-06-19 21:47:21 • Z1 TokenLab Automation Engine</p>
+      <p>Report generated at 2026-06-20 10:30:13 • Z1 TokenLab Automation Engine</p>
     </footer>
   </div>
 
