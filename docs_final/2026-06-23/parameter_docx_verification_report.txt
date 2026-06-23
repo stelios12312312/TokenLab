@@ -7,15 +7,10 @@ Extracted:   48 parameters from docx tables
 ======================================================================
 
 🔍 PASSING CHECKS:
+  [PASS] Parity for 'settlement_ratio' (lookup: 'SR_BASE'): 0.1047 matches spec value 0.1047
   [PASS] Parity for 'settlement_cap_per_epoch' (lookup: 'settlement_cap_epoch'): 50000.0 matches spec value 50000.0
   [PASS] Parity for 'utility_fee_share' (lookup: 'TAU_1'): 0.2 matches spec value 0.2
   [PASS] Parity for 'utility_burn_share' (lookup: 'LM_RATE'): 0.05 matches spec value 0.05
-
-⚠️  WARNINGS & ADVISORIES:
-  ⚠️ Missing DOCX Parameter: 'initial_viewers' (looked up as 'initial_viewers') not found in DOCX tables.
-  ⚠️ Missing DOCX Parameter: 'audience_reserve_initial' (looked up as 'audience_reserve_initial') not found in DOCX tables.
-  ⚠️ Missing DOCX Parameter: 'brand_inflow_per_epoch' (looked up as 'brand_inflow_per_epoch') not found in DOCX tables.
-  ⚠️ Missing DOCX Parameter: 'settlement_ratio' (looked up as 'settlement_ratio') not found in DOCX tables.
 ======================================================================
-VERDICT: PASSED (All docx checks verified successfully, 4 warnings)
+VERDICT: PASSED (All docx checks verified successfully, 0 warnings)
 ======================================================================

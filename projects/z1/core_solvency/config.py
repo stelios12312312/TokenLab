@@ -39,7 +39,8 @@ class SolvencyConfig(AuditableConfig):
     settle_propensity_by_cohort: Dict[str, float] = field(
         default_factory=lambda: {"passive_viewers": 0.25, "active_viewers": 0.3, "power_users": 0.15}
     )
-    settlement_ratio: float = 0.5
+    settlement_ratio: float = 0.1047
+
     settlement_cap_per_epoch: float = 50_000.0
 
     # Utility spend dynamics

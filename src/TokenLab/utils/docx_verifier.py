@@ -103,11 +103,16 @@ class DocxVerifier:
             # Support optional docx_name mapping alias in spec.yaml
             docx_lookup_name = rules.get("docx_name", param_name)
             
+            # If docx_name is explicitly set to None/null in spec, skip checking it
+            if docx_lookup_name is None:
+                continue
+                
             if docx_lookup_name not in self.docx_parameters:
                 self.warnings.append(
                     f"⚠️ Missing DOCX Parameter: '{param_name}' (looked up as '{docx_lookup_name}') not found in DOCX tables."
                 )
                 continue
+
                 
             docx_val = self.docx_parameters[docx_lookup_name]
             spec_val = rules.get("spec_value")

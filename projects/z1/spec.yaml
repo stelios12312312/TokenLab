@@ -8,18 +8,23 @@ parameters:
     spec_value: 300000000
     allowable_drift: 0.0
     scales_with: "scale_factor"
+    docx_name: null
   audience_reserve_initial:
     spec_value: 150000000000
     allowable_drift: 0.0
     scales_with: "scale_factor"
+    docx_name: null
   brand_inflow_per_epoch:
     spec_value: 750000000
     allowable_drift: 0.0
     scales_with: "scale_factor"
+    docx_name: null
   settlement_ratio:
-    spec_value: 0.5
+    spec_value: 0.1047
     allowable_drift: 0.0
-    docx_name: "settlement_ratio"
+    docx_name: "SR_BASE"
+
+
   settlement_cap_per_epoch:
     spec_value: 50000.0
     allowable_drift: 0.0
