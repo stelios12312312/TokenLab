@@ -7,8 +7,11 @@ import os
 import yaml
 import importlib
 import ast
+import datetime
+import subprocess
 from typing import Dict, Any, List
 from TokenLab.utils.auditing import TokenomicsAuditor, AuditableConfig
+
 
 def load_spec(spec_path: str) -> Dict[str, Any]:
     """Loads spec.yaml file."""
@@ -337,6 +340,131 @@ def handle_migrate(args) -> int:
     print(f"🎉 Successfully migrated '{args.class_name}' to the compliance framework.")
     return 0
 
+def get_resolved_artifacts(spec: Dict[str, Any]) -> List[Dict[str, str]]:
+    """Helper to extract and resolve timestamp in artifacts."""
+    artifacts_spec = spec.get("artifacts", {})
+    if not isinstance(artifacts_spec, dict):
+        return []
+        
+    today = datetime.date.today().isoformat()
+    resolved = []
+    for name, info in artifacts_spec.items():
+        if not isinstance(info, dict):
+            continue
+        path_template = info.get("path", "")
+        generator_template = info.get("generator", "")
+        description = info.get("description", "")
+        
+        resolved_path = path_template.replace("{timestamp}", today)
+        resolved_generator = generator_template.replace("{timestamp}", today)
+        
+        resolved.append({
+            "name": name,
+            "path": resolved_path,
+            "generator": resolved_generator,
+            "description": description
+        })
+    return resolved
+
+def handle_check_artifacts(spec_path: str) -> int:
+    try:
+        spec = load_spec(spec_path)
+    except Exception as e:
+        print(f"❌ Error loading spec: {str(e)}")
+        return 1
+        
+    resolved_artifacts = get_resolved_artifacts(spec)
+    if not resolved_artifacts:
+        print("ℹ️  No artifacts declared in spec.")
+        return 0
+        
+    print("======================================================================")
+    print("🔍 CHECKING PROJECT ARTIFACTS")
+    print("======================================================================")
+    
+    success = True
+    for art in resolved_artifacts:
+        path = art["path"]
+        name = art["name"]
+        print(f"  * Checking {name} ({art['description']}):")
+        print(f"    Path: {path}")
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            print("    [PASS] Artifact exists and is non-empty.")
+        else:
+            print("    ❌ FAIL: Artifact does not exist or is empty.")
+            success = False
+            
+    print("======================================================================")
+    if success:
+        print("VERDICT: ALL ARTIFACTS PRESENT")
+        return 0
+    else:
+        print("❌ VERIFICATION VERDICT: MISSING ARTIFACTS")
+        return 1
+
+def handle_generate_artifacts(spec_path: str) -> int:
+    try:
+        spec = load_spec(spec_path)
+    except Exception as e:
+        print(f"❌ Error loading spec: {str(e)}")
+        return 1
+        
+    resolved_artifacts = get_resolved_artifacts(spec)
+    if not resolved_artifacts:
+        print("ℹ️  No artifacts declared in spec.")
+        return 0
+        
+    print("======================================================================")
+    print("🔨 GENERATING PROJECT ARTIFACTS")
+    print("======================================================================")
+    
+    for art in resolved_artifacts:
+        name = art["name"]
+        path = art["path"]
+        generator = art["generator"]
+        
+        print(f"  * Generating {name} ({art['description']}):")
+        print(f"    Target Path: {path}")
+        print(f"    Command:     {generator}")
+        
+        # Ensure parent directory exists
+        parent_dir = os.path.dirname(path)
+        if parent_dir:
+            os.makedirs(parent_dir, exist_ok=True)
+            
+        # Execute generator
+        try:
+            # We run in shell=True so redirection/pipes work
+            result = subprocess.run(generator, shell=True, check=True, text=True)
+        except subprocess.CalledProcessError as e:
+            print(f"    ❌ FAIL: Generator command failed with exit code {e.returncode}")
+            print(f"    Command was: {generator}")
+            print("======================================================================")
+            print("❌ VERIFICATION VERDICT: GENERATION FAILED")
+            print("======================================================================")
+            return 1
+        except Exception as e:
+            print(f"    ❌ FAIL: Failed to execute generator: {str(e)}")
+            print("======================================================================")
+            print("❌ VERIFICATION VERDICT: GENERATION FAILED")
+            print("======================================================================")
+            return 1
+            
+        # Verify artifact was created and is non-empty
+        if os.path.exists(path) and os.path.getsize(path) > 0:
+            print("    [PASS] Artifact successfully generated.")
+        else:
+            print("    ❌ FAIL: Generator completed, but artifact is missing or empty.")
+            print("======================================================================")
+            print("❌ VERIFICATION VERDICT: GENERATION FAILED")
+            print("======================================================================")
+            return 1
+            
+    print("======================================================================")
+    print("VERDICT: ALL ARTIFACTS GENERATED SUCCESSFULLY")
+    print("======================================================================")
+    return 0
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Tokenomics compliance harness verification CLI.")
     
@@ -358,6 +486,8 @@ def main() -> None:
     parser.add_argument("--docx", help="Path to the target docx specification file to run compliance checks.")
     parser.add_argument("--agentic", action="store_true", help="Runs agentic reviews on semantic claims and test discovery.")
     parser.add_argument("--all", action="store_true", help="Discovers and runs checks across all project spec.yaml files.")
+    parser.add_argument("--check-artifacts", action="store_true", help="Check that all declared artifacts exist and are non-empty.")
+    parser.add_argument("--generate-artifacts", action="store_true", help="Generate all declared artifacts.")
     
     args = parser.parse_args()
     
@@ -365,6 +495,16 @@ def main() -> None:
         sys.exit(handle_init(args))
     elif args.command == "migrate":
         sys.exit(handle_migrate(args))
+        
+    if args.check_artifacts:
+        if not args.spec:
+            parser.error("--check-artifacts requires --spec.")
+        sys.exit(handle_check_artifacts(args.spec))
+        
+    if args.generate_artifacts:
+        if not args.spec:
+            parser.error("--generate-artifacts requires --spec.")
+        sys.exit(handle_generate_artifacts(args.spec))
         
     if args.docx and not args.spec:
         parser.error("--docx requires --spec to compare against.")
@@ -405,3 +545,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

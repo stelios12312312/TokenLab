@@ -1157,6 +1157,13 @@ def generate_report():
 """
     
     # 5. Output report to target file
+    custom_path = None
+    if len(sys.argv) > 1:
+        for i, arg in enumerate(sys.argv):
+            if arg in ("--output", "-o") and i + 1 < len(sys.argv):
+                custom_path = sys.argv[i + 1]
+                break
+
     out_dir = "outputs/z1_m3_sims/compare"
     os.makedirs(out_dir, exist_ok=True)
     report_path = os.path.join(out_dir, "parameter_locks_report.html")
@@ -1173,5 +1180,15 @@ def generate_report():
             f.write(html_template)
         print(f"✓ Copied locks report to: {docs_path}")
 
+    # Also output to custom path if provided
+    if custom_path:
+        custom_dir = os.path.dirname(custom_path)
+        if custom_dir:
+            os.makedirs(custom_dir, exist_ok=True)
+        with open(custom_path, "w") as f:
+            f.write(html_template)
+        print(f"✓ Copied locks report to custom path: {custom_path}")
+
 if __name__ == "__main__":
     generate_report()
+

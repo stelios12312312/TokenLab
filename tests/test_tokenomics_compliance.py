@@ -37,3 +37,44 @@ def test_net_extractor_prevention():
     assert "passive_viewers" in warn_text, "Should warn about passive_viewers net extraction"
     assert "active_viewers" in warn_text, "Should warn about active_viewers net extraction"
 
+
+def test_artifact_verification_and_generation():
+    """Verifies that handle_check_artifacts and handle_generate_artifacts work correctly on Z1 spec."""
+    import datetime
+    import shutil
+    from TokenLab.utils.verifier import handle_check_artifacts, handle_generate_artifacts
+    
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    spec_path = os.path.join(root, "projects", "z1", "spec.yaml")
+    
+    today = datetime.date.today().isoformat()
+    target_dir = os.path.join(root, "docs_final", today)
+    
+    # 1. Clean up generated files first if they exist
+    locks_report = os.path.join(target_dir, "parameter_locks_report.html")
+    docx_report = os.path.join(target_dir, "parameter_docx_verification_report.txt")
+    if os.path.exists(locks_report):
+        os.remove(locks_report)
+    if os.path.exists(docx_report):
+        os.remove(docx_report)
+
+        
+    # 2. Check should fail (since artifacts don't exist)
+    res_check_fail = handle_check_artifacts(spec_path)
+    assert res_check_fail == 1, "Check should fail when artifacts are missing"
+    
+    # 3. Generate artifacts
+    res_gen = handle_generate_artifacts(spec_path)
+    assert res_gen == 0, "Artifact generation should succeed"
+    
+    # 4. Verify files exist
+    locks_report = os.path.join(target_dir, "parameter_locks_report.html")
+    docx_report = os.path.join(target_dir, "parameter_docx_verification_report.txt")
+    assert os.path.exists(locks_report) and os.path.getsize(locks_report) > 0, "Locks report should exist and be non-empty"
+    assert os.path.exists(docx_report) and os.path.getsize(docx_report) > 0, "Docx verification report should exist and be non-empty"
+    
+    # 5. Check should pass now
+    res_check_pass = handle_check_artifacts(spec_path)
+    assert res_check_pass == 0, "Check should pass when artifacts are present"
+
+

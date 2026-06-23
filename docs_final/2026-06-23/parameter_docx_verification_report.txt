@@ -2,7 +2,7 @@
 🛡️  TOKENLAB DOCX SPECIFICATION VERIFICATION REPORT
 ======================================================================
 Spec File:   z1
-DOCX File:   docs_final/2026-06-19/Z1_TOKEN_LIFECYCLE_V2.docx
+DOCX File:   docs_final/Z1_TOKEN_LIFECYCLE_V2.docx
 Extracted:   48 parameters from docx tables
 ======================================================================
 

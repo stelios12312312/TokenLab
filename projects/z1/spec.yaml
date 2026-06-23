@@ -41,3 +41,14 @@ claims:
     verification_type: "agentic"
     target_files: ["projects/z1/core_solvency/config.py"]
     required_test: "test_net_extractor_prevention"
+
+artifacts:
+  parameter_locks_report:
+    path: "docs_final/{timestamp}/parameter_locks_report.html"
+    generator: "python projects/z1/m3_full_economy/generate_parameter_locks_report.py --output docs_final/{timestamp}/parameter_locks_report.html"
+    description: "HTML lock checks dashboard."
+  docx_verification_report:
+    path: "docs_final/{timestamp}/parameter_docx_verification_report.txt"
+    generator: "PYTHONPATH=src python -m TokenLab.utils.verifier --spec projects/z1/spec.yaml --docx docs_final/Z1_TOKEN_LIFECYCLE_V2.docx > docs_final/{timestamp}/parameter_docx_verification_report.txt"
+    description: "Parity verification logs."
+
