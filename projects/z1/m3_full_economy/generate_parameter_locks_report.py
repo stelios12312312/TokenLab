@@ -14,9 +14,12 @@ from datetime import datetime
 # Add the project directory to sys.path so we can import the config
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from config import M3EconomyConfig, COHORT_NAMES
+from spec_parity_checker import SpecParityChecker
 
 def generate_report():
     cfg = M3EconomyConfig()
+    checker = SpecParityChecker(cfg)
+    parity_results = checker.run_all()
     
     # 1. Evaluate all locks programmatically
     solvency_ratio = cfg.compute_solvency_ratio()
@@ -906,6 +909,77 @@ def generate_report():
       </table>
     </div>
 
+    <!-- Spec-to-Code Parity Matrix -->
+    <div class="matrix-section">
+      <h2 class="section-title">Spec-to-Code Parity Matrix</h2>
+      <p style="color:var(--text-secondary);font-size:0.95rem;margin-bottom:1.5rem">Compares the active simulation pool allocations, timelines, and scaling parameters directly against the target specifications.</p>
+      
+      <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">1. Genesis Pool Allocation Parity</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Pool Name</th>
+            <th>Target Share</th>
+            <th>Actual Share</th>
+            <th>Nominal Target (Spec)</th>
+            <th>Nominal Actual (Scaled)</th>
+            <th>Simulation Actual</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+"""
+
+    for pool, info in parity_results["pools"]["pools"].items():
+        status_color = "var(--success-color)" if info["status"] == "PASS" else "var(--warning-color)"
+        html_template += f"""
+          <tr>
+            <td class="cohort-name">{pool}</td>
+            <td>{info["target_share"]*100:.1f}%</td>
+            <td>{info["actual_share"]*100:.2f}%</td>
+            <td>{info["nominal_target"]:,.0f} Z1U</td>
+            <td>{info["nominal_actual"]:,.0f} Z1U</td>
+            <td>{info["sim_actual"]:,.0f} Z1U</td>
+            <td><span style="color:{status_color}; font-weight:600;">{info["status"]}</span></td>
+          </tr>
+"""
+
+    html_template += f"""
+        </tbody>
+      </table>
+
+      <h3 style="margin-top: 2rem; margin-bottom: 0.75rem; color: var(--text-primary);">2. Timeline & Budget Scaling Verification</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>Specification Target</th>
+            <th>Active Code Value</th>
+            <th>Diagnostic Status</th>
+            <th>Operational Impact / Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="cohort-name">Vesting Timeline</td>
+            <td>180d cliff + 730d linear duration</td>
+            <td>{parity_results["timeline"]["code_vesting_lag_epochs"]} epoch vesting lag</td>
+            <td><span style="color:var(--warning-color); font-weight:600;">{parity_results["timeline"]["status"]}</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">{parity_results["timeline"]["description"]}</td>
+          </tr>
+          <tr>
+            <td class="cohort-name">User Base Budgeting</td>
+            <td>Nominal: {parity_results["user_scaling"]["budget_per_user_nominal"]:,.0f} Z1U/user/epoch</td>
+            <td>Simulation: {parity_results["user_scaling"]["budget_per_user_sim"]:.4f} Z1U/user/epoch</td>
+            <td><span style="color:var(--warning-color); font-weight:600;">{parity_results["user_scaling"]["status"]}</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">{parity_results["user_scaling"]["description"]}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+"""
+
+    html_template += f"""
     <!-- Parameter Calibration Registry -->
     <div class="matrix-section">
       <h2 class="section-title">Parameter Calibration Registry</h2>
@@ -1090,6 +1164,14 @@ def generate_report():
         f.write(html_template)
     
     print(f"✓ Created parameter locks HTML report at: {report_path}")
+
+    # Copy to the final docs timestamped folder if it exists
+    docs_dir = "docs_final/2026-06-19"
+    if os.path.exists(docs_dir):
+        docs_path = os.path.join(docs_dir, "parameter_locks_report.html")
+        with open(docs_path, "w") as f:
+            f.write(html_template)
+        print(f"✓ Copied locks report to: {docs_path}")
 
 if __name__ == "__main__":
     generate_report()

@@ -898,6 +898,129 @@
       </table>
     </div>
 
+    <!-- Spec-to-Code Parity Matrix -->
+    <div class="matrix-section">
+      <h2 class="section-title">Spec-to-Code Parity Matrix</h2>
+      <p style="color:var(--text-secondary);font-size:0.95rem;margin-bottom:1.5rem">Compares the active simulation pool allocations, timelines, and scaling parameters directly against the target specifications.</p>
+      
+      <h3 style="margin-top: 1.5rem; margin-bottom: 0.75rem; color: var(--text-primary);">1. Genesis Pool Allocation Parity</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Pool Name</th>
+            <th>Target Share</th>
+            <th>Actual Share</th>
+            <th>Nominal Target (Spec)</th>
+            <th>Nominal Actual (Scaled)</th>
+            <th>Simulation Actual</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+
+          <tr>
+            <td class="cohort-name">Audience Reserve</td>
+            <td>30.0%</td>
+            <td>24.56%</td>
+            <td>300,000,000,000 Z1U</td>
+            <td>233,333,310,000 Z1U</td>
+            <td>7,000,000 Z1U</td>
+            <td><span style="color:var(--warning-color); font-weight:600;">MISMATCH</span></td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">Treasury</td>
+            <td>15.0%</td>
+            <td>19.30%</td>
+            <td>150,000,000,000 Z1U</td>
+            <td>183,333,315,000 Z1U</td>
+            <td>5,500,000 Z1U</td>
+            <td><span style="color:var(--warning-color); font-weight:600;">MISMATCH</span></td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">Team</td>
+            <td>10.0%</td>
+            <td>3.51%</td>
+            <td>100,000,000,000 Z1U</td>
+            <td>33,333,330,000 Z1U</td>
+            <td>1,000,000 Z1U</td>
+            <td><span style="color:var(--warning-color); font-weight:600;">MISMATCH</span></td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">Advisors</td>
+            <td>5.0%</td>
+            <td>1.75%</td>
+            <td>50,000,000,000 Z1U</td>
+            <td>16,666,665,000 Z1U</td>
+            <td>500,000 Z1U</td>
+            <td><span style="color:var(--warning-color); font-weight:600;">MISMATCH</span></td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">Seed</td>
+            <td>15.0%</td>
+            <td>5.26%</td>
+            <td>150,000,000,000 Z1U</td>
+            <td>49,999,995,000 Z1U</td>
+            <td>1,500,000 Z1U</td>
+            <td><span style="color:var(--warning-color); font-weight:600;">MISMATCH</span></td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">Private</td>
+            <td>15.0%</td>
+            <td>7.02%</td>
+            <td>150,000,000,000 Z1U</td>
+            <td>66,666,660,000 Z1U</td>
+            <td>2,000,000 Z1U</td>
+            <td><span style="color:var(--warning-color); font-weight:600;">MISMATCH</span></td>
+          </tr>
+
+          <tr>
+            <td class="cohort-name">Public</td>
+            <td>10.0%</td>
+            <td>38.60%</td>
+            <td>100,000,000,000 Z1U</td>
+            <td>366,666,630,000 Z1U</td>
+            <td>11,000,000 Z1U</td>
+            <td><span style="color:var(--warning-color); font-weight:600;">MISMATCH</span></td>
+          </tr>
+
+        </tbody>
+      </table>
+
+      <h3 style="margin-top: 2rem; margin-bottom: 0.75rem; color: var(--text-primary);">2. Timeline & Budget Scaling Verification</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>Dimension</th>
+            <th>Specification Target</th>
+            <th>Active Code Value</th>
+            <th>Diagnostic Status</th>
+            <th>Operational Impact / Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="cohort-name">Vesting Timeline</td>
+            <td>180d cliff + 730d linear duration</td>
+            <td>4 epoch vesting lag</td>
+            <td><span style="color:var(--warning-color); font-weight:600;">WARN</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Vesting timeline is compressed (4 epochs vs 180-day cliff + 2-year linear duration) creating potential short-term price volatility risk.</td>
+          </tr>
+          <tr>
+            <td class="cohort-name">User Base Budgeting</td>
+            <td>Nominal: 5,000 Z1U/user/epoch</td>
+            <td>Simulation: 0.1500 Z1U/user/epoch</td>
+            <td><span style="color:var(--warning-color); font-weight:600;">WARN</span></td>
+            <td style="font-size:0.85rem; color:var(--text-secondary);">Simulation budget/user is scaled down 33,333.3x relative to user activity (0.15 Z1U vs 5,000 Z1U nominal), which may under-represent user incentive thresholds.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
     <!-- Parameter Calibration Registry -->
     <div class="matrix-section">
       <h2 class="section-title">Parameter Calibration Registry</h2>
@@ -1362,12 +1485,13 @@
   "composite_sr_amm_weight": 0.7,
   "composite_sr_ar_weight": 0.3,
   "audience_reserve_initial": 5000000.0,
-  "treasury_initial": 2500000.0
+  "treasury_initial": 2500000.0,
+  "scale_factor": 3.0000003000000297e-05
 }</pre>
     </div>
 
     <footer>
-      <p>Report generated at 2026-06-21 00:41:31 • Z1 TokenLab Automation Engine</p>
+      <p>Report generated at 2026-06-23 11:50:35 • Z1 TokenLab Automation Engine</p>
     </footer>
   </div>
 

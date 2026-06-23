@@ -160,6 +160,8 @@ class M3EconomyConfig:
     # Initial Global balances
     audience_reserve_initial: float = 5_000_000.0
     treasury_initial: float = 2_500_000.0
+    scale_factor: float = 1 / 33_333.33
+
 
 
     def validate(self):
@@ -354,4 +356,24 @@ class M3EconomyConfig:
             })
 
         return diagnostics
+
+    @property
+    def audience_reserve_nominal(self) -> float:
+        return self.audience_reserve_initial / self.scale_factor
+
+    @property
+    def treasury_nominal(self) -> float:
+        return self.treasury_initial / self.scale_factor
+
+    @property
+    def acr_epoch_budget_nominal(self) -> float:
+        return self.acr_epoch_budget / self.scale_factor
+
+    @property
+    def settlement_cap_per_epoch_nominal(self) -> float:
+        return self.settlement_cap_per_epoch / self.scale_factor
+
+    @property
+    def brand_inflow_per_epoch_nominal(self) -> float:
+        return self.brand_inflow_per_epoch / self.scale_factor
 
