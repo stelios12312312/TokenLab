@@ -1,18 +1,19 @@
+from TokenLab.utils.auditing import AuditableConfig
 from dataclasses import dataclass, field
-from typing import Dict, Literal
+from typing import Dict, Literal, Any, List, Tuple
 import math
 
 COHORT_NAMES = ["passive_viewers", "active_viewers", "power_users"]
 
 @dataclass
-class SolvencyConfig:
+class SolvencyConfig(AuditableConfig):
     # Run parameters
     n_epochs: int = 104
     random_seed: int = 42
     repetitions: int = 1  # >1 enables parameter jitter and CI on plots
 
     # Audience & Claiming mechanics
-    initial_viewers: int = 1_000_000
+    initial_viewers: int = 10_000
     adoption_profile: Literal["front_loaded", "linear", "back_loaded"] = "linear"
 
     # Cohort breakdown (Sum must equal 1.0)
@@ -210,4 +211,49 @@ class SolvencyConfig:
 
         return diagnostics
 
+    # =====================================================================
+    # Compliance Harness Mappings (Inherited from AuditableConfig)
+    # =====================================================================
+    def get_supply_parameters(self) -> Dict[str, Any]:
+        return {
+            "audience_reserve_initial": getattr(self, "audience_reserve_initial", 0.0),
+            "treasury_initial": getattr(self, "treasury_initial", 0.0),
+        }
 
+    def get_cohort_parameters(self) -> Dict[str, Dict[str, Any]]:
+        # Map dynamic dicts to cohort structures
+        cohorts = {}
+        population_shares = getattr(self, "cohort_population_shares", {})
+        spend_rates = getattr(self, "utility_spend_rate_by_cohort", {})
+        settle_propensities = getattr(self, "settle_propensity_by_cohort", {})
+        
+        for name in population_shares.keys():
+            cohorts[name] = {
+                "population_share": population_shares.get(name, 0.0),
+                "utility_spend_rate": spend_rates.get(name, 0.0),
+                "settle_propensity": settle_propensities.get(name, 0.0)
+            }
+        return cohorts
+
+    def get_registered_locks(self) -> List[Dict[str, Any]]:
+        # Hard/Soft parameter locks
+        return [
+            {
+                "id": "L8",
+                "type": "HARD",
+                "description": "Combined utility fee and burn capture must be >= 10%",
+                "check_fn": lambda: (
+                    (getattr(self, "utility_fee_share", 0) + getattr(self, "utility_burn_share", 0)) >= 0.10,
+                    f"Capture is {getattr(self, 'utility_fee_share', 0) + getattr(self, 'utility_burn_share', 0)}"
+                )
+            },
+            {
+                "id": "L9",
+                "type": "HARD",
+                "description": "Max drain must be <= 10% of Audience Reserve",
+                "check_fn": lambda: (
+                    (getattr(self, "settlement_cap_per_epoch", 0) * getattr(self, "settlement_ratio", 0)) <= 0.10 * getattr(self, "audience_reserve_initial", 1.0),
+                    f"Max drain: {getattr(self, 'settlement_cap_per_epoch', 0) * getattr(self, 'settlement_ratio', 0)}"
+                )
+            }
+        ]

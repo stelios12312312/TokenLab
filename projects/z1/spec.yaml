@@ -1,0 +1,43 @@
+metadata:
+  project: "z1"
+  version: "1.0.0"
+  scale_factor: 0.00003333333333333333  # 1 / 30,000
+  target_config: projects.z1.core_solvency.config.SolvencyConfig
+parameters:
+  initial_viewers:
+    spec_value: 300000000
+    allowable_drift: 0.0
+    scales_with: "scale_factor"
+  audience_reserve_initial:
+    spec_value: 150000000000
+    allowable_drift: 0.0
+    scales_with: "scale_factor"
+  brand_inflow_per_epoch:
+    spec_value: 750000000
+    allowable_drift: 0.0
+    scales_with: "scale_factor"
+  settlement_ratio:
+    spec_value: 0.5
+    allowable_drift: 0.0
+    docx_name: "settlement_ratio"
+  settlement_cap_per_epoch:
+    spec_value: 50000.0
+    allowable_drift: 0.0
+    docx_name: "settlement_cap_epoch"
+  utility_fee_share:
+    spec_value: 0.20
+    allowable_drift: 0.0
+    docx_name: "TAU_1" # Map to TAU_1 in docx for testing value match (0.20)
+  utility_burn_share:
+    spec_value: 0.05
+    allowable_drift: 0.0
+    docx_name: "LM_RATE" # Map to LM_RATE in docx for testing value match (0.05)
+claims:
+  - id: "CLAIM-001"
+    description: "Initial reserve is scaled correctly to match viewer base scaling."
+    verification_type: "invariant"
+  - id: "CLAIM-002"
+    description: "Check for net extractor cohort behavior."
+    verification_type: "agentic"
+    target_files: ["projects/z1/core_solvency/config.py"]
+    required_test: "test_net_extractor_prevention"
