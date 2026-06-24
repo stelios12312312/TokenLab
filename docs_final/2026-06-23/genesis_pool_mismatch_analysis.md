@@ -43,7 +43,24 @@ If we strictly aligned the Public pool to the 10% specification target (3M Z1U),
 
 ---
 
-## 4. Recommendation
+## 4. Impact on Parameter Locks (Why Mismatches Stabilize the Model)
+
+The pool allocation mismatches directly influence the behavior of the parameter locks, particularly **Lock L1 (Solvency Floor)**, **Lock L3 (Brand Inflow Floor)**, and the **AMM Peg Defense** mechanisms. Rather than introducing risk, these calibrated deviations actively stabilize the simulation:
+
+### A. Lock L3 (Brand Inflow Floor) & Lock L1 (Solvency Floor)
+- **Wide Safety Margins**: Under the current configuration, the brand inflow floor passes with a wider safety margin (2.24% actual vs. 1.0% floor requirement).
+- **Mathematical Driver**: The unscaled specification targets 30% of total supply for the Audience Reserve (which would be 9.0M Z1U at simulation scale). The simulation instead sets `AR_initial` to 5.0M Z1U (24.56%).
+- **Relative Rate Improvement**: A smaller initial reserve size (`AR_initial`) increases the relative epoch inflow rate from brand top-ups (`brand_inflow / AR_initial`) from `0.0124` (under strict alignment) to `0.0224`. This improves the outflow-to-inflow ratio, strengthening the solvency metrics validated by Lock L1.
+
+### B. AMM Peg Defense & Volatility Prevention
+- **Preventing Shallow Pool Panic**: Seeding the AMM with 10.0M Z1U (raising the Public allocation to 38.60%) is crucial for peg defense.
+- **The Slippage-Panic Loop**: If the Public pool were strictly aligned to 10% (3.0M Z1U), the AMM pool would be extremely shallow. A normal simulation sell event would cause massive price slippage.
+- **Cascading Collapse**: Severe slippage would trigger the 10% peg panic threshold, activating the 5x claim multiplier, rapidly draining the reserve, and causing a premature model collapse.
+- **Stabilizer Function**: The inflated Public allocation serves as a deliberate volatility stabilizer, preventing artificial panic loops that do not reflect true production-scale dynamics.
+
+---
+
+## 5. Recommendation
 
 1. **Retain Calibrated Configuration (Recommended)**: Keep the current simulation parameters. The mismatches are mathematically necessary to maintain AMM trading depth at the 30M Z1U simulation scale.
 2. **Disclose as Calibrated Scale Variance**: Treat the mismatches as expected scale-proportional variances rather than compliance defects. They are already documented in `Z1_TOKEN_LIFECYCLE_V2_AUDIT (1).md` under **Section 1.5 (Genesis Bucket Scale)**.
