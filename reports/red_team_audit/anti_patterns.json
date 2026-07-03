@@ -44,6 +44,28 @@
       "confidence": "high",
       "evidence_refs": ["F-003"],
       "recommended_guard": "requires_red_team"
+    },
+    {
+      "id": "AP-005",
+      "label": "Unqualified Method Calls and Missing Parameters in Constructors",
+      "queries": [
+        "get_linked_agentpool\\(\\)"
+      ],
+      "scope": ["src/TokenLab/simulationcomponents/"],
+      "confidence": "high",
+      "evidence_refs": ["F-005"],
+      "recommended_guard": "requires_red_team"
+    },
+    {
+      "id": "AP-006",
+      "label": "Internal Sign Storing Mismatch",
+      "queries": [
+        "self\\._staking_amount\\s*=\\s*value"
+      ],
+      "scope": ["src/TokenLab/simulationcomponents/"],
+      "confidence": "high",
+      "evidence_refs": ["F-007"],
+      "recommended_guard": "requires_red_team"
     }
   ]
 }

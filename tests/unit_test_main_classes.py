@@ -211,7 +211,30 @@ class TestMainClasses(unittest.TestCase):
         print(reps.shape)
         self.assertTrue(reps.shape[0]==720)
         
-    
+    def test_supply_staker_lockup_instantiation(self):
+        from simulationcomponents.supplyclasses import SupplyStakerLockup
+        staker = SupplyStakerLockup(staking_amount=10000.0, rewards=0.05, lockup_duration=12, quit_prob=0.01)
+        self.assertEqual(staker.lockup_duration, 12)
+        self.assertEqual(staker._quit_prob, 0.01)
+
+    def test_supply_staker_sign_transitions(self):
+        from simulationcomponents.supplyclasses import SupplyStakerLockup
+        staker = SupplyStakerLockup(staking_amount=10000.0, rewards=0.05, lockup_duration=3, quit_prob=0.0)
+        
+        # Epoch 0 (Staking begins)
+        staker.execute()
+        self.assertEqual(staker.get_supply(), -10000.0)
+        self.assertEqual(staker._staking_amount, 10000.0)
+        
+        # Epoch 1 & 2 (Locked)
+        staker.execute()
+        self.assertEqual(staker.get_supply(), 0.0)
+        staker.execute()
+        self.assertEqual(staker.get_supply(), 0.0)
+        
+        # Epoch 3 (Lockup ends, unlocks + reward)
+        staker.execute()
+        self.assertEqual(staker.get_supply(), 10500.0)
 
 
 if __name__ == '__main__':
