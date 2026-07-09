@@ -18,23 +18,23 @@ SCRIPTS = [
 ]
 
 REQUIRED_DELIVERABLES = [
-    "outputs/v2/pdf_extracted_metrics.json",
-    "outputs/v2/pdf_extracted_metrics.csv",
-    "outputs/v2/parameter_registry.csv",
-    "outputs/v2/scenario_definitions.yaml",
-    "outputs/v2/simulation_results.parquet",
-    "outputs/v2/sensitivity_results.csv",
-    "outputs/v2/cfo_projection_model.xlsx",
-    "outputs/v2/CFO_MODEL_ASSUMPTIONS.md",
-    "outputs/v2/INVESTOR_GROWTH_SCHEMES.md",
-    "outputs/v2/SENSITIVITY_ANALYSIS_REPORT.md",
-    "outputs/v2/FAILURE_BOUNDARIES.md",
-    "outputs/v2/V2_SIMULATION_FINDINGS.md",
-    "outputs/v2/figures/growth_funnel.png",
-    "outputs/v2/figures/reserve_health_by_scenario.png",
-    "outputs/v2/figures/parameter_tornado.png",
-    "outputs/v2/figures/sobol_indices.png",
-    "outputs/v2/figures/investor_case_comparison.png"
+    "outputs/v2_2026-07-06_120557/pdf_extracted_metrics.json",
+    "outputs/v2_2026-07-06_120557/pdf_extracted_metrics.csv",
+    "outputs/v2_2026-07-06_120557/parameter_registry.csv",
+    "outputs/v2_2026-07-06_120557/scenario_definitions.yaml",
+    "outputs/v2_2026-07-06_120557/simulation_results.parquet",
+    "outputs/v2_2026-07-06_120557/sensitivity_results.csv",
+    "outputs/v2_2026-07-06_120557/cfo_projection_model.xlsx",
+    "outputs/v2_2026-07-06_120557/CFO_MODEL_ASSUMPTIONS.md",
+    "outputs/v2_2026-07-06_120557/INVESTOR_GROWTH_SCHEMES.md",
+    "outputs/v2_2026-07-06_120557/SENSITIVITY_ANALYSIS_REPORT.md",
+    "outputs/v2_2026-07-06_120557/FAILURE_BOUNDARIES.md",
+    "outputs/v2_2026-07-06_120557/V2_SIMULATION_FINDINGS.md",
+    "outputs/v2_2026-07-06_120557/figures/growth_funnel.png",
+    "outputs/v2_2026-07-06_120557/figures/reserve_health_by_scenario.png",
+    "outputs/v2_2026-07-06_120557/figures/parameter_tornado.png",
+    "outputs/v2_2026-07-06_120557/figures/sobol_indices.png",
+    "outputs/v2_2026-07-06_120557/figures/investor_case_comparison.png"
 ]
 
 def main():

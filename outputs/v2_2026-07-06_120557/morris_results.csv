@@ -1,0 +1,13 @@
+parameter_name,expanded_key,mu_star,sigma
+claim_rate_by_cohort,active_viewers,0.3356575401443423,0.0
+claim_rate_by_cohort,adversarial_whales,0.40441852514490934,0.0
+claim_rate_by_cohort,passive_viewers,0.13018472289497204,0.0
+claim_rate_by_cohort,power_users,3.90411118666331,0.0
+settle_propensity_by_cohort,active_viewers,0.0,0.0
+settle_propensity_by_cohort,adversarial_whales,0.0,0.0
+settle_propensity_by_cohort,passive_viewers,0.0,0.0
+settle_propensity_by_cohort,power_users,0.0,0.0
+utility_spend_rate_by_cohort,active_viewers,1.3203718953511934,0.0
+utility_spend_rate_by_cohort,adversarial_whales,1.6299524203394398,0.0
+utility_spend_rate_by_cohort,passive_viewers,0.15584869931141532,0.0
+utility_spend_rate_by_cohort,power_users,4.877782646905291,0.0

@@ -23,9 +23,9 @@ root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, root_dir)
 sys.path.insert(0, os.path.join(root_dir, "src"))
 
-PARQUET_PATH = "outputs/v2/simulation_results.parquet"
-SENSITIVITY_PATH = "outputs/v2/sensitivity_results.csv"
-FIGURES_DIR = "outputs/v2/figures"
+PARQUET_PATH = "outputs/v2_2026-07-06_120557/simulation_results.parquet"
+SENSITIVITY_PATH = "outputs/v2_2026-07-06_120557/sensitivity_results.csv"
+FIGURES_DIR = "outputs/v2_2026-07-06_120557/figures"
 
 os.makedirs(FIGURES_DIR, exist_ok=True)
 

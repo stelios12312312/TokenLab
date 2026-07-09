@@ -14,7 +14,7 @@ from projects.z1.core_solvency.config import SolvencyConfig as M1Config
 from projects.z1.m2_market_dynamics.config import SolvencyConfig as M2Config
 from projects.z1.m3_full_economy.config import M3EconomyConfig as M3Config
 
-OUTPUT_PATH = "outputs/v2/parameter_registry.csv"
+OUTPUT_PATH = "outputs/v2_2026-07-06_120557/parameter_registry.csv"
 
 def get_field_type_str(f):
     if hasattr(f.type, "__name__"):

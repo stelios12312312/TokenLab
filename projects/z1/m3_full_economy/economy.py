@@ -87,13 +87,25 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         self.cumulative_unstaked_z1u = 0.0
         
         self.throttle_multiplier = 1.0
-        self.ar_floor_breach_count = 0
+        self.ar_floor_breach_count = 0 # Throttle breach count
+        self.l6_breach_epoch_count = 0 # Constitutional breach count
         self.per_epoch_counters = {}
+
         
         self._z1_metrics_history = []
         
+        # Pre-simulation validation and parameter lock checks
+        config.validate()
+        locks = config.check_solvency_locks() + config.check_m2_locks()
+        for lock in locks:
+            if lock.get('severity') == 'HARD' and lock.get('status') == 'FAIL':
+                if not getattr(config, 'bypass_hard_locks', False):
+                    raise ValueError(f"Configuration violates HARD lock {lock['lock']}: {lock['message']}")
+
+                
         from .state import initialize_state
         self.cohorts = initialize_state(config).cohorts
+
         
         metrics = extract_epoch_metrics(self, self.config)
         self._z1_metrics_history.append(metrics)
@@ -180,8 +192,18 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
             else:
                 remaining_epochs = self.config.n_epochs - threshold_epoch
                 claimed_this_epoch = (self.config.initial_viewers * 0.8) / remaining_epochs if remaining_epochs > 0 else 0
+        elif self.config.adoption_profile == "custom_piecewise":
+            t_ratio = getattr(self.config, 'custom_threshold_1', 0.2)
+            s_ratio = getattr(self.config, 'custom_share_1', 0.6)
+            threshold_epoch = max(1, int(self.config.n_epochs * t_ratio))
+            if self.epoch <= threshold_epoch:
+                claimed_this_epoch = (self.config.initial_viewers * s_ratio) / threshold_epoch
+            else:
+                remaining_epochs = self.config.n_epochs - threshold_epoch
+                claimed_this_epoch = (self.config.initial_viewers * (1.0 - s_ratio)) / remaining_epochs if remaining_epochs > 0 else 0
         else: # linear
             claimed_this_epoch = self.config.initial_viewers / self.config.n_epochs
+
 
         # Calculate PCS and Tiers, and aggregate tier PCS
         tier_total_pcs = {tier: 0.0 for tier in getattr(self.config, 'tier_budget_allocations', {"Bronze": 1.0}).keys()}
@@ -244,9 +266,10 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
             claimed = base_claimers * pool.claim_rate
             verified = claimed * pool.verification_pass_rate
             
-            pool.cumulative_claimed_population += int(claimed)
-            pool.cumulative_verified_population += int(verified)
+            pool.cumulative_claimed_population += claimed
+            pool.cumulative_verified_population += verified
             pool.num_users = pool.cumulative_claimed_population
+
             
             tier_budget = self.config.acr_epoch_budget * getattr(self.config, 'tier_budget_allocations', {"Bronze": 1.0}).get(pool.tier, 0.0)
             tier_sum_pcs = tier_total_pcs.get(pool.tier, 0.0)
@@ -325,8 +348,9 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
                 exec_z1u = exec_acr * effective_sr
                 execute_settlement(self, name, exec_acr, exec_z1u)
                 
-                sell_ratio = 1.0 if self.is_panicking else 0.8
+                sell_ratio = 1.0 if self.is_panicking else getattr(self.config, 'user_sell_ratio', 0.8)
                 z1u_to_sell = exec_z1u * sell_ratio
+
                 pool.z1u_balance -= z1u_to_sell
                 usd_received = self.amm.sell_z1u(z1u_to_sell)
                 

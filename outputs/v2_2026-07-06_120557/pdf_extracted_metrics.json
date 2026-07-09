@@ -1,0 +1,34 @@
+{
+    "total_cumulative_engaged_audience": 1450000000,
+    "domestic_cumulative_audience": 1050000000,
+    "international_cumulative_audience": 400000000,
+    "fiction_share_of_cumulative_audience": 0.53,
+    "reality_tv_share_of_cumulative_audience": 0.124,
+    "reality_tv_share_of_high_intensity_interactions": 0.8,
+    "qr_value_range_inr": [
+        45,
+        80
+    ],
+    "whatsapp_value_range_inr": [
+        60,
+        100
+    ],
+    "obd_value_inr": 11,
+    "voice_value_range_inr": [
+        80,
+        120
+    ],
+    "zee5_registration_wall_value_range_inr": [
+        180,
+        240
+    ],
+    "total_unified_user_ids": 220000000,
+    "zee5_registered_users": 180000000,
+    "monthly_active_users": 95000000,
+    "profiles_with_full_viewing_history": 95000000,
+    "multi_year_participation_records": 45000000,
+    "profiles_with_pin_or_delivery_address": 35000000,
+    "gold_coin_campaign_cpa_inr": 0.35,
+    "zee5_registration_conversion_rate": 0.67,
+    "gold_coin_2024_unique_users": 581684
+}

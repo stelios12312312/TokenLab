@@ -30,14 +30,18 @@ def check_invariants(state: GlobalState) -> list[str]:
         
     # 3. Z1U Flow Accounting (F4) — includes CIP/VRP pool balances and staked Z1U
     total_cohort_z1u = sum(c.z1u_balance + getattr(c, 'staked_z1u', 0.0) for c in state.cohorts.values())
+
     lhs = (state.audience_reserve_initial + state.treasury_initial + state.cumulative_brand_inflow + state.config.amm_initial_z1u
            + (state.campaigns.cumulative_net_deposits if hasattr(state, 'campaigns') else 0)
            + getattr(state, 'cumulative_campaign_burn', 0.0)
            + getattr(state, 'cumulative_rwa_yield', 0)
            + sum(getattr(state, 'genesis_unlocked_amounts', {}).values()))
+    
+    provider_unsold = state.cumulative_provider_payments if not getattr(state.config, 'provider_amm_sell_enabled', True) else 0.0
+    
     rhs = (state.audience_reserve + state.treasury 
            + total_cohort_z1u 
-           + state.cumulative_provider_payments 
+           + provider_unsold 
            + getattr(state, 'cumulative_recirculated_provider_z1u', 0.0)
            + getattr(state, 'cumulative_cip_funding', 0)
            + getattr(state, 'cumulative_ops_costs', 0)
@@ -51,7 +55,7 @@ def check_invariants(state: GlobalState) -> list[str]:
         errors.append(f"Z1U Conservation leak! Expected: {lhs}, Found: {rhs}")
         
     # 4. Burn Consistency Invariant (F5) — includes CIP/VRP pool balances and staked Z1U
-    live_supply = state.audience_reserve + state.treasury + total_cohort_z1u + state.cumulative_provider_payments + getattr(state, 'cumulative_recirculated_provider_z1u', 0.0) + getattr(state, 'cumulative_cip_funding', 0) + getattr(state, 'cumulative_ops_costs', 0) + (state.amm.z1u_reserve if hasattr(state, 'amm') else 0) + (state.campaigns.escrow_balance_z1u if hasattr(state, 'campaigns') else 0) + getattr(state, 'cip_pool_balance', 0.0) + getattr(state, 'vrp_pool_balance', 0.0)
+    live_supply = state.audience_reserve + state.treasury + total_cohort_z1u + provider_unsold + getattr(state, 'cumulative_recirculated_provider_z1u', 0.0) + getattr(state, 'cumulative_cip_funding', 0) + getattr(state, 'cumulative_ops_costs', 0) + (state.amm.z1u_reserve if hasattr(state, 'amm') else 0) + (state.campaigns.escrow_balance_z1u if hasattr(state, 'campaigns') else 0) + getattr(state, 'cip_pool_balance', 0.0) + getattr(state, 'vrp_pool_balance', 0.0)
     total_minted = (state.audience_reserve_initial + state.treasury_initial + state.cumulative_brand_inflow + (state.config.amm_initial_z1u if hasattr(state, 'amm') else 0)
                     + (state.campaigns.cumulative_net_deposits if hasattr(state, 'campaigns') else 0)
                     + getattr(state, 'cumulative_campaign_burn', 0.0)
@@ -60,12 +64,16 @@ def check_invariants(state: GlobalState) -> list[str]:
     if not math.isclose(total_minted - state.total_z1u_burned, live_supply, rel_tol=1e-5, abs_tol=1e-5):
         errors.append(f"Burn Consistency mismatch! Live supply: {live_supply}, Minted-Burned: {total_minted - state.total_z1u_burned}")
 
+
     # 5. L6 Constitutional AR Floor (P1.17)
     # In M2, this can be structurally violated if the Treasury is bankrupt and the supply inflates (RWA/Campaigns).
     # We do not raise a hard invariant error for this because we want the simulation to complete and classify it as a collapse.
     if live_supply > 0 and (state.audience_reserve / live_supply) < 0.25 - 2e-2:
          # Log but do not fail the simulation
-         pass
+         state.per_epoch_counters['l6_breaches'] = state.per_epoch_counters.get('l6_breaches', 0.0) + 1.0
+         if hasattr(state, 'l6_breach_epoch_count'):
+             state.l6_breach_epoch_count += 1
+
 
     # 6. Queue Consistency
     total_queued = sum(c.acr_queued_for_settlement for c in state.cohorts.values())

@@ -6,7 +6,7 @@ import csv
 import fitz  # PyMuPDF
 
 PDF_PATH = "docs/ZEE Audience Participatory Ledger.pdf"
-OUTPUT_DIR = "outputs/v2"
+OUTPUT_DIR = "outputs/v2_2026-07-06_120557"
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(os.path.join(OUTPUT_DIR, "figures"), exist_ok=True)

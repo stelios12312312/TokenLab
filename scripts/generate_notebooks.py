@@ -118,7 +118,7 @@ nb2_cells = [
         "outputs": [],
         "source": [
             "# Inspect simulation results\n",
-            "df = pd.read_parquet('../outputs/v2/simulation_results.parquet')\n",
+            "df = pd.read_parquet('../outputs/v2_2026-07-06_120557/simulation_results.parquet')\n",
             "print(df.head())\n",
             "print(df['scenario'].value_counts())\n"
         ]
@@ -167,7 +167,7 @@ nb3_cells = [
         "outputs": [],
         "source": [
             "# Inspect sensitivity results\n",
-            "sens_df = pd.read_csv('../outputs/v2/sensitivity_results.csv')\n",
+            "sens_df = pd.read_csv('../outputs/v2_2026-07-06_120557/sensitivity_results.csv')\n",
             "print(sens_df.head())\n"
         ]
     }

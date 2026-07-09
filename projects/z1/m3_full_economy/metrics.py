@@ -68,7 +68,9 @@ def extract_epoch_metrics(state: GlobalState, config: M3EconomyConfig) -> Dict[s
         'total_staked_z1u': sum(getattr(c, 'staked_z1u', 0.0) for c in state.cohorts.values()),
         'staked_epoch': state.per_epoch_counters.get('staked_z1u', 0.0),
         'unstaked_epoch': state.per_epoch_counters.get('unstaked_z1u', 0.0),
+        'l6_breach_epoch_count': getattr(state, 'l6_breach_epoch_count', 0),
     }
+
 
 
 def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
@@ -102,12 +104,14 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             min_price=('z1u_price', 'min'),
             final_escrow=('escrow_balance', 'last'),
             panic_epochs=('is_panicking', 'sum'),
+            l6_breaches=('l6_breach_epoch_count', 'last'),
         )
         
         # Use median for classification (representative)
         median_final_ar = float(per_run['final_ar_ratio'].median())
         median_throttle = float(per_run['throttle_epochs'].median())
         median_max_queue = float(per_run['max_queue'].median())
+        median_l6_breaches = float(per_run['l6_breaches'].median())
         
         result = {
             'final_ar_ratio': median_final_ar,
@@ -128,6 +132,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             'min_price': float(per_run['min_price'].min()),
             'final_escrow': float(per_run['final_escrow'].median()),
             'panic_epochs': int(per_run['panic_epochs'].median()),
+            'l6_breach_epoch_count': int(median_l6_breaches),
             'n_repetitions': int(per_run.shape[0]),
             'final_ar_ratio_std': float(per_run['final_ar_ratio'].std()),
             'final_ar_ratio_p05': float(per_run['final_ar_ratio'].quantile(0.05)),
@@ -138,6 +143,8 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
         threshold_ar = 0.3
         if median_final_ar < threshold_ar:
             classification = "collapse"
+        elif median_l6_breaches > 0:
+            classification = "constitutional_breach"
         elif median_throttle > 0 or median_max_queue > 10_000_000_000:
             classification = "stressed"
         elif median_final_ar < 0.99:
@@ -151,6 +158,8 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
         threshold_ar = 0.3
         if final['ar_ratio'] < threshold_ar:
             classification = "collapse"
+        elif final['l6_breach_epoch_count'] > 0:
+            classification = "constitutional_breach"
         elif final['throttle_active'] == 1 or final['settlement_queue_z1u'] > 10_000_000_000:
             classification = "stressed"
         elif final['ar_ratio'] < 0.99:
@@ -177,8 +186,10 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             'min_price': float(metrics_df['z1u_price'].min()),
             'final_escrow': float(final['escrow_balance']),
             'panic_epochs': int(metrics_df['is_panicking'].sum()),
+            'l6_breach_epoch_count': int(final['l6_breach_epoch_count']),
         }
     
     result['classification'] = classification
+
     return result
 

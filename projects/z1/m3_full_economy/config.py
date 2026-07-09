@@ -13,13 +13,16 @@ class M3EconomyConfig:
 
     # Audience & Claiming mechanics
     initial_viewers: int = 1_000_000
-    adoption_profile: Literal["front_loaded", "linear", "back_loaded"] = "linear"
+    adoption_profile: Literal["front_loaded", "linear", "back_loaded", "custom_piecewise"] = "linear"
+
 
     # M3 Agent Cohorts
     creator_population: int = 5_000
     validator_population: int = 100
     creator_sell_propensity: float = 0.50
     validator_sell_propensity: float = 0.20
+    user_sell_ratio: float = 0.80
+
 
     # Cohort breakdown (Sum must equal 1.0)
     cohort_population_shares: Dict[str, float] = field(
@@ -152,15 +155,36 @@ class M3EconomyConfig:
 
     # M3 Provider Recirculation
     provider_recirculation_rate: float = 0.20 # 20% of provider fiat revenue converted to Z1U
+    provider_amm_sell_enabled: bool = True     # V2 toggle for regression control
+    
+    # M3 Genesis Sell Pressures
+    genesis_sell_enabled: bool = True          # V2 toggle for regression control
+    genesis_sell_fraction_by_bucket: Dict[str, float] = field(
+        default_factory=lambda: {
+            "team": 0.50,
+            "advisors": 0.50,
+            "seed": 0.50,
+            "private": 0.50,
+            "public": 1.0,
+            "treasury": 0.0,
+            "ecosystem": 0.0
+        }
+    )
     
     # M3 Composite SR Weights
     composite_sr_amm_weight: float = 0.7
     composite_sr_ar_weight: float = 0.3
 
+
     # Initial Global balances
     audience_reserve_initial: float = 5_000_000.0
     treasury_initial: float = 2_500_000.0
     scale_factor: float = 1 / 33_333.33
+    bypass_hard_locks: bool = False
+    custom_threshold_1: float = 0.2
+    custom_share_1: float = 0.6
+
+
 
 
 

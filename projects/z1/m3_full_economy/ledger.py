@@ -115,6 +115,12 @@ def spend_z1u(state: GlobalState, cohort_name: str, spend_amount: float, provide
     state.cumulative_utility_spend += spend_amount
     state.cumulative_provider_payments += fiat_payment_z1u
     state.cumulative_recirculated_provider_z1u = getattr(state, 'cumulative_recirculated_provider_z1u', 0.0) + recirculated_z1u
+    
+    # Route to AMM if enabled in config
+    provider_amm_sell_enabled = getattr(state.config, 'provider_amm_sell_enabled', True)
+    if provider_amm_sell_enabled and hasattr(state, 'amm') and fiat_payment_z1u > 0:
+        state.amm.sell_z1u(fiat_payment_z1u)
+
     state.cumulative_treasury_fees += treasury_fee
     state.total_z1u_burned += burn_amount
 
@@ -173,10 +179,25 @@ def execute_genesis_unlock(state: GlobalState):
         if to_unlock > 0:
             state.genesis_unlocked_amounts[bucket_name] = target_unlocked
             
-            if bucket_name == "ecosystem":
-                state.audience_reserve += to_unlock
-            else:
-                state.treasury += to_unlock
+            # Genesis sell pressure routing if enabled
+            genesis_sell_enabled = getattr(state.config, 'genesis_sell_enabled', True)
+            sell_fraction = 0.0
+            if genesis_sell_enabled:
+                sell_fractions = getattr(state.config, 'genesis_sell_fraction_by_bucket', {})
+                sell_fraction = sell_fractions.get(bucket_name, 0.0)
+                
+            sell_amount = to_unlock * sell_fraction
+            net_unlock = to_unlock - sell_amount
+            
+            if sell_amount > 0 and hasattr(state, 'amm'):
+                state.amm.sell_z1u(sell_amount)
+                
+            if net_unlock > 0:
+                if bucket_name == "ecosystem":
+                    state.audience_reserve += net_unlock
+                else:
+                    state.treasury += net_unlock
+
 
 
 def fund_pools_waterfall(state: GlobalState):
@@ -240,12 +261,8 @@ def stake_z1u(state: GlobalState, cohort_name: str):
     cohort.z1u_balance -= stake_amount
     cohort.staked_z1u += stake_amount
     state.cumulative_staked_z1u += stake_amount
-    
-    # Enter FIFO legacy queue at the end (will take staking_lock_epochs to mature)
-    if len(cohort.staking_buckets) > 0:
-        cohort.staking_buckets[-1] += stake_amount
-        
     # Enter 3-tier queues split according to configured shares
+
     shares = getattr(config, 'governance_staking_tier_shares', {"3_epoch": 0.40, "6_epoch": 0.35, "12_epoch": 0.25})
     if isinstance(shares, dict):
         share_3 = shares.get("3_epoch", 0.40)
@@ -276,14 +293,8 @@ def unstake_z1u(state: GlobalState, cohort_name: str):
         return
     
     cohort = state.cohorts[cohort_name]
-    
-    # 1. Legacy FIFO conveyor shift (shadow array for compatibility)
-    if len(cohort.staking_buckets) > 0:
-        for i in range(len(cohort.staking_buckets) - 1):
-            cohort.staking_buckets[i] = cohort.staking_buckets[i + 1]
-        cohort.staking_buckets[-1] = 0.0
-        
     # 2. 3-tier mature and release
+
     matured_3 = cohort.staking_buckets_3[0] if len(cohort.staking_buckets_3) > 0 else 0.0
     matured_6 = cohort.staking_buckets_6[0] if len(cohort.staking_buckets_6) > 0 else 0.0
     matured_12 = cohort.staking_buckets_12[0] if len(cohort.staking_buckets_12) > 0 else 0.0

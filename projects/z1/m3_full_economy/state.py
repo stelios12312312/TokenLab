@@ -36,10 +36,18 @@ class CohortState:
     
     # Governance Staking (US-Z1-M3-06)
     staked_z1u: float = 0.0
-    staking_buckets: List[float] = field(default_factory=list)  # FIFO queue, length = staking_lock_epochs
     staking_buckets_3: List[float] = field(default_factory=list)
     staking_buckets_6: List[float] = field(default_factory=list)
     staking_buckets_12: List[float] = field(default_factory=list)
+
+    @property
+    def staking_buckets(self) -> List[float]:
+        return self.staking_buckets_12
+
+    @staking_buckets.setter
+    def staking_buckets(self, val: List[float]):
+        pass
+
 
 @dataclass
 class GlobalState:
@@ -81,7 +89,9 @@ class GlobalState:
     # Health and metrics
     throttle_multiplier: float = 1.0
     ar_floor_breach_count: int = 0
+    l6_breach_epoch_count: int = 0
     per_epoch_counters: Dict[str, float] = field(default_factory=dict)
+
     
     cohorts: Dict[str, CohortState] = field(default_factory=dict)
 
@@ -99,7 +109,6 @@ def initialize_state(config: M3EconomyConfig) -> GlobalState:
             settle_propensity=config.settle_propensity_by_cohort[name],
             utility_spend_rate=config.utility_spend_rate_by_cohort[name],
             acr_vesting_buckets=[0.0] * (config.vesting_lag_epochs + getattr(config, 'vesting_sub_cohort_phases', 1) - 1),
-            staking_buckets=[0.0] * config.staking_lock_epochs if config.governance_staking_enabled else [],
             staking_buckets_3=[0.0] * 3 if config.governance_staking_enabled else [],
             staking_buckets_6=[0.0] * 6 if config.governance_staking_enabled else [],
             staking_buckets_12=[0.0] * 12 if config.governance_staking_enabled else []
@@ -111,7 +120,6 @@ def initialize_state(config: M3EconomyConfig) -> GlobalState:
         name="creators",
         population=getattr(config, 'creator_population', 0),
         settle_propensity=getattr(config, 'creator_sell_propensity', 0.0),
-        staking_buckets=[0.0] * config.staking_lock_epochs if config.governance_staking_enabled else [],
         staking_buckets_3=[0.0] * 3 if config.governance_staking_enabled else [],
         staking_buckets_6=[0.0] * 6 if config.governance_staking_enabled else [],
         staking_buckets_12=[0.0] * 12 if config.governance_staking_enabled else []
@@ -120,11 +128,11 @@ def initialize_state(config: M3EconomyConfig) -> GlobalState:
         name="validators",
         population=getattr(config, 'validator_population', 0),
         settle_propensity=getattr(config, 'validator_sell_propensity', 0.0),
-        staking_buckets=[0.0] * config.staking_lock_epochs if config.governance_staking_enabled else [],
         staking_buckets_3=[0.0] * 3 if config.governance_staking_enabled else [],
         staking_buckets_6=[0.0] * 6 if config.governance_staking_enabled else [],
         staking_buckets_12=[0.0] * 12 if config.governance_staking_enabled else []
     )
+
     cohorts["creators"] = creators
     cohorts["validators"] = validators
     return GlobalState(
@@ -132,5 +140,7 @@ def initialize_state(config: M3EconomyConfig) -> GlobalState:
         audience_reserve_initial=config.audience_reserve_initial,
         treasury=config.treasury_initial,
         treasury_initial=config.treasury_initial,
+        l6_breach_epoch_count=0,
         cohorts=cohorts
     )
+

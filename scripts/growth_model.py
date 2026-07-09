@@ -3,7 +3,7 @@ import json
 import numpy as np
 import pandas as pd
 
-METRICS_PATH = "outputs/v2/pdf_extracted_metrics.json"
+METRICS_PATH = "outputs/v2_2026-07-06_120557/pdf_extracted_metrics.json"
 
 def load_extracted_metrics():
     if os.path.exists(METRICS_PATH):

@@ -1,70 +1,277 @@
-#!/usr/bin/env python3
+# scripts/run_scenarios.py
+# @planner:module = run_scenarios
+# @planner:story = US-Z1-M3-08
+
 import os
 import sys
+import yaml
 import pandas as pd
+from typing import Dict, Any
 
 # Ensure TokenLab root and src are in sys.path
 root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, root_dir)
 sys.path.insert(0, os.path.join(root_dir, "src"))
 
-from scripts.cfo_projection import run_cfo_projections
+from projects.z1.m3_full_economy.config import M3EconomyConfig
+from projects.z1.m3_full_economy.stochastic_runner import run_scenario
 
-OUTPUT_DIR = "outputs/v2"
+OUTPUT_DIR = "outputs/v2_2026-07-06_120557"
 PARQUET_PATH = os.path.join(OUTPUT_DIR, "simulation_results.parquet")
 YAML_PATH = os.path.join(OUTPUT_DIR, "scenario_definitions.yaml")
 
+def get_base_config_for_scheme(scheme_id: int, scenario_defs: dict) -> M3EconomyConfig:
+    config = M3EconomyConfig()
+    scheme_key = f"scheme_{scheme_id}"
+    if scheme_key in scenario_defs:
+        for key, val in scenario_defs[scheme_key].items():
+            setattr(config, key, val)
+    config.bypass_hard_locks = True
+    return config
+
+
 def run_all_scenarios():
-    scenarios = ["conservative", "base", "upside", "stress", "failed_activation"]
+    print("=" * 60)
+    print("Executing V2 Scenario Run Matrix")
+    print("=" * 60)
+    
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    
+    if not os.path.exists(YAML_PATH):
+        raise FileNotFoundError(f"Scenario definitions YAML not found at {YAML_PATH}. Run calibration first.")
+        
+    with open(YAML_PATH, "r") as f:
+        scenario_defs = yaml.safe_load(f)
+        
     dfs = []
     
-    for sc in scenarios:
-        print(f"Running scenario: {sc}...")
-        df = run_cfo_projections(sc)
-        df["scenario"] = sc
-        dfs.append(df)
+    # Define the 15 scenarios to execute
+    scenarios_to_run = [
+        # Deterministic Baselines (reps = 1, is_stochastic = False)
+        {
+            "id": "S-BASE-M1",
+            "scheme_id": 2,
+            "is_stochastic": False,
+            "reps": 1,
+            "overrides": {
+                "governance_staking_enabled": False,
+                "provider_amm_sell_enabled": False,
+                "genesis_sell_enabled": False
+            }
+        },
+        {
+            "id": "S-BASE-M2",
+            "scheme_id": 2,
+            "is_stochastic": False,
+            "reps": 1,
+            "overrides": {
+                "governance_staking_enabled": False,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True
+            }
+        },
+        {
+            "id": "S-BASE-M3",
+            "scheme_id": 2,
+            "is_stochastic": False,
+            "reps": 1,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True
+            }
+        },
+        # Stochastic Scenario Matrix (reps = 100, is_stochastic = True)
+        {
+            "id": "S-CONS",
+            "scheme_id": 1,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True
+            }
+        },
+        {
+            "id": "S-BASE",
+            "scheme_id": 2,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True
+            }
+        },
+        {
+            "id": "S-UPSIDE",
+            "scheme_id": 3,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True
+            }
+        },
+        {
+            "id": "S-STRESS",
+            "scheme_id": 6,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True,
+                # settlement propensity / ratio tripled
+                "settlement_ratio": 0.1047 * 3.0,
+                "settle_propensity_by_cohort": {
+                    "passive_viewers": min(1.0, 0.0051 * 3.0),
+                    "active_viewers": min(1.0, 0.0102 * 3.0),
+                    "power_users": min(1.0, 0.0203 * 3.0),
+                    "adversarial_whales": min(1.0, 0.5 * 3.0)
+                }
+            }
+        },
+        {
+            "id": "S-PANIC",
+            "scheme_id": 6,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True
+            },
+            "inject_point_shock": True
+        },
+        {
+            "id": "S-LOW-CAMPAIGN",
+            "scheme_id": 2,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True,
+                "campaign_deposit_per_epoch": 112000.0 * 0.3 # campaign_deposit * 0.3
+            }
+        },
+        {
+            "id": "S-HIGH-CLAIM",
+            "scheme_id": 2,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True,
+                "claim_rate_by_cohort": {
+                    "passive_viewers": min(1.0, 0.1 * 2.0),
+                    "active_viewers": min(1.0, 0.4 * 2.0),
+                    "power_users": min(1.0, 0.8 * 2.0),
+                    "adversarial_whales": min(1.0, 1.0 * 2.0)
+                }
+            }
+        },
+        {
+            "id": "S-HIGH-SETTLE",
+            "scheme_id": 2,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True,
+                "settlement_ratio": 0.1047 * 3.0,
+                "settle_propensity_by_cohort": {
+                    "passive_viewers": min(1.0, 0.0051 * 3.0),
+                    "active_viewers": min(1.0, 0.0102 * 3.0),
+                    "power_users": min(1.0, 0.0203 * 3.0),
+                    "adversarial_whales": min(1.0, 0.5 * 3.0)
+                }
+            }
+        },
+        {
+            "id": "S-LOW-UTILITY",
+            "scheme_id": 2,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True,
+                "utility_spend_rate_by_cohort": {
+                    "passive_viewers": 0.0456 * 0.3,
+                    "active_viewers": 0.1823 * 0.3,
+                    "power_users": 0.4557 * 0.3,
+                    "adversarial_whales": 0.0
+                }
+            }
+        },
+        {
+            "id": "S-WEAK-BUYBACK",
+            "scheme_id": 2,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True,
+                "treasury_buyback_ratio": 0.0
+            }
+        },
+        {
+            "id": "S-INTL",
+            "scheme_id": 5,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True
+            }
+        },
+        {
+            "id": "S-REALITY-TV",
+            "scheme_id": 4,
+            "is_stochastic": True,
+            "reps": 100,
+            "overrides": {
+                "governance_staking_enabled": True,
+                "provider_amm_sell_enabled": True,
+                "genesis_sell_enabled": True
+            }
+        }
+    ]
+    
+    for sc in scenarios_to_run:
+        sc_id = sc["id"]
+        scheme_id = sc["scheme_id"]
+        is_stochastic = sc["is_stochastic"]
+        reps = sc["reps"]
+        overrides = sc["overrides"]
+        inject_shock = sc.get("inject_point_shock", False)
+        
+        print(f"Running Scenario: {sc_id} (Scheme {scheme_id}) with {reps} rep(s)...")
+        
+        config = get_base_config_for_scheme(scheme_id, scenario_defs)
+        for key, val in overrides.items():
+            setattr(config, key, val)
+            
+        df_sc = run_scenario(
+            scenario_id=sc_id,
+            base_config=config,
+            is_stochastic=is_stochastic,
+            reps=reps,
+            inject_point_shock=inject_shock
+        )
+        dfs.append(df_sc)
         
     combined = pd.concat(dfs, ignore_index=True)
     combined.to_parquet(PARQUET_PATH, engine="pyarrow", index=False)
-    print(f"Saved combined simulation results to {PARQUET_PATH} ({len(combined)} rows)")
-    
-    # Generate scenario_definitions.yaml
-    yaml_content = """# Z1 Simulation V2 Scenario Definitions
-scenarios:
-  conservative:
-    description: "Slow growth, low conversion, high reserve discipline, lower ACR settlement pressure."
-    growth_rate_k: 0.02
-    potential_M_scale: 0.5
-    retention_rate: 0.85
-    spend_pct: 0.15
-  base:
-    description: "Moderate campaign expansion using PDF-derived CDP and phygital benchmarks."
-    growth_rate_k: 0.04
-    potential_M_scale: 1.0
-    retention_rate: 0.90
-    spend_pct: 0.25
-  upside:
-    description: "Aggressive campaign expansion and high user retention."
-    growth_rate_k: 0.06
-    potential_M_scale: 1.5
-    retention_rate: 0.95
-    spend_pct: 0.40
-  stress:
-    description: "High claim rate and rapid settlement causing reserve depletion."
-    growth_rate_k: 0.08
-    potential_M_scale: 1.2
-    retention_rate: 0.75
-    spend_pct: 0.10
-  failed_activation:
-    description: "Very slow growth, weak conversion, high churn, low utility spend."
-    growth_rate_k: 0.01
-    potential_M_scale: 0.2
-    retention_rate: 0.60
-    spend_pct: 0.05
-"""
-    with open(YAML_PATH, "w") as f:
-        f.write(yaml_content)
-    print(f"Saved scenario definitions to {YAML_PATH}")
+    print(f"\nSuccessfully saved all simulation results to {PARQUET_PATH} ({len(combined)} rows)")
 
 if __name__ == "__main__":
     run_all_scenarios()

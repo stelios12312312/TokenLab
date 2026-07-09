@@ -55,10 +55,18 @@ class AgentPool_Z1(AgentPool_Basic):
         
         # M3 Governance Staking (US-Z1-M3-06)
         self.staked_z1u = 0.0
-        self.staking_buckets = [0.0] * getattr(config, 'staking_lock_epochs', 12) if getattr(config, 'governance_staking_enabled', False) else []
         self.staking_buckets_3 = [0.0] * 3 if getattr(config, 'governance_staking_enabled', False) else []
         self.staking_buckets_6 = [0.0] * 6 if getattr(config, 'governance_staking_enabled', False) else []
         self.staking_buckets_12 = [0.0] * 12 if getattr(config, 'governance_staking_enabled', False) else []
+        
+    @property
+    def staking_buckets(self) -> List[float]:
+        return self.staking_buckets_12
+
+    @staking_buckets.setter
+    def staking_buckets(self, val: List[float]):
+        pass
+
         
         # To maintain compatibility with TokenLab's AgentPool metrics:
         # num_users tracks cumulative claimed users for TokenLab metrics tracking.
