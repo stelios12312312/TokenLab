@@ -42,6 +42,8 @@ def parse_literal(literal_str: str) -> List[str]:
 def set_config_value(config: M3EconomyConfig, name: str, expanded_key: Any, val: Any):
     if pd.isnull(expanded_key) or expanded_key == "N/A" or str(expanded_key) == "nan":
         setattr(config, name, val)
+        if name == "brand_inflow_per_epoch":
+            setattr(config, "campaign_deposit_per_epoch", val)
     else:
         d = getattr(config, name).copy()
         d[str(expanded_key)] = val
@@ -204,166 +206,160 @@ def run_sensitivity_pipeline():
         })
         
     D = len(morris_params)
-    r = 20 # 20 trajectories
-    morris_records = []
     
-    for traj in range(r):
-        # Generate a random base point in [0, 1]^D
-        x_base = np.random.uniform(0.0, 0.6, D)
-        delta = 0.33
-        
-        # Evaluate base point
-        config_base = M3EconomyConfig()
+    # SALib Problem Definition
+    names = []
+    for p in morris_params:
+        if pd.isnull(p["expanded_key"]) or p["expanded_key"] == "N/A" or str(p["expanded_key"]) == "nan":
+            names.append(p["name"])
+        else:
+            names.append(f"{p['name']}__{p['expanded_key']}")
+    bounds = [[p['lb'], p['ub']] for p in morris_params]
+    problem = {
+        'num_vars': D,
+        'names': names,
+        'bounds': bounds
+    }
+    
+    from SALib.sample import morris as morris_sampler
+    from SALib.analyze import morris as morris_analyzer
+    
+    # Generate Morris samples (r = 20 trajectories, level = 4)
+    param_values_morris = morris_sampler.sample(problem, N=20, num_levels=4)
+    print(f"Running Morris evaluations (total runs = {len(param_values_morris)})...")
+    
+    y_morris = np.zeros(len(param_values_morris))
+    for idx, sample in enumerate(param_values_morris):
+        config_m = M3EconomyConfig()
         for key in base_config.__dataclass_fields__.keys():
-            setattr(config_base, key, getattr(base_config, key))
+            setattr(config_m, key, getattr(base_config, key))
             
         for i, p in enumerate(morris_params):
-            val = p["lb"] + x_base[i] * (p["ub"] - p["lb"])
-            set_config_value(config_base, p["name"], p["expanded_key"], val)
+            set_config_value(config_m, p["name"], p["expanded_key"], sample[i])
             
         try:
-            df_base = run_single_simulation("Morris_Base", 0, 42, config_base, is_stochastic=False)
+            df_sim = run_single_simulation(f"Morris_{idx}", 0, 42, config_m, is_stochastic=False)
             run_counter += 1
-            y_base = df_base.iloc[-1]["audience_reserve"]
+            y_morris[idx] = df_sim.iloc[-1]["z1u_price"]
         except Exception:
-            continue
+            y_morris[idx] = 0.0
             
-        # Perturb one parameter at a time
-        for i, p in enumerate(morris_params):
-            x_pert = x_base.copy()
-            x_pert[i] += delta
-            
-            config_pert = M3EconomyConfig()
-            for key in base_config.__dataclass_fields__.keys():
-                setattr(config_pert, key, getattr(base_config, key))
-                
-            for j, p2 in enumerate(morris_params):
-                val = p2["lb"] + x_pert[j] * (p2["ub"] - p2["lb"])
-                set_config_value(config_pert, p2["name"], p2["expanded_key"], val)
-                
-            try:
-                df_pert = run_single_simulation("Morris_Pert", 0, 42, config_pert, is_stochastic=False)
-                run_counter += 1
-                y_pert = df_pert.iloc[-1]["audience_reserve"]
-                
-                # Elementary effect
-                ee = (y_pert - y_base) / delta
-                morris_records.append({
-                    "parameter_name": p["name"],
-                    "expanded_key": p["expanded_key"],
-                    "trajectory": traj,
-                    "ee": ee
-                })
-            except Exception:
-                continue
-                
-    df_morris_raw = pd.DataFrame(morris_records)
-    if not df_morris_raw.empty:
-        df_morris_summary = df_morris_raw.groupby(["parameter_name", "expanded_key"]).agg(
-            mu_star=("ee", lambda x: np.mean(np.abs(x))),
-            sigma=("ee", "std")
-        ).reset_index()
-    else:
-        df_morris_summary = pd.DataFrame(columns=["parameter_name", "expanded_key", "mu_star", "sigma"])
+    si_morris = morris_analyzer.analyze(problem, param_values_morris, y_morris, print_to_console=False)
+    
+    morris_summary_rows = []
+    for i, p in enumerate(morris_params):
+        morris_summary_rows.append({
+            "parameter_name": p["name"],
+            "expanded_key": p["expanded_key"],
+            "mu_star": si_morris["mu_star"][i],
+            "sigma": si_morris["sigma"][i]
+        })
+    df_morris_summary = pd.DataFrame(morris_summary_rows)
     df_morris_summary.to_csv(MORRIS_RESULTS_PATH, index=False)
     
     # ----------------------------------------------------
     # STEP 3: Sobol Global Sensitivity Analysis
     # ----------------------------------------------------
     print("\n>>> Running Step 3: Sobol Global Sensitivity...")
-    # Saltelli Sampling
-    N = 128
-    # Create Matrix A and B
-    A = np.random.uniform(0, 1, (N, D))
-    B = np.random.uniform(0, 1, (N, D))
+    from SALib.sample import saltelli
+    from SALib.analyze import sobol as sobol_analyzer
     
-    def evaluate_sample(x_norm) -> Dict[str, float]:
-        config = M3EconomyConfig()
+    # Run Sobol sampling (N = 128)
+    param_values_sobol = saltelli.sample(problem, N=128, calc_second_order=False)
+    print(f"Running Sobol matrix evaluations (total runs = {len(param_values_sobol)})...")
+    
+    y_sobol = np.zeros(len(param_values_sobol))
+    for idx, sample in enumerate(param_values_sobol):
+        config_s = M3EconomyConfig()
         for key in base_config.__dataclass_fields__.keys():
-            setattr(config, key, getattr(base_config, key))
+            setattr(config_s, key, getattr(base_config, key))
             
         for i, p in enumerate(morris_params):
-            val = p["lb"] + x_norm[i] * (p["ub"] - p["lb"])
-            set_config_value(config, p["name"], p["expanded_key"], val)
+            set_config_value(config_s, p["name"], p["expanded_key"], sample[i])
             
-        df_sim = run_single_simulation("Sobol_Sample", 0, 42, config, is_stochastic=False)
-        final_row = df_sim.iloc[-1]
-        return {
-            "ar": final_row["audience_reserve"],
-            "price": final_row["z1u_price"]
-        }
-        
-    y_A = np.zeros(N)
-    y_B = np.zeros(N)
-    y_C = np.zeros((D, N))
-    
-    print(f"Running Sobol matrix evaluations (total runs = {N * (D + 2)})...")
-    for i in range(N):
-        res_A = evaluate_sample(A[i])
-        res_B = evaluate_sample(B[i])
-        run_counter += 2
-        y_A[i] = res_A["ar"]
-        y_B[i] = res_B["ar"]
-        
-    for j in range(D):
-        for i in range(N):
-            # Construct C_j: columns of A except j-th which is from B
-            C_j = A[i].copy()
-            C_j[j] = B[i][j]
-            res_C = evaluate_sample(C_j)
+        try:
+            df_sim = run_single_simulation(f"Sobol_{idx}", 0, 42, config_s, is_stochastic=False)
             run_counter += 1
-            y_C[j, i] = res_C["ar"]
+            y_sobol[idx] = df_sim.iloc[-1]["z1u_price"]
+        except Exception:
+            y_sobol[idx] = 0.0
             
-    # Compute Sobol Indices
-    sobol_records = []
-    var_A = np.var(y_A)
+    si_sobol = sobol_analyzer.analyze(problem, y_sobol, calc_second_order=False, print_to_console=False)
     
-    for j in range(D):
-        p = morris_params[j]
-        # First-order index S1
-        # S1 = E(Y * (Y_Cj - Y_A)) / Var(Y)
-        s1 = np.mean(y_B * (y_C[j] - y_A)) / var_A if var_A > 0 else 0.0
-        # Total-order index ST
-        # ST = 1 - Var(E(Y | X_{-j})) / Var(Y) = 1/2N * sum(Y_A - Y_Cj)^2 / Var(Y)
-        st = 0.5 * np.mean((y_A - y_C[j])**2) / var_A if var_A > 0 else 0.0
-        
-        # Bootstrap 95% CIs (100 resamples)
-        s1_boots = []
-        st_boots = []
-        for _ in range(100):
-            idx = np.random.choice(N, N, replace=True)
-            var_A_b = np.var(y_A[idx])
-            if var_A_b > 0:
-                s1_b = np.mean(y_B[idx] * (y_C[j, idx] - y_A[idx])) / var_A_b
-                st_b = 0.5 * np.mean((y_A[idx] - y_C[j, idx])**2) / var_A_b
-            else:
-                s1_b, st_b = 0.0, 0.0
-            s1_boots.append(s1_b)
-            st_boots.append(st_b)
-            
-        s1_err = 1.96 * np.std(s1_boots)
-        st_err = 1.96 * np.std(st_boots)
-        
+    sobol_records = []
+    for i, p in enumerate(morris_params):
         sobol_records.append({
             "parameter_name": p["name"],
             "expanded_key": p["expanded_key"],
-            "S1": s1,
-            "S1_conf": s1_err,
-            "ST": st,
-            "ST_conf": st_err,
-            "interaction_strength": st - s1
+            "S1": si_sobol["S1"][i],
+            "S1_conf": si_sobol["S1_conf"][i],
+            "ST": si_sobol["ST"][i],
+            "ST_conf": si_sobol["ST_conf"][i],
+            "interaction_strength": si_sobol["ST"][i] - si_sobol["S1"][i]
         })
-        
     df_sobol = pd.DataFrame(sobol_records)
     df_sobol.to_csv(SOBOL_RESULTS_PATH, index=False)
     
+    # --- Sobol Convergence Analysis & Plotting (AC-12) ---
+    print("Running Sobol Convergence Analysis (N=32, 64, 128)...")
+    convergence_records = []
+    for N_test in [32, 64, 128]:
+        param_values_test = saltelli.sample(problem, N=N_test, calc_second_order=False)
+        y_test = np.zeros(len(param_values_test))
+        for idx, sample in enumerate(param_values_test):
+            config_t = M3EconomyConfig()
+            for key in base_config.__dataclass_fields__.keys():
+                setattr(config_t, key, getattr(base_config, key))
+            for i, p in enumerate(morris_params):
+                set_config_value(config_t, p["name"], p["expanded_key"], sample[i])
+            try:
+                df_sim = run_single_simulation(f"Sobol_Conv_{N_test}_{idx}", 0, 42, config_t, is_stochastic=False)
+                y_test[idx] = df_sim.iloc[-1]["z1u_price"]
+            except Exception:
+                y_test[idx] = 0.0
+                
+        si_test = sobol_analyzer.analyze(problem, y_test, calc_second_order=False, print_to_console=False)
+        sr_idx = -1
+        for idx, p in enumerate(morris_params):
+            if p["name"] == "settlement_ratio":
+                sr_idx = idx
+                break
+        if sr_idx != -1:
+            convergence_records.append({
+                "N": N_test,
+                "S1": si_test["S1"][sr_idx],
+                "S1_conf": si_test["S1_conf"][sr_idx],
+                "ST": si_test["ST"][sr_idx],
+                "ST_conf": si_test["ST_conf"][sr_idx]
+            })
+            
+    # Generate convergence plot and save to figures
+    if convergence_records:
+        import matplotlib.pyplot as plt
+        df_conv = pd.DataFrame(convergence_records)
+        plt.figure(figsize=(8, 5))
+        plt.errorbar(df_conv["N"], df_conv["S1"], yerr=df_conv["S1_conf"], fmt='-o', color="#6BAED6", label="S1 (Settlement Ratio)", capsize=4, elinewidth=1.5)
+        plt.errorbar(df_conv["N"], df_conv["ST"], yerr=df_conv["ST_conf"], fmt='-s', color="#1B365D", label="ST (Settlement Ratio)", capsize=4, elinewidth=1.5)
+        plt.title("Sobol Sensitivity Index Convergence with 95% Bootstrap CIs")
+        plt.xlabel("Sample Size (N)")
+        plt.ylabel("Sensitivity Index")
+        plt.xticks([32, 64, 128])
+        plt.grid(True, linestyle="--", alpha=0.6)
+        plt.legend()
+        plt.tight_layout()
+        figures_dir = "outputs/v2_2026-07-06_120557/figures"
+        os.makedirs(figures_dir, exist_ok=True)
+        plt.savefig(os.path.join(figures_dir, "sobol_convergence.png"), dpi=300)
+        plt.close()
+        print(f"Saved Sobol convergence plot to {figures_dir}/sobol_convergence.png")
+
     # ----------------------------------------------------
     # STEP 4: 2D Failure Boundary Hunting
     # ----------------------------------------------------
     print("\n>>> Running Step 4: 2D Failure Boundary Hunting...")
-    # Sweep settlement_ratio (0.01 to 0.3) vs brand_inflow_per_epoch (10k to 200k)
-    s_ratios = np.linspace(0.01, 0.30, 10)
-    inflows = np.linspace(10000, 200000, 10)
+    # Sweep settlement_ratio (0.01 to 1.0) vs brand_inflow_per_epoch (0 to 200k)
+    s_ratios = np.linspace(0.01, 1.0, 10)
+    inflows = np.linspace(0.0, 200000, 10)
     
     boundary_records = []
     for sr in s_ratios:
@@ -374,6 +370,7 @@ def run_sensitivity_pipeline():
                 
             config.settlement_ratio = float(sr)
             config.brand_inflow_per_epoch = float(inflow)
+            config.campaign_deposit_per_epoch = float(inflow)
             
             try:
                 df_sim = run_single_simulation("Boundary_Hunt", 0, 42, config, is_stochastic=False)
@@ -388,7 +385,7 @@ def run_sensitivity_pipeline():
                 if ar_ratio < 0.25:
                     is_failed = 1
                     failure_reason = "AR_floor_breach"
-                elif final_row["treasury"] <= 0.0:
+                elif final_row["treasury"] < 1000.0:
                     is_failed = 1
                     failure_reason = "Treasury_depletion"
                 elif price < 0.01:
