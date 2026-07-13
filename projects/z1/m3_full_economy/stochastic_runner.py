@@ -5,6 +5,7 @@
 import random
 import hashlib
 import json
+import copy
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, List
@@ -13,6 +14,12 @@ from projects.z1.m3_full_economy.config import M3EconomyConfig, COHORT_NAMES
 from projects.z1.m3_full_economy.economy import TokenEconomy_Z1
 from projects.z1.m3_full_economy.pools import AgentPool_Z1
 from projects.z1.m3_full_economy.metrics import extract_epoch_metrics
+from projects.z1.m3_full_economy.stochastic_priors import (
+    MANUAL_POINT_SHOCK_EPOCH,
+    MANUAL_POINT_SHOCK_Z1U,
+    apply_stochastic_epoch,
+    initialize_stochastic_state,
+)
 
 def get_config_hash(config: M3EconomyConfig) -> str:
     # Serialize config variables into a deterministic hash
@@ -42,7 +49,7 @@ def run_single_simulation(
     # Deep copy the config via instantiation
     config = M3EconomyConfig()
     for key in base_config.__dataclass_fields__.keys():
-        setattr(config, key, getattr(base_config, key))
+        setattr(config, key, copy.deepcopy(getattr(base_config, key)))
         
     config_hash = get_config_hash(config)
     
@@ -56,8 +63,7 @@ def run_single_simulation(
     baseline_claim_rates = config.claim_rate_by_cohort.copy()
     baseline_panic_threshold = config.panic_price_drop_threshold
     
-    # AR(1) state variables for claim rates
-    ar_state = {cohort: 0.0 for cohort in COHORT_NAMES}
+    stochastic_state = initialize_stochastic_state()
     
     epoch_rows = []
     
@@ -65,31 +71,21 @@ def run_single_simulation(
     # Note: epoch 0 (initial state) is run during init, but we run 260 steps (1 to 260)
     for epoch in range(1, config.n_epochs + 1):
         if is_stochastic:
-            # 1. Gaussian jitter on campaign deposit (15% of baseline)
-            config.campaign_deposit_per_epoch = max(0.0, np.random.normal(baseline_deposit, 0.15 * baseline_deposit))
-            
-            # 2. AR(1) process on claim rates (autocorrelation = 0.7, noise std = 10%)
-            for cohort in COHORT_NAMES:
-                ar_state[cohort] = 0.7 * ar_state[cohort] + np.random.normal(0.0, 0.10)
-                config.claim_rate_by_cohort[cohort] = max(
-                    0.0,
-                    min(1.0, baseline_claim_rates[cohort] * (1.0 + ar_state[cohort]))
-                )
-                
-            # 3. Regime-switching shock (5% probability of panic stress)
-            market_stress = np.random.rand() < 0.05
-            if market_stress:
-                # Force is_panicking to True by making threshold highly negative
-                config.panic_price_drop_threshold = -1.0
-            else:
-                config.panic_price_drop_threshold = baseline_panic_threshold
+            apply_stochastic_epoch(
+                config,
+                baseline_deposit,
+                baseline_claim_rates,
+                baseline_panic_threshold,
+                stochastic_state,
+                rng=np.random,
+            )
                 
             # 4. Inject manual point sell shock if active (S-PANIC: 1M Z1U sell shock at epoch 40)
-            if inject_point_shock and epoch == 40:
+            if inject_point_shock and epoch == MANUAL_POINT_SHOCK_EPOCH:
                 if not hasattr(economy, 'genesis_unlocked_amounts'):
                     economy.genesis_unlocked_amounts = {}
-                economy.genesis_unlocked_amounts['sell_shock'] = economy.genesis_unlocked_amounts.get('sell_shock', 0.0) + 1_000_000.0
-                economy.amm.sell_z1u(1_000_000.0)
+                economy.genesis_unlocked_amounts['sell_shock'] = economy.genesis_unlocked_amounts.get('sell_shock', 0.0) + MANUAL_POINT_SHOCK_Z1U
+                economy.amm.sell_z1u(MANUAL_POINT_SHOCK_Z1U)
 
                 
         economy.execute()

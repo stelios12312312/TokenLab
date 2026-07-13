@@ -1167,27 +1167,27 @@ def generate_report():
     out_dir = "outputs/z1_m3_sims/compare"
     os.makedirs(out_dir, exist_ok=True)
     report_path = os.path.join(out_dir, "parameter_locks_report.html")
-    with open(report_path, "w") as f:
+    with open(report_path, "w", encoding="utf-8") as f:
         f.write(html_template)
     
-    print(f"✓ Created parameter locks HTML report at: {report_path}")
+    print(f"OK: Created parameter locks HTML report at: {report_path}")
 
     # Copy to the final docs timestamped folder if it exists
     docs_dir = "docs_final/2026-06-19"
     if os.path.exists(docs_dir):
         docs_path = os.path.join(docs_dir, "parameter_locks_report.html")
-        with open(docs_path, "w") as f:
+        with open(docs_path, "w", encoding="utf-8") as f:
             f.write(html_template)
-        print(f"✓ Copied locks report to: {docs_path}")
+        print(f"OK: Copied locks report to: {docs_path}")
 
     # Also output to custom path if provided
     if custom_path:
         custom_dir = os.path.dirname(custom_path)
         if custom_dir:
             os.makedirs(custom_dir, exist_ok=True)
-        with open(custom_path, "w") as f:
+        with open(custom_path, "w", encoding="utf-8") as f:
             f.write(html_template)
-        print(f"✓ Copied locks report to custom path: {custom_path}")
+        print(f"OK: Copied locks report to custom path: {custom_path}")
 
 if __name__ == "__main__":
     generate_report()

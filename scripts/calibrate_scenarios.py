@@ -16,6 +16,7 @@ from projects.z1.m3_full_economy.config import M3EconomyConfig, COHORT_NAMES
 from projects.z1.m3_full_economy.economy import TokenEconomy_Z1
 from projects.z1.m3_full_economy.pools import AgentPool_Z1
 from projects.z1.v2_growth.growth_model import V2GrowthModule
+from scripts.v2_paths import resolve_output_dir, output_path
 
 def run_sim_for_config(config: M3EconomyConfig) -> dict:
     economy = TokenEconomy_Z1(config)
@@ -103,7 +104,8 @@ def calibrate():
     print("Calibrating Scenario Configurations (Reconciliation)")
     print("=" * 60)
     
-    os.makedirs("outputs/v2_2026-07-06_120557", exist_ok=True)
+    output_dir = resolve_output_dir()
+    os.makedirs(output_dir, exist_ok=True)
     scenario_definitions = {}
     
     # We will calibrate the 6 named schemes
@@ -211,9 +213,9 @@ def calibrate():
             print(f"    Epoch {ep:3d}: Sim={s_val:8.2f} vs Growth={g_val:8.2f} | Diff: {diff:+.2f}%")
             
         if best_diff > 0.10:
-            print(f"⚠️ WARNING: Could not reconcile Scheme {scheme_id} within 10% tolerance (best error = {best_diff:.2%})")
+            print(f"WARNING: Could not reconcile Scheme {scheme_id} within 10% tolerance (best error = {best_diff:.2%})")
         else:
-            print(f"✅ Reconciled Scheme {scheme_id} within 10% tolerance (best error = {best_diff:.2%})")
+            print(f"OK: Reconciled Scheme {scheme_id} within 10% tolerance (best error = {best_diff:.2%})")
             
         # Construct the final override dict
         final_overrides = {
@@ -245,7 +247,7 @@ def calibrate():
         scenario_definitions[f"scheme_{scheme_id}"] = final_overrides
         
     # Write to yaml file
-    yaml_path = "outputs/v2_2026-07-06_120557/scenario_definitions.yaml"
+    yaml_path = output_path(output_dir, "scenario_definitions.yaml")
     with open(yaml_path, "w") as f:
         yaml.dump(scenario_definitions, f, default_flow_style=False)
     print(f"\nSuccessfully wrote calibrated override definitions to {yaml_path}")

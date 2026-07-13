@@ -54,6 +54,7 @@ class M3EconomyConfig:
     pcs_referral_weight: float = 0.15
     pcs_diversity_weight: float = 0.15
     pcs_action_cap: float = 0.30
+    # Compatibility name retained; report as an integrity dampener assumption, not a trained ML model.
     pcs_ml_anomaly_gamma: float = 0.95
     pcs_calibration_factor: float = 200.0
     pagerank_cap: float = 0.80
@@ -104,6 +105,10 @@ class M3EconomyConfig:
     throttle_threshold_ratio: float = 0.3
     throttle_multiplier_when_stressed: float = 0.5
     vesting_extension_factor: float = 0.10 # Multiplier for vesting lag under stress
+    alpha_floor: float = 0.25
+    alpha_floor_tolerance: float = 0.02
+    settlement_clamp_buffer: float = 0.025
+    bypass_ar_clamp: bool = False
 
     # M2 Market Dynamics parameters
     amm_initial_z1u: float = 10_000_000.0
@@ -114,6 +119,7 @@ class M3EconomyConfig:
     campaign_burn_share: float = 0.10 # GAP-06: Burn portion of campaign fees
     campaign_deposit_per_epoch: float = 112_000.0  # Aligning M2 campaigns with M1 optimal brand inflow
     treasury_buyback_ratio: float = 0.10 # Ratio of Treasury surplus used to buy Z1U on AMM
+    sell_pressure_buyback_dampener: float = 0.25 # Dampens same-epoch peg defense when sell-pressure routes are active
     
     use_dynamic_settlement_ratio: bool = True
     
@@ -232,9 +238,8 @@ class M3EconomyConfig:
         """
         Compute the master solvency invariant (outflow/inflow ratio).
         
-        < 0.8  → structurally stable
-        0.8–1.0 → boundary (fragile)
-        > 1.0  → likely collapse
+        < 0.8  -> structurally stable
+        >= 0.8 -> violates the documented HARD limit
         
         Formula:
             outflow = Σ(share[c] × claim[c] × settle[c]) × SR
@@ -261,22 +266,16 @@ class M3EconomyConfig:
         
         # L1: Master solvency invariant
         ratio = self.compute_solvency_ratio()
-        if ratio >= 1.0:
+        if ratio >= 0.8:
             diagnostics.append({
                 'lock': 'L1', 'severity': 'HARD', 'status': 'FAIL',
-                'message': f'Solvency ratio = {ratio:.3f} (≥1.0 → likely collapse)',
-                'value': ratio, 'threshold': 0.8,
-            })
-        elif ratio >= 0.8:
-            diagnostics.append({
-                'lock': 'L1', 'severity': 'HARD', 'status': 'WARN',
-                'message': f'Solvency ratio = {ratio:.3f} (0.8–1.0 → boundary, fragile)',
+                'message': f'Solvency ratio = {ratio:.3f} (>=0.8 violates documented HARD limit)',
                 'value': ratio, 'threshold': 0.8,
             })
         else:
             diagnostics.append({
                 'lock': 'L1', 'severity': 'HARD', 'status': 'PASS',
-                'message': f'Solvency ratio = {ratio:.3f} (<0.8 → structurally stable)',
+                'message': f'Solvency ratio = {ratio:.3f} (<0.8 structurally stable)',
                 'value': ratio, 'threshold': 0.8,
             })
 

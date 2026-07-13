@@ -47,16 +47,19 @@ def vest_acr(state: GlobalState, cohort_name: str, throttle_multiplier: float = 
 def queue_settlement_request(state: GlobalState, cohort_name: str, acr_amount: float, z1u_requested: float):
     if acr_amount <= 0: return
     cohort = state.cohorts[cohort_name]
+    requested_sr = z1u_requested / acr_amount if acr_amount > 0 else 0.0
     
     # Ensure they have enough available ACR to request settlement
     if acr_amount > cohort.acr_available:
         acr_amount = cohort.acr_available
+        z1u_requested = acr_amount * requested_sr
     
     cohort.acr_available -= acr_amount
     cohort.acr_queued_for_settlement += acr_amount
     
     state.settlement_queue_acr += acr_amount
     state.settlement_queue_z1u_requested += z1u_requested
+    state.per_epoch_counters['settlement_requested_z1u'] = state.per_epoch_counters.get('settlement_requested_z1u', 0.0) + z1u_requested
 
 
 def execute_settlement(state: GlobalState, cohort_name: str, acr_amount: float, z1u_amount: float):
@@ -83,6 +86,12 @@ def execute_settlement(state: GlobalState, cohort_name: str, acr_amount: float, 
     state.audience_reserve -= actual_z1u
     state.settlement_queue_acr -= actual_acr
     state.settlement_queue_z1u_requested -= actual_z1u
+    if abs(cohort.acr_queued_for_settlement) < 1e-7:
+        cohort.acr_queued_for_settlement = 0.0
+    if abs(state.settlement_queue_acr) < 1e-7:
+        state.settlement_queue_acr = 0.0
+    if abs(state.settlement_queue_z1u_requested) < 1e-7:
+        state.settlement_queue_z1u_requested = 0.0
     
     # Record tracking
     state.per_epoch_counters['settlement_executed_z1u'] = state.per_epoch_counters.get('settlement_executed_z1u', 0.0) + actual_z1u

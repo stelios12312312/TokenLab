@@ -1,10 +1,13 @@
 from typing import Dict, Any
 from .state import GlobalState
 from .config import M3EconomyConfig
+from .invariants import compute_live_supply, compute_ar_floor_coverage_ratio
 
 def extract_epoch_metrics(state: GlobalState, config: M3EconomyConfig) -> Dict[str, Any]:
     """Extract metrics required by Prompt 08 into a flat dictionary."""
-    ar_ratio = state.audience_reserve / config.audience_reserve_initial if config.audience_reserve_initial > 0 else 0
+    ar_drawdown_ratio = state.audience_reserve / config.audience_reserve_initial if config.audience_reserve_initial > 0 else 0
+    live_supply = compute_live_supply(state)
+    ar_floor_coverage_ratio = compute_ar_floor_coverage_ratio(state)
     
     # Runway estimate: (Treasury / net outflow). 
     # M1 specifies a simple rolling outflow approximation. We use current epoch net flow.
@@ -31,7 +34,10 @@ def extract_epoch_metrics(state: GlobalState, config: M3EconomyConfig) -> Dict[s
     return {
         'epoch': state.epoch,
         'audience_reserve': state.audience_reserve,
-        'ar_ratio': ar_ratio,
+        'ar_ratio': ar_drawdown_ratio,
+        'ar_drawdown_ratio': ar_drawdown_ratio,
+        'live_supply': live_supply,
+        'ar_floor_coverage_ratio': ar_floor_coverage_ratio,
         'treasury': state.treasury,
         'treasury_runway_estimate': treasury_runway_estimate,
         'total_acr_issued': state.total_acr_issued,
@@ -51,7 +57,9 @@ def extract_epoch_metrics(state: GlobalState, config: M3EconomyConfig) -> Dict[s
         'brand_inflow_epoch': state.per_epoch_counters.get('brand_inflow', 0.0),
         'throttle_multiplier': state.throttle_multiplier,
         'throttle_active': 1 if state.throttle_multiplier < 1.0 else 0,
-        'ar_floor_breach': 1 if state.ar_floor_breach_count > 0 else 0,
+        'throttle_activation_count': getattr(state, 'throttle_activation_count', 0),
+        'ar_floor_breach': 1 if ar_floor_coverage_ratio < 1.0 else 0,
+        'ar_floor_breach_count': getattr(state, 'ar_floor_breach_count', 0),
         'z1u_price': getattr(state.amm, 'spot_price', 1.0) if hasattr(state, 'amm') else 1.0,
         'escrow_balance': getattr(state.campaigns, 'escrow_balance_z1u', 0.0) if hasattr(state, 'campaigns') else 0.0,
         'is_panicking': 1 if getattr(state, 'is_panicking', False) else 0,
@@ -89,6 +97,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
         per_run = run_groups.agg(
             final_ar_ratio=('ar_ratio', 'last'),
             min_ar_ratio=('ar_ratio', 'min'),
+            min_ar_floor_coverage=('ar_floor_coverage_ratio', 'min'),
             final_treasury=('treasury', 'last'),
             min_treasury=('treasury', 'min'),
             max_queue=('settlement_queue_z1u', 'max'),
@@ -100,6 +109,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             total_inflow=('brand_inflow_epoch', 'sum'),
             throttle_epochs=('throttle_active', 'sum'),
             ar_breach_epochs=('ar_floor_breach', 'sum'),
+            throttle_activation_count=('throttle_activation_count', 'max'),
             final_price=('z1u_price', 'last'),
             min_price=('z1u_price', 'min'),
             final_escrow=('escrow_balance', 'last'),
@@ -116,6 +126,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
         result = {
             'final_ar_ratio': median_final_ar,
             'min_ar_ratio': float(per_run['min_ar_ratio'].min()),  # worst across all runs
+            'min_ar_floor_coverage_ratio': float(per_run['min_ar_floor_coverage'].min()),
             'final_treasury': float(per_run['final_treasury'].median()),
             'min_treasury': float(per_run['min_treasury'].min()),
             'max_settlement_queue_z1u': float(per_run['max_queue'].max()),
@@ -127,6 +138,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             'total_burn': float(per_run['total_burn'].median()),
             'total_brand_inflow': float(per_run['total_inflow'].median()),
             'throttle_epochs': int(median_throttle),
+            'throttle_activation_count': int(per_run['throttle_activation_count'].median()),
             'ar_floor_breach_epochs': int(per_run['ar_breach_epochs'].median()),
             'final_price': float(per_run['final_price'].median()),
             'min_price': float(per_run['min_price'].min()),
@@ -141,7 +153,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
         
         # Classify based on median
         threshold_ar = 0.3
-        if median_final_ar < threshold_ar:
+        if float(per_run['min_ar_floor_coverage'].min()) < 1.0:
             classification = "collapse"
         elif median_l6_breaches > 0:
             classification = "constitutional_breach"
@@ -156,7 +168,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
         # Single run
         final = metrics_df.iloc[-1]
         threshold_ar = 0.3
-        if final['ar_ratio'] < threshold_ar:
+        if final['ar_floor_coverage_ratio'] < 1.0:
             classification = "collapse"
         elif final['l6_breach_epoch_count'] > 0:
             classification = "constitutional_breach"
@@ -170,6 +182,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
         result = {
             'final_ar_ratio': float(final['ar_ratio']),
             'min_ar_ratio': float(metrics_df['ar_ratio'].min()),
+            'min_ar_floor_coverage_ratio': float(metrics_df['ar_floor_coverage_ratio'].min()),
             'final_treasury': float(final['treasury']),
             'min_treasury': float(metrics_df['treasury'].min()),
             'max_settlement_queue_z1u': float(metrics_df['settlement_queue_z1u'].max()),
@@ -181,6 +194,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             'total_burn': float(final['cumulative_z1u_burned']),
             'total_brand_inflow': float(metrics_df['brand_inflow_epoch'].sum()),
             'throttle_epochs': int(metrics_df['throttle_active'].sum()),
+            'throttle_activation_count': int(metrics_df['throttle_activation_count'].max()),
             'ar_floor_breach_epochs': int(metrics_df['ar_floor_breach'].sum()),
             'final_price': float(final['z1u_price']),
             'min_price': float(metrics_df['z1u_price'].min()),

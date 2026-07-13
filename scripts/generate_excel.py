@@ -15,9 +15,11 @@ sys.path.insert(0, root_dir)
 sys.path.insert(0, os.path.join(root_dir, "src"))
 
 from scripts.cfo_projection import run_cfo_projections
+from scripts.v2_paths import resolve_output_dir, output_path
 
-OUTPUT_PATH = "outputs/v2_2026-07-06_120557/cfo_projection_model.xlsx"
-PARQUET_PATH = "outputs/v2_2026-07-06_120557/simulation_results.parquet"
+OUTPUT_DIR = resolve_output_dir()
+OUTPUT_PATH = output_path(OUTPUT_DIR, "cfo_projection_model.xlsx")
+PARQUET_PATH = output_path(OUTPUT_DIR, "simulation_results.parquet")
 
 def build_excel():
     print("=" * 60)
@@ -193,7 +195,7 @@ def build_excel():
         
         # LTV (USD) = ( (Utility_Spend (Z1U) * Spot Price) * fee_share / (MAU + 1) ) * 52
         # Let's read utility spend from merged dataframe row
-        u_spend = float(r["utility_spend"])
+        u_spend = float(r.get("utility_spend", r.get("utility_spend_epoch", 0.0)))
         mau = float(r["monthly_active_users"])
         ws_cfo.cell(row=row_num, column=10, value=f"=(({u_spend}*D{row_num})*0.34/({mau}+1))*52").number_format = "$#,##0.00"
         

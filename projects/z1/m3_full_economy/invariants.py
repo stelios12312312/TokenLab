@@ -1,6 +1,35 @@
 import math
 from .state import GlobalState
 
+def compute_live_supply(state: GlobalState) -> float:
+    total_cohort_z1u = sum(
+        c.z1u_balance + getattr(c, 'staked_z1u', 0.0)
+        for c in state.cohorts.values()
+    )
+    provider_unsold = (
+        state.cumulative_provider_payments
+        if not getattr(state.config, 'provider_amm_sell_enabled', True)
+        else 0.0
+    )
+    return (
+        state.audience_reserve
+        + state.treasury
+        + total_cohort_z1u
+        + provider_unsold
+        + getattr(state, 'cumulative_recirculated_provider_z1u', 0.0)
+        + getattr(state, 'cumulative_cip_funding', 0.0)
+        + getattr(state, 'cumulative_ops_costs', 0.0)
+        + (state.amm.z1u_reserve if hasattr(state, 'amm') else 0.0)
+        + (state.campaigns.escrow_balance_z1u if hasattr(state, 'campaigns') else 0.0)
+        + getattr(state, 'cip_pool_balance', 0.0)
+        + getattr(state, 'vrp_pool_balance', 0.0)
+    )
+
+def compute_ar_floor_coverage_ratio(state: GlobalState) -> float:
+    live_supply = compute_live_supply(state)
+    floor = getattr(state.config, 'alpha_floor', 0.25) * live_supply
+    return state.audience_reserve / floor if floor > 0 else float('inf')
+
 def check_invariants(state: GlobalState) -> list[str]:
     """Returns a list of invariant violation messages. Empty if healthy."""
     errors = []
@@ -55,7 +84,7 @@ def check_invariants(state: GlobalState) -> list[str]:
         errors.append(f"Z1U Conservation leak! Expected: {lhs}, Found: {rhs}")
         
     # 4. Burn Consistency Invariant (F5) — includes CIP/VRP pool balances and staked Z1U
-    live_supply = state.audience_reserve + state.treasury + total_cohort_z1u + provider_unsold + getattr(state, 'cumulative_recirculated_provider_z1u', 0.0) + getattr(state, 'cumulative_cip_funding', 0) + getattr(state, 'cumulative_ops_costs', 0) + (state.amm.z1u_reserve if hasattr(state, 'amm') else 0) + (state.campaigns.escrow_balance_z1u if hasattr(state, 'campaigns') else 0) + getattr(state, 'cip_pool_balance', 0.0) + getattr(state, 'vrp_pool_balance', 0.0)
+    live_supply = compute_live_supply(state)
     total_minted = (state.audience_reserve_initial + state.treasury_initial + state.cumulative_brand_inflow + (state.config.amm_initial_z1u if hasattr(state, 'amm') else 0)
                     + (state.campaigns.cumulative_net_deposits if hasattr(state, 'campaigns') else 0)
                     + getattr(state, 'cumulative_campaign_burn', 0.0)
@@ -68,7 +97,9 @@ def check_invariants(state: GlobalState) -> list[str]:
     # 5. L6 Constitutional AR Floor (P1.17)
     # In M2, this can be structurally violated if the Treasury is bankrupt and the supply inflates (RWA/Campaigns).
     # We do not raise a hard invariant error for this because we want the simulation to complete and classify it as a collapse.
-    if live_supply > 0 and (state.audience_reserve / live_supply) < 0.25 - 2e-2:
+    alpha_floor = getattr(state.config, 'alpha_floor', 0.25)
+    tolerance = getattr(state.config, 'alpha_floor_tolerance', 0.02)
+    if live_supply > 0 and (state.audience_reserve / live_supply) < alpha_floor - tolerance:
          # Log but do not fail the simulation
          state.per_epoch_counters['l6_breaches'] = state.per_epoch_counters.get('l6_breaches', 0.0) + 1.0
          if hasattr(state, 'l6_breach_epoch_count'):

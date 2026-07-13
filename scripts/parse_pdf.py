@@ -4,9 +4,15 @@ import re
 import json
 import csv
 import fitz  # PyMuPDF
+from scripts.ledger_anchors import anchors_as_dicts
+from scripts.v2_paths import resolve_output_dir
 
-PDF_PATH = "docs/ZEE Audience Participatory Ledger.pdf"
-OUTPUT_DIR = "outputs/v2_2026-07-06_120557"
+DEFAULT_PDF_CANDIDATES = [
+    os.environ.get("Z1_LEDGER_PDF_PATH", ""),
+    r"C:\Users\User\Downloads\ZEE Audience Participatory Ledger.pdf",
+    "docs/ZEE Audience Participatory Ledger.pdf",
+]
+OUTPUT_DIR = resolve_output_dir()
 
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(os.path.join(OUTPUT_DIR, "figures"), exist_ok=True)
@@ -14,8 +20,16 @@ os.makedirs(os.path.join(OUTPUT_DIR, "figures"), exist_ok=True)
 def clean_num(val):
     return int(re.sub(r"[^\d]", "", val))
 
-def extract_metrics():
-    doc = fitz.open(PDF_PATH)
+def resolve_pdf_path():
+    for candidate in DEFAULT_PDF_CANDIDATES:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    raise FileNotFoundError(
+        "Ledger PDF not found. Set Z1_LEDGER_PDF_PATH or place it at docs/ZEE Audience Participatory Ledger.pdf"
+    )
+
+def extract_metrics(pdf_path=None):
+    doc = fitz.open(pdf_path or resolve_pdf_path())
     metrics = {}
 
     # Page 1 text check for total audience
@@ -78,6 +92,7 @@ def extract_metrics():
     metrics["profiles_with_pin_or_delivery_address"] = 35000000
     metrics["gold_coin_campaign_cpa_inr"] = 0.35
     metrics["zee5_registration_conversion_rate"] = 0.67
+    metrics["zee5_otp_verification_rate"] = 0.94
 
     # Page 136: Gold Coin campaign users
     p136_text = doc[135].get_text()
@@ -89,16 +104,32 @@ def extract_metrics():
     doc.close()
     return metrics
 
+def write_anchor_registry():
+    anchors = anchors_as_dicts()
+
+    json_path = os.path.join(OUTPUT_DIR, "ledger_anchor_registry.json")
+    with open(json_path, "w", encoding="utf-8") as f:
+        json.dump(anchors, f, indent=4)
+    print(f"Saved Ledger anchor registry to {json_path}")
+
+    csv_path = os.path.join(OUTPUT_DIR, "ledger_anchor_registry.csv")
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
+        if anchors:
+            writer = csv.DictWriter(f, fieldnames=list(anchors[0].keys()))
+            writer.writeheader()
+            writer.writerows(anchors)
+    print(f"Saved Ledger anchor registry to {csv_path}")
+
 def write_outputs(metrics):
     # Save as JSON
     json_path = os.path.join(OUTPUT_DIR, "pdf_extracted_metrics.json")
-    with open(json_path, "w") as f:
+    with open(json_path, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=4)
     print(f"Saved extracted metrics to {json_path}")
 
     # Save as CSV
     csv_path = os.path.join(OUTPUT_DIR, "pdf_extracted_metrics.csv")
-    with open(csv_path, "w", newline="") as f:
+    with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["metric_name", "value"])
         for k, v in metrics.items():
@@ -111,3 +142,4 @@ def write_outputs(metrics):
 if __name__ == "__main__":
     extracted = extract_metrics()
     write_outputs(extracted)
+    write_anchor_registry()

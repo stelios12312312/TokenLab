@@ -5,6 +5,7 @@
 import numpy as np
 import pandas as pd
 import math
+from scripts.ledger_anchors import anchor_value
 
 class V2GrowthModule:
     """
@@ -16,15 +17,37 @@ class V2GrowthModule:
         self.scheme_id = scheme_id
         self.n_epochs = n_epochs
         self.scale_factor = scale_factor
+
+        self.ledger_anchors = {
+            "cumulative_reach_ceiling": anchor_value("cumulative_engaged_audience_total"),
+            "domestic_cumulative_reach_ceiling": anchor_value("cumulative_engaged_audience_domestic"),
+            "international_cumulative_reach_ceiling": anchor_value("cumulative_engaged_audience_international"),
+            "existing_cdp_identity_stock": anchor_value("cdp_unified_identity_stock"),
+            "registered_zee5_stock": anchor_value("zee5_registered_user_stock"),
+            "monthly_active_user_stock": anchor_value("monthly_active_user_stock"),
+            "gold_profile_stock": anchor_value("gold_profile_stock"),
+            "silver_profile_stock": anchor_value("silver_profile_stock"),
+            "bronze_profile_stock": anchor_value("bronze_profile_stock"),
+            "registration_wall_conversion": anchor_value("registration_wall_conversion_rate"),
+            "otp_verification_conversion": anchor_value("otp_verification_rate"),
+        }
+        self.production_adoption_family = "state_transition_hazard"
+        self.linear_profile_role = "control_only"
+        self.profile_tier_semantics = (
+            "Gold/Silver/Bronze are CDP completeness tiers and must not map directly "
+            "to passive/active/power user behavior cohorts."
+        )
         
         # Default baseline funnel conversion parameters
         self.funnel_params = {
-            "tam": 1_450_000_000,                  # Stage 1: Addressable
-            "cdp_ratio": 220_000_000 / 1_450_000_000, # Stage 2: Reachable (15.17%)
-            "exposed_ratio": 95_000_000 / 220_000_000, # Stage 3: Exposed (MAUs / CDP ~ 43.18%)
+            "tam": self.ledger_anchors["cumulative_reach_ceiling"],  # Stage 1: historical reach ceiling
+            "cdp_ratio": self.ledger_anchors["existing_cdp_identity_stock"] / self.ledger_anchors["cumulative_reach_ceiling"],
+            "exposed_ratio": self.ledger_anchors["monthly_active_user_stock"] / self.ledger_anchors["existing_cdp_identity_stock"],
             "participation_ratio": 0.60,            # Stage 4: Participants
-            "registration_ratio": 0.67,             # Stage 5: Registered (ZEE5 rate ~ 67%)
-            "verification_ratio": 35_000_000 / 45_000_000, # Stage 6: Verified profiles (~77.78%)
+            "registration_ratio": self.ledger_anchors["registration_wall_conversion"],
+            # Legacy deterministic V2 reconciliation target. Ledger state columns use the
+            # explicit OTP anchor after claim/OTP attempt.
+            "verification_ratio": 35_000_000 / 45_000_000,
             "pcs_eligible_ratio": 0.60,             # Stage 7: Eligible (Sybil/tenure/activity filter)
             "claim_ratio": 0.50,                    # Stage 8: Claimants
             "settle_ratio": 0.55,                   # Stage 9: Settlers
@@ -80,6 +103,62 @@ class V2GrowthModule:
         else:
             raise ValueError(f"Unknown growth scheme ID: {self.scheme_id}")
 
+    def _adoption_curve_fraction(self, t: int) -> float:
+        if self.curve_type == "logistic_s_curve":
+            L = self.curve_params["L"]
+            k = self.curve_params["k"]
+            t0 = self.curve_params["t0"]
+            f0 = L / (1.0 + math.exp(k * t0))
+            return max(0.0, L / (1.0 + math.exp(-k * (t - t0))) - f0)
+        if self.curve_type == "bass_diffusion":
+            p = self.curve_params["p"]
+            q = self.curve_params["q"]
+            m = self.curve_params["m"]
+            pq = p + q
+            return ((1.0 - math.exp(-pq * t)) / (1.0 + (q / p) * math.exp(-pq * t))) * m
+        if self.curve_type == "campaign_pulse_growth":
+            val = self.curve_params["base_exposed"]
+            for p_t, p_val in self.curve_params["pulses"]:
+                if t >= p_t:
+                    val += p_val
+            return min(1.0, val)
+        if self.curve_type == "linear_control":
+            return min(1.0, t / max(1, self.n_epochs))
+        return self.funnel_params["exposed_ratio"]
+
+    def _ledger_state_values(self, t: int) -> dict:
+        anchors = self.ledger_anchors
+        installed_stock = anchors["existing_cdp_identity_stock"]
+        active_stock = anchors["monthly_active_user_stock"]
+        adoption_fraction = self._adoption_curve_fraction(t)
+
+        z1_aware = min(installed_stock, active_stock + installed_stock * adoption_fraction * 0.45)
+        eligible = z1_aware * 0.60
+        claim_attempt = eligible * self.funnel_params["claim_ratio"]
+        verified_claimant = claim_attempt * anchors["otp_verification_conversion"]
+        active_participant = verified_claimant * 0.70
+        utility_user = active_participant * self.funnel_params["utility_spend_ratio"]
+        settlement_participant = verified_claimant * self.funnel_params["settle_ratio"]
+
+        dormant = max(0.0, verified_claimant - active_participant)
+        churned = active_participant * (1.0 - self.retention_rates[8])
+        reactivated = dormant * 0.08
+
+        return {
+            "existing_cdp_identity_stock": installed_stock,
+            "cumulative_reach_ceiling": anchors["cumulative_reach_ceiling"],
+            "z1_aware": z1_aware,
+            "eligible": eligible,
+            "claim_attempt": claim_attempt,
+            "verified_claimant": verified_claimant,
+            "active_participant": active_participant,
+            "utility_user": utility_user,
+            "settlement_participant": settlement_participant,
+            "dormant": dormant,
+            "churned": churned,
+            "reactivated": reactivated,
+        }
+
     def generate_schedule(self) -> pd.DataFrame:
         schedule = []
         
@@ -99,31 +178,8 @@ class V2GrowthModule:
             # Stage 2: CDP
             cum_users[2][t] = cdp
             
-            # Stage 3: Exposed (S-curve, Bass, or Pulse)
-            if self.curve_type == "logistic_s_curve":
-                L = self.curve_params["L"]
-                k = self.curve_params["k"]
-                t0 = self.curve_params["t0"]
-                # Shift to start at exactly 0 at t=0
-                f0 = L / (1.0 + math.exp(k * t0))
-                exposed_fraction = L / (1.0 + math.exp(-k * (t - t0))) - f0
-                exposed = cdp * max(0.0, exposed_fraction)
-            elif self.curve_type == "bass_diffusion":
-
-                p = self.curve_params["p"]
-                q = self.curve_params["q"]
-                m = self.curve_params["m"]
-                pq = p + q
-                F_t = (1.0 - math.exp(-pq * t)) / (1.0 + (q / p) * math.exp(-pq * t))
-                exposed = cdp * F_t * m
-            elif self.curve_type == "campaign_pulse_growth":
-                val = self.curve_params["base_exposed"]
-                for p_t, p_val in self.curve_params["pulses"]:
-                    if t >= p_t:
-                        val += p_val
-                exposed = cdp * min(1.0, val)
-            else:
-                exposed = cdp * self.funnel_params["exposed_ratio"]
+            # Stage 3: Exposed (S-curve, Bass, Pulse, or linear control)
+            exposed = cdp * self._adoption_curve_fraction(t)
                 
             cum_users[3][t] = exposed
             
@@ -178,6 +234,10 @@ class V2GrowthModule:
             # Add cumulative stage 8 (claimants)
             row["stage_8_cumulative_nominal"] = cum_users[8][t]
             row["stage_8_cumulative_sim"] = cum_users[8][t] * self.scale_factor
+
+            for state_name, nominal in self._ledger_state_values(t).items():
+                row[f"ledger_{state_name}_nominal"] = nominal
+                row[f"ledger_{state_name}_sim"] = nominal * self.scale_factor
             
             schedule.append(row)
             

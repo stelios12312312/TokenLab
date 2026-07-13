@@ -3,6 +3,7 @@ from TokenLab.simulationcomponents.pricingclasses import PriceFunction_EOE
 from TokenLab.simulationcomponents.supplyclasses import SupplyController_Constant
 from .metrics import extract_epoch_metrics
 from .invariants import assert_all_invariants
+from .invariants import compute_live_supply, compute_ar_floor_coverage_ratio
 from .ledger import (
     issue_acr_to_vesting,
     vest_acr,
@@ -87,7 +88,8 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         self.cumulative_unstaked_z1u = 0.0
         
         self.throttle_multiplier = 1.0
-        self.ar_floor_breach_count = 0 # Throttle breach count
+        self.throttle_activation_count = 0
+        self.ar_floor_breach_count = 0
         self.l6_breach_epoch_count = 0 # Constitutional breach count
         self.per_epoch_counters = {}
 
@@ -128,8 +130,12 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         execute_genesis_unlock(self)
         
         # M2 Campaign Inflow
+        receive_brand_inflow(self, self.config.brand_inflow_per_epoch)
+        self.per_epoch_counters['direct_brand_inflow'] = self.per_epoch_counters.get('direct_brand_inflow', 0.0) + self.config.brand_inflow_per_epoch
+
         fee_to_treasury, fee_to_burn = self.campaigns.deposit_campaign_funds(self.config.campaign_deposit_per_epoch)
         receive_brand_inflow(self, fee_to_treasury)
+        self.per_epoch_counters['campaign_fee_inflow'] = self.per_epoch_counters.get('campaign_fee_inflow', 0.0) + fee_to_treasury
         self.total_z1u_burned += fee_to_burn
         self.cumulative_campaign_burn = getattr(self, 'cumulative_campaign_burn', 0.0) + fee_to_burn
         
@@ -243,7 +249,7 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
                 min(w_diversity * norm_diversity, action_cap)
             )
             
-            # Stage 3: ML Anomaly Damper and Calibration
+            # Stage 3: integrity dampener assumption and scenario calibration factor.
             ml_anomaly_gamma = getattr(self.config, 'pcs_ml_anomaly_gamma', 0.95)
             calib_factor = getattr(self.config, 'pcs_calibration_factor', 200.0)
             
@@ -295,7 +301,8 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         for name, pool in cohort_pools.items():
             if name not in getattr(self.config, 'cohort_population_shares', {}).keys(): continue
             pool.bas_score = (self.config.bas_lambda * pool.pcs_score) + ((1 - self.config.bas_lambda) * pool.bas_score)
-            effective_settle_fraction = pool.bas_score * self.config.velocity_scale
+            settle_propensity = self.config.settle_propensity_by_cohort.get(name, 0.0)
+            effective_settle_fraction = settle_propensity * min(1.0, pool.bas_score * self.config.velocity_scale)
             # Apply vesting extension factor under stress (slowing down vesting by an extra 10%)
             vest_throttle = self.throttle_multiplier
             if self.throttle_multiplier < 1.0:
@@ -317,20 +324,14 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         if total_requested_z1u > self.config.settlement_cap_per_epoch:
             demand_modifier = self.config.settlement_cap_per_epoch / total_requested_z1u
             
-        current_total_cohort_z1u = sum(pool.z1u_balance for pool in cohort_pools.values())
-        current_live_supply = (self.audience_reserve + self.treasury + current_total_cohort_z1u 
-                               + getattr(self, 'cumulative_provider_payments', 0.0) 
-                               + getattr(self, 'cumulative_recirculated_provider_z1u', 0.0)
-                               + getattr(self, 'cumulative_cip_funding', 0.0) 
-                               + getattr(self, 'cumulative_ops_costs', 0.0)
-                               + self.amm.z1u_reserve + self.campaigns.escrow_balance_z1u)
+        current_live_supply = compute_live_supply(self)
         
-        ar_min = 0.275 * current_live_supply
+        ar_min = (self.config.alpha_floor + self.config.settlement_clamp_buffer) * current_live_supply
         max_settleable_z1u = max(0.0, self.audience_reserve - ar_min)
         
         total_z1u_theoretical = sum(pool.acr_queued_for_settlement * (getattr(pool, '_temp_sr', 0.0) * demand_modifier) for pool in cohort_pools.values())
         ar_ratio_fairness = max_settleable_z1u / total_z1u_theoretical if total_z1u_theoretical > 0 else 1.0
-        effective_fairness_cap = min(1.0, ar_ratio_fairness)
+        effective_fairness_cap = 1.0 if getattr(self.config, 'bypass_ar_clamp', False) else min(1.0, ar_ratio_fairness)
             
         for name, pool in cohort_pools.items():
             if name not in getattr(self.config, 'cohort_population_shares', {}).keys():
@@ -376,6 +377,12 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
             
         # Treasury AMM Buybacks (L8)
         buyback_ratio = getattr(self.config, 'treasury_buyback_ratio', 0.0)
+        sell_pressure_enabled = (
+            getattr(self.config, 'provider_amm_sell_enabled', True)
+            or getattr(self.config, 'genesis_sell_enabled', True)
+        )
+        if sell_pressure_enabled:
+            buyback_ratio *= getattr(self.config, 'sell_pressure_buyback_dampener', 1.0)
         if buyback_ratio > 0.0 and self.treasury > 0:
             # Only trigger peg defense if spot price falls below the peg ($0.10)
             if self.amm.spot_price < self.amm.initial_spot_price:
@@ -394,7 +401,7 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
         treasury_health = self.audience_reserve / demand if demand > 0 else float('inf')
         
         if treasury_health < self.config.throttle_threshold_ratio:
-            self.ar_floor_breach_count += 1
+            self.throttle_activation_count += 1
             floor_halt = 0.6 * self.config.throttle_threshold_ratio
             if treasury_health < floor_halt:
                 self.throttle_multiplier = 0.0
@@ -403,6 +410,9 @@ class TokenEconomy_Z1(TokenEconomy_Basic):
                 self.throttle_multiplier = ratio_in_range
         else:
             self.throttle_multiplier = 1.0
+
+        if compute_ar_floor_coverage_ratio(self) < 1.0:
+            self.ar_floor_breach_count += 1
             
         # ==================================================
         # M3 Phase 5: Governance Voting (US-Z1-M3-06)

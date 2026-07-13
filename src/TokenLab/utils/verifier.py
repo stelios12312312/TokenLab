@@ -434,8 +434,15 @@ def handle_generate_artifacts(spec_path: str) -> int:
             
         # Execute generator
         try:
-            # We run in shell=True so redirection/pipes work
-            result = subprocess.run(generator, shell=True, check=True, text=True)
+            env = os.environ.copy()
+            env["PYTHONIOENCODING"] = "utf-8"
+            command = generator
+            if command.startswith("PYTHONPATH=src "):
+                existing = env.get("PYTHONPATH", "")
+                env["PYTHONPATH"] = "src" + (os.pathsep + existing if existing else "")
+                command = command[len("PYTHONPATH=src "):]
+            # We run in shell=True so redirection/pipes work.
+            result = subprocess.run(command, shell=True, check=True, text=True, env=env)
         except subprocess.CalledProcessError as e:
             print(f"    ❌ FAIL: Generator command failed with exit code {e.returncode}")
             print(f"    Command was: {generator}")

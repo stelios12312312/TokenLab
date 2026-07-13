@@ -15,10 +15,11 @@ sys.path.insert(0, os.path.join(root_dir, "src"))
 
 from projects.z1.m3_full_economy.config import M3EconomyConfig
 from projects.z1.m3_full_economy.stochastic_runner import run_scenario
+from scripts.v2_paths import resolve_output_dir, output_path
 
-OUTPUT_DIR = "outputs/v2_2026-07-06_120557"
-PARQUET_PATH = os.path.join(OUTPUT_DIR, "simulation_results.parquet")
-YAML_PATH = os.path.join(OUTPUT_DIR, "scenario_definitions.yaml")
+OUTPUT_DIR = resolve_output_dir()
+PARQUET_PATH = output_path(OUTPUT_DIR, "simulation_results.parquet")
+YAML_PATH = output_path(OUTPUT_DIR, "scenario_definitions.yaml")
 
 def get_base_config_for_scheme(scheme_id: int, scenario_defs: dict) -> M3EconomyConfig:
     config = M3EconomyConfig()
@@ -26,7 +27,7 @@ def get_base_config_for_scheme(scheme_id: int, scenario_defs: dict) -> M3Economy
     if scheme_key in scenario_defs:
         for key, val in scenario_defs[scheme_key].items():
             setattr(config, key, val)
-    config.bypass_hard_locks = True
+    config.bypass_hard_locks = False
     return config
 
 
@@ -126,6 +127,8 @@ def run_all_scenarios():
                 "genesis_sell_enabled": True,
                 # settlement propensity / ratio tripled
                 "settlement_ratio": 0.1047 * 3.0,
+                "bypass_hard_locks": True,
+                "bypass_ar_clamp": True,
                 "settle_propensity_by_cohort": {
                     "passive_viewers": min(1.0, 0.0051 * 3.0),
                     "active_viewers": min(1.0, 0.0102 * 3.0),
@@ -142,7 +145,9 @@ def run_all_scenarios():
             "overrides": {
                 "governance_staking_enabled": True,
                 "provider_amm_sell_enabled": True,
-                "genesis_sell_enabled": True
+                "genesis_sell_enabled": True,
+                "bypass_hard_locks": True,
+                "bypass_ar_clamp": True
             },
             "inject_point_shock": True
         },
@@ -155,7 +160,8 @@ def run_all_scenarios():
                 "governance_staking_enabled": True,
                 "provider_amm_sell_enabled": True,
                 "genesis_sell_enabled": True,
-                "campaign_deposit_per_epoch": 112000.0 * 0.3 # campaign_deposit * 0.3
+                "campaign_deposit_per_epoch": 112000.0 * 0.3, # campaign_deposit * 0.3
+                "bypass_hard_locks": True
             }
         },
         {
@@ -185,6 +191,8 @@ def run_all_scenarios():
                 "provider_amm_sell_enabled": True,
                 "genesis_sell_enabled": True,
                 "settlement_ratio": 0.1047 * 3.0,
+                "bypass_hard_locks": True,
+                "bypass_ar_clamp": True,
                 "settle_propensity_by_cohort": {
                     "passive_viewers": min(1.0, 0.0051 * 3.0),
                     "active_viewers": min(1.0, 0.0102 * 3.0),
@@ -219,7 +227,8 @@ def run_all_scenarios():
                 "governance_staking_enabled": True,
                 "provider_amm_sell_enabled": True,
                 "genesis_sell_enabled": True,
-                "treasury_buyback_ratio": 0.0
+                "treasury_buyback_ratio": 0.0,
+                "bypass_hard_locks": True
             }
         },
         {
@@ -267,6 +276,11 @@ def run_all_scenarios():
             reps=reps,
             inject_point_shock=inject_shock
         )
+        df_sc["diagnostic_bypass"] = bool(getattr(config, "bypass_hard_locks", False) or getattr(config, "bypass_ar_clamp", False))
+        if df_sc["diagnostic_bypass"].iloc[0]:
+            df_sc["diagnostic_reason"] = "stress_boundary_discovery"
+        else:
+            df_sc["diagnostic_reason"] = ""
         dfs.append(df_sc)
         
     combined = pd.concat(dfs, ignore_index=True)
