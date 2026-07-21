@@ -37,7 +37,7 @@ concurrency:
 jobs:
   parity-and-remediation:
     name: Golden parity and M3 remediation
-    runs-on: ubuntu-24.04
+    runs-on: macos-15-intel
     timeout-minutes: 15
     env:
       MPLBACKEND: Agg
