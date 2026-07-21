@@ -6,6 +6,7 @@ import hashlib
 import importlib
 import json
 import random
+import sys
 from dataclasses import fields
 from pathlib import Path
 from typing import Any, Callable
@@ -13,6 +14,9 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 import pytest
+
+if sys.version_info < (3, 10):
+    pytest.skip("Z1 M3 uses Python 3.10 union annotations", allow_module_level=True)
 
 from projects.z1.core_solvency.config import SolvencyConfig as M1Config
 from projects.z1.core_solvency.run import run_simulation as run_m1
