@@ -1,0 +1,98 @@
+"""Golden-output parity contract for the three Z1 economy milestones."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import random
+from pathlib import Path
+from typing import Any, Callable
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from projects.z1.core_solvency.config import SolvencyConfig as M1Config
+from projects.z1.core_solvency.run import run_simulation as run_m1
+from projects.z1.m2_market_dynamics.config import SolvencyConfig as M2Config
+from projects.z1.m2_market_dynamics.run import run_simulation as run_m2
+from projects.z1.m3_full_economy.config import M3EconomyConfig
+from projects.z1.m3_full_economy.stochastic_runner import run_single_simulation
+
+
+FIXTURE_PATH = Path(__file__).parent / "fixtures" / "parity" / "z1_milestones_golden.json"
+SEED = 20_260_721
+N_EPOCHS = 50
+
+
+def _run_m1() -> pd.DataFrame:
+    config = M1Config(n_epochs=N_EPOCHS, random_seed=SEED, repetitions=1)
+    return pd.DataFrame(run_m1(config))
+
+
+def _run_m2() -> pd.DataFrame:
+    config = M2Config(n_epochs=N_EPOCHS, random_seed=SEED, repetitions=1)
+    return pd.DataFrame(run_m2(config))
+
+
+def _run_m3() -> pd.DataFrame:
+    config = M3EconomyConfig(n_epochs=N_EPOCHS, random_seed=SEED, repetitions=1)
+    return run_single_simulation(
+        scenario_id="parity",
+        run_id=0,
+        seed=SEED,
+        base_config=config,
+        is_stochastic=False,
+    )
+
+
+def _json_scalar(value: Any) -> Any:
+    if isinstance(value, np.generic):
+        value = value.item()
+    if pd.isna(value):
+        return None
+    return value
+
+
+def _capture(run: Callable[[], pd.DataFrame]) -> dict[str, Any]:
+    random.seed(SEED)
+    np.random.seed(SEED)
+    frame = run()
+    columns = [column for column in frame.columns if column != "iteration_time"]
+    normalized_rows = [
+        [_json_scalar(value) for value in row]
+        for row in frame[columns].itertuples(index=False, name=None)
+    ]
+    epoch_hashes = [
+        hashlib.sha256(
+            json.dumps(row, separators=(",", ":"), allow_nan=False).encode("utf-8")
+        ).hexdigest()
+        for row in normalized_rows
+    ]
+    return {
+        "columns": columns,
+        "epoch_hashes": epoch_hashes,
+        "final_state": dict(zip(columns, normalized_rows[-1])),
+    }
+
+
+@pytest.mark.parametrize(
+    ("milestone", "run"),
+    [("m1", _run_m1), ("m2", _run_m2), ("m3", _run_m3)],
+)
+def test_fixed_seed_milestone_outputs_match_golden(
+    milestone: str, run: Callable[[], pd.DataFrame]
+) -> None:
+    fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+    assert fixture["seed"] == SEED
+    assert fixture["n_epochs"] == N_EPOCHS
+    assert _capture(run) == fixture["milestones"][milestone]
+
+
+def test_m3_golden_keeps_remediated_ar_metrics_distinct() -> None:
+    fixture = json.loads(FIXTURE_PATH.read_text(encoding="utf-8"))
+    columns = fixture["milestones"]["m3"]["columns"]
+    assert "ar_drawdown_ratio" in columns
+    assert "ar_floor_coverage_ratio" in columns
+    assert "throttle_activation_count" in columns
+    assert "l6_breach_epoch_count" in columns
