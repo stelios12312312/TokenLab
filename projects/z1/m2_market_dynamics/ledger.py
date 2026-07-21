@@ -1,5 +1,7 @@
 """M2-compatible public ledger surface backed by the shared core."""
 
+from types import SimpleNamespace
+
 from projects.z1.shared_core import ledger as _shared
 from projects.z1.shared_core.policies import M2_POLICY
 
@@ -25,3 +27,13 @@ def spend_z1u(state, cohort_name: str, spend_amount: float, provider_payment: fl
 
 receive_brand_inflow = _shared.receive_brand_inflow
 treasury_topup_ar = _shared.treasury_topup_ar
+
+LEDGER_API = SimpleNamespace(
+    issue_acr_to_vesting=issue_acr_to_vesting,
+    vest_acr=vest_acr,
+    queue_settlement_request=queue_settlement_request,
+    execute_settlement=execute_settlement,
+    spend_z1u=spend_z1u,
+    receive_brand_inflow=receive_brand_inflow,
+    treasury_topup_ar=treasury_topup_ar,
+)

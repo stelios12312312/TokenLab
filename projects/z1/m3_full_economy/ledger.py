@@ -1,5 +1,7 @@
 """M3-compatible public ledger surface backed by the shared core."""
 
+from types import SimpleNamespace
+
 from projects.z1.shared_core import ledger as _shared
 from projects.z1.shared_core.policies import M3_POLICY
 
@@ -31,3 +33,19 @@ stake_z1u = _shared.stake_z1u
 unstake_z1u = _shared.unstake_z1u
 distribute_cip_to_creators = _shared.distribute_cip_to_creators
 distribute_vrp_to_validators = _shared.distribute_vrp_to_validators
+
+LEDGER_API = SimpleNamespace(
+    issue_acr_to_vesting=issue_acr_to_vesting,
+    vest_acr=vest_acr,
+    queue_settlement_request=queue_settlement_request,
+    execute_settlement=execute_settlement,
+    spend_z1u=spend_z1u,
+    receive_brand_inflow=receive_brand_inflow,
+    treasury_topup_ar=treasury_topup_ar,
+    execute_genesis_unlock=execute_genesis_unlock,
+    fund_pools_waterfall=fund_pools_waterfall,
+    stake_z1u=stake_z1u,
+    unstake_z1u=unstake_z1u,
+    distribute_cip_to_creators=distribute_cip_to_creators,
+    distribute_vrp_to_validators=distribute_vrp_to_validators,
+)
