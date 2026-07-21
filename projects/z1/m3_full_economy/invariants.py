@@ -4,10 +4,7 @@ from projects.z1.shared_core import invariants as _shared
 from projects.z1.shared_core.policies import M3_POLICY
 
 
-def compute_live_supply(state):
-    return _shared.compute_live_supply(state, "canonical")
-
-
+compute_live_supply = _shared.compute_live_supply
 compute_ar_floor_coverage_ratio = _shared.compute_ar_floor_coverage_ratio
 
 
