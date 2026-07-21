@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import random
+from dataclasses import fields
 from pathlib import Path
 from typing import Any, Callable
 
@@ -17,7 +19,9 @@ from projects.z1.core_solvency.run import run_simulation as run_m1
 from projects.z1.m2_market_dynamics.config import SolvencyConfig as M2Config
 from projects.z1.m2_market_dynamics.run import run_simulation as run_m2
 from projects.z1.m3_full_economy.config import M3EconomyConfig
+from projects.z1.m3_full_economy.economy import TokenEconomy_Z1 as M3Economy
 from projects.z1.m3_full_economy.stochastic_runner import run_single_simulation
+from projects.z1.shared_core.economy import ConfiguredZ1Economy
 
 
 FIXTURE_PATH = Path(__file__).parent / "fixtures" / "parity" / "z1_milestones_golden.json"
@@ -96,3 +100,28 @@ def test_m3_golden_keeps_remediated_ar_metrics_distinct() -> None:
     assert "ar_floor_coverage_ratio" in columns
     assert "throttle_activation_count" in columns
     assert "l6_breach_epoch_count" in columns
+
+
+def test_legacy_module_paths_and_config_dataclasses_remain_compatible() -> None:
+    for milestone in ("core_solvency", "m2_market_dynamics", "m3_full_economy"):
+        for module in ("config", "economy", "invariants", "ledger"):
+            assert importlib.import_module(f"projects.z1.{milestone}.{module}")
+
+    assert [field.name for field in fields(M1Config)][0:3] == [
+        "n_epochs", "random_seed", "repetitions"
+    ]
+    assert [field.name for field in fields(M2Config)][0:3] == [
+        "n_epochs", "random_seed", "repetitions"
+    ]
+    assert [field.name for field in fields(M3EconomyConfig)][0:3] == [
+        "n_epochs", "random_seed", "repetitions"
+    ]
+    assert "_z1_milestone" not in {field.name for field in fields(M3EconomyConfig)}
+
+
+def test_m3_public_economy_remains_subclassable_through_shared_core() -> None:
+    class CustomM3Economy(M3Economy):
+        pass
+
+    economy = CustomM3Economy(M3EconomyConfig(n_epochs=1))
+    assert isinstance(economy, ConfiguredZ1Economy)
