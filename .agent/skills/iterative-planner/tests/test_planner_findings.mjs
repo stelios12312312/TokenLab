@@ -660,6 +660,27 @@ Quant model changes need temporal split and leakage evidence before trust increa
 `,
     });
 
+    // Leakage/temporal proofs are artifact-backed (SB-1 hardening): a bare
+    // proof_recorded event is ignored unless its artifact_path passes the
+    // leakage-proof check (split-evidence date ranges + folds + clean scan).
+    // Provide a valid artifact so the proofs are trusted and the gap clears.
+    mkdirSync(join(tmp, "reports", "quant"), { recursive: true });
+    const leakageArtifactRel = "reports/quant/leakage_proof.json";
+    writeFileSync(join(tmp, leakageArtifactRel), JSON.stringify({
+      split_evidence: {
+        train: { start: "2024-01-01", end: "2024-03-31" },
+        validation: { start: "2024-04-02", end: "2024-05-31" },
+        final_oos: { start: "2024-06-02", end: "2024-07-31" },
+        embargo_days: 1,
+        folds: [
+          { train_end: "2024-03-31", test_start: "2024-04-02", test_end: "2024-04-30" },
+          { train_end: "2024-05-31", test_start: "2024-06-02", test_end: "2024-07-31" },
+        ],
+        known_at_time_boundary: "All features are available before each fold cutoff.",
+      },
+      source_leakage_scan: { status: "pass", findings: [] },
+    }, null, 2) + "\n");
+
     seedTelemetry(planDir, [
       {
         event: "surface_touched",
@@ -678,6 +699,7 @@ Quant model changes need temporal split and leakage evidence before trust increa
         repo_root: tmp,
         proof_type: "temporal_split_check",
         command: "python scripts/walk_forward_check.py",
+        artifact_path: leakageArtifactRel,
         source: "post_tool_use",
         trust_level: "trusted",
       },
@@ -688,6 +710,7 @@ Quant model changes need temporal split and leakage evidence before trust increa
         repo_root: tmp,
         proof_type: "leakage_check",
         command: "python scripts/leakage_check.py",
+        artifact_path: leakageArtifactRel,
         source: "post_tool_use",
         trust_level: "trusted",
       },

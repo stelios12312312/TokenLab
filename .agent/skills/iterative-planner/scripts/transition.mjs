@@ -15,7 +15,7 @@
 // Exit codes: 0 = all pass (transition allowed), 1 = any FAIL (transition blocked).
 // Zero dependencies — Node.js 18+.
 
-import { readFileSync, writeFileSync, existsSync, chmodSync, unlinkSync, readdirSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, chmodSync, unlinkSync, readdirSync, mkdirSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { createHash, randomBytes } from "crypto";
 import { spawnSync } from "child_process";
@@ -59,7 +59,12 @@ function maybeRunSelfHeal(projectRoot, entryArgs) {
 
   const migrateScript = join(sourceRepo, ".agent", "skills", "iterative-planner", "scripts", "migrate.mjs");
   if (!existsSync(migrateScript)) {
-    console.warn(`⚠️  Planner self-heal skipped — canonical migrate.mjs not found at ${migrateScript}`);
+    // T-INTAKE-A0AAAFC1 AC4: a registry source_project_path from another machine
+    // (the whole repo dir is absent here) is a stale registry, not a repair
+    // problem — skip silently instead of warning on every transition forever.
+    if (existsSync(sourceRepo)) {
+      console.warn(`⚠️  Planner self-heal skipped — canonical migrate.mjs not found at ${migrateScript}`);
+    }
     return;
   }
 
@@ -120,8 +125,8 @@ const {
   loadFindingsLedger, syncFindingsMarkdownFromLedger,
 } = await import("./lib/plan_utils.mjs");
 const {
-  isFeatureEnabled, readStateJson, writeStateJson,
-  appendDecisionLog, buildDecisionEntry, writeProofTrace,
+  isFeatureEnabled, loadConfig, readStateJson, writeStateJson,
+  appendDecisionLog, buildDecisionEntry, deriveGateDecision, writeProofTrace,
   hashAllScripts, nowISO, nowCompact, getReplayDir, loadReplayArtifacts,
   withFailureCode, getRuleBundleVersion, sortResults,
   checkConfigIntegrity, validateStateIntegrity,
@@ -132,11 +137,15 @@ const {
 } = await import("./lib/determinism.mjs");
 const { runPersonaAuditGate } = await import("./audit_runner.mjs");
 const { runChecklist } = await import("./lib/checklist_runner.mjs");
+const { recordGateMetrics } = await import("./lib/plan_metrics.mjs");
 const { refreshPlanArtifacts } = await import("./lib/plan_refresh.mjs");
 const { persistReviewIntakeSource } = await import("./lib/review_intake.mjs");
 const { writeScopeContract, summarizeScopeContract } = await import("./lib/scope_contract.mjs");
 const { buildPhaseContract, resolveAuthorityProfile, resolveProofPosture } = await import("./lib/planner_phase_routing.mjs");
 const { computePlanTamperFingerprint } = await import("./lib/plan_integrity.mjs");
+const { buildEnvelope, getEnvelopePath } = await import("./lib/plan_contract.mjs");
+const { EXECUTED_TEST_GATES_FILE, TEST_GATED_TRANSITIONS, runExecutedTestGate } = await import("./lib/autonomous_driver.mjs");
+const { loadAgentOrchestrationConfig, validateAgentWhitelist } = await import("./lib/agent_orchestration.mjs");
 const { plansDir, knowledgeDir } = getPaths(cwd);
 const ACTIVE_PLAN_ALIAS_LABEL = "plans/ACTIVE_PLAN.md";
 
@@ -191,6 +200,47 @@ function persistAutoModeKbDigestProof(planDir, kbDigestSalt) {
     mode: ledgerError ? "ledger_error" : "missing_findings",
     detail: ledgerError || "No findings artifact was available for KB digest persistence",
   };
+}
+
+function persistAutoModeApprovalEnvelope(planDir, approvalNonce) {
+  if (!planDir || !approvalNonce) {
+    return { persisted: false, reason: "planDir and approval nonce are required" };
+  }
+  const buildResult = buildEnvelope(planDir, {
+    approvalNonce,
+    approverOrigin: "auto",
+  });
+  if (!buildResult.envelope) {
+    return {
+      persisted: false,
+      reason: `[${buildResult.reason_code}] ${buildResult.detail}`,
+    };
+  }
+
+  const releaseLock = acquireStateLock(planDir, 2000);
+  if (!releaseLock) {
+    return { persisted: false, reason: "could not acquire state lock" };
+  }
+  try {
+    writeFileSync(getEnvelopePath(planDir), JSON.stringify(buildResult.envelope, null, 2) + "\n");
+    const state = readStateJson(planDir);
+    if (!state) {
+      return { persisted: false, reason: "state.json unreadable after envelope write" };
+    }
+    state.approval_envelope_path = "approval_envelope.json";
+    state.approval_envelope_schema = buildResult.envelope.schema_version;
+    const written = writeStateJson(planDir, state);
+    if (!written) {
+      return { persisted: false, reason: "state.json pointer update failed" };
+    }
+    syncStateMarkdown(planDir, state);
+    return {
+      persisted: true,
+      schema_version: buildResult.envelope.schema_version,
+    };
+  } finally {
+    releaseLock();
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -630,11 +680,16 @@ async function runTransition(gate, opts = {}) {
   }
   syncStateMarkdown(planDir, stateJsonForCloseCheck);
 
-  // AV-19 + RT-AUDIT-H2: Per-gate retry cooldown — prevent brute-force content changes.
-  // Checks the last attempt for THIS SPECIFIC gate, not just the global last transition.
-  // The old check only looked at the last transition globally — an LLM could bypass the
-  // cooldown by running a different gate (e.g. notify-user) in between retries.
-  const GATE_COOLDOWN_MS = 10_000; // 10 seconds between retries of the same gate
+  // AV-19 + RT-AUDIT-H2: Per-gate retry guards against brute-force content changes.
+  // The TIME-BASED cooldown is disabled by default (T-INTAKE-8CD950E7, 2026-06-10):
+  // the persistent circuit breaker (CIRCUIT_BREAKER_OPEN) and the GATE-RETRY-001
+  // thrash guard already catch brute-force retry loops, while the wall-clock
+  // cooldown only added dead time to honest fix-and-retry loops (friction_log F5).
+  // Re-enable via determinism.json features.gate_retry_cooldown if ever needed.
+  const cooldownFeature = loadConfig().features?.gate_retry_cooldown || {};
+  const GATE_COOLDOWN_MS = cooldownFeature.enabled === true
+    ? (Number(cooldownFeature.cooldown_ms) > 0 ? Number(cooldownFeature.cooldown_ms) : 10_000)
+    : 0;
   const GATE_THRASH_GUARD_THRESHOLD = 3;
   const stateJsonForCooldown = readStateJson(planDir);
   let historyPoisonDiagnostic = null;
@@ -682,7 +737,8 @@ async function runTransition(gate, opts = {}) {
       process.exit(2);
     }
 
-    // Time-based cooldown (original logic)
+    // Time-based cooldown (opt-in via features.gate_retry_cooldown; default off)
+    if (GATE_COOLDOWN_MS > 0) {
     const gateDefForCooldown = GATE_REGISTRY[gate];
     const gateFromStates = gateDefForCooldown
       ? (Array.isArray(gateDefForCooldown.from) ? gateDefForCooldown.from : [gateDefForCooldown.from]).map(s => s?.toUpperCase())
@@ -703,6 +759,7 @@ async function runTransition(gate, opts = {}) {
         }
       }
       break;
+    }
     }
   }
 
@@ -810,6 +867,37 @@ async function runTransition(gate, opts = {}) {
       allResults.push(r);
       console.log();
     }
+  }
+
+  // Step 0e: e05 AC1/AC2 — Agent orchestration whitelist integrity.
+  // The Agent() whitelist + single-foreground-writer policy (config/agent_orchestration.json)
+  // is the anti-gate-bypass orchestration contract. Validate it here so a tampered or malformed
+  // policy blocks the gate rather than sitting as unwired shelf-ware. A FAIL flows through the
+  // normal blocking spine (totalFail > 0) instead of an early exit.
+  {
+    let orchestrationResult;
+    try {
+      const orchestrationConfig = loadAgentOrchestrationConfig();
+      const whitelist = validateAgentWhitelist(orchestrationConfig);
+      orchestrationResult = check(
+        "Agent orchestration whitelist integrity",
+        whitelist.ok ? PASS : FAIL,
+        whitelist.ok
+          ? `${(orchestrationConfig.agents || []).length} whitelisted agent(s); single-foreground-writer policy intact`
+          : `Orchestration policy invalid: ${whitelist.issues.map((i) => i.code).join(", ")}`
+      );
+    } catch (e) {
+      orchestrationResult = check(
+        "Agent orchestration whitelist integrity",
+        FAIL,
+        `agent_orchestration.json could not be loaded: ${e.message}`
+      );
+    }
+    if (orchestrationResult.status === FAIL) {
+      printSection("Agent Orchestration Whitelist (e05)");
+      printResults([orchestrationResult]);
+    }
+    allResults.push(orchestrationResult);
   }
 
   // Step 0: Source-state validation — derived from gates.json
@@ -975,6 +1063,33 @@ async function runTransition(gate, opts = {}) {
     }
   }
 
+  if (planDir && TEST_GATED_TRANSITIONS.has(gate)) {
+    printSection("Executed Test Baseline Gate");
+    const executedTestGate = runExecutedTestGate({
+      cwd,
+      skillPath,
+      planDir,
+      planDirName,
+      gate,
+      autonomous: process.env.PLANNER_AUTONOMOUS_DRIVER === "1",
+    });
+    const status = executedTestGate.status === "passed"
+      ? PASS
+      : executedTestGate.blocking
+        ? FAIL
+        : WARN;
+    const r = withFailureCode(check(
+      "test_baseline.mjs verify executed for test-gated transition",
+      status,
+      executedTestGate.status === "passed"
+        ? `${gate}: exit code 0; evidence ${EXECUTED_TEST_GATES_FILE || "executed_test_gates.json"}`
+        : `${gate}: ${executedTestGate.detail}; exit code ${executedTestGate.exit_code ?? "n/a"}`
+    ), "GATE-TST-001");
+    printResults([r]);
+    allResults.push(r);
+    console.log();
+  }
+
   // Step 1.8: Deterministic stale-plan context preflight.
   // Recent reads from non-active plans warn; recent edits/writes block the gate.
   {
@@ -1017,6 +1132,48 @@ async function runTransition(gate, opts = {}) {
       printResults([r]);
       allResults.push(r);
       console.log();
+    }
+  }
+
+  // Step 1.9: Knowledge Trigger obligations for this gate (ive-ontology-memory).
+  // Portable enforcement: an obligation KT whose when-match fires at this gate must
+  // have its required evidence recorded, or the gate blocks. Fires for ANY agent that
+  // invokes the planner (not a harness hook), so a fast/cheap model can't forget it.
+  // Non-matching plans add no checks (scoped to the obligation's triggers).
+  if (planDir) {
+    try {
+      const { evaluateObligationGate } = await import("./lib/knowledge_triggers.mjs");
+      const ktPlanContent = existsSync(join(planDir, "plan.md")) ? readFileSync(join(planDir, "plan.md"), "utf-8") : "";
+      const ktFilesSection = ktPlanContent.match(/##\s+Files\s+[Tt]o\s+[Mm]odify\s*\n([\s\S]*?)(?=\n##|$)/);
+      let ktPlannedFiles = [];
+      if (ktFilesSection) {
+        ktPlannedFiles = (ktFilesSection[1].match(/^\s*[-*]\s+`?([^`\s]+)`?/gm) || [])
+          .map((line) => line.replace(/^\s*[-*]\s+`?/, "").replace(/`?\s*$/, "").trim())
+          .filter(Boolean);
+      }
+      const obligations = evaluateObligationGate({
+        gate,
+        planDir,
+        goalText: stateJson.goal || "",
+        plannedFiles: ktPlannedFiles,
+      });
+      if (obligations.length > 0) {
+        printSection("Knowledge Trigger Obligations");
+        for (const o of obligations) {
+          const r = check(
+            `Obligation ${o.id}`,
+            o.satisfied ? PASS : FAIL,
+            o.satisfied
+              ? "Required evidence recorded"
+              : `${o.directive}${o.prompt_ref ? ` (see ${o.prompt_ref})` : ""} — then record evidence: ${o.missing_evidence.join(", ")}`
+          );
+          printResults([r]);
+          allResults.push(r);
+        }
+        console.log();
+      }
+    } catch {
+      // best-effort: never crash a transition on Knowledge Trigger evaluation
     }
   }
 
@@ -1108,8 +1265,18 @@ async function runTransition(gate, opts = {}) {
         // "notify-user" has no "-to-" separator, causing auditPhase = "NOTIFY-USER" (invalid).
         const auditPhase = (Array.isArray(gateDef?.from) ? gateDef.from[0] : gateDef?.from)?.toUpperCase() || "EXPLORE";
         const { results: traceResults, coverage, totalRules, passedRules } = auditTrace(planDir, auditPhase);
-        printResults(traceResults);
-        allResults.push(...traceResults);
+        // Capability contract (bootstrap status: "Gates must not require trace
+        // proof while capture is OFF — treat trace audits as advisory"): when the
+        // IDE cannot capture tool traces, a partial/stale trace file must not
+        // hard-block the gate. Downgrade FAIL trace rules to WARN in unsupported
+        // mode; supported IDEs keep full enforcement.
+        const effectiveTraceResults = traceAuditMode === "unsupported"
+          ? traceResults.map((r) => r.status === FAIL
+              ? { ...r, status: WARN, detail: `${r.detail} (advisory: IDE '${ideInfo.ide}' cannot capture tool traces — GATE-TRC-009)` }
+              : r)
+          : traceResults;
+        printResults(effectiveTraceResults);
+        allResults.push(...effectiveTraceResults);
 
         _traceSummary = {
           total_calls: traceResults.length,
@@ -1178,7 +1345,25 @@ async function runTransition(gate, opts = {}) {
         }
         if (semanticResults.length > 0) {
           const mapped = semanticResults.map(r => check(r.name, r.status, r.detail));
-          printResults(mapped);
+          // T-INTAKE-A0AAAFC1 AC3: recurring WARN advisories (identical name+detail
+          // already shown at a previous transition of this plan) are suppressed to a
+          // single count line. Display-only — allResults still carries every WARN, so
+          // summaries, decision logs, and enforcement are unchanged.
+          const advisoryMarkerPath = join(planDir, "artifacts", ".invariant_advisories.json");
+          let previouslyShown = new Set();
+          try { previouslyShown = new Set(JSON.parse(readFileSync(advisoryMarkerPath, "utf-8")).keys || []); } catch { /* first transition */ }
+          const advisoryKey = (r) => `${r.name}::${r.detail || ""}`;
+          const recurring = mapped.filter((r) => r.status === WARN && previouslyShown.has(advisoryKey(r)));
+          const printable = mapped.filter((r) => !recurring.includes(r));
+          printResults(printable);
+          if (recurring.length > 0) {
+            console.log(`  ⚠️ ${recurring.length} recurring advisor${recurring.length === 1 ? "y" : "ies"} suppressed (unchanged since a previous transition; full list: plans/${planDirName}/artifacts/.invariant_advisories.json)`);
+          }
+          try {
+            const allWarnKeys = mapped.filter((r) => r.status === WARN).map(advisoryKey);
+            mkdirSync(join(planDir, "artifacts"), { recursive: true });
+            writeFileSync(advisoryMarkerPath, `${JSON.stringify({ updated_at: nowISO(), gate, keys: allWarnKeys, entries: mapped.filter((r) => r.status === WARN) }, null, 2)}\n`);
+          } catch { /* marker is best-effort display state, never enforcement */ }
           allResults.push(...mapped);
           // Phase B: render Suggested Fixes via the unit-tested helper rather
           // than inline so the rendered format is locked by test_supervisor_runner.mjs.
@@ -1269,7 +1454,7 @@ async function runTransition(gate, opts = {}) {
     gate,
     { plan: planDirName, source_state: expectedSources.join("|") },
     allResults,
-    totalFail > 0 ? "BLOCKED" : "ALLOWED",
+    deriveGateDecision(allResults),
     totalFail > 0 ? null : (gateDef?.to ? gateDef.to.toUpperCase() : null)
   ));
   if (!logWritten && isFeatureEnabled("decision_logs")) {
@@ -1448,7 +1633,31 @@ async function runTransition(gate, opts = {}) {
         }
       }
 
-      const stateWritten = writeStateJson(planDir, stateJson);
+      // Phase 0.5 metrics: capture this gate attempt (pass or fail) per plan —
+      // total attempts, retries (prior failures for this gate folded in), and
+      // close timing. Best-effort; metrics.json is a side artifact and must
+      // never block a transition.
+      try {
+        recordGateMetrics({
+          projectRoot: cwd,
+          planDirName,
+          planDir,
+          gate,
+          status: totalFail === 0 ? "PASS" : "FAIL",
+          at: nowISO(),
+          failureCodes: totalFail > 0
+            ? allResults.filter((r) => r && r.status === FAIL && r.code).map((r) => r.code)
+            : [],
+          resultingState: totalFail === 0 ? stateJson.state : null,
+        });
+      } catch (e) {
+        debugLog("transition", `plan metrics record failed: ${e.message}`);
+      }
+
+      const stateWritten = writeStateJson(planDir, stateJson, {
+        allowPhaseMutation: true,
+        mutationOrigin: `transition:${gate}`,
+      });
       if (stateWritten) {
         syncStateMarkdown(planDir, stateJson);
         syncActivePlanAlias(plansDir, { planDirName, planDir, stateJson });
@@ -1481,11 +1690,26 @@ async function runTransition(gate, opts = {}) {
       results: allResults,
     });
     if (repairPacket.length > 0) {
+      // T-INTAKE-A0AAAFC1 AC2: print the full packet once per gate; on repeated
+      // identical failures print a one-line pointer instead of ~1.5k tokens.
+      const packetHash = createHash("sha256").update(repairPacket.join("\n")).digest("hex").slice(0, 16);
+      const packetMarkerPath = join(planDir, "artifacts", `.repair_packet_${gate}.json`);
+      let lastPacketHash = null;
+      try { lastPacketHash = JSON.parse(readFileSync(packetMarkerPath, "utf-8")).hash; } catch { /* first attempt */ }
       console.log();
-      console.log("  -- Deterministic Repair Packet --");
-      for (const line of repairPacket) {
-        console.log(`  ${line}`);
+      if (lastPacketHash === packetHash) {
+        console.log(`  -- Deterministic Repair Packet unchanged from the previous ${gate} attempt --`);
+        console.log(`     Full copy: plans/${planDirName}/artifacts/.repair_packet_${gate}.json`);
+      } else {
+        console.log("  -- Deterministic Repair Packet --");
+        for (const line of repairPacket) {
+          console.log(`  ${line}`);
+        }
       }
+      try {
+        mkdirSync(join(planDir, "artifacts"), { recursive: true });
+        writeFileSync(packetMarkerPath, `${JSON.stringify({ gate, hash: packetHash, updated_at: nowISO(), lines: repairPacket }, null, 2)}\n`);
+      } catch { /* marker is best-effort display state, never enforcement */ }
     }
   }
 
@@ -1502,6 +1726,18 @@ async function runTransition(gate, opts = {}) {
       } else {
         console.log(`  Async drift maintenance not enqueued (${driftMaintenance.reason}, scope=${driftMaintenance.source || "unknown"}).`);
       }
+    }
+    // Forcing function (ive-ontology-memory ticket 5): on a successful close, prompt the agent to
+    // capture reusable positive memory as INERT draft Knowledge Triggers. Advisory only — never a
+    // block. Pairs with the bootstrap-status draft resurfacer so what is captured gets surfaced and
+    // promoted instead of forgotten (the recall this whole capability replaces).
+    if (gate === "validate-to-close") {
+      console.log();
+      console.log("  📒 Capture positive memory: if this session produced a reusable insight or strategy,");
+      console.log("     propose it as an inert draft Knowledge Trigger (inert until you promote it):");
+      console.log("       node .agent/skills/iterative-planner/scripts/knowledge_triggers.mjs --capture \\");
+      console.log("         --id KT-<SLUG>-001 --kind insight --title \"…\" --directive \"…\" --plan-term \"…\" --proposed-from " + (planDirName || "<plan>"));
+      console.log("     Drafts surface in `bootstrap status` for review/promotion. (For incident lessons, run /retro.)");
     }
     if (gate === "notify-user" && stateJsonForCloseCheck?.state === "CLOSE") {
       const cleanup = clearPlannerTargetsIfMatching(planDirName);
@@ -1534,8 +1770,14 @@ async function runTransition(gate, opts = {}) {
           const kbDigestWrite = _kbDigestSaltPlaintext
             ? persistAutoModeKbDigestProof(planDir, _kbDigestSaltPlaintext)
             : null;
+          const envelopeWrite = persistAutoModeApprovalEnvelope(planDir, _approvalNoncePlaintext);
           console.log();
           console.log(`  ✓ Auto-approval mode — [APPROVED] written to decisions.md (no daemon needed).`);
+          if (envelopeWrite.persisted) {
+            console.log(`  ✓ Approval envelope written (schema ${envelopeWrite.schema_version}).`);
+          } else {
+            console.log(`  ⚠ Approval envelope was not written in auto mode: ${envelopeWrite.reason}`);
+          }
           if (kbDigestWrite?.persisted) {
             console.log(`  ✓ KB digest proof persisted via ${kbDigestWrite.mode}.`);
           } else if (kbDigestWrite && kbDigestWrite.mode !== "none") {

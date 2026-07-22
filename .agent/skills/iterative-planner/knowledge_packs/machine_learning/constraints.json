@@ -1,0 +1,13 @@
+[
+  {
+    "id": "ML-CON-001",
+    "title": "Data lineage must precede claims",
+    "summary": "A model-facing plan should name data sources, split policy, and leakage controls before treating any result as evidence.",
+    "severity": "high",
+    "polarity": "constraint",
+    "tags": [
+      "lineage",
+      "evidence"
+    ]
+  }
+]

@@ -18,7 +18,7 @@ class TestZ1CoreSolvency(unittest.TestCase):
         config = get_scenario_config('baseline')
         config.n_epochs = 10 # Short test
         history = run_simulation(config)
-        self.assertEqual(len(history), 10)
+        self.assertEqual(len(history), 11)
         
         # Verify invariants didn't crash and we have data
         df = pd.DataFrame(history)

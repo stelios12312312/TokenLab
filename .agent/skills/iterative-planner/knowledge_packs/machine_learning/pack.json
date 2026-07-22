@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "id": "machine_learning",
+  "pack": "machine_learning",
+  "title": "Machine Learning Reference Pack",
+  "version": 1,
+  "trust_tier": "bundled",
+  "dependencies": [
+    "quant_alpha"
+  ],
+  "applies_when": {
+    "file_exists_any": [
+      "docs/ive-engine-plan.md",
+      "docs/ive-redesign/09_roadmap.md"
+    ]
+  },
+  "provenance": {
+    "writer": "knowledge_pack",
+    "source": "knowledge_pack:machine_learning@v1"
+  },
+  "entry_files": [
+    "pitfalls.json",
+    "opportunities.json",
+    "constraints.json",
+    "decisions.json",
+    "vocabulary.json",
+    "canonical_artifacts.json"
+  ]
+}

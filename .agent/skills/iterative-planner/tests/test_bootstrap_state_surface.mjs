@@ -34,7 +34,14 @@ function run(args, cwd, extraEnv = {}) {
     stdio: ["pipe", "pipe", "pipe"],
     env: {
       ...process.env,
+      // Neutralize ALL per-agent identity sources so plan resolution falls back
+      // to the .current_plan pointer only. getPlannerThreadId is harness-agnostic
+      // (CODEX_THREAD_ID / CLAUDE_CODE_SESSION_ID / _PLANNER_THREAD_ID); leaving
+      // any of them inherited would write a thread target that survives a pointer
+      // unlink and break the "no active plan" scenario below.
       CODEX_THREAD_ID: "",
+      CLAUDE_CODE_SESSION_ID: "",
+      _PLANNER_THREAD_ID: "",
       _PLANNER_PLAN_TARGET: "",
       PLANNER_SKIP_SELF_HEAL: "1",
       ...extraEnv,

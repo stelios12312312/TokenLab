@@ -66,6 +66,11 @@
             "type": "object",
             "additionalProperties": { "type": "string" }
           },
+          "record_hash": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "Hash of this transition record without the record_hash field"
+          },
           "marker": { "type": "string" }
         }
       },

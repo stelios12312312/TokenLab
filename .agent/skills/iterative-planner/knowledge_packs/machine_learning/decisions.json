@@ -1,0 +1,13 @@
+[
+  {
+    "id": "ML-DEC-001",
+    "title": "Prefer deterministic fixtures before wider benchmarks",
+    "summary": "Planner-owned ML behavior should start with deterministic fixture checks, then expand to larger benchmarks only when the contract is stable.",
+    "severity": "medium",
+    "polarity": "decision",
+    "tags": [
+      "determinism",
+      "fixtures"
+    ]
+  }
+]

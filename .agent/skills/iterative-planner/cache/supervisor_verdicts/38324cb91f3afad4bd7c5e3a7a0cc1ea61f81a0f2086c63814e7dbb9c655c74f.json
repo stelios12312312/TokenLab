@@ -1,7 +1,0 @@
-{
-  "suggested_fix_command": "/advisor",
-  "auto_repair_safe": false,
-  "explanation": "Cannot infer a safe fix for missing approval claim; use /advisor to review and determine appropriate action.",
-  "supervisor_status": "fresh",
-  "source": "provider"
-}

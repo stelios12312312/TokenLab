@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "comment": "Knowledge Triggers (ive-ontology-memory program). One primitive — when context matches X, bring knowledge K to bear — unifying obligations/constraints/mistakes with positive insights/strategies. kind + apply are the only knobs that differ between an obligation (block/inject at a gate) and an insight (inject at a phase). when.* reuses the matchTriggerFamilies contract.",
+  "triggers": [
+    {
+      "id": "KT-CMO-PAGE-001",
+      "kind": "obligation",
+      "title": "A new page must be reviewed by the CMO agent",
+      "summary": "Creating a marketing/landing page without CMO review ships off-brand copy. Consult the CMO persona and capture its sign-off before writing the page.",
+      "when": {
+        "file_globs": ["**/pages/**", "**/landing/**", "**/marketing/**"],
+        "plan_terms": ["create page", "landing page", "marketing page", "new page", "new route"],
+        "story_tags": ["marketing", "content"],
+        "tool_events": ["Write:**/pages/**", "Write:**/landing/**"],
+        "minimum_trigger_families": 1
+      },
+      "knowledge": {
+        "directive": "Before writing a page, invoke the CMO persona/agent and capture its sign-off.",
+        "prompt_ref": ".agent/personas/cmo.md",
+        "required_evidence": ["verification_ledger:cmo_review"]
+      },
+      "apply": { "mode": "inject-or-block", "surface": "gate:plan-to-execute" },
+      "provenance": { "source": "operator", "trust_level": "trusted", "created": "2026-06-05" }
+    },
+    {
+      "id": "KT-RENDER-CACHE-001",
+      "kind": "insight",
+      "title": "A disabled render-cache flag silently tanks page performance",
+      "summary": "Hit before: a config flag defaulting off disabled the render cache, so pages looked slow for no obvious reason. When investigating page performance, check the render-cache flag first before deep profiling.",
+      "when": {
+        "plan_terms": ["page slow", "render performance", "page performance", "slow page", "render cache"],
+        "file_globs": ["**/cache/**", "**/render/**"],
+        "minimum_trigger_families": 1
+      },
+      "knowledge": {
+        "directive": "Check the render-cache config flag before deep-diving page performance.",
+        "prompt_ref": "plans/knowledge/patterns.md#render-cache"
+      },
+      "apply": { "mode": "inject", "surface": "phase:explore" },
+      "provenance": { "source": "operator", "trust_level": "trusted", "created": "2026-06-05" }
+    }
+  ]
+}

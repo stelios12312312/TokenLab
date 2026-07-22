@@ -106,6 +106,20 @@ function cleanup(dir) {
   try { rmSync(dir, { recursive: true, force: true }); } catch { /* best effort */ }
 }
 
+function checkPlannerIntegrity(cwd) {
+  const script = [
+    "import{checkConfigIntegrity}from'./.agent/skills/iterative-planner/scripts/lib/determinism.mjs';",
+    "console.log(JSON.stringify(checkConfigIntegrity()));",
+  ].join("");
+  const result = run(`${NODE} --input-type=module -e ${JSON.stringify(script)}`, cwd);
+  if (!result.ok) return { intact: false, reason: result.stderr || result.stdout || "integrity command failed" };
+  try {
+    return JSON.parse(result.stdout.trim());
+  } catch (e) {
+    return { intact: false, reason: `integrity JSON parse failed: ${e.message}` };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Scenarios
 // ---------------------------------------------------------------------------
@@ -142,8 +156,11 @@ function scenarioFreshProject() {
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/pre-commit-hook.sh")), "pre-commit-hook.sh ships during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/hooks/install.mjs")), "hook installer ships during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/hooks/pre-commit")), "managed pre-commit hook source ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/hooks/pre-push")), "managed pre-push hook source ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/hooks/pre_push_conformance.mjs")), "pre-push conformance helper ships during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/hooks/run-node.sh")), "Node resolver hook helper ships during migration");
     assert(existsSync(join(tmp, ".agent/scripts/migrate-all-projects.sh")), "migrate-all-projects.sh ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/snapshot_branch_protection.mjs")), "branch-protection snapshot CLI ships during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/semantic_map.mjs")), "semantic_map.mjs ships during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/config/semantic_map.schema.json")), "semantic_map.schema.json ships during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/semantic_maintenance.mjs")), "semantic_maintenance.mjs ships during migration");
@@ -162,6 +179,7 @@ function scenarioFreshProject() {
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_github_ticket_review.mjs")), "github ticket review tests ship during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_reflection_verdict_routing.mjs")), "reflection verdict routing tests ship during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/verification_runner.mjs")), "verification_runner.mjs ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/lib/run_record.mjs")), "run_record helper ships during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_verification_runner.mjs")), "verification_runner tests ship during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/fixtures/programs/auto_executor.json")), "auto_executor fixture ships during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/fixtures/programs/dispatch_chain.json")), "dispatch_chain fixture ships during migration");
@@ -182,6 +200,25 @@ function scenarioFreshProject() {
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_persona_manifest_ci.mjs")), "persona_manifest_ci tests ship during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/ive/run.mjs")), "IVE conformance runner ships during migration");
     assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_ive_conformance_runner.mjs")), "IVE conformance runner tests ship during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_ci_enforcement_contracts.mjs")), "CI enforcement contract tests ship during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/lib/ive_migration_bootstrap.mjs")), "IVE migration bootstrap helper ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_ive_migration_bootstrap.mjs")), "IVE migration bootstrap tests ship during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/project_ive.mjs")), "IVE projection CLI ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/lib/ive_projection.mjs")), "IVE projection helper ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_ive_projection_north_star.mjs")), "IVE projection and North Star tests ship during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/ontology_write.mjs")), "IVE active ontology writer ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/lib/ive_active_ontology.mjs")), "IVE active ontology helper ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_ive_active_ontology.mjs")), "IVE active ontology tests ship during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/lib/ive_ideation_operators.mjs")), "IVE ideation operator helper ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_ive_ideation_operators.mjs")), "IVE ideation operator tests ship during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/reflection_renderer.mjs")), "IVE reflection renderer ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/lib/ive_reflection_diff.mjs")), "IVE reflection diff helper ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_ive_reflection_diff.mjs")), "IVE reflection diff tests ship during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/lib/ive_advisory_records.mjs")), "IVE advisory records helper ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_ive_advisory_records.mjs")), "IVE advisory records tests ship during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/journal.mjs")), "agent journal CLI ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/scripts/lib/agent_journal.mjs")), "agent journal helper ships during migration");
+    assert(existsSync(join(tmp, ".agent/skills/iterative-planner/tests/test_agent_journal.mjs")), "agent journal tests ship during migration");
     const claudeContent = readFileSync(join(tmp, "CLAUDE.md"), "utf-8");
     assert(claudeContent.includes("notify-user"), "generated CLAUDE.md includes notify-user");
     assert(claudeContent.includes("## Domain Persona Autorun"), "generated CLAUDE.md includes the domain persona autorun front door");
@@ -773,6 +810,189 @@ function scenarioWalkthroughRetirementHonored() {
   }
 }
 
+function scenarioIveProfileAndKnowledgePackAssetsMigrate() {
+  log("\n  Scenario: IVE profile evaluator and knowledge-pack assets migrate");
+  const tmp = createTempProject("ive-profile-pack-migrate");
+  const sourceMigrate = join(skillDir, "scripts/migrate.mjs");
+
+  try {
+    copyPlannerTo(tmp);
+
+    const expected = [
+      ".agent/skills/iterative-planner/scripts/check_profile.mjs",
+      ".agent/skills/iterative-planner/scripts/knowledge_packs.mjs",
+      ".agent/skills/iterative-planner/scripts/lib/ive_profile_packs.mjs",
+      ".agent/skills/iterative-planner/tests/test_ive_profile_knowledge_packs.mjs",
+      ".agent/skills/iterative-planner/profiles/quant_alpha.profile.json",
+      ".agent/skills/iterative-planner/knowledge_packs/machine_learning/pack.json",
+      ".agent/skills/iterative-planner/knowledge_packs/machine_learning/pitfalls.json",
+    ];
+    for (const relPath of expected) {
+      rmSync(join(tmp, relPath), { force: true });
+    }
+
+    const upgradeResult = run(`${NODE} "${sourceMigrate}" upgrade "${tmp}"`, tmp);
+    assert(upgradeResult.ok, "cross-project upgrade exits cleanly when IVE profile/pack assets are missing");
+    for (const relPath of expected) {
+      assert(existsSync(join(tmp, relPath)), `upgrade copies ${relPath}`);
+    }
+
+    const verifyResult = run(`${NODE} "${sourceMigrate}" verify "${tmp}"`, tmp);
+    assert(verifyResult.ok, "verify exits cleanly after profile/pack assets are restored");
+    assert(!verifyResult.stdout.includes("knowledge_packs/machine_learning/pack.json"), "verify no longer reports restored knowledge-pack manifest as missing");
+  } finally {
+    cleanup(tmp);
+  }
+}
+
+function scenarioIveActiveOntologyAssetsMigrate() {
+  log("\n  Scenario: IVE active ontology assets migrate");
+  const tmp = createTempProject("ive-active-ontology-migrate");
+  const sourceMigrate = join(skillDir, "scripts/migrate.mjs");
+
+  try {
+    copyPlannerTo(tmp);
+
+    const expected = [
+      ".agent/skills/iterative-planner/scripts/ontology_write.mjs",
+      ".agent/skills/iterative-planner/scripts/lib/ive_active_ontology.mjs",
+      ".agent/skills/iterative-planner/tests/test_ive_active_ontology.mjs",
+    ];
+    for (const relPath of expected) {
+      rmSync(join(tmp, relPath), { force: true });
+    }
+
+    const upgradeResult = run(`${NODE} "${sourceMigrate}" upgrade "${tmp}"`, tmp);
+    assert(upgradeResult.ok, "cross-project upgrade exits cleanly when IVE active-ontology assets are missing");
+    for (const relPath of expected) {
+      assert(existsSync(join(tmp, relPath)), `upgrade copies ${relPath}`);
+    }
+
+    const verifyResult = run(`${NODE} "${sourceMigrate}" verify "${tmp}"`, tmp);
+    assert(verifyResult.ok, "verify exits cleanly after active-ontology assets are restored");
+    assert(!verifyResult.stdout.includes("ive_active_ontology.mjs"), "verify no longer reports restored active-ontology helper as missing");
+  } finally {
+    cleanup(tmp);
+  }
+}
+
+function scenarioIveIdeationOperatorAssetsMigrate() {
+  log("\n  Scenario: IVE ideation operator assets migrate");
+  const tmp = createTempProject("ive-ideation-operator-migrate");
+  const sourceMigrate = join(skillDir, "scripts/migrate.mjs");
+
+  try {
+    copyPlannerTo(tmp);
+
+    const expected = [
+      ".agent/skills/iterative-planner/scripts/lib/ive_ideation_operators.mjs",
+      ".agent/skills/iterative-planner/tests/test_ive_ideation_operators.mjs",
+    ];
+    for (const relPath of expected) {
+      rmSync(join(tmp, relPath), { force: true });
+    }
+
+    const upgradeResult = run(`${NODE} "${sourceMigrate}" upgrade "${tmp}"`, tmp);
+    assert(upgradeResult.ok, "cross-project upgrade exits cleanly when IVE ideation assets are missing");
+    for (const relPath of expected) {
+      assert(existsSync(join(tmp, relPath)), `upgrade copies ${relPath}`);
+    }
+
+    const verifyResult = run(`${NODE} "${sourceMigrate}" verify "${tmp}"`, tmp);
+    assert(verifyResult.ok, "verify exits cleanly after ideation assets are restored");
+    assert(!verifyResult.stdout.includes("ive_ideation_operators.mjs"), "verify no longer reports restored ideation helper as missing");
+  } finally {
+    cleanup(tmp);
+  }
+}
+
+function scenarioIveReflectionDiffAssetsMigrate() {
+  log("\n  Scenario: IVE reflection-diff assets migrate");
+  const tmp = createTempProject("ive-reflection-diff-migrate");
+  const sourceMigrate = join(skillDir, "scripts/migrate.mjs");
+
+  try {
+    copyPlannerTo(tmp);
+
+    const expected = [
+      ".agent/skills/iterative-planner/scripts/reflection_renderer.mjs",
+      ".agent/skills/iterative-planner/scripts/lib/ive_reflection_diff.mjs",
+      ".agent/skills/iterative-planner/tests/test_ive_reflection_diff.mjs",
+    ];
+    for (const relPath of expected) {
+      rmSync(join(tmp, relPath), { force: true });
+    }
+
+    const upgradeResult = run(`${NODE} "${sourceMigrate}" upgrade "${tmp}"`, tmp);
+    assert(upgradeResult.ok, "cross-project upgrade exits cleanly when IVE reflection-diff assets are missing");
+    for (const relPath of expected) {
+      assert(existsSync(join(tmp, relPath)), `upgrade copies ${relPath}`);
+    }
+
+    const verifyResult = run(`${NODE} "${sourceMigrate}" verify "${tmp}"`, tmp);
+    assert(verifyResult.ok, "verify exits cleanly after reflection-diff assets are restored");
+    assert(!verifyResult.stdout.includes("ive_reflection_diff.mjs"), "verify no longer reports restored reflection-diff helper as missing");
+  } finally {
+    cleanup(tmp);
+  }
+}
+
+function scenarioIveAdvisoryRecordAssetsMigrate() {
+  log("\n  Scenario: IVE advisory-record assets migrate");
+  const tmp = createTempProject("ive-advisory-record-migrate");
+  const sourceMigrate = join(skillDir, "scripts/migrate.mjs");
+
+  try {
+    copyPlannerTo(tmp);
+
+    const expected = [
+      ".agent/skills/iterative-planner/scripts/lib/ive_advisory_records.mjs",
+      ".agent/skills/iterative-planner/tests/test_ive_advisory_records.mjs",
+    ];
+    for (const relPath of expected) {
+      rmSync(join(tmp, relPath), { force: true });
+    }
+
+    const upgradeResult = run(`${NODE} "${sourceMigrate}" upgrade "${tmp}"`, tmp);
+    assert(upgradeResult.ok, "cross-project upgrade exits cleanly when IVE advisory-record assets are missing");
+    for (const relPath of expected) {
+      assert(existsSync(join(tmp, relPath)), `upgrade copies ${relPath}`);
+    }
+
+    const verifyResult = run(`${NODE} "${sourceMigrate}" verify "${tmp}"`, tmp);
+    assert(verifyResult.ok, "verify exits cleanly after advisory-record assets are restored");
+    assert(!verifyResult.stdout.includes("ive_advisory_records.mjs"), "verify no longer reports restored advisory helper as missing");
+  } finally {
+    cleanup(tmp);
+  }
+}
+
+function scenarioUpgradeDoesNotLaunderTamperedPrologBaseline() {
+  log("\n  Scenario: Upgrade does not launder a tampered Prolog integrity baseline");
+  const tmp = createTempProject("config-integrity-tamper");
+
+  try {
+    copyPlannerTo(tmp);
+    const setupResult = run(`${NODE} .agent/skills/iterative-planner/scripts/migrate.mjs setup .`, tmp);
+    assert(setupResult.ok, "setup exits cleanly before tamper-laundering fixture");
+
+    const transitionsPath = join(tmp, ".agent/skills/iterative-planner/prolog/transitions.pl");
+    writeFileSync(transitionsPath, readFileSync(transitionsPath, "utf-8").trimEnd() + "\n\ncan_transition(_, _).\n");
+    const beforeUpgrade = checkPlannerIntegrity(tmp);
+    assert(beforeUpgrade.intact === false, "tampered transitions.pl is detected before upgrade");
+
+    rmSync(join(tmp, "audit.config.json"), { force: true });
+    const upgradeResult = run(`${NODE} .agent/skills/iterative-planner/scripts/migrate.mjs upgrade .`, tmp);
+    assert(upgradeResult.ok, "same-project upgrade exits cleanly while setup repair is pending");
+    assert(!upgradeResult.stdout.includes("CONFIG INTEGRITY: Re-baselined after upgrade"), "upgrade does not rebaseline config integrity without out-of-band approval");
+
+    const afterUpgrade = checkPlannerIntegrity(tmp);
+    assert(afterUpgrade.intact === false, "tampered transitions.pl remains detected after upgrade");
+  } finally {
+    cleanup(tmp);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Run
 // ---------------------------------------------------------------------------
@@ -796,6 +1016,12 @@ scenarioRootInstructionSyncPreservesHostContent();
 scenarioRegistryUpgradeMetadataDoesNotTriggerStaleVerify();
 scenarioSourceDrivenSelfUpdatePropagatesFullUpgrade();
 scenarioConflictedCopyArtifactsAreIgnoredDuringUpgrade();
+scenarioIveProfileAndKnowledgePackAssetsMigrate();
+scenarioIveActiveOntologyAssetsMigrate();
+scenarioIveIdeationOperatorAssetsMigrate();
+scenarioIveReflectionDiffAssetsMigrate();
+scenarioIveAdvisoryRecordAssetsMigrate();
+scenarioUpgradeDoesNotLaunderTamperedPrologBaseline();
 scenarioDoctorFlagsMissingShippedDocsAndWrappers();
 
 log("\n──────────────────────────────────────────────────────");

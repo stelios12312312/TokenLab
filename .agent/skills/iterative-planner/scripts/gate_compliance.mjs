@@ -20,6 +20,7 @@
 import { readFileSync, existsSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
+import { resolvePlanTarget } from "./lib/plan_utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -72,14 +73,12 @@ const REQUIRED_GATES_FOR_STATE = {
 // ---------------------------------------------------------------------------
 
 function getActivePlan() {
+  // Honor per-agent isolation (explicit > env > thread > pointer) so concurrent
+  // agents do not collide on the shared plans/.current_plan pointer.
   const plansDir = join(cwd, "plans");
-  const pointerFile = join(plansDir, ".current_plan");
-  if (!existsSync(pointerFile)) return null;
-
-  const planDirName = readFileSync(pointerFile, "utf-8").trim();
-  if (!planDirName || !existsSync(join(plansDir, planDirName))) return null;
-
-  return { name: planDirName, path: join(plansDir, planDirName) };
+  const { planDirName, planDir } = resolvePlanTarget(plansDir, { exitOnMissing: false });
+  if (!planDirName || !planDir) return null;
+  return { name: planDirName, path: planDir };
 }
 
 function readStateJson(planDir) {

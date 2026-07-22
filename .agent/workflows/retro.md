@@ -112,6 +112,22 @@ For each bug/issue, answer these questions:
     - `Guard Type: kb` — a mistake/pattern/gotcha entry that future plans can mechanically reference
     If none of these is possible, add an approved waiver in `verification_ledger.json` with subject `plan:anti-recurrence`.
 
+9c. **Propose draft Knowledge Triggers (positive-memory capture)** — beyond the negative/recurrence
+    guard above, if this session surfaced a reusable *positive* insight or strategy, capture it so it
+    resurfaces next time a similar problem appears. These land as `trust_level: draft` and are **inert
+    until an operator promotes them** — they cannot block a gate or auto-inject. Do not expect them to fire.
+    - For a retro-derived insight, the deterministic mapper builds a firing `when`-clause for you:
+      ```bash
+      node -e 'import("./.agent/skills/iterative-planner/scripts/lib/retro_registry.mjs").then(async m=>{const r=m.loadRetroRegistry({});const e=m.getRetroById(r,"R-<id>");const c=m.draftKtFromRetro(e);const k=await import("./.agent/skills/iterative-planner/scripts/lib/knowledge_triggers.mjs");console.log(k.captureTrigger(c))})'
+      ```
+    - For a free-standing insight, capture directly:
+      ```bash
+      node .agent/skills/iterative-planner/scripts/knowledge_triggers.mjs --capture \
+        --id KT-<SLUG>-001 --kind insight --title "…" --directive "…" --plan-term "<term>" --proposed-from R-<id>
+      ```
+    - Drafts surface in `bootstrap status` ("N un-promoted draft Knowledge Triggers"); the operator
+      promotes the good ones with `knowledge_triggers.mjs --promote <id> --to derived` (or `trusted`).
+
 10. **Commit each skill change separately**:
     ```bash
     git add .agent/skills/iterative-planner/

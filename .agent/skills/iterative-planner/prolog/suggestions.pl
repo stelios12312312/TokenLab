@@ -226,3 +226,19 @@ has_required_suggestion :-
 %% Check if a specific skill is suggested at any severity
 skill_suggested(Skill) :-
     suggest_skill(Skill, _, _).
+
+%% ───────────────────────────────────────────────────────────────────────────
+%% Annotation-hint-driven suggestions. Facts (annotation_consumer_or_validation_impact,
+%% annotation_story_proof_gap, clustered_annotation_traceability_risk,
+%% annotation_goal_coverage_gap) are asserted by cmdSuggestNext from
+%% analyzeAnnotationHints over the changed surface. Undefined facts fail silently,
+%% so a clean change suggests nothing.
+%% ───────────────────────────────────────────────────────────────────────────
+suggest_skill(regression_audit, annotation_consumer_or_validation_impact, recommended) :-
+    annotation_consumer_or_validation_impact.
+suggest_skill(user_story_audit, annotation_story_proof_gap, recommended) :-
+    annotation_story_proof_gap.
+suggest_skill(steward, clustered_annotation_traceability_risk, recommended) :-
+    clustered_annotation_traceability_risk.
+suggest_skill(sme_improvement, annotation_goal_coverage_gap, recommended) :-
+    annotation_goal_coverage_gap.

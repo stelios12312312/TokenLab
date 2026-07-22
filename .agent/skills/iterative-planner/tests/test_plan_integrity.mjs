@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import assert from "assert";
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 import {
@@ -44,6 +44,29 @@ function makePlanDir() {
     files: ["plan.md"],
   }, null, 2) + "\n");
   return planDir;
+}
+
+function makeProjectBackedPlanDir() {
+  const root = mkdtempSync(join(tmpdir(), "planner-plan-integrity-project-"));
+  const planDir = join(root, "plans", "plan_integrity_fixture");
+  mkdirSync(planDir, { recursive: true });
+  mkdirSync(join(root, ".agent/skills/iterative-planner/scripts/lib"), { recursive: true });
+  mkdirSync(join(root, ".agent/skills/iterative-planner/prolog"), { recursive: true });
+  mkdirSync(join(root, ".agent/skills/iterative-planner/config"), { recursive: true });
+
+  writeFileSync(join(planDir, "plan.md"), "# Plan\n\n## Goal\nProtect enforcement artifacts.\n");
+  writeFileSync(join(planDir, "state.json"), JSON.stringify({
+    version: 1,
+    state: "PLAN",
+    plan_dir: "plan_integrity_fixture",
+    transitions: [],
+  }, null, 2) + "\n");
+  writeFileSync(join(root, ".agent/skills/iterative-planner/scripts/lib/prolog.mjs"), "// prolog bridge\n");
+  writeFileSync(join(root, ".agent/skills/iterative-planner/prolog/invariants.pl"), "% invariants\n");
+  writeFileSync(join(root, ".agent/skills/iterative-planner/prolog/transitions.pl"), "% transitions\n");
+  writeFileSync(join(root, ".agent/skills/iterative-planner/config/determinism.json"), "{\"version\":1}\n");
+
+  return { root, planDir };
 }
 
 console.log("\nPlan Integrity Contract Test\n");
@@ -167,6 +190,27 @@ test("tamper fingerprint includes state and sensitive plan artifacts", () => {
     assert(fingerprint.artifacts.some((artifact) => artifact.name === "plan.md"));
   } finally {
     rmSync(planDir, { recursive: true, force: true });
+  }
+});
+
+test("tamper fingerprint covers planner enforcement bundle", () => {
+  const fixture = makeProjectBackedPlanDir();
+  try {
+    const fingerprint = computePlanTamperFingerprint(fixture.planDir, {
+      stateJson: {
+        version: 1,
+        state: "PLAN",
+        plan_dir: "plan_integrity_fixture",
+        transitions: [],
+      },
+    });
+    const artifactNames = new Set(fingerprint.artifacts.map((artifact) => artifact.name));
+    assert(artifactNames.has("skill:scripts/lib/prolog.mjs"));
+    assert(artifactNames.has("skill:prolog/invariants.pl"));
+    assert(artifactNames.has("skill:prolog/transitions.pl"));
+    assert(artifactNames.has("skill:config/determinism.json"));
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
   }
 });
 

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "id": "software_engineering_methodology",
+  "pack": "software_engineering_methodology",
+  "title": "Software Engineering Methodology Pack",
+  "version": 1,
+  "trust_tier": "bundled",
+  "dependencies": [],
+  "applies_when": {
+    "file_exists_any": [
+      "package.json",
+      "pyproject.toml",
+      "Cargo.toml",
+      "go.mod",
+      "pom.xml",
+      "build.gradle",
+      "Gemfile"
+    ]
+  },
+  "provenance": {
+    "writer": "knowledge_pack",
+    "source": "knowledge_pack:software_engineering_methodology@v1"
+  },
+  "entry_files": [
+    "pitfalls.json",
+    "constraints.json"
+  ]
+}

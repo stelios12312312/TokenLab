@@ -158,11 +158,14 @@ rule engine but do not fire unless Program Packet facts are asserted by
 | `program_ticket_dependency_cycle` | Ticket dependencies do not cycle |
 | `program_ready_ticket_missing_acceptance` | Ready or later tickets have acceptance criteria |
 | `program_ready_ticket_missing_verification` | Ready or later tickets have verification rows |
+| `program_ticket_verification_not_passed` | Done, verified, or closed ticket verification rows pass or are explicitly waived |
 | `program_delete_move_without_census` | Delete/move tickets have dependency census records |
 | `program_migration_without_contract` | Migration tickets have compatibility contracts |
 | `program_canonical_delete_without_replacement` | Canonical-file deletion has replacement or retirement decision |
 | `program_capability_removed_without_story` | User-facing capability removal has retired/replaced story linkage |
 | `program_child_plan_not_closed` | Required child plans close before tickets are verified or closed |
+| `program_ticket_review_not_run` | Closed tickets do not carry explicit `review_status:not_run` |
+| `program_ticket_persona_review_needs_evidence` | Closed tickets do not carry explicit persona review `needs_evidence` status |
 | `program_close_ticket_unresolved` | Programs close only when tickets are closed or deferred with decisions |
 | `program_close_without_program_verification` | Program close includes program-level verification rows |
 

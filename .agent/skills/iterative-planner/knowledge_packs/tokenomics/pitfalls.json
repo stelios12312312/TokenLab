@@ -1,0 +1,37 @@
+[
+  {
+    "id": "TK-PIT-001",
+    "title": "Emissions-funded yield masquerading as revenue",
+    "summary": "Staking APY that depends on scheduled emissions rather than modeled protocol revenue can create reflexive sell pressure and must be flagged before launch-readiness claims.",
+    "severity": "high",
+    "polarity": "risk",
+    "tags": [
+      "apy",
+      "emissions",
+      "sustainability"
+    ]
+  },
+  {
+    "id": "TK-PIT-002",
+    "title": "Unlock cliffs hidden behind allocation words",
+    "summary": "A plan can mention vesting and unlocks while still concentrating too much supply in one cliff; require arithmetic evidence for cliff size and liquidity pressure.",
+    "severity": "high",
+    "polarity": "risk",
+    "tags": [
+      "vesting",
+      "unlock",
+      "liquidity"
+    ]
+  },
+  {
+    "id": "TK-PIT-003",
+    "title": "Guaranteed ROI language",
+    "summary": "Guaranteed ROI, return, upside, APY, or buyer-profit language must block planner approval unless rewritten as bounded analysis with qualified review.",
+    "severity": "critical",
+    "polarity": "risk",
+    "tags": [
+      "claims",
+      "financial_boundary"
+    ]
+  }
+]

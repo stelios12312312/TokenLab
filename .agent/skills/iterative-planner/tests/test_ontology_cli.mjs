@@ -9,6 +9,8 @@ import { tmpdir } from "os";
 import { buildOntologyFacts } from "../scripts/lib/ontology_fact_builder.mjs";
 import { getOntologyCompiledFactPath } from "../scripts/lib/ontology_schema.mjs";
 import { createSemanticEngine } from "../scripts/lib/semantic_engine.mjs";
+import { createSession } from "../scripts/lib/prolog.mjs";
+import { loadRules } from "../scripts/lib/fact_loader.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -358,6 +360,40 @@ function scenarioSemanticEngineLoadsGeneratedRepoFacts() {
   }
 }
 
+function scenarioRuleEngineIgnoresHandEditedCompiledRepoFacts() {
+  const tmp = makeTemp("compiled-facts-injection");
+  try {
+    seedAllSources(tmp);
+    const buildResult = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(buildResult.ok, "compiled-facts injection fixture builds canonical ontology facts");
+
+    const factsPath = getOntologyCompiledFactPath(tmp);
+    writeText(
+      factsPath,
+      `${buildResult.facts}\n% injected stale/manual fact; absent from YAML source\nstory('US-9001','fake',high,fully_covered).\n`
+    );
+
+    const session = createSession();
+    const loaded = loadRules(session, { cwd: tmp, skillPath: plannerSkillPath });
+    session.consult("current_state(reflect). reflection_known_limitation_followup('question', 'US-9001').");
+
+    assert(
+      loaded.includes("ontology facts (generated from source)"),
+      "rule loader renders repo ontology facts from source YAML"
+    );
+    assert(
+      session.check("story_has_criterion('US-900', 'AC-US-900-001')"),
+      "rule loader still exposes legitimate source-generated ontology facts"
+    );
+    assert(
+      session.check("invariant_violated(reflection_known_limitation_missing_followup, 'US-9001')"),
+      "hand-edited compiled facts.pl cannot fake a follow-up story for I-045"
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 function scenarioQueryAndFactsSurfaceStructuredOntologyData() {
   const tmp = makeTemp("query-facts");
   try {
@@ -433,6 +469,7 @@ scenarioPlannerAliasDelegatesToOntologyBuild();
 scenarioQueryAndFactsSurfaceStructuredOntologyData();
 scenarioValidateFlagsPlantedDanglingTestReference();
 scenarioSemanticEngineLoadsGeneratedRepoFacts();
+scenarioRuleEngineIgnoresHandEditedCompiledRepoFacts();
 
 console.log(`\nOntology CLI tests: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

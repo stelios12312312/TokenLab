@@ -19,7 +19,7 @@
       "epic_id": "EP-001",
       "title": "Foundation work",
       "type": "feature",
-      "lifecycle": "done",
+      "lifecycle": "verified",
       "story_refs": ["US-001"],
       "defect_refs": [],
       "gap_refs": [],

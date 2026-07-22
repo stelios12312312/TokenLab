@@ -1,0 +1,74 @@
+name: Z1 shared-core contract
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/z1-shared-core-contract.yml"
+      - "projects/z1/**"
+      - "scripts/generate_registry.py"
+      - "scripts/run_sensitivity.py"
+      - "src/TokenLab/**"
+      - "tests/fixtures/parity/z1_milestones_golden.json"
+      - "tests/test_v2_remediation_regressions.py"
+      - "tests/test_z1_shared_core_parity.py"
+      - "pytest.ini"
+  push:
+    branches:
+      - z1-simulation-v2
+    paths:
+      - ".github/workflows/z1-shared-core-contract.yml"
+      - "projects/z1/**"
+      - "scripts/generate_registry.py"
+      - "scripts/run_sensitivity.py"
+      - "src/TokenLab/**"
+      - "tests/fixtures/parity/z1_milestones_golden.json"
+      - "tests/test_v2_remediation_regressions.py"
+      - "tests/test_z1_shared_core_parity.py"
+      - "pytest.ini"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity-and-remediation:
+    name: Golden parity and M3 remediation
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    env:
+      MPLBACKEND: Agg
+      PYTHONPATH: src
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install focused test dependencies
+        run: |
+          python -m pip install \
+            matplotlib==3.5.2 \
+            numpy==1.22.4 \
+            pandas==1.5.2 \
+            pytest==8.4.2 \
+            PyYAML==6.0.2 \
+            scipy==1.9.3 \
+            statsmodels==0.13.2 \
+            tqdm==4.64.0
+          python -m pip check
+
+      - name: Run Z1 shared-core contracts
+        run: >-
+          python -m pytest
+          tests/test_z1_shared_core_parity.py
+          tests/test_v2_remediation_regressions.py
+          -q

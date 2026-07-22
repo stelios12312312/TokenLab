@@ -1,0 +1,9 @@
+[
+  {
+    "id": "SWE-CON-001",
+    "title": "Blast radius bounded",
+    "summary": "Cross-module changes should record adjacent surfaces and proof that the affected path still works.",
+    "severity": "high",
+    "polarity": "guardrail"
+  }
+]

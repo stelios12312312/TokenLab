@@ -39,6 +39,10 @@ import {
   resolvePersonaAuthorityPlanContext,
   summarizePersonaAuthority,
 } from "./lib/persona_activation_authority.mjs";
+import {
+  buildIsolatedAuditInputFromPlan,
+  runIsolatedAdversarialAudit,
+} from "./lib/isolated_adversarial_auditor.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const skillPath   = getSkillPath(import.meta.url);
@@ -205,12 +209,16 @@ export async function buildProjectContext(cwdOverride, skillPathOverride, auditC
   const authorityContext = loadAuthorityPlanContext(base, opts);
   const hasExplicitPlanTarget = !!opts.plan || !!opts.env?.PLANNER_TARGET_PLAN;
   const planShape = authorityContext?.plan_shape || (hasExplicitPlanTarget ? null : inferProjectLevelPlanShape(base));
+  const paths = getPaths(base);
+  const target = resolvePlanTarget(paths.plansDir, { exitOnMissing: false, plan: opts.plan, env: opts.env });
 
   return {
     cwd:           base,
     skillPath:     sPath,
     storyRegistry: storyRegistry,
     planFiles:     loadPlanFiles(base, opts),
+    planDir:       target.planDir || null,
+    planDirName:   target.planDirName || null,
     currentState:  loadCurrentPlanState(base, opts),
     planShape,
     personaAuthorityContext: authorityContext,
@@ -242,6 +250,8 @@ const EVIDENCE_COMMITTEE_BY_PACK = Object.freeze({
   quant: Object.freeze(["quant_target", "assumptions_challenger", "wiring_auditor", "traceability"]),
   tokenomics: Object.freeze(["assumptions_challenger", "wiring_auditor", "traceability"]),
 });
+
+const SCOPED_AUTODETECT_PACKS = Object.freeze(["tokenomics"]);
 
 // v7.3.1: shape-pack relevance map. When a plan's detected shape strongly
 // implies a pack is irrelevant, audit_runner drops the pack with a notice
@@ -437,6 +447,23 @@ async function augmentEvidenceCommittee(packs, context) {
   return packs;
 }
 
+async function augmentScopedApplicablePacks(packs, context) {
+  const loaded = new Set(packs.map(p => p.id));
+  const additions = [];
+
+  for (const id of SCOPED_AUTODETECT_PACKS) {
+    if (loaded.has(id)) continue;
+    const pack = await loadBuiltInPack(id, `Scoped domain pack '${id}'`);
+    if (!pack || !packApplies(pack, context)) continue;
+    additions.push(pack);
+    loaded.add(id);
+  }
+
+  if (additions.length === 0) return packs;
+  console.error(`  ℹ️  Scoped domain auto-detected ${additions.length} persona pack(s): ${additions.map(p => p.id).join(", ")}`);
+  return augmentEvidenceCommittee([...packs, ...additions], context);
+}
+
 /**
  * Enforce that at least one persona pack is active for the project.
  * If no packs were loaded from explicit config, attempt auto-detection
@@ -445,6 +472,7 @@ async function augmentEvidenceCommittee(packs, context) {
  */
 export async function enforceMinimumPersona(packs, context) {
   packs = await augmentEvidenceCommittee(packs, context);
+  packs = await augmentScopedApplicablePacks(packs, context);
 
   // Check if at least one loaded pack is actually applicable to this project
   const hasApplicable = packs.some(p => packApplies(p, context));
@@ -729,6 +757,34 @@ function writePersonaFindings(planDir, findings, gate) {
   }
 }
 
+function uniqueStrings(values) {
+  return [...new Set((values || []).map((value) => String(value || "").trim()).filter(Boolean))];
+}
+
+function hardlinePersonasForGate(skillRoot, gate) {
+  if (!skillRoot || !gate) return [];
+  try {
+    const gatesPath = join(skillRoot, "config", "gates.json");
+    if (!existsSync(gatesPath)) return [];
+    const gatesConfig = JSON.parse(readFileSync(gatesPath, "utf-8"));
+    const gateEntry = (gatesConfig.gates || {})[gate];
+    if (!gateEntry?.hardline_audit && !Array.isArray(gateEntry?.hardline_personas)) return [];
+    return uniqueStrings(gateEntry?.hardline_personas || []);
+  } catch {
+    return [];
+  }
+}
+
+function applyGateHardlinePersonas(auditConfig, skillRoot, gate) {
+  const hardlinePersonas = hardlinePersonasForGate(skillRoot, gate);
+  if (hardlinePersonas.length === 0) return auditConfig;
+  return {
+    ...auditConfig,
+    roles: uniqueStrings([...(Array.isArray(auditConfig?.roles) ? auditConfig.roles : ["core"]), ...hardlinePersonas]),
+    force_packs: uniqueStrings([...(Array.isArray(auditConfig?.force_packs) ? auditConfig.force_packs : []), ...hardlinePersonas]),
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Gate-integrated persona audit (extracted from transition.mjs)
 // ---------------------------------------------------------------------------
@@ -737,6 +793,37 @@ import { withFailureCode } from "./lib/determinism.mjs";
 
 const PASS = "PASS", WARN = "WARN", FAIL = "FAIL";
 function _check(name, status, detail) { return { name, status, detail }; }
+
+const ISOLATED_ADVERSARIAL_AUDIT_GATES = new Set(["reflect-to-validate", "validate-to-close"]);
+
+function personaFindingFromIsolatedAudit(raw, gate) {
+  return {
+    analyzer: "[isolated_adversarial_auditor] " + (raw.category || raw.id || "adversarial_audit"),
+    severity: "fail",
+    message: raw.evidence || raw.category || raw.id,
+    location: gate,
+    count: 1,
+    details: raw.recommendation || "Escalate rather than confirming quality.",
+    _roleAudit: {
+      id: raw.id,
+      role: "isolated_adversarial_auditor",
+      severity: "CRITICAL",
+      category: raw.category || raw.id,
+      story_refs: Array.isArray(raw.story_refs) ? raw.story_refs : ["US-068", "US-086"],
+      evidence: raw.evidence || raw.category || raw.id,
+      recommendation: raw.recommendation || "Escalate rather than confirming quality.",
+      meta: raw.meta || {},
+    },
+  };
+}
+
+function runIsolatedAdversarialGate(planDir, gate) {
+  if (!planDir || !ISOLATED_ADVERSARIAL_AUDIT_GATES.has(gate)) {
+    return { status: "skipped", findings: [], isolation: { raw_gate_json_seen: false } };
+  }
+  const input = buildIsolatedAuditInputFromPlan({ planDir, gate });
+  return runIsolatedAdversarialAudit(input);
+}
 
 /**
  * Run compulsory persona audit at a gate transition.
@@ -765,7 +852,7 @@ export async function runPersonaAuditGate(cwdPath, skillRoot, planDir, gate) {
   }
 
   try {
-    const auditConfig = loadAuditConfig(cwdPath);
+    let auditConfig = loadAuditConfig(cwdPath);
     if (!auditConfig) {
       // F-019 FIX: Add failure code for machine-readable tracking
       results.push(withFailureCode(_check(
@@ -775,6 +862,7 @@ export async function runPersonaAuditGate(cwdPath, skillRoot, planDir, gate) {
       ), "GATE-PER-002"));
       return results;
     }
+    auditConfig = applyGateHardlinePersonas(auditConfig, skillRoot, gate);
 
     const context = await buildProjectContext(cwdPath, skillRoot, auditConfig, {
       plan: planDir ? basename(planDir) : null,
@@ -799,7 +887,23 @@ export async function runPersonaAuditGate(cwdPath, skillRoot, planDir, gate) {
       `${packs.length} pack(s): ${packs.map(p => p.id).join(", ")}`
     ));
 
-    const findings = await runRoleAuditors(context, packs);
+    let findings = await runRoleAuditors(context, packs);
+    const isolatedAudit = runIsolatedAdversarialGate(planDir, gate);
+    if (isolatedAudit.status === "blocked") {
+      const isolatedFindings = isolatedAudit.findings.map((finding) => personaFindingFromIsolatedAudit(finding, gate));
+      findings = [...findings, ...isolatedFindings];
+      results.push(_check(
+        "Isolated adversarial auditor",
+        FAIL,
+        `${isolatedFindings.length} blocking issue(s): ${isolatedFindings.map((finding) => finding._roleAudit.category).join(", ")}`
+      ));
+    } else if (ISOLATED_ADVERSARIAL_AUDIT_GATES.has(gate)) {
+      results.push(_check(
+        "Isolated adversarial auditor",
+        PASS,
+        `Read/Grep-only isolated auditor ${isolatedAudit.status === "skipped" ? "skipped" : "found no forged-proof signals"}`
+      ));
+    }
     if (planDir) writePersonaFindings(planDir, findings, gate);
 
     // v1.1: Phase guidance — write persona_guidance.md for the target phase

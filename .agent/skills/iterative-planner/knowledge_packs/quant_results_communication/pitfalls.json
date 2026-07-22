@@ -1,0 +1,9 @@
+[
+  {
+    "id": "CRP-PIT-001",
+    "title": "Profitability language without controls",
+    "summary": "Positive return language is not evidence of market inefficiency unless the report states controls, reference price, and failure modes.",
+    "severity": "high",
+    "polarity": "risk"
+  }
+]

@@ -320,13 +320,16 @@ Rules:
 - Canonical-file deletion requires a replacement or retirement decision.
 - User-facing capability removal requires retired or replaced story linkage.
 - Required child plans must close before tickets become `verified` or `closed`.
+- Ticket closure fails when `review_status` is explicitly `not_run` or when
+  `persona_review.status` / `persona_review_status` is explicitly
+  `needs_evidence`; absent legacy review metadata remains compatible.
 - Program close requires all tickets `closed` or `deferred`, deferral decisions, and passing program-level verification.
 - `external_refs` mirrors GitHub Issues, GitHub Project items, or local text/file intake sources into the local ticket; it is not an authority source. Supported `kind` values are `github_issue`, `github_project_item`, `local_file`, and `local_text`.
 - `ticket_type` records a specialized ticket lane such as `quant_exploration` or `code_refactor`; the base `type` field remains schema-safe and authoritative for Program Packet validation. `persona_packs` and `persona_review` record advisory persona-review guidance for that lane.
-- `review_status` records deterministic or advisory review state separately from dispatch lifecycle. Valid values include `not_run`, `submitted`, `fresh`, `needs_story`, `needs_annotation`, `needs_verification`, `ontology_conflict`, `blocked`, `review_ready`, and `unavailable`.
+- `review_status` records deterministic or advisory review state separately from dispatch lifecycle. Valid values include `not_run`, `submitted`, `fresh`, `needs_story`, `needs_annotation`, `needs_verification`, `ontology_conflict`, `blocked`, `review_ready`, and `unavailable`. A ticket with `lifecycle: "closed"` must not carry explicit `review_status: "not_run"`.
 - `review_artifacts` points to local Review Packet JSON files such as `plans/programs/<program-id>/reviews/<ticket-id>_review_packet.json`.
 - `github_sync` records the last reflected GitHub comment, labels, and Project Status update.
-- `last_review_status` uses the same review-status enum for compatibility. Advisory DeepSeek output must not mark tickets `verified`.
+- `last_review_status` uses the same review-status enum for compatibility. Advisory DeepSeek output must not mark tickets `verified`. Persona review metadata is also advisory, but explicit `needs_evidence` blocks final ticket closure until evidence is attached or the status is updated.
 - Ticket lifecycle values `submitted` and `review_ready` are accepted as review-facing aliases, but gates normalize them to effective lifecycle semantics so execution dispatch remains deterministic.
 - Intake Packets, Review Packets, and Ticket Intake Receipts include `retro_recurrence_check` / `retro_recurrence_status` so trusted active mistakes and retro-promoted obligations can block tickets until required guards or evidence are present.
 - Quant-shaped Intake Packets, Review Packets, GitHub comments, and Ticket Intake Receipts include `quant_persona_gate` / `quant_persona_gate_status`. Missing what-happened overview, quant persona obligation, target/outcome, data lineage or odds snapshot semantics, temporal/leakage handling, controls/baselines, or quant verification proof is a deterministic blocker even if DeepSeek reports `review_ready`.
@@ -657,8 +660,12 @@ Phase behavior:
   },
   "assumptions": [
     {
-      "status": "VERIFIED",
-      "statement": "Legacy markdown plans must remain valid during rollout."
+      "id": "A-001",
+      "status": "VALIDATED",
+      "statement": "Legacy markdown plans must remain valid during rollout.",
+      "load_bearing": true,
+      "supports": ["sc_1"],
+      "probe": "node .agent/skills/iterative-planner/scripts/bootstrap.mjs resume"
     }
   ],
   "existing_capabilities": [],
@@ -674,7 +681,9 @@ Phase behavior:
 - `findings`: required for JSON-first plans. Each entry should include `id` and substantive `summary`/`details` text. Optional `story_refs`, `file_refs`, `tags`, `source_type`, and `source_id` are preserved into ontology facts.
 - `root_cause`: optional but required by the EXPLORE gate for bug-fix work unless the plan explicitly records a non-bug `N/A` explanation.
 - `adjacency`: optional but required by the EXPLORE gate unless the plan explicitly records a single-file `N/A` explanation.
-- `assumptions`: optional array. Recommended for structured assumption-ledger checks; use `status: "VERIFIED"` or `status: "VIOLATED"` when possible.
+- `assumptions`: optional array. Recommended for structured assumption-ledger checks. Preferred lifecycle is `UNVALIDATED -> TESTING -> VALIDATED` or `REFUTED`; use `RETIRED` when an assumption no longer supports the plan. Legacy `VERIFIED` maps to `VALIDATED`, and `VIOLATED` maps to `REFUTED`.
+- `assumptions[].load_bearing`: optional boolean. When `true`, `VALIDATE -> CLOSE` blocks while the assumption is `UNVALIDATED` or `TESTING`.
+- `assumptions[].supports` / `assumptions[].cited_as_support`: optional proof linkage. A `REFUTED` assumption that is still cited as support blocks close until it is removed, replaced, or retired.
 - `story_candidates` and `existing_capabilities`: optional arrays that are rendered back into the readable markdown projection when the ledger is authoritative.
 
 **Authoring rule**:

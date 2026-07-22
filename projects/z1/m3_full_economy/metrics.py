@@ -1,92 +1,29 @@
-from typing import Dict, Any
-from .state import GlobalState
-from .config import M3EconomyConfig
+from typing import Any, Dict
 
-def extract_epoch_metrics(state: GlobalState, config: M3EconomyConfig) -> Dict[str, Any]:
-    """Extract metrics required by Prompt 08 into a flat dictionary."""
-    ar_ratio = state.audience_reserve / config.audience_reserve_initial if config.audience_reserve_initial > 0 else 0
-    
-    # Runway estimate: (Treasury / net outflow). 
-    # M1 specifies a simple rolling outflow approximation. We use current epoch net flow.
-    # Outflow from treasury is topups. Inflow is brand + fees.
-    net_treasury_flow = state.per_epoch_counters.get('brand_inflow', 0) + state.per_epoch_counters.get('treasury_fees', 0) - state.per_epoch_counters.get('treasury_topups', 0)
-    
-    if net_treasury_flow >= 0:
-        treasury_runway_estimate = 9999.0 # Positive runway
-    else:
-        treasury_runway_estimate = state.treasury / abs(net_treasury_flow)
-    
-    total_acr_vesting = sum(sum(c.acr_vesting_buckets) for c in state.cohorts.values())
-    total_acr_available = sum(c.acr_available for c in state.cohorts.values())
-    total_acr_queued = sum(c.acr_queued_for_settlement for c in state.cohorts.values())
-    total_acr_settled = sum(c.acr_settled for c in state.cohorts.values())
-    
-    epoch_queue_req = state.per_epoch_counters.get('settlement_requested_z1u', 0) # Not tracked natively in ledger, but we have global requested tracker
-    # Let's derive it or just use the global
-    
-    settlement_pressure_ratio = 0.0
-    if config.settlement_cap_per_epoch > 0:
-        settlement_pressure_ratio = state.settlement_queue_z1u_requested / config.settlement_cap_per_epoch
-        
-    return {
-        'epoch': state.epoch,
-        'audience_reserve': state.audience_reserve,
-        'ar_ratio': ar_ratio,
-        'treasury': state.treasury,
-        'treasury_runway_estimate': treasury_runway_estimate,
-        'total_acr_issued': state.total_acr_issued,
-        'total_acr_vesting': total_acr_vesting,
-        'total_acr_available': total_acr_available,
-        'total_acr_queued': total_acr_queued,
-        'total_acr_settled': total_acr_settled,
-        'settlement_requested_z1u_epoch': epoch_queue_req,
-        'settlement_executed_z1u_epoch': state.per_epoch_counters.get('settlement_executed_z1u', 0.0),
-        'settlement_queue_z1u': state.settlement_queue_z1u_requested,
-        'settlement_pressure_ratio': settlement_pressure_ratio,
-        'utility_spend_epoch': state.per_epoch_counters.get('utility_spend', 0.0),
-        'treasury_fees_epoch': state.per_epoch_counters.get('treasury_fees', 0.0),
-        'provider_payments_epoch': state.per_epoch_counters.get('provider_payments', 0.0),
-        'z1u_burned_epoch': state.per_epoch_counters.get('z1u_burned', 0.0),
-        'cumulative_z1u_burned': state.total_z1u_burned,
-        'brand_inflow_epoch': state.per_epoch_counters.get('brand_inflow', 0.0),
-        'throttle_multiplier': state.throttle_multiplier,
-        'throttle_active': 1 if state.throttle_multiplier < 1.0 else 0,
-        'ar_floor_breach': 1 if state.ar_floor_breach_count > 0 else 0,
-        'z1u_price': getattr(state.amm, 'spot_price', 1.0) if hasattr(state, 'amm') else 1.0,
-        'escrow_balance': getattr(state.campaigns, 'escrow_balance_z1u', 0.0) if hasattr(state, 'campaigns') else 0.0,
-        'is_panicking': 1 if getattr(state, 'is_panicking', False) else 0,
-        'cumulative_cip_funding': getattr(state, 'cumulative_cip_funding', 0.0),
-        'cumulative_ops_costs': getattr(state, 'cumulative_ops_costs', 0.0),
-        'cumulative_rwa_yield': getattr(state, 'cumulative_rwa_yield', 0.0),
-        'dynamic_settlement_ratio': getattr(state, 'current_settlement_ratio', config.settlement_ratio),
-        # M3 Discrete Pool Metrics (US-Z1-M3-05)
-        'cip_pool_balance': getattr(state, 'cip_pool_balance', 0.0),
-        'vrp_pool_balance': getattr(state, 'vrp_pool_balance', 0.0),
-        'cip_funded_epoch': state.per_epoch_counters.get('cip_funded', 0.0),
-        'vrp_funded_epoch': state.per_epoch_counters.get('vrp_funded', 0.0),
-        # M3 Governance Staking Metrics (US-Z1-M3-06)
-        'total_staked_z1u': sum(getattr(c, 'staked_z1u', 0.0) for c in state.cohorts.values()),
-        'staked_epoch': state.per_epoch_counters.get('staked_z1u', 0.0),
-        'unstaked_epoch': state.per_epoch_counters.get('unstaked_z1u', 0.0),
-    }
+from projects.z1.shared_core.metrics import extract_epoch_metrics as _extract_epoch_metrics
+
+
+def extract_epoch_metrics(state, config) -> Dict[str, Any]:
+    return _extract_epoch_metrics(state, config, "m3")
 
 
 def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
     """
     Summarize a simulation run. Works with both single-run and multi-run
     (repetitions > 1) DataFrames. Multi-run data has a 'run_id' column.
-    
+
     For classification: uses median final AR ratio across runs.
     For worst-case metrics: uses worst value across all runs.
     """
     has_runs = 'run_id' in metrics_df.columns
-    
+
     if has_runs:
         # Compute per-run summaries first
         run_groups = metrics_df.groupby('run_id')
         per_run = run_groups.agg(
             final_ar_ratio=('ar_ratio', 'last'),
             min_ar_ratio=('ar_ratio', 'min'),
+            min_ar_floor_coverage=('ar_floor_coverage_ratio', 'min'),
             final_treasury=('treasury', 'last'),
             min_treasury=('treasury', 'min'),
             max_queue=('settlement_queue_z1u', 'max'),
@@ -98,20 +35,24 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             total_inflow=('brand_inflow_epoch', 'sum'),
             throttle_epochs=('throttle_active', 'sum'),
             ar_breach_epochs=('ar_floor_breach', 'sum'),
+            throttle_activation_count=('throttle_activation_count', 'max'),
             final_price=('z1u_price', 'last'),
             min_price=('z1u_price', 'min'),
             final_escrow=('escrow_balance', 'last'),
             panic_epochs=('is_panicking', 'sum'),
+            l6_breaches=('l6_breach_epoch_count', 'last'),
         )
-        
+
         # Use median for classification (representative)
         median_final_ar = float(per_run['final_ar_ratio'].median())
         median_throttle = float(per_run['throttle_epochs'].median())
         median_max_queue = float(per_run['max_queue'].median())
-        
+        median_l6_breaches = float(per_run['l6_breaches'].median())
+
         result = {
             'final_ar_ratio': median_final_ar,
             'min_ar_ratio': float(per_run['min_ar_ratio'].min()),  # worst across all runs
+            'min_ar_floor_coverage_ratio': float(per_run['min_ar_floor_coverage'].min()),
             'final_treasury': float(per_run['final_treasury'].median()),
             'min_treasury': float(per_run['min_treasury'].min()),
             'max_settlement_queue_z1u': float(per_run['max_queue'].max()),
@@ -123,44 +64,51 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             'total_burn': float(per_run['total_burn'].median()),
             'total_brand_inflow': float(per_run['total_inflow'].median()),
             'throttle_epochs': int(median_throttle),
+            'throttle_activation_count': int(per_run['throttle_activation_count'].median()),
             'ar_floor_breach_epochs': int(per_run['ar_breach_epochs'].median()),
             'final_price': float(per_run['final_price'].median()),
             'min_price': float(per_run['min_price'].min()),
             'final_escrow': float(per_run['final_escrow'].median()),
             'panic_epochs': int(per_run['panic_epochs'].median()),
+            'l6_breach_epoch_count': int(median_l6_breaches),
             'n_repetitions': int(per_run.shape[0]),
             'final_ar_ratio_std': float(per_run['final_ar_ratio'].std()),
             'final_ar_ratio_p05': float(per_run['final_ar_ratio'].quantile(0.05)),
             'final_ar_ratio_p95': float(per_run['final_ar_ratio'].quantile(0.95)),
         }
-        
+
         # Classify based on median
         threshold_ar = 0.3
-        if median_final_ar < threshold_ar:
+        if float(per_run['min_ar_floor_coverage'].min()) < 1.0:
             classification = "collapse"
+        elif median_l6_breaches > 0:
+            classification = "constitutional_breach"
         elif median_throttle > 0 or median_max_queue > 10_000_000_000:
             classification = "stressed"
         elif median_final_ar < 0.99:
             classification = "stressed"
         else:
             classification = "stable"
-        
+
     else:
         # Single run
         final = metrics_df.iloc[-1]
         threshold_ar = 0.3
-        if final['ar_ratio'] < threshold_ar:
+        if final['ar_floor_coverage_ratio'] < 1.0:
             classification = "collapse"
+        elif final['l6_breach_epoch_count'] > 0:
+            classification = "constitutional_breach"
         elif final['throttle_active'] == 1 or final['settlement_queue_z1u'] > 10_000_000_000:
             classification = "stressed"
         elif final['ar_ratio'] < 0.99:
             classification = "stressed"
         else:
             classification = "stable"
-        
+
         result = {
             'final_ar_ratio': float(final['ar_ratio']),
             'min_ar_ratio': float(metrics_df['ar_ratio'].min()),
+            'min_ar_floor_coverage_ratio': float(metrics_df['ar_floor_coverage_ratio'].min()),
             'final_treasury': float(final['treasury']),
             'min_treasury': float(metrics_df['treasury'].min()),
             'max_settlement_queue_z1u': float(metrics_df['settlement_queue_z1u'].max()),
@@ -172,13 +120,16 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             'total_burn': float(final['cumulative_z1u_burned']),
             'total_brand_inflow': float(metrics_df['brand_inflow_epoch'].sum()),
             'throttle_epochs': int(metrics_df['throttle_active'].sum()),
+            'throttle_activation_count': int(metrics_df['throttle_activation_count'].max()),
             'ar_floor_breach_epochs': int(metrics_df['ar_floor_breach'].sum()),
             'final_price': float(final['z1u_price']),
             'min_price': float(metrics_df['z1u_price'].min()),
             'final_escrow': float(final['escrow_balance']),
             'panic_epochs': int(metrics_df['is_panicking'].sum()),
+            'l6_breach_epoch_count': int(final['l6_breach_epoch_count']),
         }
-    
+
     result['classification'] = classification
+
     return result
 

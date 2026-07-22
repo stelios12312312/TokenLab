@@ -156,6 +156,44 @@ const plannerCoreT = computeTriage({
 assert(plannerCoreT.complexity_score >= 4,
   "planner-core file refs boost score regardless of goal text simplicity");
 
+// ── Blast-radius awareness ───────────────────────────────────────────
+// A ticket that only ADDS pack content / fixtures / config under the engine
+// tree is not a behavioral change to shared gate/transition logic — it must
+// not be force-routed to full_planner (max ceremony) just because the file
+// happens to live under the skill dir. This is the root cause of the e03
+// "3,557-line plan dir for a 150-line deliverable" ceremony trap.
+console.log("\n[Blast-radius awareness]");
+const additivePack = computeTriage({
+  goalText: "Add domain calibration bands and impossibility checks",
+  plannedFiles: [
+    ".agent/skills/iterative-planner/packs/quant/calibration.json",
+    ".agent/skills/iterative-planner/tests/test_calibration_bands.mjs",
+  ],
+});
+assert(additivePack.recommended_path !== "full_planner",
+  `additive pack/fixture content is NOT force-routed to full_planner (got ${additivePack.recommended_path})`);
+assert(additivePack.reasons.some((r) => /additive|pack|proportional|fixture/i.test(r)),
+  "additive pack content surfaces a proportional-flow reason");
+
+// Behavioral core change KEEPS full rigor (this must not regress).
+const behavioralCore = computeTriage({
+  goalText: "Change the gate threshold logic in the transition engine",
+  plannedFiles: [".agent/skills/iterative-planner/scripts/transition.mjs"],
+});
+assert(behavioralCore.recommended_path === "full_planner",
+  `behavioral core change keeps full_planner (got ${behavioralCore.recommended_path})`);
+
+// Mixed (pack + behavioral) → behavioral wins, full rigor preserved.
+const mixedCore = computeTriage({
+  goalText: "Add calibration bands and rewire the gate engine",
+  plannedFiles: [
+    ".agent/skills/iterative-planner/packs/quant/calibration.json",
+    ".agent/skills/iterative-planner/scripts/verify_gate.mjs",
+  ],
+});
+assert(mixedCore.recommended_path === "full_planner",
+  `mixed pack+behavioral change keeps full_planner (got ${mixedCore.recommended_path})`);
+
 // ── renderTriage produces a useful string ────────────────────────────
 const t = computeTriage({ goalText: "What does X do?" });
 const rendered = renderTriage(t);

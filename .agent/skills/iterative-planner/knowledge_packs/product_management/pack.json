@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "id": "product_management",
+  "pack": "product_management",
+  "title": "Product Management Knowledge Pack",
+  "version": 1,
+  "trust_tier": "bundled",
+  "dependencies": [],
+  "applies_when": {
+    "file_glob_any": [
+      "docs/ive-redesign/09_roadmap.md",
+      "plans/programs/**/program_packet.json",
+      "docs/**/*roadmap*.md"
+    ]
+  },
+  "provenance": {
+    "writer": "knowledge_pack",
+    "source": "knowledge_pack:product_management@v1"
+  },
+  "entry_files": [
+    "pitfalls.json",
+    "constraints.json"
+  ]
+}

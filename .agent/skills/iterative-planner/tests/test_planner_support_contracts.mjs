@@ -139,6 +139,9 @@ function scenarioIDEDetection() {
     mkdirSync(join(agRoot, ".antigravity"), { recursive: true });
     withEnv({
       CLAUDE_CODE_VERSION: undefined,
+      CLAUDE_CODE_ENTRYPOINT: undefined,
+      CLAUDE_CODE_SESSION_ID: undefined,
+      CLAUDE_CODE_EXECPATH: undefined,
       CURSOR_SESSION_ID: undefined,
       ANTIGRAVITY_IDE: undefined,
       VSCODE_PID: undefined,
@@ -169,6 +172,9 @@ function scenarioIDEDetection() {
 
     withEnv({
       CLAUDE_CODE_VERSION: undefined,
+      CLAUDE_CODE_ENTRYPOINT: undefined,
+      CLAUDE_CODE_SESSION_ID: undefined,
+      CLAUDE_CODE_EXECPATH: undefined,
       CURSOR_SESSION_ID: undefined,
       ANTIGRAVITY_IDE: undefined,
       VSCODE_PID: undefined,
@@ -180,6 +186,30 @@ function scenarioIDEDetection() {
       assert(ide.ide === "unknown", "detectIDE returns unknown when no IDE signals exist");
       assert(formatIDEWarning(ide).includes("Unknown IDE environment"), "formatIDEWarning preserves unsupported-IDE guidance");
     });
+
+    // Current Claude Code builds expose CLAUDE_CODE_ENTRYPOINT / _SESSION_ID /
+    // _EXECPATH rather than CLAUDE_CODE_VERSION. detectIDE must recognize those
+    // (otherwise it falls through to vscode-no-claude and silently disables
+    // trace capture even though the PostToolUse hook works).
+    for (const signal of ["CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_EXECPATH"]) {
+      withEnv({
+        CLAUDE_CODE_VERSION: undefined,
+        CLAUDE_CODE_ENTRYPOINT: undefined,
+        CLAUDE_CODE_SESSION_ID: undefined,
+        CLAUDE_CODE_EXECPATH: undefined,
+        CURSOR_SESSION_ID: undefined,
+        ANTIGRAVITY_IDE: undefined,
+        VSCODE_PID: undefined,
+        TERM_PROGRAM: undefined,
+        CODEX_THREAD_ID: undefined,
+        CODEX_SANDBOX: undefined,
+        [signal]: "fixture-value",
+      }, () => {
+        const ide = detectIDE(tmp);
+        assert(ide.ide === "claude-code", `detectIDE recognizes Claude Code via ${signal}`);
+        assert(ide.trace_audit_mode === "supported", `Claude Code via ${signal} advertises trace support`);
+      });
+    }
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -666,7 +696,7 @@ function scenarioReviewIntakeCloseSignalPersistsAndLoadsIntoProlog() {
 Review intake close-signal fixture
 
 ## Problem Statement
-Required review items must block close until disposition.
+LLM review items stay advisory, while deterministic invariant findings block close until disposition.
 
 ## Files To Modify
 - docs/review.md
@@ -706,24 +736,61 @@ Exercise review intake.
     });
     assert(refresh.refreshed === true, "refreshPlanArtifacts refreshes close signals for review-intake fixtures");
     const reviewIntake = refresh.closeSignals?.review_intake || null;
-    assert(reviewIntake?.required === true, "review intake is required for stale_blocking findings");
-    assert(reviewIntake?.satisfied === false, "review intake remains unsatisfied without a valid disposition");
-    assert(reviewIntake?.unresolved_required_count === 1, "review intake counts unresolved required findings");
+    assert(reviewIntake?.required === false, "review intake is not required for LLM stale_blocking findings");
+    assert(reviewIntake?.satisfied === true, "LLM stale_blocking review intake remains satisfied without a disposition");
+    assert(reviewIntake?.advisory_count === 1, "review intake keeps LLM stale_blocking findings visible as advisory");
+    assert(reviewIntake?.unresolved_required_count === 0, "LLM stale_blocking creates no unresolved required findings");
 
     const session = createSession();
     loadRules(session, { cwd: tmp, skillPath: plannerSkillPath });
     loadStateFacts(session, { cwd: tmp, skillPath: plannerSkillPath });
-    assert(session.check("review_intake_required(true)"), "loadStateFacts emits review_intake_required(true)");
-    assert(session.check("review_intake_satisfied(false)"), "loadStateFacts emits review_intake_satisfied(false)");
-    assert(session.check("review_intake_unresolved_required_count(1)"), "loadStateFacts emits unresolved review-intake count");
-    assert(session.check("missing_guard(validate, close, review_intake_unresolved)"), "Prolog close guard blocks unresolved review-intake items");
-    assert(session.check("invariant_violated(review_intake_unresolved, count(1))"), "review-intake invariant hard-fails at VALIDATE");
+    assert(session.check("review_intake_required(false)"), "loadStateFacts emits review_intake_required(false) for LLM-only stale findings");
+    assert(session.check("review_intake_satisfied(true)"), "loadStateFacts emits review_intake_satisfied(true) for LLM-only stale findings");
+    assert(session.check("review_intake_unresolved_required_count(0)"), "loadStateFacts emits zero unresolved review-intake count for LLM-only stale findings");
+    assert(!session.check("missing_guard(validate, close, review_intake_unresolved)"), "Prolog close guard does not block LLM-only stale findings");
+    assert(!session.check("invariant_violated(review_intake_unresolved, count(1))"), "review-intake invariant does not hard-fail for LLM-only stale findings");
 
+    mkdirSync(join(planDir, "artifacts", "prolog"), { recursive: true });
+    writeFileSync(join(planDir, "artifacts", "prolog", "trace.json"), JSON.stringify({
+      timestamp: new Date().toISOString(),
+      violations: [
+        {
+          name: "fixture_violation",
+          detail: "Deterministic invariant violation",
+        },
+      ],
+    }, null, 2) + "\n");
+
+    const deterministicRefresh = refreshPlanArtifacts({
+      cwd: tmp,
+      skillPath: plannerSkillPath,
+      planDirName: planName,
+      refreshOntology: true,
+      persistOntology: true,
+      persistState: true,
+      syncFindings: false,
+    });
+    const deterministicIntake = deterministicRefresh.closeSignals?.review_intake || null;
+    assert(deterministicIntake?.required === true, "deterministic Prolog violations keep review intake required");
+    assert(deterministicIntake?.satisfied === false, "deterministic Prolog violations remain unsatisfied without disposition");
+    assert(deterministicIntake?.unresolved_required_count === 1, "deterministic Prolog violations count as unresolved required findings");
+
+    const deterministicSession = createSession();
+    loadRules(deterministicSession, { cwd: tmp, skillPath: plannerSkillPath });
+    loadStateFacts(deterministicSession, { cwd: tmp, skillPath: plannerSkillPath });
+    assert(deterministicSession.check("review_intake_required(true)"), "loadStateFacts emits review_intake_required(true) for deterministic violations");
+    assert(deterministicSession.check("review_intake_satisfied(false)"), "loadStateFacts emits review_intake_satisfied(false) for deterministic violations");
+    assert(deterministicSession.check("review_intake_unresolved_required_count(1)"), "loadStateFacts emits unresolved review-intake count for deterministic violations");
+    assert(deterministicSession.check("missing_guard(validate, close, review_intake_unresolved)"), "Prolog close guard blocks unresolved deterministic review-intake items");
+    assert(deterministicSession.check("invariant_violated(review_intake_unresolved, count(1))"), "review-intake invariant hard-fails at VALIDATE for deterministic violations");
+
+    const deterministicItemId = deterministicIntake?.unresolved_required?.[0]?.id;
+    assert(typeof deterministicItemId === "string" && deterministicItemId.startsWith("ontology:violation:"), "deterministic review item id comes from ontology violation");
     writeFileSync(join(planDir, "review_intake.json"), JSON.stringify({
       version: 1,
       items: [
         {
-          id: "llm:stale_blocking:review_fixture",
+          id: deterministicItemId,
           disposition: {
             status: "rejected",
             disposition_reason: "Fixture proves deterministic rejection reason handling.",

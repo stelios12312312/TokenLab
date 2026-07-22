@@ -351,6 +351,11 @@
       "check": "review_intake",
       "message": "Required review-intake findings must be verified, consumed with evidence/rationale, rejected with reason, or waived with approval before close"
     },
+    "GATE-VAL-020": {
+      "gate": "validate-to-close",
+      "check": "ava_defects",
+      "message": "Active AVA-discovered defects or unsafe AVA sandbox artifacts must be resolved and anchored before close"
+    },
     "GATE-NTF-001": {
       "gate": "notify-user",
       "check": "kb_notification",

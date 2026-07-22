@@ -1,0 +1,16 @@
+[
+  {
+    "id": "CRP-FLOOR-001",
+    "title": "Run class disclosure",
+    "summary": "Quant reports must label evidence as smoke, wiring_proof, exploratory, serious_search, or promotion_candidate before claims are interpreted.",
+    "severity": "high",
+    "polarity": "guardrail"
+  },
+  {
+    "id": "CRP-FLOOR-002",
+    "title": "Audience and decision context",
+    "summary": "A quantitative result artifact must state the audience and the decision the number is meant to support.",
+    "severity": "medium",
+    "polarity": "guardrail"
+  }
+]

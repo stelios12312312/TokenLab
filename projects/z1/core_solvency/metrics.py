@@ -1,70 +1,22 @@
-from typing import Dict, Any
-from .state import GlobalState
-from .config import SolvencyConfig
+from typing import Any, Dict
 
-def extract_epoch_metrics(state: GlobalState, config: SolvencyConfig) -> Dict[str, Any]:
-    """Extract metrics required by Prompt 08 into a flat dictionary."""
-    ar_ratio = state.audience_reserve / config.audience_reserve_initial if config.audience_reserve_initial > 0 else 0
-    
-    # Runway estimate: (Treasury / net outflow). 
-    # M1 specifies a simple rolling outflow approximation. We use current epoch net flow.
-    # Outflow from treasury is topups. Inflow is brand + fees.
-    net_treasury_flow = state.per_epoch_counters.get('brand_inflow', 0) + state.per_epoch_counters.get('treasury_fees', 0) - state.per_epoch_counters.get('treasury_topups', 0)
-    
-    if net_treasury_flow >= 0:
-        treasury_runway_estimate = 9999.0 # Positive runway
-    else:
-        treasury_runway_estimate = state.treasury / abs(net_treasury_flow)
-    
-    total_acr_vesting = sum(sum(c.acr_vesting_buckets) for c in state.cohorts.values())
-    total_acr_available = sum(c.acr_available for c in state.cohorts.values())
-    total_acr_queued = sum(c.acr_queued_for_settlement for c in state.cohorts.values())
-    total_acr_settled = sum(c.acr_settled for c in state.cohorts.values())
-    
-    epoch_queue_req = state.per_epoch_counters.get('settlement_requested_z1u', 0) # Not tracked natively in ledger, but we have global requested tracker
-    # Let's derive it or just use the global
-    
-    settlement_pressure_ratio = 0.0
-    if config.settlement_cap_per_epoch > 0:
-        settlement_pressure_ratio = state.settlement_queue_z1u_requested / config.settlement_cap_per_epoch
-        
-    return {
-        'epoch': state.epoch,
-        'audience_reserve': state.audience_reserve,
-        'ar_ratio': ar_ratio,
-        'treasury': state.treasury,
-        'treasury_runway_estimate': treasury_runway_estimate,
-        'total_acr_issued': state.total_acr_issued,
-        'total_acr_vesting': total_acr_vesting,
-        'total_acr_available': total_acr_available,
-        'total_acr_queued': total_acr_queued,
-        'total_acr_settled': total_acr_settled,
-        'settlement_requested_z1u_epoch': epoch_queue_req,
-        'settlement_executed_z1u_epoch': state.per_epoch_counters.get('settlement_executed_z1u', 0.0),
-        'settlement_queue_z1u': state.settlement_queue_z1u_requested,
-        'settlement_pressure_ratio': settlement_pressure_ratio,
-        'utility_spend_epoch': state.per_epoch_counters.get('utility_spend', 0.0),
-        'treasury_fees_epoch': state.per_epoch_counters.get('treasury_fees', 0.0),
-        'provider_payments_epoch': state.per_epoch_counters.get('provider_payments', 0.0),
-        'z1u_burned_epoch': state.per_epoch_counters.get('z1u_burned', 0.0),
-        'cumulative_z1u_burned': state.total_z1u_burned,
-        'brand_inflow_epoch': state.per_epoch_counters.get('brand_inflow', 0.0),
-        'throttle_multiplier': state.throttle_multiplier,
-        'throttle_active': 1 if state.throttle_multiplier < 1.0 else 0,
-        'ar_floor_breach': 1 if state.ar_floor_breach_count > 0 else 0,
-    }
+from projects.z1.shared_core.metrics import extract_epoch_metrics as _extract_epoch_metrics
+
+
+def extract_epoch_metrics(state, config) -> Dict[str, Any]:
+    return _extract_epoch_metrics(state, config, "m1")
 
 
 def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
     """
     Summarize a simulation run. Works with both single-run and multi-run
     (repetitions > 1) DataFrames. Multi-run data has a 'run_id' column.
-    
+
     For classification: uses median final AR ratio across runs.
     For worst-case metrics: uses worst value across all runs.
     """
     has_runs = 'run_id' in metrics_df.columns
-    
+
     if has_runs:
         # Compute per-run summaries first
         run_groups = metrics_df.groupby('run_id')
@@ -83,12 +35,12 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             throttle_epochs=('throttle_active', 'sum'),
             ar_breach_epochs=('ar_floor_breach', 'sum'),
         )
-        
+
         # Use median for classification (representative)
         median_final_ar = float(per_run['final_ar_ratio'].median())
         median_throttle = float(per_run['throttle_epochs'].median())
         median_max_queue = float(per_run['max_queue'].median())
-        
+
         result = {
             'final_ar_ratio': median_final_ar,
             'min_ar_ratio': float(per_run['min_ar_ratio'].min()),  # worst across all runs
@@ -109,7 +61,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             'final_ar_ratio_p05': float(per_run['final_ar_ratio'].quantile(0.05)),
             'final_ar_ratio_p95': float(per_run['final_ar_ratio'].quantile(0.95)),
         }
-        
+
         # Classify based on median
         threshold_ar = 0.3
         if median_final_ar < threshold_ar:
@@ -118,7 +70,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             classification = "stressed"
         else:
             classification = "stable"
-        
+
     else:
         # Single run
         final = metrics_df.iloc[-1]
@@ -129,7 +81,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             classification = "stressed"
         else:
             classification = "stable"
-        
+
         result = {
             'final_ar_ratio': float(final['ar_ratio']),
             'min_ar_ratio': float(metrics_df['ar_ratio'].min()),
@@ -146,7 +98,7 @@ def summarize_run(metrics_df: 'pd.DataFrame') -> Dict[str, Any]:
             'throttle_epochs': int(metrics_df['throttle_active'].sum()),
             'ar_floor_breach_epochs': int(metrics_df['ar_floor_breach'].sum()),
         }
-    
+
     result['classification'] = classification
     return result
 

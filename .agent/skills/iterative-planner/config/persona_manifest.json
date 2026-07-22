@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "rebaselined_at": "2026-06-01T13:42:50.783Z",
+  "rebaselined_at": "2026-06-19T10:14:21.312Z",
   "packs": {
     "assumptions_challenger": {
       "files": [
@@ -24,12 +24,24 @@
     },
     "quant": {
       "files": [
+        "archetype_accomplices.mjs",
+        "betting_market.mjs",
+        "calibration_gate.mjs",
+        "crypto_execution.mjs",
+        "forecastability.mjs",
         "index.mjs",
+        "leakage_proof.mjs",
         "rules.pl"
       ],
       "hashes": {
-        "index.mjs": "f1b6a91cd4114f7d1dc19929d9141965323f7c49500957d709d300044b31987b",
-        "rules.pl": "38f8ad671da822a57809f1909929bcc49cfd4c9b530c3ee6f55031f59fff9707"
+        "archetype_accomplices.mjs": "ef04b3c5a26df1f74d1d3e429d826531c50389f2b85afba1f9e448d9fd648f12",
+        "betting_market.mjs": "11fcf7bb4cd97ffb78f0e3af60c27449a120d9ae5eadd17f71967e2f4f9ae4aa",
+        "calibration_gate.mjs": "6994e5042a0169c00b87565fa064167cbb7b1c1c7ffa2e68e40510a03691f574",
+        "crypto_execution.mjs": "e6bb092a797fff8c928a962c33d5183190b6bfa4334dcd04afa7e977b69c6f85",
+        "forecastability.mjs": "204ff9f3f1ca059e95c4dd33f5d8f9762a8fefaa9643f03ebcbb345b466b9f68",
+        "index.mjs": "f8eeb94f6b40f7c25c7b72fa93bb9e80388033c662074d207843203e8b7e4b8b",
+        "leakage_proof.mjs": "e1891a160e5f4dbcc57dbcd8aa02866522270e962e4ace41c7bbd53c15860906",
+        "rules.pl": "e9bd71fae88d5661ad8971f9d3f83590bc0d03980f2f2b34944637cfb113596b"
       }
     },
     "quant_target": {
@@ -38,16 +50,18 @@
         "rules.pl"
       ],
       "hashes": {
-        "index.mjs": "6bd635993efe1223a000f3ebdc7028c7be8dc2961feff0f14c250a609eb3937e",
+        "index.mjs": "85ca84ddd8c2648e07c7ade1ed5f32da6bb1662f6815c2f00c827102149b29af",
         "rules.pl": "0304e2f67c252e43feed4e71d37cb09832e677ec8b6d1a33928897c394c6bc73"
       }
     },
     "tokenomics": {
       "files": [
-        "index.mjs"
+        "index.mjs",
+        "rules.pl"
       ],
       "hashes": {
-        "index.mjs": "78102a1275807598f067ab43ee87c6db99434b14c1344320d5eb1278a341126c"
+        "index.mjs": "118ff4205fd95953190cc736ee07b4d13a20972e6f0ab0f0e66611a374690569",
+        "rules.pl": "9c19151a0f79b345839387d9ec8b349520331b620f224c1a71c5c684d00d389c"
       }
     },
     "traceability": {
@@ -56,7 +70,7 @@
         "rules.pl"
       ],
       "hashes": {
-        "index.mjs": "d6d1fc26406cf73ff0b18938fac6c3fe22e35bd3b97c751cd3e9ec4e06183018",
+        "index.mjs": "ee95001918f149a5ee65cd9f1ac91877f7ed649ca2c570601596d6a9123176dc",
         "rules.pl": "e01422e2390dcaf1d670830865f2286f550c0cda48f7182f9a815ef83016ea55"
       }
     },

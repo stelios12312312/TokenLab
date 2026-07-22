@@ -1,0 +1,100 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 700" width="100%" height="100%" style="background-color: #FAFAFA;">
+  <defs>
+    <!-- Markers for green (positive) and red (negative) arrows -->
+    <marker id="arrow-pos" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#2E7D32"/>
+    </marker>
+    <marker id="arrow-neg" viewBox="0 0 10 10" refX="22" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#C62828"/>
+    </marker>
+    <!-- Decorative dropshadow for boxes -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.1"/>
+    </filter>
+  </defs>
+
+  <text x="500" y="40" text-anchor="middle" font-family="DejaVu Sans" font-size="22" font-weight="bold" fill="#1B365D">Z1 Token Economy - Causal Feedback Loop Diagram</text>
+  <text x="500" y="65" text-anchor="middle" font-family="DejaVu Sans" font-size="12" fill="#757575" font-style="italic">Mapping System Dynamics, Feedback Loops, and Critical Levers</text>
+
+  <!-- ================= NODES ================= -->
+  <!-- Exposed Users -->
+  <g transform="translate(150, 150)" filter="url(#shadow)">
+    <rect width="180" height="50" rx="8" fill="#FFFFFF" stroke="#1B365D" stroke-width="2"/>
+    <text x="90" y="30" text-anchor="middle" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#1B365D">Campaign Exposed Users</text>
+  </g>
+
+  <!-- Participants -->
+  <g transform="translate(410, 150)" filter="url(#shadow)">
+    <rect width="180" height="50" rx="8" fill="#FFFFFF" stroke="#1B365D" stroke-width="2"/>
+    <text x="90" y="30" text-anchor="middle" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#1B365D">Audience Participants</text>
+  </g>
+
+  <!-- Verified Profiles -->
+  <g transform="translate(670, 150)" filter="url(#shadow)">
+    <rect width="180" height="50" rx="8" fill="#FFFFFF" stroke="#1B365D" stroke-width="2"/>
+    <text x="90" y="30" text-anchor="middle" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#1B365D">Verified Profiles (CDP)</text>
+  </g>
+
+  <!-- Spot Price -->
+  <g transform="translate(410, 450)" filter="url(#shadow)">
+    <rect width="180" height="50" rx="8" fill="#FFF2CC" stroke="#D6B656" stroke-width="2"/>
+    <text x="90" y="30" text-anchor="middle" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#B58900">Z1U Spot Price (AMM)</text>
+  </g>
+
+  <!-- Settlement Demand -->
+  <g transform="translate(670, 450)" filter="url(#shadow)">
+    <rect width="180" height="50" rx="8" fill="#F8CECC" stroke="#B85450" stroke-width="2"/>
+    <text x="90" y="30" text-anchor="middle" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#C62828">Settlement Sell Volume</text>
+  </g>
+
+  <!-- Treasury Surplus -->
+  <g transform="translate(150, 450)" filter="url(#shadow)">
+    <rect width="180" height="50" rx="8" fill="#D5E8D4" stroke="#82B366" stroke-width="2"/>
+    <text x="90" y="30" text-anchor="middle" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#2E7D32">Treasury Surplus</text>
+  </g>
+
+  <!-- ================= ARROWS ================= -->
+  <!-- Exposed -> Participants (+) -->
+  <path d="M 330 175 L 410 175" fill="none" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arrow-pos)"/>
+  <text x="370" y="165" font-family="DejaVu Sans" font-size="14" font-weight="bold" fill="#2E7D32">+</text>
+
+  <!-- Participants -> Verified Profiles (+) -->
+  <path d="M 590 175 L 670 175" fill="none" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arrow-pos)"/>
+  <text x="630" y="165" font-family="DejaVu Sans" font-size="14" font-weight="bold" fill="#2E7D32">+</text>
+
+  <!-- Verified Profiles -> Settlement Demand (+) -->
+  <path d="M 760 200 L 760 450" fill="none" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arrow-pos)"/>
+  <text x="770" y="320" font-family="DejaVu Sans" font-size="14" font-weight="bold" fill="#2E7D32">+</text>
+
+  <!-- Settlement Demand -> Spot Price (-) -->
+  <path d="M 670 475 L 590 475" fill="none" stroke="#C62828" stroke-width="2.5" marker-end="url(#arrow-neg)"/>
+  <text x="630" y="465" font-family="DejaVu Sans" font-size="14" font-weight="bold" fill="#C62828">-</text>
+
+  <!-- Spot Price -> Treasury Surplus (+) -->
+  <path d="M 410 475 L 330 475" fill="none" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arrow-pos)"/>
+  <text x="370" y="465" font-family="DejaVu Sans" font-size="14" font-weight="bold" fill="#2E7D32">+</text>
+
+  <!-- Treasury Surplus -> Spot Price (+) [Buyback defense] -->
+  <path d="M 240 450 C 240 350, 400 350, 480 450" fill="none" stroke="#2E7D32" stroke-width="2.5" stroke-dasharray="4" marker-end="url(#arrow-pos)"/>
+  <text x="340" y="350" font-family="DejaVu Sans" font-size="14" font-weight="bold" fill="#2E7D32">+</text>
+
+  <!-- Spot Price -> Exposed Users (+) [Inflow growth scaling] -->
+  <path d="M 450 450 C 350 350, 200 300, 240 200" fill="none" stroke="#2E7D32" stroke-width="2.5" marker-end="url(#arrow-pos)"/>
+  <text x="270" y="290" font-family="DejaVu Sans" font-size="14" font-weight="bold" fill="#2E7D32">+</text>
+
+  <!-- ================= LOOP LABELS ================= -->
+  <!-- Loop R1: Adoption Spiral -->
+  <circle cx="370" cy="270" r="22" fill="#E8F5E9" stroke="#2E7D32" stroke-width="1.5"/>
+  <text x="370" y="274" text-anchor="middle" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#2E7D32">R1</text>
+  <text x="370" y="305" text-anchor="middle" font-family="DejaVu Sans" font-size="10" fill="#2E7D32">Growth Loop</text>
+
+  <!-- Loop B1: Sell-Pressure Drag -->
+  <circle cx="630" cy="320" r="22" fill="#FFEBEE" stroke="#C62828" stroke-width="1.5"/>
+  <text x="630" y="324" text-anchor="middle" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#C62828">B1</text>
+  <text x="630" y="355" text-anchor="middle" font-family="DejaVu Sans" font-size="10" fill="#C62828">Price Pressure</text>
+
+  <!-- Loop B2: Treasury Support -->
+  <circle cx="340" cy="400" r="22" fill="#FFEBEE" stroke="#C62828" stroke-width="1.5"/>
+  <text x="340" y="404" text-anchor="middle" font-family="DejaVu Sans" font-size="12" font-weight="bold" fill="#C62828">B2</text>
+  <text x="340" y="431" text-anchor="middle" font-family="DejaVu Sans" font-size="10" fill="#C62828">Peg Defense</text>
+</svg>

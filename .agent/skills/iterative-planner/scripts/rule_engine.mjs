@@ -134,6 +134,11 @@ export function runSemanticChecks(gate, planDir, engineOptions = {}) {
       }, "GATE-SEM-001"));
     }
 
+    // Assert the gate's target state so transition-scoped invariants (I-052
+    // close-blockers, I-053 validate-blockers) can fire at the real gate, not
+    // only when a test injects semantic_transition_target.
+    session.consult(`semantic_transition_target(${to}).`);
+
     const violations = session.queryAll("invariant_violated(Name, Detail)");
     if (violations.length > 0) {
       // FAST_TRACK mode: downgrade story invariant violations from FAIL to WARN.
