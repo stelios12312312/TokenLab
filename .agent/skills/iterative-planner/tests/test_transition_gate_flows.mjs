@@ -16,9 +16,11 @@ import { join, resolve, dirname } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { execFileSync } from "child_process";
 import { tmpdir } from "os";
-import { createHash } from "crypto";
+import { createHash, randomBytes } from "crypto";
 import { KB_SALT_HEX_LEN, computeStateHash, writeStateJson } from "../scripts/lib/determinism.mjs";
 import { buildEnvelope, getEnvelopePath, validateEnvelopeAgainstDisk } from "../scripts/lib/plan_contract.mjs";
+import { computePlanTamperFingerprint } from "../scripts/lib/plan_integrity.mjs";
+import { stampRunRecordPayload } from "../scripts/lib/run_record.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -50,6 +52,7 @@ function runNode(args, cwd, extraEnv = {}) {
   try {
     maybeRefreshPlanToExecuteEnvelope(args, cwd);
     maybeRefreshInvariantEnvelope(args, cwd);
+    const fixtureTamperEnv = maybeWriteFixtureTamperApproval(args, cwd);
     const stdout = execFileSync(NODE, args, {
       cwd,
       encoding: "utf-8",
@@ -58,6 +61,21 @@ function runNode(args, cwd, extraEnv = {}) {
         ...process.env,
         CODEX_THREAD_ID: "",
         _PLANNER_PLAN_TARGET: "",
+        // Hermetic IDE: neutralize host IDE-detection signals so detectIDE
+        // resolves deterministically (trace_audit_mode "unsupported") regardless
+        // of whether the suite runs from Claude Code, Cursor, Antigravity, etc.
+        // A trace-supporting host otherwise flips the gate's low_trace_coverage
+        // invariant on these trace-less synthetic fixtures (which is why they
+        // pass in CI, where no IDE env is present).
+        CLAUDE_CODE_ENTRYPOINT: "",
+        CLAUDE_CODE_SESSION_ID: "",
+        CLAUDE_CODE_EXECPATH: "",
+        CLAUDE_CODE_VERSION: "",
+        CURSOR_SESSION_ID: "",
+        ANTIGRAVITY_IDE: "",
+        VSCODE_PID: "",
+        TERM_PROGRAM: "",
+        ...fixtureTamperEnv,
         ...extraEnv,
       },
     });
@@ -99,6 +117,60 @@ function maybeRefreshInvariantEnvelope(args, cwd) {
   const subcommand = String(args?.[1] || "");
   if (command !== ruleEngineScript || subcommand !== "check-invariants") return;
   materializeApprovalEnvelopeForCurrentPlan(cwd);
+}
+
+function tamperChangedArtifactNames(current, stored) {
+  const storedArtifacts = new Map((stored?.artifacts || []).map((artifact) => [artifact.name, artifact]));
+  const changed = [];
+  for (const artifact of current?.artifacts || []) {
+    const previous = storedArtifacts.get(artifact.name);
+    if (!previous || previous.hash !== artifact.hash || previous.bytes !== artifact.bytes) {
+      changed.push(artifact.name);
+    }
+  }
+  return changed;
+}
+
+function maybeWriteFixtureTamperApproval(args, cwd) {
+  const command = String(args?.[0] || "");
+  const gate = String(args?.[1] || "");
+  if (args.includes("--planning-only")) return {};
+  if (gate !== "plan-to-execute") return {};
+  if (command !== transitionScript && command !== verifyGateScript) return {};
+  if (!existsSync(join(cwd, "plans", ".current_plan"))) return {};
+
+  const { planDir } = getPlanDir(cwd);
+  const state = readJson(join(planDir, "state.json"));
+  const stored = state?.tamper_fingerprint;
+  if (!stored?.hash) return {};
+
+  const current = computePlanTamperFingerprint(planDir, { stateJson: state });
+  if (!current?.hash || current.hash === stored.hash) return {};
+
+  const approvalCovered = new Set([
+    "state.json",
+    "plan.md",
+    "plan.json",
+    "verification_strategy.yaml",
+  ]);
+  const changed = tamperChangedArtifactNames(current, stored);
+  if (changed.length === 0 || !changed.every((name) => approvalCovered.has(name))) return {};
+
+  const nonce = randomBytes(32).toString("hex");
+  const approvalPath = join(cwd, ".git", "iterative-planner", "tamper-fingerprint-approval.json");
+  mkdirSync(dirname(approvalPath), { recursive: true });
+  writeFileSync(approvalPath, JSON.stringify({
+    schema_version: 1,
+    purpose: "plan_tamper_fingerprint_refresh",
+    gate,
+    fingerprint_version: current.version,
+    fingerprint_hash: current.hash,
+    approval_nonce_hash: createHash("sha256").update(nonce).digest("hex"),
+    expires_at: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+    fixture: "test_transition_gate_flows approval-covered plan rewrite",
+  }, null, 2) + "\n");
+
+  return { PLANNER_TAMPER_APPROVAL_NONCE: nonce };
 }
 
 function materializeApprovalEnvelopeForCurrentPlan(cwd) {
@@ -1019,10 +1091,12 @@ function scenarioTransitionFlow() {
 
     const approvalHash = afterExplore.approval_nonce_hash;
     const progressPath = join(planDir, "progress.md");
-    writeFileSync(progressPath, readText(progressPath).trimEnd() + "\n- [x] Tamper fixture changed a sensitive artifact.\n");
+    const originalProgress = readText(progressPath);
+    writeFileSync(progressPath, originalProgress.trimEnd() + "\n- [x] Tamper fixture changed a sensitive artifact.\n");
     const tamperedPreflight = runNode([verifyGateScript, "plan-to-execute"], tmp);
-    assert(tamperedPreflight.ok, "tamper fingerprint mismatch warns without blocking a legitimate next transition");
-    assert(tamperedPreflight.stdout.includes("GATE-TMP-002"), "tamper fingerprint mismatch emits the stable warning code");
+    assert(!tamperedPreflight.ok, "tamper fingerprint mismatch blocks preflight without fresh approval");
+    assert(tamperedPreflight.stdout.includes("GATE-TMP-002"), "tamper fingerprint mismatch emits the stable failure code");
+    writeFileSync(progressPath, originalProgress);
 
     const execute = runNode([transitionScript, "plan-to-execute"], tmp);
     assert(execute.ok, "transition plan-to-execute exits cleanly with the approved nonce path");
@@ -3062,7 +3136,7 @@ PASS
     assert(!missing.ok, "verify_gate reflect-to-close blocks quant result claims without quant_results_validation.json");
     assert(missing.stdout.includes("GATE-VAL-016") && missing.stdout.includes("missing_quant_results_validation_artifact"), "reflect-to-close reports the missing quant validation artifact");
 
-    writeFileSync(join(planDir, "quant_results_validation.json"), JSON.stringify({
+    writeFileSync(join(planDir, "quant_results_validation.json"), JSON.stringify(stampRunRecordPayload({
       version: 1,
       applicable: true,
       run_class: "wiring_proof",
@@ -3079,7 +3153,13 @@ PASS
         odds_snapshot_matrix: "entry price: T-24/open; reference price: close; CLV available: yes; label type: excess return",
         presentation_stamp: "diagnostic_only",
       },
-    }, null, 2) + "\n");
+    }, {
+      producer: "verification_runner",
+      row_id: "VM-QUANT-DIAGNOSTIC",
+      command: "node verify_gate.mjs reflect-to-close",
+      exit_code: 0,
+      timestamp: "2026-06-03T12:00:00.000Z",
+    }), null, 2) + "\n");
 
     const diagnostic = runNode([verifyGateScript, "reflect-to-close"], tmp);
     assert(diagnostic.ok, "verify_gate reflect-to-close accepts wiring-proof quant results only as diagnostic_only");

@@ -1,0 +1,24 @@
+[
+  {
+    "id": "TK-DEC-001",
+    "title": "Arithmetic before narrative",
+    "summary": "Supply, allocation, FDV, APY, unlock, and admin-control arithmetic must reconcile before tokenomics narratives are accepted as launch-ready.",
+    "severity": "high",
+    "polarity": "decision",
+    "tags": [
+      "arithmetic",
+      "verification"
+    ]
+  },
+  {
+    "id": "TK-DEC-002",
+    "title": "Qualified-review boundary",
+    "summary": "Live launch, investment, securities, tax, or legal conclusions require qualified review; the planner may only surface consistency checks and residual uncertainty.",
+    "severity": "high",
+    "polarity": "decision",
+    "tags": [
+      "legal_boundary",
+      "financial_boundary"
+    ]
+  }
+]

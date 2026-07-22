@@ -21,7 +21,7 @@
 // Without --write, the runner prints results without modifying the packet.
 // With --write, the runner updates the packet's verification_matrix entries.
 
-import { dirname, join } from "path";
+import { dirname, isAbsolute, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { existsSync, readFileSync, writeFileSync } from "fs";
 import { spawnSync } from "child_process";
@@ -29,6 +29,7 @@ import {
   loadProgramPacket,
   resolveProgramPacketPath,
 } from "./lib/program_packet.mjs";
+import { stampJsonRunRecordFile } from "./lib/run_record.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -119,6 +120,42 @@ function executeRow(row, cwd) {
   };
 }
 
+function artifactRefs(row = {}) {
+  const refs = [];
+  for (const key of ["artifact_refs", "output_artifacts", "artifacts"]) {
+    if (Array.isArray(row[key])) refs.push(...row[key]);
+  }
+  for (const key of ["artifact_ref", "output_artifact"]) {
+    if (typeof row[key] === "string" && row[key].trim()) refs.push(row[key].trim());
+  }
+  return [...new Set(refs.map((ref) => String(ref || "").trim()).filter(Boolean))];
+}
+
+function resolveArtifactPath(ref, packetDir, cwd) {
+  if (!ref) return null;
+  if (isAbsolute(ref)) return ref;
+  const candidates = [
+    resolve(packetDir, ref),
+    resolve(cwd, ref),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) || candidates[0];
+}
+
+function stampRowArtifacts(row, execution, packetDir, cwd) {
+  return artifactRefs(row).map((ref) => {
+    const artifactPath = resolveArtifactPath(ref, packetDir, cwd);
+    if (!artifactPath) return { ref, ok: false, reason: "artifact_ref_invalid" };
+    const stamped = stampJsonRunRecordFile(artifactPath, {
+      ...execution,
+      producer: "verification_runner",
+    });
+    return {
+      ref,
+      ...stamped,
+    };
+  });
+}
+
 function applyResultsToPacket(packet, executions) {
   const byId = new Map(executions.map((execution) => [String(execution.row_id), execution]));
   const updated = JSON.parse(JSON.stringify(packet));
@@ -130,6 +167,9 @@ function applyResultsToPacket(packet, executions) {
     row.executed_at = execution.finished_at;
     row.exit_code = execution.exit_code;
     row.stdout_excerpt = execution.stdout_excerpt;
+    if (Array.isArray(execution.artifact_records) && execution.artifact_records.length > 0) {
+      row.artifact_records = execution.artifact_records;
+    }
   }
   return updated;
 }
@@ -260,6 +300,12 @@ function main(argv = process.argv.slice(2), cwd = process.cwd()) {
   result.status = anyFail ? "FAIL" : "PASS";
 
   if (args.write) {
+    const packetDir = dirname(target.resolved.path);
+    const rowsById = new Map(eligibleRows.map((row) => [String(row.id), row]));
+    for (const execution of result.executions) {
+      const row = rowsById.get(String(execution.row_id));
+      execution.artifact_records = row ? stampRowArtifacts(row, execution, packetDir, cwd) : [];
+    }
     const updated = applyResultsToPacket(target.packet, result.executions);
     writeFileSync(target.resolved.path, JSON.stringify(updated, null, 2) + "\n", "utf-8");
     result.write_status = `Updated ${target.resolved.path} — ${result.executed_count} row(s) annotated with result_source='executed'.`;

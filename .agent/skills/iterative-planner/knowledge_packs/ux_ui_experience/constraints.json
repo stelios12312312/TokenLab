@@ -1,0 +1,9 @@
+[
+  {
+    "id": "UX-CON-001",
+    "title": "Rendered journey proof",
+    "summary": "User-visible UI changes should carry browser or rendered proof for the primary journey.",
+    "severity": "high",
+    "polarity": "guardrail"
+  }
+]

@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
 import { tmpdir } from "os";
 import { createSemanticEngine } from "../scripts/lib/semantic_engine.mjs";
+import { writeStateJson } from "../scripts/lib/determinism.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -78,7 +79,23 @@ function makeFixture(name, state = "REFLECT") {
   const statePath = join(planDir, "state.json");
   const stateJson = JSON.parse(readFileSync(statePath, "utf-8"));
   stateJson.state = state;
-  writeFileSync(statePath, JSON.stringify(stateJson, null, 2) + "\n");
+  writeStateJson(planDir, stateJson);
+  mkdirSync(join(tmp, "reports", "user_story_audit"), { recursive: true });
+  writeFileSync(join(tmp, "reports", "user_story_audit", "story_registry.json"), JSON.stringify({
+    version: 1,
+    stories: [
+      {
+        id: "US-SPOT-001",
+        title: "Spot-check invariant fixture",
+        priority: "HIGH",
+        status: "ACTIVE",
+        code_refs: ["src/feature.js"],
+        test_refs: ["tests/feature.test.js"],
+        doc_refs: ["README.md"],
+        validation_refs: ["reports/spot-check-fixture.json"],
+      },
+    ],
+  }, null, 2) + "\n");
   mkdirSync(join(tmp, "reports", "spot_checks", planName), { recursive: true });
   return { tmp, planName };
 }
@@ -105,6 +122,15 @@ function writeFindings(tmp, planName, findings, acks = null) {
   }));
   writeFileSync(join(dir, "findings.jsonl"), normalized.map((finding) => JSON.stringify(finding)).join("\n") + "\n");
   if (acks) writeFileSync(join(dir, "acks.json"), JSON.stringify(acks, null, 2) + "\n");
+}
+
+function writeHighwaterRecord(tmp, planName, highIds) {
+  // Mirrors recordSpotCheckHighwater: a spot_check_highwater entry in the
+  // append-only decision_log recording the HIGH finding ids that were produced.
+  const artifactsDir = join(tmp, "plans", planName, "artifacts");
+  mkdirSync(artifactsDir, { recursive: true });
+  const entry = { type: "spot_check_highwater", plan_id: planName, high_finding_ids: highIds, ts: "2026-04-26T10:00:00.000Z" };
+  writeFileSync(join(artifactsDir, "decision_log.jsonl"), JSON.stringify(entry) + "\n", { flag: "a" });
 }
 
 function blockerNames(payload) {
@@ -146,6 +172,27 @@ function scenarioHighTestAdequacyBlocksValidateUntilAcked() {
 
     writeFindings(tmp, planName, [
       { id: "SCF-TEST", severity: "HIGH", category: "test_adequacy", file: "tests/feature.test.js" },
+    ], { "SCF-TEST": true });
+    const bareAck = invariantViolations(tmp, "validate", "high_test_adequacy_spot_check_blocks_validate");
+    assert(bareAck.length === 1, "I-053 still blocks when acks.json contains only a bare truthy ack");
+
+    writeFindings(tmp, planName, [
+      { id: "SCF-TEST", severity: "HIGH", category: "test_adequacy", file: "tests/feature.test.js" },
+    ], {
+      "SCF-TEST": {
+        finding_id: "SCF-TEST",
+        category: "test_adequacy",
+        severity: "HIGH",
+        fingerprint: "fixture-1",
+        acked_at: "2026-04-26T10:01:00.000Z",
+        note: "",
+      },
+    });
+    const emptyNoteAck = invariantViolations(tmp, "validate", "high_test_adequacy_spot_check_blocks_validate");
+    assert(emptyNoteAck.length === 1, "I-053 still blocks when ack note is empty");
+
+    writeFindings(tmp, planName, [
+      { id: "SCF-TEST", severity: "HIGH", category: "test_adequacy", file: "tests/feature.test.js" },
     ], {
       "SCF-TEST": {
         finding_id: "SCF-TEST",
@@ -176,6 +223,12 @@ function scenarioHighFindingsBlockCloseUntilAcked() {
     assert(blocked.length === 1, "I-052 reports exactly one blocker for one unacknowledged HIGH finding");
     assert(String(blocked[0]?.Detail || blocked[0]?.detail || "").includes("SCF-HIGH"), "I-052 detail includes finding id");
     assert((blocked[0]?.Detail || blocked[0]?.detail) === "SCF-HIGH", "I-052 detail identifies the exact finding");
+
+    writeFindings(tmp, planName, [
+      { id: "SCF-HIGH", severity: "HIGH", category: "bug_patterns" },
+    ], { "SCF-HIGH": true });
+    const bareAck = invariantViolations(tmp, "close", "high_spot_check_unacknowledged_before_close");
+    assert(bareAck.length === 1, "I-052 still blocks when acks.json contains only a bare truthy ack");
 
     writeFindings(tmp, planName, [
       { id: "SCF-HIGH", severity: "HIGH", category: "bug_patterns" },
@@ -219,11 +272,68 @@ function scenarioPersistentRecurrenceWarns() {
   }
 }
 
+function scenarioManualInvariantAuditIncludesTransitionScopedSpotChecks() {
+  const { tmp, planName } = makeFixture("manual-audit", "VALIDATE");
+  try {
+    writeFindings(tmp, planName, [
+      { id: "SCF-MANUAL", severity: "HIGH", category: "bug_patterns" },
+    ]);
+    const result = runNode([ruleEngineScript, "check-invariants", "--json"], tmp);
+    assert(!result.ok && result.status === 1, "manual check-invariants fails on transition-scoped HIGH close blockers");
+    const payload = parseJsonOutput(result.stdout);
+    assert(payload?.semantic_transition_targets?.includes("close"), "manual check-invariants declares the close transition target for VALIDATE state");
+    const violationNames = new Set((payload?.violations || []).map((entry) => entry.name));
+    assert(violationNames.has("high_spot_check_unacknowledged_before_close"), "manual check-invariants surfaces I-052 for unacknowledged HIGH spot-check findings");
+    assert((payload?.violations || []).some((entry) => entry.detail === "SCF-MANUAL"), "manual check-invariants identifies the exact spot-check finding");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// I-055 (AV-4 tamper-evidence): a HIGH finding recorded in the append-only
+// decision_log but deleted from reports/spot_checks/ must BLOCK, not fail open.
+function scenarioDeletedHighFindingBlocksCloseAndValidate() {
+  const { tmp, planName } = makeFixture("av4-deleted", "VALIDATE");
+  try {
+    // A HIGH finding was produced and recorded in the decision_log...
+    writeHighwaterRecord(tmp, planName, ["SCF-DELETED"]);
+    // ...but the findings dir was then emptied (the AV-4 delete-everything attack):
+    // no findings.jsonl and no .yaml reports remain, so the old path would fail open.
+    const close = invariantViolations(tmp, "close", "high_spot_check_finding_deleted");
+    assert(close.length === 1, "I-055 blocks CLOSE when a recorded HIGH finding was deleted (AV-4 closed)");
+    assert((close[0]?.Detail || close[0]?.detail) === "SCF-DELETED", "I-055 detail identifies the deleted finding");
+    const validate = invariantViolations(tmp, "validate", "high_spot_check_finding_deleted");
+    assert(validate.length === 1, "I-055 also blocks VALIDATE for a deleted HIGH finding");
+
+    // Restoring the finding to findings.jsonl makes it readable again → clears.
+    writeFindings(tmp, planName, [{ id: "SCF-DELETED", severity: "HIGH", category: "bug_patterns" }]);
+    const restored = invariantViolations(tmp, "close", "high_spot_check_finding_deleted");
+    assert(restored.length === 0, "I-055 clears once the recorded HIGH finding is present again (no false-red)");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// Guard: a plan that never recorded a highwater (no spot checks ran, or clean
+// run) must NOT trip I-055 — only deletion-after-production blocks.
+function scenarioNoHighwaterNeverBlocks() {
+  const { tmp } = makeFixture("av4-none", "VALIDATE");
+  try {
+    const close = invariantViolations(tmp, "close", "high_spot_check_finding_deleted");
+    assert(close.length === 0, "I-055 does not fire when no HIGH finding was ever recorded (no false-red)");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 console.log("\nSpot Check Invariants\n");
 
 scenarioHighTestAdequacyBlocksValidateUntilAcked();
 scenarioHighFindingsBlockCloseUntilAcked();
 scenarioPersistentRecurrenceWarns();
+scenarioManualInvariantAuditIncludesTransitionScopedSpotChecks();
+scenarioDeletedHighFindingBlocksCloseAndValidate();
+scenarioNoHighwaterNeverBlocks();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed === 0 ? 0 : 1);

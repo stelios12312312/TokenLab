@@ -194,10 +194,135 @@ Manual observation should only count when it carries a concrete artifact.
   }
 }
 
+function validLeakageProofArtifact(overrides = {}) {
+  return {
+    version: 1,
+    split_evidence: {
+      method: "walk_forward",
+      train: { start: "2024-01-01", end: "2024-12-31" },
+      validation: { start: "2025-01-01", end: "2025-06-30" },
+      final_oos: { start: "2025-07-01", end: "2025-12-31" },
+      folds: [
+        { train_start: "2024-01-01", train_end: "2024-06-30", test_start: "2024-07-08", test_end: "2024-08-31" },
+      ],
+      embargo: { days: 7 },
+      known_at_time_boundary: "Features are known at prediction time.",
+    },
+    source_leakage_scan: {
+      status: "pass",
+      findings: [],
+    },
+    ...overrides,
+  };
+}
+
+function scenarioLeakageKeywordsDoNotCreateProofEvents() {
+  const { tmp, planDir, planName } = createPlanFixture("leakage-keywords", {
+    goal: "Artifact-backed leakage proof telemetry",
+  });
+
+  try {
+    const bashWrite = recordProofTelemetryFromToolUse({
+      cwd: tmp,
+      planDir,
+      planDirName: planName,
+      phase: "EXECUTE",
+      toolName: "Bash",
+      toolInput: { command: "echo leakage temporal split walk forward" },
+      paths: [],
+    });
+    assert(bashWrite.written === true, "proof telemetry records the command action itself");
+
+    const summary = summarizeProofTelemetry({
+      cwd: tmp,
+      planDir,
+      planDirName: planName,
+      persist: false,
+    });
+
+    assert(!summary.proof_events.includes("leakage_check"), "keyword-only leakage command is not a trusted proof event");
+    assert(!summary.proof_events.includes("temporal_split_check"), "keyword-only temporal split command is not a trusted proof event");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioLeakageProofEventsRequireValidArtifacts() {
+  const { tmp, planDir, planName } = createPlanFixture("leakage-artifacts", {
+    goal: "Artifact-backed leakage proof telemetry",
+  });
+
+  try {
+    mkdirSync(join(planDir, "telemetry"), { recursive: true });
+    mkdirSync(join(tmp, "artifacts"), { recursive: true });
+    writeFileSync(join(tmp, "artifacts", "leakage-proof.json"), JSON.stringify(validLeakageProofArtifact(), null, 2));
+    writeFileSync(join(tmp, "artifacts", "bad-leakage-proof.json"), JSON.stringify({
+      split_evidence: { method: "random_shuffle" },
+      source_leakage_scan: { status: "pass" },
+    }, null, 2));
+    writeFileSync(join(planDir, "telemetry", "events.jsonl"), [
+      JSON.stringify({
+        event: "proof_recorded",
+        timestamp: "2026-06-03T10:00:00.000Z",
+        plan_id: planName,
+        repo_root: tmp,
+        proof_type: "leakage_check",
+        source: "post_tool_use",
+        trust_level: "trusted",
+      }),
+      JSON.stringify({
+        event: "proof_recorded",
+        timestamp: "2026-06-03T10:00:01.000Z",
+        plan_id: planName,
+        repo_root: tmp,
+        proof_type: "leakage_check",
+        artifact_path: "artifacts/leakage-proof.json",
+        source: "post_tool_use",
+        trust_level: "trusted",
+      }),
+      JSON.stringify({
+        event: "proof_recorded",
+        timestamp: "2026-06-03T10:00:02.000Z",
+        plan_id: planName,
+        repo_root: tmp,
+        proof_type: "temporal_split_check",
+        artifact_path: "artifacts/leakage-proof.json",
+        source: "post_tool_use",
+        trust_level: "trusted",
+      }),
+      JSON.stringify({
+        event: "proof_recorded",
+        timestamp: "2026-06-03T10:00:03.000Z",
+        plan_id: planName,
+        repo_root: tmp,
+        proof_type: "temporal_split_check",
+        artifact_path: "artifacts/bad-leakage-proof.json",
+        source: "post_tool_use",
+        trust_level: "trusted",
+      }),
+    ].join("\n") + "\n");
+
+    const summary = summarizeProofTelemetry({
+      cwd: tmp,
+      planDir,
+      planDirName: planName,
+      persist: false,
+    });
+
+    assert(summary.proof_events.includes("leakage_check"), "valid leakage artifact backs leakage_check proof");
+    assert(summary.proof_events.includes("temporal_split_check"), "valid leakage artifact backs temporal_split_check proof");
+    assert(summary.ignored_event_count >= 2, "artifact-free and invalid leakage proof events are ignored");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
 console.log("\nProof Telemetry\n");
 
 scenarioHookDerivedEventsSummarizeDeterministically();
 scenarioCrossPlanEventsAndArtifactBackedProofsStayTrusted();
+scenarioLeakageKeywordsDoNotCreateProofEvents();
+scenarioLeakageProofEventsRequireValidArtifacts();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

@@ -1,0 +1,672 @@
+{
+  "schema_version": 1,
+  "corpus_id": "mac_mini_quant_autocode_replay",
+  "title": "Real Mac mini IVE autocode replay corpus",
+  "source_policy": {
+    "read_only_harvest": true,
+    "source_excerpt_included": false,
+    "provenance": "project_relative_path_plus_sha256"
+  },
+  "story_refs": [
+    "US-044",
+    "US-077",
+    "US-079",
+    "US-080",
+    "US-PM-AUTO-068",
+    "US-PM-AUTO-069",
+    "US-PM-AUTO-070",
+    "US-PM-AUTO-071",
+    "US-PM-AUTO-072",
+    "US-PM-AUTO-073"
+  ],
+  "episodes": [
+    {
+      "id": "trueskill_cpcv_future_leakage",
+      "title": "Trueskill CPCV future leakage and missing calibration",
+      "family": "trueskill",
+      "project": "trueskill-atp-tennis",
+      "source_refs": [
+        {
+          "project": "trueskill-atp-tennis",
+          "source_path": "plans/knowledge/retros/retro_ledger.json",
+          "source_sha256": "ddf8e873bef589a9d63839affd417f78ac32c2cab948cd7086ecadf5eaff2dd0",
+          "evidence_kind": "retro",
+          "evidence_id": "RETRO-20260524-01"
+        },
+        {
+          "project": "trueskill-atp-tennis",
+          "source_path": "plans/knowledge/mistakes.md",
+          "source_sha256": "5dcf128a6e8a6e91da3a259c423ff1e4c3318a1c2a3a74b607ffcbccfcd0a933",
+          "evidence_kind": "mistake",
+          "evidence_id": "M-019"
+        }
+      ],
+      "finding_summary": "A cross-validation path allowed future information into OOF-style evidence and treated missing calibration as if the result were promotable.",
+      "failure_mode": "temporal_leakage_and_promotion_language",
+      "aha_pattern": "IVE should stop the autocode loop before celebrating a metric when the temporal split and calibration proof are absent.",
+      "route": {
+        "status": "deferred_with_ticket",
+        "valid_next_action": "ticket_now",
+        "ticket_ref": "T-IVE-REAL-TRUESKILL-CPCV-LEAKAGE",
+        "concept_guard": "Temporal OOF evidence must prove train windows are known before test windows and calibration is present before any performance claim.",
+        "acceptance_criteria": [
+          "Replay fixture rejects CPCV evidence that trains on future periods relative to the test window.",
+          "Closeout states no ROI, edge, or model-performance claim until temporal lineage and calibration proof are present."
+        ],
+        "verification_required": "Temporal fold audit plus calibration evidence or explicit no-promotion boundary.",
+        "stop_condition": "Stop once future-leaking evidence is routed to a repair ticket instead of a result claim.",
+        "recurrence_guard": "Future quant replay episodes must declare known-at-time and leakage boundaries."
+      },
+      "knowledge_trigger": {
+        "kind": "retro_recurrence",
+        "title": "Too-good quant results need temporal proof before celebration",
+        "directive": "When a quant metric looks surprisingly strong, route to leakage and calibration proof before summarizing success."
+      },
+      "quant_guard": {
+        "target_outcome": "honest temporal OOF validity before any tennis model claim",
+        "data_lineage": "hashed Trueskill retro and mistake references only; no raw odds or match rows loaded",
+        "as_of": "2026-05-24T00:00:00Z",
+        "known_at_time": "fixture records only facts known in the cited retro/mistake files",
+        "leakage_boundary": "training evidence must be strictly earlier than evaluation evidence; CPCV future-to-past leakage is disallowed",
+        "baseline": "honest walk-forward and market/control baselines, not future-leaking CPCV output",
+        "calibration": "missing calibration blocks promotion; fixture performs no calibration fit",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No tennis ROI, alpha, betting, or model-performance claim is made by this replay."
+      ]
+    },
+    {
+      "id": "trueskill_stale_odds_truncation",
+      "title": "Trueskill stale odds file silently truncated recent backtest data",
+      "family": "trueskill",
+      "project": "trueskill-atp-tennis",
+      "source_refs": [
+        {
+          "project": "trueskill-atp-tennis",
+          "source_path": "plans/knowledge/retros/retro_ledger.json",
+          "source_sha256": "ddf8e873bef589a9d63839affd417f78ac32c2cab948cd7086ecadf5eaff2dd0",
+          "evidence_kind": "retro",
+          "evidence_id": "RETRO-20260503-03"
+        }
+      ],
+      "finding_summary": "A backtest silently used stale odds coverage and ignored modern rows, creating a misleading sense that the run covered the intended date range.",
+      "failure_mode": "stale_data_range_false_green",
+      "aha_pattern": "IVE should surface the date-coverage mismatch as a first-class fact before any backtest summary is accepted.",
+      "route": {
+        "status": "deferred_with_ticket",
+        "valid_next_action": "ticket_now",
+        "ticket_ref": "T-IVE-REAL-TRUESKILL-DATE-COVERAGE",
+        "concept_guard": "Backtest evidence must prove requested date range, available odds range, retained match range, and dropped-row count.",
+        "acceptance_criteria": [
+          "Replay fixture requires date coverage alignment before a backtest can close.",
+          "Report states stale odds coverage as a limitation when modern rows are missing."
+        ],
+        "verification_required": "Date range audit over requested, source, retained, and omitted rows.",
+        "stop_condition": "Stop once stale data is visible as a ticketed coverage gap.",
+        "recurrence_guard": "Future backtest fixtures must include a source coverage check."
+      },
+      "knowledge_trigger": {
+        "kind": "obligation",
+        "title": "Backtest coverage is a claim boundary",
+        "directive": "Always compare requested and actual date ranges before summarizing a backtest."
+      },
+      "quant_guard": {
+        "target_outcome": "date coverage honesty before tennis backtest interpretation",
+        "data_lineage": "hashed Trueskill stale-odds retro reference only",
+        "as_of": "2026-05-03T00:00:00Z",
+        "known_at_time": "fixture metadata and retro id only",
+        "leakage_boundary": "no future data is loaded; stale coverage must be declared instead of hidden",
+        "baseline": "requested date range and market/control coverage are the comparison baseline",
+        "calibration": "not_applicable: fixture performs no probability calibration",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No backtest coverage or performance claim is made from stale odds evidence."
+      ]
+    },
+    {
+      "id": "trueskill_fast_eval_roi_smoke",
+      "title": "Trueskill fast-eval smoke result treated as a final edge",
+      "family": "trueskill",
+      "project": "trueskill-atp-tennis",
+      "source_refs": [
+        {
+          "project": "trueskill-atp-tennis",
+          "source_path": "plans/knowledge/retros/retro_ledger.json",
+          "source_sha256": "ddf8e873bef589a9d63839affd417f78ac32c2cab948cd7086ecadf5eaff2dd0",
+          "evidence_kind": "retro",
+          "evidence_id": "RETRO-20260505-01"
+        }
+      ],
+      "finding_summary": "A fast evaluation endpoint was used as if it were the canonical joint-search pipeline, so a smoke-class output was framed as final edge evidence.",
+      "failure_mode": "optimizer_endpoint_and_run_class_confusion",
+      "aha_pattern": "IVE should propose the canonical experiment rather than accept a smoke endpoint as the answer.",
+      "route": {
+        "status": "routed",
+        "valid_next_action": "run_experiment",
+        "concept_guard": "Run class and canonical pipeline identity must be explicit before interpreting optimization output.",
+        "verification_required": "Run the canonical joint search or record that only smoke evidence exists.",
+        "stop_condition": "Stop once the next experiment is the canonical pipeline, not more prose about the smoke result.",
+        "recurrence_guard": "Future optimizer closeouts must disclose run class and endpoint identity."
+      },
+      "knowledge_trigger": {
+        "kind": "insight",
+        "title": "Smoke endpoints are wiring proof, not final evidence",
+        "directive": "If the agent used a fast path, surface the serious-search path as the next experiment."
+      },
+      "quant_guard": {
+        "target_outcome": "run-class honesty before optimization interpretation",
+        "data_lineage": "hashed Trueskill optimization retro reference only",
+        "as_of": "2026-05-05T00:00:00Z",
+        "known_at_time": "fixture metadata and retro id only",
+        "leakage_boundary": "no future rows loaded; the boundary is run-class disclosure and endpoint identity",
+        "baseline": "canonical joint-search pipeline with frozen objective",
+        "calibration": "not_applicable: fixture does not fit or calibrate a model",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No ROI or edge claim is made from smoke-class optimizer output."
+      ]
+    },
+    {
+      "id": "trueskill_model_worse_than_market",
+      "title": "Trueskill model was worse than market but needed honest limitation",
+      "family": "trueskill",
+      "project": "trueskill-atp-tennis",
+      "source_refs": [
+        {
+          "project": "trueskill-atp-tennis",
+          "source_path": "plans/knowledge/retros/retro_ledger.json",
+          "source_sha256": "ddf8e873bef589a9d63839affd417f78ac32c2cab948cd7086ecadf5eaff2dd0",
+          "evidence_kind": "retro",
+          "evidence_id": "RETRO-20260508-02"
+        }
+      ],
+      "finding_summary": "A model search produced results that were worse than the market/control baseline and needed to close as a limitation, not as an improvement story.",
+      "failure_mode": "control_baseline_beats_model",
+      "aha_pattern": "IVE should accept the negative result as a bounded finding and stop promotion language.",
+      "route": {
+        "status": "accepted",
+        "valid_next_action": "accept_limitation",
+        "concept_guard": "When the control beats the model, the valid closeout is a limitation and next-research boundary.",
+        "claim_boundary": "No positive edge, promotion, or model-improvement claim is allowed while the market/control baseline wins.",
+        "verification_required": "Control-baseline comparison is explicit and negative result is preserved.",
+        "stop_condition": "Stop once the limitation is visible and no promotion claim remains.",
+        "recurrence_guard": "Future result summaries must compare against controls before claiming progress."
+      },
+      "knowledge_trigger": {
+        "kind": "insight",
+        "title": "A negative control result is useful memory",
+        "directive": "Store model-worse-than-control outcomes as constraints on the next experiment, not as failed work to gloss over."
+      },
+      "quant_guard": {
+        "target_outcome": "honest result boundary when control beats model",
+        "data_lineage": "hashed Trueskill model-worse-than-market retro reference only",
+        "as_of": "2026-05-08T00:00:00Z",
+        "known_at_time": "fixture metadata and retro id only",
+        "leakage_boundary": "no leakage claim is made; the control comparison blocks promotion",
+        "baseline": "market/control baseline is authoritative for this fixture",
+        "calibration": "not_applicable: fixture does not fit or calibrate a model",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No positive model, market, ROI, or betting claim is made."
+      ]
+    },
+    {
+      "id": "trueskill_feature_invisibility_parity",
+      "title": "Trueskill features were wired into one model path but invisible to another",
+      "family": "trueskill",
+      "project": "trueskill-atp-tennis",
+      "source_refs": [
+        {
+          "project": "trueskill-atp-tennis",
+          "source_path": "plans/knowledge/retros/retro_ledger.json",
+          "source_sha256": "ddf8e873bef589a9d63839affd417f78ac32c2cab948cd7086ecadf5eaff2dd0",
+          "evidence_kind": "retro",
+          "evidence_id": "RETRO-20260508-01"
+        },
+        {
+          "project": "trueskill-atp-tennis",
+          "source_path": "plans/knowledge/mistakes.md",
+          "source_sha256": "5dcf128a6e8a6e91da3a259c423ff1e4c3318a1c2a3a74b607ffcbccfcd0a933",
+          "evidence_kind": "mistake",
+          "evidence_id": "M-025"
+        }
+      ],
+      "finding_summary": "New features were registered in one modeling path but remained invisible to the primary production path because the project had dual registration systems.",
+      "failure_mode": "feature_registration_parity_drift",
+      "aha_pattern": "IVE should turn feature addition into a parity check across model consumers.",
+      "route": {
+        "status": "routed",
+        "valid_next_action": "fix_now",
+        "concept_guard": "Feature registration is not complete until every declared model consumer can see the feature.",
+        "verification_required": "Feature registry parity assertion across MetaLogit, CatBoost, and stage-zero ranking surfaces.",
+        "stop_condition": "Stop once feature visibility is tested across consumers.",
+        "recurrence_guard": "Future feature tickets must include consumer parity evidence."
+      },
+      "knowledge_trigger": {
+        "kind": "obligation",
+        "title": "Feature work needs consumer parity proof",
+        "directive": "When adding model features, ask which consumers cannot see them yet."
+      },
+      "quant_guard": {
+        "target_outcome": "feature visibility parity before model-result interpretation",
+        "data_lineage": "hashed Trueskill feature retro and mistake references only",
+        "as_of": "2026-05-08T00:00:00Z",
+        "known_at_time": "fixture metadata and source ids only",
+        "leakage_boundary": "no model rows loaded; feature leakage is guarded by consumer parity and allowlist review",
+        "baseline": "all declared production model consumers see the same intended feature set",
+        "calibration": "not_applicable: fixture does not fit or calibrate a model",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No model gain claim is made from feature registration alone."
+      ]
+    },
+    {
+      "id": "ipbs_operator_report_missed_advice",
+      "title": "IPBS UFC report blocked promotion but missed operator advice",
+      "family": "ipbs_ufc",
+      "project": "ipbs_datapack_starter_betting",
+      "source_refs": [
+        {
+          "project": "ipbs_datapack_starter_betting",
+          "source_path": "reports/retro/ufc_mmodel_operator_report_retro_2026-05-08.md",
+          "source_sha256": "668db6480fd8f60bcbd43cdb3c3a12d8dcec1829899424476c30188eb160d835",
+          "evidence_kind": "retro",
+          "evidence_id": "ufc_mmodel_operator_report_retro_2026-05-08"
+        }
+      ],
+      "finding_summary": "Promotion governance correctly blocked the UFC model, but the operator-facing report failed to provide the practical advice, ideas, and performance summary the user needed.",
+      "failure_mode": "decision_support_gap_after_correct_block",
+      "aha_pattern": "IVE should not stop at blocked/not-blocked; it should surface next useful operator decisions and experiments.",
+      "route": {
+        "status": "deferred_with_ticket",
+        "valid_next_action": "ticket_now",
+        "ticket_ref": "T-IVE-REAL-IPBS-OPERATOR-ADVICE",
+        "concept_guard": "A correct no-promotion verdict is incomplete when the operator asked for decision support and next ideas.",
+        "acceptance_criteria": [
+          "Replay fixture requires operator-facing next actions after a blocked promotion verdict.",
+          "Report separates governance block, current best control, and candidate experiments."
+        ],
+        "verification_required": "Operator advice section with controls, blockers, and ranked next experiments.",
+        "stop_condition": "Stop once the blocked model produces useful operator next steps.",
+        "recurrence_guard": "Future blocked-promotion reports must include decision-support output."
+      },
+      "knowledge_trigger": {
+        "kind": "insight",
+        "title": "A correct block still owes the operator a next move",
+        "directive": "When promotion is blocked, rank the smallest next experiment that would remove a blocker."
+      },
+      "quant_guard": {
+        "target_outcome": "operator decision support after blocked UFC model promotion",
+        "data_lineage": "hashed IPBS UFC operator retro reference only",
+        "as_of": "2026-05-08T00:00:00Z",
+        "known_at_time": "fixture metadata and retro id only",
+        "leakage_boundary": "no bet rows loaded; no promotion while control and evidence blockers remain",
+        "baseline": "control strategy and market favorite comparisons remain visible",
+        "calibration": "not_applicable: fixture does not fit or calibrate a model",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No UFC promotion or betting edge claim is made."
+      ]
+    },
+    {
+      "id": "ipbs_bet_level_oos_blocked",
+      "title": "IPBS verification blocked aggregate blends without bet-level OOS proof",
+      "family": "ipbs_ufc",
+      "project": "ipbs_datapack_starter_betting",
+      "source_refs": [
+        {
+          "project": "ipbs_datapack_starter_betting",
+          "source_path": "reports/t-meta-008/verification_summary.md",
+          "source_sha256": "777f98635f457c2c1c7257906f0c8fc1e3ce98c7bf6c9a40e0e6fc5dbc5be841",
+          "evidence_kind": "verification_summary",
+          "evidence_id": "T-META-008"
+        }
+      ],
+      "finding_summary": "Aggregate-only evidence could not prove bet-level OOS behavior, so promotion had to remain blocked despite higher-level summaries.",
+      "failure_mode": "aggregate_evidence_without_bet_level_oos",
+      "aha_pattern": "IVE should preserve the no-promotion limitation and point to the missing bet-level artifact.",
+      "route": {
+        "status": "accepted",
+        "valid_next_action": "accept_limitation",
+        "concept_guard": "Aggregate metrics cannot stand in for bet-level OOS verification.",
+        "claim_boundary": "No promotion or edge claim is allowed until bet-level OOS records exist.",
+        "verification_required": "Bet-level OOS artifact with reference prices, selected bets, and daily PnL lineage.",
+        "stop_condition": "Stop once the missing bet-level artifact is explicit.",
+        "recurrence_guard": "Future aggregate blend reports must declare whether bet-level OOS evidence exists."
+      },
+      "knowledge_trigger": {
+        "kind": "obligation",
+        "title": "Aggregate blend proof is not bet-level proof",
+        "directive": "Before accepting blend evidence, ask whether selected-bet records and reference prices are persisted."
+      },
+      "quant_guard": {
+        "target_outcome": "bet-level OOS evidence before IPBS promotion",
+        "data_lineage": "hashed IPBS verification summary reference only",
+        "as_of": "2026-05-08T00:00:00Z",
+        "known_at_time": "fixture metadata and verification id only",
+        "leakage_boundary": "no downstream promotion without bet-level known-at-time records",
+        "baseline": "control and aggregate-only evidence are insufficient for promotion",
+        "calibration": "not_applicable: fixture does not fit or calibrate a model",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No promotion claim is made from aggregate-only evidence."
+      ]
+    },
+    {
+      "id": "ipbs_platt_calibration_temporal_guard",
+      "title": "IPBS Platt calibration proof used train-fold fit and validation-fold evaluation",
+      "family": "ipbs_ufc",
+      "project": "ipbs_datapack_starter_betting",
+      "source_refs": [
+        {
+          "project": "ipbs_datapack_starter_betting",
+          "source_path": "reports/t-intake-27a133ce/platt_calibration_verification.md",
+          "source_sha256": "2bb5be6fb70e7f5fee8e99ff154fdadb226f7b62f8ff92c1588d0e08be846ac6",
+          "evidence_kind": "verification",
+          "evidence_id": "T-INTAKE-27A133CE"
+        }
+      ],
+      "finding_summary": "A calibration proof explicitly fit on the train fold and evaluated on a later validation fold, giving IVE a positive guard pattern to preserve.",
+      "failure_mode": "positive_temporal_calibration_guard",
+      "aha_pattern": "IVE should remember positive proof shapes, not only failures, so future runs can ask for the same guard.",
+      "route": {
+        "status": "routed",
+        "valid_next_action": "fix_now",
+        "concept_guard": "Temporal calibration proof requires train-fold fit and later validation-fold evaluation.",
+        "verification_required": "Keep the temporal calibration guard as a reusable replay pattern.",
+        "stop_condition": "Stop once the guard is encoded and no promotion claim is inferred.",
+        "recurrence_guard": "Future calibration tickets can reuse this positive proof shape."
+      },
+      "knowledge_trigger": {
+        "kind": "insight",
+        "title": "Positive calibration proof should become a reusable guard",
+        "directive": "When a calibration proof is clean, preserve its fit/evaluate boundary as a template."
+      },
+      "quant_guard": {
+        "target_outcome": "preserve temporal calibration proof shape",
+        "data_lineage": "hashed IPBS Platt calibration verification reference only",
+        "as_of": "2026-05-08T00:00:00Z",
+        "known_at_time": "fixture metadata and verification id only",
+        "leakage_boundary": "calibrator fit fold must be before evaluation fold",
+        "baseline": "uncalibrated or same-fold calibration is the rejected baseline",
+        "calibration": "train-fold Platt fit evaluated on validation fold; fixture performs no live fit",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No calibrated edge claim is made; the fixture only preserves a proof shape."
+      ]
+    },
+    {
+      "id": "polymarket_full_dataset_training_leakage",
+      "title": "Polymarket final model trained on the full dataset including test period",
+      "family": "polymarket",
+      "project": "polymarket-alpha",
+      "source_refs": [
+        {
+          "project": "polymarket-alpha",
+          "source_path": "plans/knowledge/mistakes.md",
+          "source_sha256": "2c03c81d5fda6e89ecb6b5f94d653d34b4c0fed8399589ea32d010ead6630e6d",
+          "evidence_kind": "mistake",
+          "evidence_id": "M-001"
+        }
+      ],
+      "finding_summary": "A final model fit used the whole dataset, including the test period, which made a perfect-looking result invalid as alpha evidence.",
+      "failure_mode": "full_dataset_training_leakage",
+      "aha_pattern": "IVE should convert impressive post-hoc metrics into a leakage repair ticket before the autocode loop continues.",
+      "route": {
+        "status": "deferred_with_ticket",
+        "valid_next_action": "ticket_now",
+        "ticket_ref": "T-IVE-REAL-POLYMARKET-FINAL-TRAIN-MASK",
+        "concept_guard": "Final training must exclude evaluation windows when a test-period claim is being made.",
+        "acceptance_criteria": [
+          "Replay fixture requires final train mask and test window boundaries.",
+          "Any perfect or near-perfect metric is non-promotable until leakage proof passes."
+        ],
+        "verification_required": "Temporal train/test mask proof plus no-alpha claim boundary.",
+        "stop_condition": "Stop once full-dataset training is ticketed as leakage.",
+        "recurrence_guard": "Future final-model tickets must record train mask and as-of boundary."
+      },
+      "knowledge_trigger": {
+        "kind": "retro_recurrence",
+        "title": "Perfect alpha usually asks for a leakage audit first",
+        "directive": "When a market model looks perfect, route to final-train-mask proof before reporting alpha."
+      },
+      "quant_guard": {
+        "target_outcome": "temporal final-model train mask before Polymarket alpha interpretation",
+        "data_lineage": "hashed Polymarket mistake reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time": "fixture metadata and mistake id only",
+        "leakage_boundary": "final model training cannot include the claimed test period",
+        "baseline": "time-split train/test evaluation with no future market outcomes in training",
+        "calibration": "not_applicable: fixture does not fit or calibrate a model",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No Polymarket alpha or win-rate claim is made."
+      ]
+    },
+    {
+      "id": "polymarket_stale_hparam_cache",
+      "title": "Polymarket stale hyperparameter cache survived a split change",
+      "family": "polymarket",
+      "project": "polymarket-alpha",
+      "source_refs": [
+        {
+          "project": "polymarket-alpha",
+          "source_path": "plans/knowledge/mistakes.md",
+          "source_sha256": "2c03c81d5fda6e89ecb6b5f94d653d34b4c0fed8399589ea32d010ead6630e6d",
+          "evidence_kind": "mistake",
+          "evidence_id": "M-004"
+        }
+      ],
+      "finding_summary": "A hyperparameter cache keyed only by model name survived a temporal split change, so old parameters could be reused under a new evaluation contract.",
+      "failure_mode": "cache_key_omits_split_boundary",
+      "aha_pattern": "IVE should see a split change as a cache-invalidation boundary.",
+      "route": {
+        "status": "routed",
+        "valid_next_action": "fix_now",
+        "concept_guard": "Cache keys for optimization results must include split definition, data digest, objective, and search surface.",
+        "verification_required": "Cache key fixture proves split changes invalidate old optimization artifacts.",
+        "stop_condition": "Stop once stale cache reuse is impossible after split changes.",
+        "recurrence_guard": "Future optimizer cache tickets must include split and data digest in the key."
+      },
+      "knowledge_trigger": {
+        "kind": "obligation",
+        "title": "Split changes invalidate optimizer caches",
+        "directive": "When a temporal split changes, ask which caches need new keys."
+      },
+      "quant_guard": {
+        "target_outcome": "cache/split parity before optimizer result reuse",
+        "data_lineage": "hashed Polymarket stale-cache mistake reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time": "fixture metadata and mistake id only",
+        "leakage_boundary": "old params cannot cross a changed temporal split boundary",
+        "baseline": "cache key includes split, data digest, objective, and search surface",
+        "calibration": "not_applicable: fixture does not fit or calibrate a model",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No optimizer result claim is made from stale cached parameters."
+      ]
+    },
+    {
+      "id": "polymarket_underpowered_optimizer",
+      "title": "Polymarket underpowered optimizer run was framed as beefy",
+      "family": "polymarket",
+      "project": "polymarket-alpha",
+      "source_refs": [
+        {
+          "project": "polymarket-alpha",
+          "source_path": "plans/knowledge/mistakes.md",
+          "source_sha256": "2c03c81d5fda6e89ecb6b5f94d653d34b4c0fed8399589ea32d010ead6630e6d",
+          "evidence_kind": "mistake",
+          "evidence_id": "M-005"
+        }
+      ],
+      "finding_summary": "A small optimizer run was described with stronger language than its trial count, data size, and search-surface proof justified.",
+      "failure_mode": "optimizer_scale_miscommunication",
+      "aha_pattern": "IVE should accept only the limitation and ask for scale disclosure before stronger claims.",
+      "route": {
+        "status": "accepted",
+        "valid_next_action": "accept_limitation",
+        "concept_guard": "Optimizer scale language must match trial count, data size, search surface, and objective freeze status.",
+        "claim_boundary": "No serious-search or alpha claim is allowed from underpowered optimizer evidence.",
+        "verification_required": "Run-class disclosure and optimizer-scale contract.",
+        "stop_condition": "Stop once the run is labeled exploratory or smoke-class.",
+        "recurrence_guard": "Future optimizer summaries must disclose run class and search surface."
+      },
+      "knowledge_trigger": {
+        "kind": "insight",
+        "title": "Optimizer adjectives are evidence claims",
+        "directive": "Tie optimizer language to trial count, search surface, data size, and frozen objective."
+      },
+      "quant_guard": {
+        "target_outcome": "optimizer scale disclosure before Polymarket claim language",
+        "data_lineage": "hashed Polymarket optimizer-scale mistake reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time": "fixture metadata and mistake id only",
+        "leakage_boundary": "no future market data loaded; run-class boundary blocks promotion",
+        "baseline": "serious search requires adequate trials, frozen objective, and declared search surface",
+        "calibration": "not_applicable: fixture does not fit or calibrate a model",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No alpha, serious-search, or optimizer-success claim is made."
+      ]
+    },
+    {
+      "id": "valueinvesting_shift_minus_one_leakage",
+      "title": "ValueInvestingAI shift(-1) feature leaked future values",
+      "family": "valueinvesting",
+      "project": "ValueInvestingAI",
+      "source_refs": [
+        {
+          "project": "ValueInvestingAI",
+          "source_path": "plans/knowledge/gotchas.md",
+          "source_sha256": "91bcadc5d0abbf0f4615bbf7c32fb1e888115f90a009c37c210f157b9fa155eb",
+          "evidence_kind": "gotcha",
+          "evidence_id": "G-003"
+        }
+      ],
+      "finding_summary": "A time-series feature shape used a future shift, which is a direct leakage smell for prediction-time features.",
+      "failure_mode": "lookahead_feature_shift",
+      "aha_pattern": "IVE should translate a tiny code smell into a hard temporal feature guard.",
+      "route": {
+        "status": "routed",
+        "valid_next_action": "fix_now",
+        "concept_guard": "Prediction-time features must not use negative shifts or future target information.",
+        "verification_required": "Static and behavioral feature-lag guard for negative shift patterns.",
+        "stop_condition": "Stop once future-shift features are rejected.",
+        "recurrence_guard": "Future feature engineering tickets must include lag-direction checks."
+      },
+      "knowledge_trigger": {
+        "kind": "obligation",
+        "title": "Negative shifts are leakage until proven otherwise",
+        "directive": "When reviewing time-series features, scan for future shifts and target-aware transforms."
+      },
+      "quant_guard": {
+        "target_outcome": "time-series feature leakage prevention",
+        "data_lineage": "hashed ValueInvestingAI gotcha reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time": "fixture metadata and gotcha id only",
+        "leakage_boundary": "features must be known at prediction time and cannot use shift(-1) style future values",
+        "baseline": "lagged features with positive known-at-time shifts",
+        "calibration": "not_applicable: fixture does not fit or calibrate a model",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No investment model performance claim is made."
+      ]
+    },
+    {
+      "id": "valueinvesting_target_postprocessing_leakage",
+      "title": "ValueInvestingAI target-aware postprocessing contaminated claims",
+      "family": "valueinvesting",
+      "project": "ValueInvestingAI",
+      "source_refs": [
+        {
+          "project": "ValueInvestingAI",
+          "source_path": "plans/knowledge/gotchas.md",
+          "source_sha256": "91bcadc5d0abbf0f4615bbf7c32fb1e888115f90a009c37c210f157b9fa155eb",
+          "evidence_kind": "gotcha",
+          "evidence_id": "G-010"
+        }
+      ],
+      "finding_summary": "Prediction postprocessing used target-aware information on the same OOF set, contaminating any downstream claim that used those predictions.",
+      "failure_mode": "target_aware_postprocessing_leakage",
+      "aha_pattern": "IVE should route postprocessing as part of the leakage boundary, not only model training.",
+      "route": {
+        "status": "deferred_with_ticket",
+        "valid_next_action": "ticket_now",
+        "ticket_ref": "T-IVE-REAL-VALUEINVESTING-POSTPROCESSING-LEAKAGE",
+        "concept_guard": "Postprocessing and calibration steps must be fit on data disjoint from the claims they evaluate.",
+        "acceptance_criteria": [
+          "Replay fixture treats target-aware prediction edits as leakage unless fit/evaluate separation is proven.",
+          "Closeout separates model output, postprocessing, and claim boundary."
+        ],
+        "verification_required": "OOF postprocessing lineage and disjoint fit/evaluate proof.",
+        "stop_condition": "Stop once target-aware postprocessing is ticketed as leakage risk.",
+        "recurrence_guard": "Future postprocessing tickets must declare whether targets were visible."
+      },
+      "knowledge_trigger": {
+        "kind": "retro_recurrence",
+        "title": "Postprocessing can leak too",
+        "directive": "Include calibration and prediction-edit steps in the leakage boundary, not only training."
+      },
+      "quant_guard": {
+        "target_outcome": "postprocessing leakage boundary before investment model claims",
+        "data_lineage": "hashed ValueInvestingAI target-aware postprocessing gotcha reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time": "fixture metadata and gotcha id only",
+        "leakage_boundary": "postprocessing cannot use targets from the same OOF/evaluation set used for claims",
+        "baseline": "fit postprocessor on disjoint training data or use untouched OOF predictions",
+        "calibration": "calibration/postprocessing must have disjoint fit and evaluation lineage",
+        "promotion_allowed": false
+      },
+      "non_claims": [
+        "No investment return or model-quality claim is made."
+      ]
+    },
+    {
+      "id": "evolution_stale_daemon_weak_tests",
+      "title": "Evolution stale daemon and weak tests made a fix appear to fail",
+      "family": "evolution_automation",
+      "project": "evolution-trading-scientist",
+      "source_refs": [
+        {
+          "project": "evolution-trading-scientist",
+          "source_path": "plans/knowledge/retros/retro_ledger.json",
+          "source_sha256": "64f9123ca7bc45ac1c0ab17b48235678220a44905fa9d0e64a724c8329d86655",
+          "evidence_kind": "retro",
+          "evidence_id": "stale-daemon-weak-tests"
+        }
+      ],
+      "finding_summary": "A running automation service and weak isolation made the operator believe a fix had failed, even though the tested process was not necessarily the new code.",
+      "failure_mode": "autocode_loop_stale_process_false_green",
+      "aha_pattern": "IVE should pause automode and ask which daemon, process, and log target are authoritative before continuing.",
+      "route": {
+        "status": "routed",
+        "valid_next_action": "ask_user",
+        "concept_guard": "Autocode verification must bind the running process, launched config, and observed logs to the code just changed.",
+        "verification_required": "Operator confirms live daemon identity or the loop restarts under a captured launch contract.",
+        "stop_condition": "Stop once the active process identity is known before more fixes are generated.",
+        "recurrence_guard": "Future automation fixes must include process identity and restart proof."
+      },
+      "knowledge_trigger": {
+        "kind": "obligation",
+        "title": "Autocode loops need live-process identity",
+        "directive": "Before iterating on an automation failure, verify the running process, config source, and log stream."
+      },
+      "non_claims": [
+        "No trading, optimizer, or live automation success claim is made."
+      ]
+    }
+  ]
+}

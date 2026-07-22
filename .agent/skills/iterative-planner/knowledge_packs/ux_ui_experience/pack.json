@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "id": "ux_ui_experience",
+  "pack": "ux_ui_experience",
+  "title": "UX/UI Experience Knowledge Pack",
+  "version": 1,
+  "trust_tier": "bundled",
+  "dependencies": [],
+  "applies_when": {
+    "file_glob_any": [
+      "apps/*/*.jsx",
+      "apps/*/*.tsx",
+      "apps/*/*.css",
+      "apps/**/*.jsx",
+      "apps/**/*.tsx",
+      "apps/**/*.css",
+      "src/*.jsx",
+      "src/*.tsx",
+      "src/*.css",
+      "src/**/*.jsx",
+      "src/**/*.tsx",
+      "src/**/*.css"
+    ]
+  },
+  "provenance": {
+    "writer": "knowledge_pack",
+    "source": "knowledge_pack:ux_ui_experience@v1"
+  },
+  "entry_files": [
+    "pitfalls.json",
+    "constraints.json"
+  ]
+}

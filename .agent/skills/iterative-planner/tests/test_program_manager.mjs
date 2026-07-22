@@ -84,6 +84,12 @@ assert(result.ok && result.parsed.status === "PASS", "ready-to-execution accepts
 
     result = run(["verify", "design-to-ready", "--program", packetPath, "--write", "--json"], tmp);
     assert(result.ok && result.parsed?.program_status_transition?.transition_written === false, "verify --write is idempotent when target status is already current");
+
+    writtenPacket.status = "executing";
+    writeFileSync(packetPath, `${JSON.stringify(writtenPacket, null, 2)}\n`, "utf-8");
+    result = run(["verify", "design-to-ready", "--program", packetPath, "--write", "--json"], tmp);
+    assert(result.ok && result.parsed?.program_status_transition?.status === "already_past_gate", "design-to-ready is idempotent when program status is already past ready");
+    assert(JSON.parse(readFileSync(packetPath, "utf-8")).status === "executing", "design-to-ready --write does not downgrade executing program status");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -238,6 +244,154 @@ assert(!result.ok && !hasError(result, "required_child_plan_not_closed"), "null-
 result = run(["verify", "validate-to-program-close", "--program", fixture("program_close_deferred_missing_decision.json"), "--json"]);
 assert(!result.ok && hasError(result, "deferred_ticket_missing_decision"), "program close with undecided deferral fails");
 
+result = run(["verify", "validate-to-program-close", "--program", fixture("program_close_child_plan_missing.json"), "--json"]);
+assert(!result.ok && hasError(result, "required_child_plan_dir_missing"), "closed program with fabricated child_plan dir fails JS validation");
+assert(!result.ok && hasError(result, "program_child_plan_not_closed"), "closed program with fabricated child_plan dir fails ontology validation");
+
+{
+  function closedReviewPacket(mutator = () => {}) {
+    const packet = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    packet.status = "closed";
+    packet.tickets[0].lifecycle = "closed";
+    packet.tickets[0].child_plan = { policy: "not_required", plan_dir: null, reason: "Fixture" };
+    packet.verification_matrix[0].result = "pass";
+    packet.acceptance_criteria.push({
+      id: "AC-PGM",
+      scope: "program",
+      subject_ref: "PGM-TEST",
+      text: "Program close has passing evidence.",
+      story_refs: ["US-001"],
+      maintenance_rationale: null,
+    });
+    packet.verification_matrix.push({
+      id: "VM-PGM",
+      scope: "program",
+      subject_ref: "PGM-TEST",
+      acceptance_criterion_ref: "AC-PGM",
+      proof_type: "proof:artifact_review",
+      command_or_action: "Review program close fixture",
+      pass_means: "Program row passes",
+      result: "pass",
+    });
+    mutator(packet);
+    return packet;
+  }
+
+  const cases = [
+    [
+      "review-not-run",
+      (packet) => { packet.tickets[0].review_status = "not_run"; },
+      "ticket_closure_review_not_run",
+      "program_ticket_review_not_run",
+      "closed ticket with review_status:not_run fails closure",
+    ],
+    [
+      "persona-needs-evidence",
+      (packet) => { packet.tickets[0].persona_review = { status: "needs_evidence" }; },
+      "ticket_closure_persona_review_needs_evidence",
+      "program_ticket_persona_review_needs_evidence",
+      "closed ticket with persona_review.status:needs_evidence fails closure",
+    ],
+  ];
+  for (const [name, mutator, jsCode, ontologyCode, label] of cases) {
+    const tmp = mkdtempSync(join(tmpdir(), `program-manager-close-${name}-`));
+    try {
+      const packetPath = join(tmp, "program_packet.json");
+      writeFileSync(packetPath, `${JSON.stringify(closedReviewPacket(mutator), null, 2)}\n`, "utf-8");
+      const r = run(["verify", "validate-to-program-close", "--program", packetPath, "--json"], tmp);
+      assert(!r.ok && hasError(r, jsCode), `${label} through JS validation`);
+      assert(!r.ok && hasError(r, ontologyCode), `${label} through ontology validation`);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  const reviewReadyTmp = mkdtempSync(join(tmpdir(), "program-manager-close-review-ready-"));
+  try {
+    const packetPath = join(reviewReadyTmp, "program_packet.json");
+    writeFileSync(packetPath, `${JSON.stringify(closedReviewPacket((packet) => {
+      packet.tickets[0].review_status = "review_ready";
+      packet.tickets[0].persona_review = { status: "accepted" };
+    }), null, 2)}\n`, "utf-8");
+    const r = run(["verify", "validate-to-program-close", "--program", packetPath, "--json"], reviewReadyTmp);
+    assert(r.ok && r.parsed?.status === "PASS", "closed ticket with review_ready/accepted review metadata passes");
+  } finally {
+    rmSync(reviewReadyTmp, { recursive: true, force: true });
+  }
+
+  const writeFailTmp = mkdtempSync(join(tmpdir(), "program-manager-close-write-fail-"));
+  try {
+    const packetPath = join(writeFailTmp, "program_packet.json");
+    const packet = JSON.parse(readFileSync(fixture("program_close_child_plan_missing.json"), "utf-8"));
+    packet.status = "validating";
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    const r = run(["verify", "validate-to-program-close", "--program", packetPath, "--write", "--json"], writeFailTmp);
+    const writtenPacket = JSON.parse(readFileSync(packetPath, "utf-8"));
+    assert(!r.ok && r.parsed?.program_status_transition?.transition_written === false, "failed validate-to-program-close --write does not persist closed status");
+    assert(writtenPacket.status === "validating", "failed program close --write leaves Program Packet status unchanged");
+  } finally {
+    rmSync(writeFailTmp, { recursive: true, force: true });
+  }
+}
+
+// Closed-ticket verification truth: final ticket lifecycles cannot keep stale
+// failed or blank row results just because the program-level row passes.
+{
+  function closedPacketWithTicketResult(value, { omitResult = false } = {}) {
+    const packet = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    packet.status = "closed";
+    packet.tickets[0].lifecycle = "closed";
+    packet.acceptance_criteria.push({
+      id: "AC-PGM",
+      scope: "program",
+      subject_ref: "PGM-TEST",
+      text: "Program close has passing evidence.",
+      story_refs: ["US-001"],
+      maintenance_rationale: null,
+    });
+    if (omitResult) delete packet.verification_matrix[0].result;
+    else packet.verification_matrix[0].result = value;
+    packet.verification_matrix.push({
+      id: "VM-PGM",
+      scope: "program",
+      subject_ref: "PGM-TEST",
+      acceptance_criterion_ref: "AC-PGM",
+      proof_type: "proof:artifact_review",
+      command_or_action: "Review program close fixture",
+      pass_means: "Program row passes",
+      result: "pass",
+    });
+    return packet;
+  }
+
+  const cases = [
+    ["fail", { omitResult: false }, "failing"],
+    ["pass", { omitResult: true }, "blank"],
+  ];
+  for (const [value, options, label] of cases) {
+    const tmp = mkdtempSync(join(tmpdir(), `program-manager-ticket-vm-${label}-`));
+    try {
+      const packetPath = join(tmp, "program_packet.json");
+      writeFileSync(packetPath, `${JSON.stringify(closedPacketWithTicketResult(value, options), null, 2)}\n`, "utf-8");
+      const r = run(["verify", "validate-to-program-close", "--program", packetPath, "--json"], tmp);
+      assert(!r.ok && hasError(r, "ticket_verification_not_passed"), `closed ticket with ${label} verification row fails JS validation`);
+      assert(!r.ok && hasError(r, "program_ticket_verification_not_passed"), `closed ticket with ${label} verification row fails ontology validation`);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-ticket-vm-waived-"));
+  try {
+    const packetPath = join(tmp, "program_packet.json");
+    writeFileSync(packetPath, `${JSON.stringify(closedPacketWithTicketResult("accepted_risk"), null, 2)}\n`, "utf-8");
+    const r = run(["verify", "validate-to-program-close", "--program", packetPath, "--json"], tmp);
+    assert(r.ok && r.parsed?.status === "PASS", "closed ticket with accepted_risk verification row is allowed");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 const tmp = mkdtempSync(join(tmpdir(), "program-manager-skip-"));
 try {
   result = run(["check", "--json"], tmp);
@@ -283,6 +437,7 @@ try {
       "--from-text",
       "Add a Program Manager remediation feature without a story ref",
       "--write",
+      "--llm-review",
       "--json",
     ], tmp, { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock });
     assert(intake.ok, "remediation fixture writes a blocked advisory intake artifact");
@@ -291,6 +446,57 @@ try {
     assert((dryRun.parsed?.remediation?.tasks || []).some((task) => task.workflow === "/story-bootstrap"), "--remediate maps story recommendations to story-bootstrap");
     const write = run(["check", "--program", packetPath, "--remediate", "--write", "--json"], tmp);
     assert(write.ok && existsSync(join(tmp, write.parsed?.remediation?.artifact_path || "")), "--remediate --write writes a remediation artifact");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-intake-preserve-"));
+  try {
+    const init = run(["init", "--program", "preserve", "--json"], tmp);
+    const packetPath = join(tmp, "plans", "programs", "preserve", "program_packet.json");
+    assert(init.ok && existsSync(packetPath), "preserve fixture initializes a packet");
+    const sourceText = "Update planner workflow migration in .agent/skills/iterative-planner/scripts/program_manager.mjs with US-077 traceability.";
+    const mock = JSON.stringify({
+      status: "review_ready",
+      summary: "Mock advisory.",
+      findings: [],
+      recommended_actions: [],
+    });
+    const first = run([
+      "intake",
+      "--program", packetPath,
+      "--from-text", sourceText,
+      "--title", "Preserve custom proof rows",
+      "--write",
+      "--json",
+    ], tmp, { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock });
+    const ticketId = first.parsed?.candidate_ticket?.id;
+    const acceptanceId = first.parsed?.candidate_ticket?.acceptance_criteria?.[0];
+    const verificationId = first.parsed?.candidate_ticket?.verification_refs?.[0];
+    assert(first.ok && ticketId && acceptanceId && verificationId, "preserve fixture creates intake ticket");
+
+    const packet = JSON.parse(readFileSync(packetPath, "utf-8"));
+    const acceptance = packet.acceptance_criteria.find((entry) => entry.id === acceptanceId);
+    const verification = packet.verification_matrix.find((entry) => entry.id === verificationId);
+    acceptance.text = "Custom preserved acceptance row requires ripple_check and test_migration evidence.";
+    verification.proof_type = "proof:test";
+    verification.command_or_action = "node .agent/skills/iterative-planner/scripts/ripple_check.mjs && node .agent/skills/iterative-planner/tests/test_migration.mjs";
+    verification.pass_means = "ripple_check and test_migration pass before the ticket can become ready.";
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+
+    const repeat = run([
+      "intake",
+      "--program", packetPath,
+      "--from-text", sourceText,
+      "--title", "Preserve custom proof rows",
+      "--write",
+      "--json",
+    ], tmp, { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock });
+    assert(repeat.ok && repeat.parsed?.candidate_ticket?.id === ticketId, "repeat intake updates the same ticket");
+    assert(repeat.parsed?.verification_rows?.[0]?.command_or_action?.includes("ripple_check.mjs"), "repeat intake preserves custom verification command");
+    assert(repeat.parsed?.ticket_intake_receipt?.retro_recurrence_status === "pass", "preserved proof row satisfies recurrence guard");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -425,9 +631,29 @@ try {
 // Forward-reasoning queries — Phase 1 of ritual elimination.
 const dispatchChain = fixture("dispatch_chain.json");
 
+result = run(["dispatch-order", "--program", dispatchChain, "--json"]);
+const dispatchOrderIds = (result.parsed?.tickets || []).map((entry) => entry.id);
+assert(result.ok && JSON.stringify(dispatchOrderIds) === JSON.stringify(["T-A", "T-B", "T-C", "T-D"]), "dispatch-order returns the full dependency-aware ticket order");
+
 result = run(["next-ready", "--program", dispatchChain, "--json"]);
 const nextReadyIds = (result.parsed?.tickets || []).map((entry) => entry.id).sort();
 assert(result.ok && JSON.stringify(nextReadyIds) === JSON.stringify(["T-B", "T-D"]), "next-ready returns the unblocked ready tickets");
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-done-dep-"));
+  try {
+    const packetPath = join(tmp, "program_packet.json");
+    const packet = JSON.parse(readFileSync(dispatchChain, "utf-8"));
+    packet.tickets.find((ticket) => ticket.id === "T-A").lifecycle = "done";
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+
+    result = run(["next-ready", "--program", packetPath, "--json"], tmp);
+    const doneDepReadyIds = (result.parsed?.tickets || []).map((entry) => entry.id).sort();
+    assert(result.ok && JSON.stringify(doneDepReadyIds) === JSON.stringify(["T-D"]), "next-ready does not treat done dependency as verified proof");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
 result = run(["blockers", "T-C", "--program", dispatchChain, "--json"]);
 const blockerIds = (result.parsed?.tickets || []).map((entry) => entry.id);
@@ -438,7 +664,130 @@ const unlockIds = (result.parsed?.tickets || []).map((entry) => entry.id);
 assert(result.ok && unlockIds.includes("T-C"), "unlocks-if-closed returns the ticket newly unblocked by closing T-B");
 
 result = run(["unlocks-if-closed", "T-A", "--program", dispatchChain, "--json"]);
-assert(result.ok && (result.parsed?.tickets || []).length === 0, "unlocks-if-closed returns nothing when target is already done");
+assert(result.ok && (result.parsed?.tickets || []).length === 0, "unlocks-if-closed returns nothing when target is already verified");
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-dep-gate-"));
+  try {
+    const packetPath = join(tmp, "program_packet.json");
+    const packet = JSON.parse(readFileSync(dispatchChain, "utf-8"));
+    packet.status = "executing";
+    for (const row of packet.verification_matrix) row.result = "pass";
+    packet.tickets.find((ticket) => ticket.id === "T-B").type = "artifact";
+    packet.tickets.find((ticket) => ticket.id === "T-C").lifecycle = "verified";
+    packet.tickets.find((ticket) => ticket.id === "T-D").type = "artifact";
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+
+    result = run(["verify", "execution-to-program-validate", "--program", packetPath, "--json"], tmp);
+    const depErrors = result.parsed?.errors || [];
+    assert(!result.ok && hasError(result, "ticket_dependency_not_verified"), "program validation blocks verified ticket with an unverified dependency");
+    assert(depErrors.some((entry) => /T-B/.test(entry.message || "")), "dependency gate names the missing prerequisite");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-stage3-dep-gate-"));
+  try {
+    const packetPath = join(tmp, "program_packet.json");
+    const ticketIds = {
+      e02: "T-INTAKE-2A496B0A",
+      e01: "T-INTAKE-ACB6E1E9",
+      e03: "T-INTAKE-CDA31E84",
+    };
+    const packet = {
+      version: 1,
+      id: "PGM-STAGE3-GATE",
+      title: "Stage 3 dependency gate fixture",
+      status: "executing",
+      goal: "Prove measured quant tickets cannot validate before keystone dependencies.",
+      story_refs: ["US-079"],
+      epics: [{
+        id: "EP-001",
+        title: "Dependency gate",
+        story_refs: ["US-079"],
+        ticket_refs: [ticketIds.e02, ticketIds.e01, ticketIds.e03],
+      }],
+      tickets: [
+        {
+          id: ticketIds.e02,
+          epic_id: "EP-001",
+          title: "Two-layer gate split still open",
+          type: "artifact",
+          lifecycle: "ready",
+          story_refs: ["US-079"],
+          defect_refs: [],
+          gap_refs: [],
+          depends_on: [],
+          acceptance_criteria: ["AC-E02"],
+          child_plan: { policy: "not_required", plan_dir: null, reason: "fixture" },
+          compatibility_contract_refs: [],
+          migration_boundary_refs: [],
+          deletion_move_census_refs: [],
+          verification_refs: ["VM-E02"],
+        },
+        {
+          id: ticketIds.e01,
+          epic_id: "EP-001",
+          title: "Bayesian ledger advanced too early",
+          type: "artifact",
+          lifecycle: "verified",
+          story_refs: ["US-079"],
+          defect_refs: [],
+          gap_refs: [],
+          depends_on: [ticketIds.e02],
+          acceptance_criteria: ["AC-E01"],
+          child_plan: { policy: "not_required", plan_dir: null, reason: "fixture" },
+          compatibility_contract_refs: [],
+          migration_boundary_refs: [],
+          deletion_move_census_refs: [],
+          verification_refs: ["VM-E01"],
+        },
+        {
+          id: ticketIds.e03,
+          epic_id: "EP-001",
+          title: "Stage 3 measured quant ticket advanced too early",
+          type: "artifact",
+          lifecycle: "verified",
+          story_refs: ["US-079"],
+          defect_refs: [],
+          gap_refs: [],
+          depends_on: [ticketIds.e01],
+          acceptance_criteria: ["AC-E03"],
+          child_plan: { policy: "not_required", plan_dir: null, reason: "fixture" },
+          compatibility_contract_refs: [],
+          migration_boundary_refs: [],
+          deletion_move_census_refs: [],
+          verification_refs: ["VM-E03"],
+        },
+      ],
+      acceptance_criteria: [
+        { id: "AC-E02", scope: "ticket", subject_ref: ticketIds.e02, text: "e02 exists.", story_refs: ["US-079"], maintenance_rationale: null },
+        { id: "AC-E01", scope: "ticket", subject_ref: ticketIds.e01, text: "e01 depends on e02.", story_refs: ["US-079"], maintenance_rationale: null },
+        { id: "AC-E03", scope: "ticket", subject_ref: ticketIds.e03, text: "e03 depends on e01.", story_refs: ["US-079"], maintenance_rationale: null },
+      ],
+      dependencies: [],
+      compatibility_contracts: [],
+      migration_boundaries: [],
+      deletion_move_census: [],
+      verification_matrix: [
+        { id: "VM-E02", scope: "ticket", subject_ref: ticketIds.e02, acceptance_criterion_ref: "AC-E02", proof_type: "proof:artifact_review", command_or_action: "review", pass_means: "ok", result: "pass" },
+        { id: "VM-E01", scope: "ticket", subject_ref: ticketIds.e01, acceptance_criterion_ref: "AC-E01", proof_type: "proof:artifact_review", command_or_action: "review", pass_means: "ok", result: "pass" },
+        { id: "VM-E03", scope: "ticket", subject_ref: ticketIds.e03, acceptance_criterion_ref: "AC-E03", proof_type: "proof:artifact_review", command_or_action: "review", pass_means: "ok", result: "pass" },
+      ],
+      decisions: [],
+    };
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+
+    result = run(["verify", "execution-to-program-validate", "--program", packetPath, "--json"], tmp);
+    const depErrors = result.parsed?.errors || [];
+    assert(!result.ok && hasError(result, "ticket_dependency_not_verified"), "Stage-3 dependency gate blocks measured ticket chain while e02 is open");
+    assert(depErrors.some((entry) => /T-INTAKE-2A496B0A/.test(entry.message || "")), "Stage-3 dependency gate names e02 as the missing prerequisite");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
 result = run(["next-ready", "--program", fixture("valid_ready.json"), "--json"]);
 const validNext = (result.parsed?.tickets || []).map((entry) => entry.id);

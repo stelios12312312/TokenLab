@@ -44,8 +44,8 @@ const RULE_DEFS = [
 ];
 
 const QUANT_SCOPE_TERMS = [
-  "quant", "model", "modeling", "modelling", "signal", "strategy", "factor",
-  "alpha", "prediction", "predict", "classifier", "regression", "backtest",
+  "quant", "model", "modeling", "modelling", "factor",
+  "alpha", "prediction", "predict", "classifier", "backtest",
   "optimizer", "trueskill", "true skill", "m-model", "market inefficiency model",
 ];
 
@@ -57,7 +57,7 @@ const HIGH_SIGNAL_TERMS = [
 ];
 
 const TARGET_SIGNAL_TERMS = [
-  "target", "label", "label formula", "prediction time", "prediction horizon",
+  "target", "label formula", "prediction time", "prediction horizon",
   "horizon", "known-at-time", "known at time", "available at that time",
   "forbidden future", "future field", "leakage", "proof metric",
 ];
@@ -207,7 +207,16 @@ function hasScientificPlanShape(context) {
 
 function textContainsAny(text, terms) {
   const normalized = normalizeText(text);
-  return terms.some((term) => normalized.includes(normalizeText(term)));
+  return terms.some((term) => termPresent(normalized, term));
+}
+
+function termPresent(normalizedText, term) {
+  const normalizedTerm = normalizeText(term);
+  if (!normalizedTerm) return false;
+  if (/^[a-z0-9]+$/.test(normalizedTerm)) {
+    return new RegExp(`(^|[^a-z0-9_])${normalizedTerm}([^a-z0-9_]|$)`).test(normalizedText);
+  }
+  return normalizedText.includes(normalizedTerm);
 }
 
 function matchingStories(storyRegistry, terms) {

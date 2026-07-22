@@ -72,6 +72,32 @@ def run_proof():
     total_alloc = sum(config.tier_budget_allocations.values())
     print(f"Sum of progressive tier budget allocations: {total_alloc:.2f} (Bronze=40%, Silver=25%, Gold=20%, Platinum=15%)")
     # The remaining 10% is typically allocated to other activities (like creator/validator incentive pools or reserves)
+    
+    print("\n--- Phase 5: Viewers ACR Staking Gate (PAR-10) ---")
+    # Verify that a viewer cohort with available ACR < requirement cannot stake
+    from projects.z1.m3_full_economy.state import initialize_state
+    from projects.z1.m3_full_economy.ledger import stake_z1u
+    
+    config.governance_staking_enabled = True
+    config.governance_acr_requirement = 100.0
+    config.staking_rate_by_cohort["active_viewers"] = 0.50
+    
+    state_gate = initialize_state(config)
+    state_gate.config = config
+    pool_gate = state_gate.cohorts["active_viewers"]
+    pool_gate.z1u_balance = 1000.0
+    pool_gate.acr_available = 50.0  # < 100.0
+    
+    stake_z1u(state_gate, "active_viewers")
+    print(f"Staking with ACR={pool_gate.acr_available} (req={config.governance_acr_requirement}): Staked={pool_gate.staked_z1u} Z1U (expected 0.00)")
+    assert pool_gate.staked_z1u == 0.0, "Viewer staked without meeting ACR requirement!"
+    
+    pool_gate.acr_available = 150.0  # >= 100.0
+    stake_z1u(state_gate, "active_viewers")
+    print(f"Staking with ACR={pool_gate.acr_available} (req={config.governance_acr_requirement}): Staked={pool_gate.staked_z1u} Z1U (expected 500.00)")
+    assert pool_gate.staked_z1u == 500.0, "Viewer failed to stake after meeting ACR requirement!"
+    print("Viewer ACR staking gate (PAR-10): SUCCESS")
+    
     print("All tests completed successfully!")
     print("=" * 75)
 

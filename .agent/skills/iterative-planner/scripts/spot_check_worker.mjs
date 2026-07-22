@@ -103,14 +103,18 @@ function main() {
       }), json);
       break;
     case "ack":
-      print(ackSpotChecks({
-        cwd,
-        planId: parsed.plan,
-        ids: parsed.ids,
-        category: parsed.category,
-        all: parsed.all,
-        note: parsed.note,
-      }), json);
+      {
+        const result = ackSpotChecks({
+          cwd,
+          planId: parsed.plan,
+          ids: parsed.ids,
+          category: parsed.category,
+          all: parsed.all,
+          note: parsed.note,
+        });
+        print(result, json);
+        if (!result.ok) process.exitCode = 1;
+      }
       break;
     case "prune":
       print(pruneSpotChecks({ cwd, planId: parsed.plan }), json);

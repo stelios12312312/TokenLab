@@ -1,11 +1,20 @@
 // packs/tokenomics/index.mjs - Token economics persona auditor.
 //
 // This pack reviews tokenomics planning surfaces for missing economic
-// contracts. It is advisory infrastructure, not financial or legal advice.
+// contracts and deterministic arithmetic contradictions. It is advisory
+// infrastructure, not financial or legal advice.
+
+import { existsSync, readFileSync } from "fs";
+import { dirname, join } from "path";
+import { fileURLToPath } from "url";
 
 import { makeConstraint, makeFinding, SEVERITY } from "../../scripts/lib/audit_types.mjs";
+import { createSession } from "../../scripts/lib/prolog.mjs";
 
 const PACK_ID = "tokenomics";
+const __filename = fileURLToPath(import.meta.url);
+const PACK_DIR = dirname(__filename);
+export const RULES_FILE = join(PACK_DIR, "rules.pl");
 
 const RULE_DEFS = [
   {
@@ -45,7 +54,7 @@ const RULE_DEFS = [
     name: "Financial claim boundary",
     rationale: "Token price, ROI, APY, FDV, or valuation language can look like investment advice without assumptions and stress boundaries.",
     false_positive: "A plan may quote a third-party claim only to reject it.",
-    remediation: "Mark outputs as not financial advice, include assumptions, scenario/sensitivity or stress analysis, strongest counterargument, and residual uncertainty.",
+    remediation: "Mark outputs as not financial advice, include assumptions, scenario/sensitivity or stress analysis, strongest counterargument, and residual uncertainty. Guaranteed ROI/return claims must be removed or explicitly blocked for qualified review.",
     engine: "js",
   },
   {
@@ -55,6 +64,54 @@ const RULE_DEFS = [
     false_positive: "Internal research may explicitly state that legal/regulatory analysis is out of scope and blocked on counsel.",
     remediation: "Name the legal/regulatory owner or qualified-review boundary, relevant jurisdiction assumptions, and not-legal-advice wording.",
     engine: "js",
+  },
+  {
+    id: "TK-007",
+    name: "Allocation arithmetic",
+    rationale: "Allocation buckets must reconcile to roughly 100 percent before supply or launch-readiness claims are trusted.",
+    false_positive: "The plan may be comparing multiple scenarios and explicitly mark the shown buckets as partial.",
+    remediation: "Reconcile allocation buckets so the declared distribution sums to approximately 100 percent, or mark it as a partial scenario.",
+    engine: "prolog",
+  },
+  {
+    id: "TK-008",
+    name: "Supply ordering",
+    rationale: "Circulating supply must not exceed total supply, and total supply must not exceed max supply.",
+    false_positive: "The plan may use separate assets or wrapped-token units and clearly state they are not comparable.",
+    remediation: "Correct circulating, total, and max supply units so circulating <= total <= max.",
+    engine: "prolog",
+  },
+  {
+    id: "TK-009",
+    name: "FDV reconciliation",
+    rationale: "Fully diluted valuation should reconcile to token price times max supply within declared tolerance.",
+    false_positive: "The plan may quote a third-party FDV with a different price timestamp and label that source explicitly.",
+    remediation: "Recompute FDV as token price multiplied by max supply, or explain the timestamp/source mismatch.",
+    engine: "prolog",
+  },
+  {
+    id: "TK-010",
+    name: "Staking APY sustainability",
+    rationale: "APY claims funded by scheduled emissions rather than modeled protocol revenue can create reflexive sell pressure.",
+    false_positive: "A temporary bootstrap subsidy may be acceptable when explicitly capped, funded, and stress-tested.",
+    remediation: "Reconcile staking APY against modeled protocol revenue plus scheduled emissions, and flag emissions-funded yield as a launch risk.",
+    engine: "prolog",
+  },
+  {
+    id: "TK-011",
+    name: "Unlock cliff pressure",
+    rationale: "Large cliff unlocks can dominate liquidity and incentive assumptions.",
+    false_positive: "A large unlock may be locked in a non-transferable escrow with explicit controls.",
+    remediation: "Reduce or phase large unlock cliffs, or document liquidity and sell-pressure controls.",
+    engine: "prolog",
+  },
+  {
+    id: "TK-012",
+    name: "Governance/admin timelock",
+    rationale: "Admin-key authority without a timelock leaves token supply, treasury, or governance controls unreviewable at launch speed.",
+    false_positive: "Emergency-only authority may be acceptable when scope, multisig, timelock, and post-launch removal are explicit.",
+    remediation: "Add timelock or equivalent governance delay for admin authority, or mark the launch as blocked pending qualified review.",
+    engine: "prolog",
   },
 ];
 
@@ -120,6 +177,9 @@ const REGULATORY_GROUPS = Object.freeze([
   Object.freeze({ key: "not_legal_advice", terms: ["not legal advice", "legal advice", "regulatory advice"] }),
 ]);
 
+const EXPLORE_ACTIVE_RULES = new Set(["TK-005", "TK-006", "TK-007", "TK-008", "TK-009", "TK-010", "TK-011", "TK-012"]);
+const AUDIT_TEXT_FILES = ["plan.md", "findings.md", "intent_contract.json", "state.md"];
+
 function normalizeText(value) {
   return String(value || "").toLowerCase().replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
 }
@@ -147,12 +207,20 @@ function allRegistryStories(storyRegistry) {
   ];
 }
 
-function combinedContextText(context) {
+function combinedRawContextText(context) {
   const stories = allRegistryStories(context?.storyRegistry);
-  return normalizeText([
-    ...Object.values(context?.planFiles || {}),
+  const planFiles = context?.planFiles || {};
+  const selectedPlanFileText = AUDIT_TEXT_FILES
+    .map((name) => planFiles[name])
+    .filter(Boolean);
+  return [
+    ...(selectedPlanFileText.length > 0 ? selectedPlanFileText : Object.values(planFiles)),
     ...stories.map(storyText),
-  ].join(" "));
+  ].join("\n");
+}
+
+function combinedContextText(context) {
+  return normalizeText(combinedRawContextText(context));
 }
 
 function matchingStories(storyRegistry, terms) {
@@ -160,10 +228,6 @@ function matchingStories(storyRegistry, terms) {
     .filter((story) => textContainsAny(storyText(story), terms))
     .map((story) => story.id)
     .filter(Boolean);
-}
-
-function roles(context) {
-  return Array.isArray(context?.auditConfig?.roles) ? context.auditConfig.roles : [];
 }
 
 function countCoveredGroups(text, groups) {
@@ -182,22 +246,212 @@ function hasPathSignal(context) {
 }
 
 function hasScope(context, text = combinedContextText(context)) {
-  if (roles(context).includes(PACK_ID)) return true;
   if (textContainsAny(text, SCOPE_TERMS)) return true;
   return hasPathSignal(context);
 }
 
-function phaseAllowsBlockingFindings(context) {
+function phaseAllowsFinding(ruleId, context) {
   const phase = normalizeText(context?.currentState || "");
   if (!phase) return true;
-  return !["explore", "init"].includes(phase);
+  if (["explore", "init"].includes(phase)) return EXPLORE_ACTIVE_RULES.has(ruleId);
+  return true;
+}
+
+function numberFrom(value) {
+  const cleaned = String(value || "").replace(/[$,\s_]/g, "");
+  const parsed = Number(cleaned);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function firstNumber(line) {
+  const match = String(line || "").match(/([0-9][0-9,]*(?:\.[0-9]+)?)/);
+  return match ? numberFrom(match[1]) : null;
+}
+
+function firstPercent(line) {
+  const match = String(line || "").match(/([0-9][0-9,]*(?:\.[0-9]+)?)\s*%/);
+  return match ? numberFrom(match[1]) : null;
+}
+
+function parseValueAfter(text, regex) {
+  const match = String(text || "").match(regex);
+  return match ? numberFrom(match[1]) : null;
+}
+
+function guaranteedRoiClaim(text) {
+  const normalized = normalizeText(text);
+  return /\bguaranteed\s+(roi|return|returns|upside|yield|apy|apr)\s*:/.test(normalized)
+    || /\bguarante(?:e|ed|es|eing)\b.{0,80}\b(buyers?|holders?|investors?)\b.{0,80}\b(roi|return|returns|upside|yield|apy|apr|[0-9]+x)\b/.test(normalized)
+    || /\bbuyers?\s+will\s+(receive|earn|get|make)\b.{0,80}\b(roi|return|returns|upside|yield|[0-9]+x)\b/.test(normalized);
+}
+
+function hasConcreteTokenomicsInput(input) {
+  return input.allocation_sum_bps !== null
+    || Object.values(input.supply || {}).some((value) => value !== null && value !== undefined)
+    || input.fdv_diff_bps !== null
+    || Object.values(input.apy_bps || {}).some((value) => value !== null && value !== undefined)
+    || input.unlock_cliff_bps !== null
+    || input.guaranteed_roi_claim;
+}
+
+function isImplementationMetaPlan(text, input) {
+  if (hasConcreteTokenomicsInput(input)) return false;
+  const normalized = normalizeText(text);
+  return /\b(tokenomics pack|packs tokenomics|rules pl|tokenomics validator|persona pack|conformance suite|generated payload|runtime gate)\b/.test(normalized);
+}
+
+function parseTimelockHours(text) {
+  const absent = /\b(no|without|missing)\s+timelock\b|\btimelock\s+(is\s+)?(absent|missing|not planned)\b/.test(normalizeText(text));
+  if (absent) return null;
+  const explicit = String(text || "").match(/\btimelock\b.{0,30}?([0-9][0-9,]*(?:\.[0-9]+)?)\s*(hour|hours|hr|hrs)\b/i);
+  if (explicit) return Math.round(numberFrom(explicit[1]) || 0);
+  return textContainsAny(text, ["timelock"]) ? 1 : null;
+}
+
+export function extractTokenomicsInput(contextOrText) {
+  const rawText = typeof contextOrText === "string" ? contextOrText : combinedRawContextText(contextOrText);
+  const text = normalizeText(rawText);
+  const lines = String(rawText || "").split(/\r?\n/);
+  const allocationPercents = [];
+  let promisedApy = null;
+  let protocolRevenueApy = null;
+  let scheduledEmissionsApy = null;
+  let unlockCliffPercent = null;
+  let yieldSourceEmissions = false;
+
+  for (const line of lines) {
+    const lower = normalizeText(line);
+    if (/(allocation|distribution|bucket)/.test(lower)) {
+      for (const match of String(line).matchAll(/([0-9][0-9,]*(?:\.[0-9]+)?)\s*%/g)) {
+        const value = numberFrom(match[1]);
+        if (value !== null) allocationPercents.push(value);
+      }
+    }
+    if (lower.includes("protocol revenue") && lower.includes("apy")) {
+      protocolRevenueApy = firstPercent(line) ?? protocolRevenueApy;
+    } else if ((lower.includes("scheduled emissions") || lower.includes("emissions schedule")) && lower.includes("apy")) {
+      scheduledEmissionsApy = firstPercent(line) ?? scheduledEmissionsApy;
+    } else if ((lower.includes("staking") || lower.includes("rewards")) && lower.includes("apy")) {
+      promisedApy = firstPercent(line) ?? promisedApy;
+    }
+
+    if ((lower.includes("yield source") || lower.includes("reward source")) && /(emission|issuance|inflation|subsid)/.test(lower)) {
+      yieldSourceEmissions = true;
+    }
+    if (lower.includes("cliff") && lower.includes("unlock")) {
+      unlockCliffPercent = firstPercent(line) ?? unlockCliffPercent;
+    }
+  }
+
+  const price = parseValueAfter(rawText, /\b(?:token\s+price|price)\s*:?\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
+  const fdv = parseValueAfter(rawText, /\b(?:fdv|fully\s+diluted\s+valuation)\s*:?\s*\$?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
+  const maxSupply = parseValueAfter(rawText, /\bmax(?:imum)?\s+supply\s*:?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
+  const totalSupply = parseValueAfter(rawText, /\btotal\s+supply\s*:?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
+  const circulatingSupply = parseValueAfter(rawText, /\bcirculating\s+supply\s*:?\s*([0-9][0-9,]*(?:\.[0-9]+)?)/i);
+  const fdvExpected = price !== null && maxSupply !== null ? price * maxSupply : null;
+  const fdvDiffBps = fdvExpected && fdv !== null
+    ? Math.round((Math.abs(fdv - fdvExpected) / Math.max(1, Math.abs(fdvExpected))) * 10000)
+    : null;
+
+  return {
+    raw_text: rawText,
+    normalized_text: text,
+    allocation_sum_bps: allocationPercents.length > 0 ? Math.round(allocationPercents.reduce((sum, value) => sum + value, 0) * 100) : null,
+    supply: {
+      circulating: circulatingSupply,
+      total: totalSupply,
+      max: maxSupply,
+    },
+    price,
+    fdv,
+    fdv_expected: fdvExpected,
+    fdv_diff_bps: fdvDiffBps,
+    apy_bps: {
+      promised: promisedApy !== null ? Math.round(promisedApy * 100) : null,
+      protocol_revenue: protocolRevenueApy !== null ? Math.round(protocolRevenueApy * 100) : null,
+      scheduled_emissions: scheduledEmissionsApy !== null ? Math.round(scheduledEmissionsApy * 100) : null,
+    },
+    yield_source_emissions: yieldSourceEmissions,
+    unlock_cliff_bps: unlockCliffPercent !== null ? Math.round(unlockCliffPercent * 100) : null,
+    admin_key: textContainsAny(text, ["admin key", "multisig", "governance authority", "mint authority"]),
+    timelock_hours: parseTimelockHours(rawText),
+    guaranteed_roi_claim: guaranteedRoiClaim(rawText),
+  };
+}
+
+function prologFact(name, subject, ...args) {
+  return `${name}(${subject}, ${args.join(", ")}).`;
+}
+
+export function collectTokenomicsPrologFacts(input, subject = "tokenomics_plan") {
+  const facts = [];
+  if (input.allocation_sum_bps !== null) facts.push(prologFact("tokenomics_allocation_sum_bps", subject, Math.round(input.allocation_sum_bps)));
+  for (const [kind, value] of Object.entries(input.supply || {})) {
+    if (value !== null && value !== undefined) facts.push(prologFact("tokenomics_supply", subject, kind, Math.round(value)));
+  }
+  if (input.fdv_diff_bps !== null) facts.push(prologFact("tokenomics_fdv_diff_bps", subject, Math.round(input.fdv_diff_bps)));
+  for (const [kind, value] of Object.entries(input.apy_bps || {})) {
+    if (value !== null && value !== undefined) facts.push(prologFact("tokenomics_apy_bps", subject, kind, Math.round(value)));
+  }
+  if (input.yield_source_emissions) facts.push(`tokenomics_yield_source(${subject}, scheduled_emissions).`);
+  if (input.unlock_cliff_bps !== null) facts.push(prologFact("tokenomics_unlock_cliff_bps", subject, Math.round(input.unlock_cliff_bps)));
+  if (input.admin_key) facts.push(prologFact("tokenomics_admin_key", subject, "true"));
+  if (input.timelock_hours !== null && input.timelock_hours !== undefined) facts.push(prologFact("tokenomics_timelock_hours", subject, Math.round(input.timelock_hours)));
+  if (input.guaranteed_roi_claim) facts.push(`tokenomics_guaranteed_roi_claim(${subject}).`);
+  return facts;
+}
+
+function categoryForRule(ruleId, detail = "") {
+  if (ruleId === "TK-007") return "allocation_sum_invalid";
+  if (ruleId === "TK-008") return "supply_order_invalid";
+  if (ruleId === "TK-009") return "fdv_mismatch";
+  if (ruleId === "TK-010") return "emissions_funded_yield";
+  if (ruleId === "TK-011") return "unlock_cliff_pressure";
+  if (ruleId === "TK-012") return "governance_timelock_missing";
+  if (ruleId === "TK-005" && String(detail).includes("guaranteed")) return "guaranteed_roi_claim";
+  return "tokenomics_arithmetic";
+}
+
+function recommendationForRule(ruleId) {
+  return RULE_DEFS.find((rule) => rule.id === ruleId)?.remediation || "Reconcile tokenomics assumptions before relying on launch-readiness claims.";
+}
+
+export function evaluateTokenomicsArithmetic(input, { storyRefs = [] } = {}) {
+  if (!existsSync(RULES_FILE)) return [];
+  const facts = collectTokenomicsPrologFacts(input);
+  if (facts.length === 0) return [];
+
+  const session = createSession();
+  session.consultFile(RULES_FILE);
+  session.consult(facts.join("\n"));
+  const seen = new Set();
+  return session.queryAll("tokenomics_violation(Rule, tokenomics_plan, Detail, Severity).")
+    .map((row) => ({
+      ruleId: row.Rule,
+      category: categoryForRule(row.Rule, row.Detail),
+      detail: String(row.Detail || `${row.Rule} tokenomics violation`),
+      recommendation: recommendationForRule(row.Rule),
+      severity: row.Severity || SEVERITY.CRITICAL,
+      story_refs: storyRefs,
+      prolog_rule: "tokenomics_violation/4",
+    }))
+    .filter((finding) => {
+      const key = `${finding.ruleId}:${finding.category}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
 }
 
 function analyze(context) {
-  const text = combinedContextText(context);
+  const rawText = combinedRawContextText(context);
+  const text = normalizeText(rawText);
   const hasClaimLanguage = textContainsAny(text, CLAIM_TERMS);
+  const storyRefs = matchingStories(context?.storyRegistry, SCOPE_TERMS);
+  const tokenomicsInput = extractTokenomicsInput(rawText);
   return {
     text,
+    rawText,
     supply: countCoveredGroups(text, SUPPLY_GROUPS),
     vesting: countCoveredGroups(text, VESTING_GROUPS),
     incentives: countCoveredGroups(text, INCENTIVE_GROUPS),
@@ -205,7 +459,10 @@ function analyze(context) {
     claims: countCoveredGroups(text, CLAIM_BOUNDARY_GROUPS),
     regulatory: countCoveredGroups(text, REGULATORY_GROUPS),
     hasClaimLanguage,
-    storyRefs: matchingStories(context?.storyRegistry, SCOPE_TERMS),
+    guaranteedRoiClaim: tokenomicsInput.guaranteed_roi_claim,
+    implementationMetaOnly: isImplementationMetaPlan(rawText, tokenomicsInput),
+    arithmetic: evaluateTokenomicsArithmetic(tokenomicsInput, { storyRefs }),
+    storyRefs,
   };
 }
 
@@ -213,7 +470,7 @@ function incomplete(groups, minCovered, required = []) {
   return groups.covered.length < minCovered || required.some((key) => groups.missing.includes(key));
 }
 
-function makeRawFinding(ruleId, category, detail, recommendation, analysis, severity = SEVERITY.HIGH, missing = []) {
+function makeRawFinding(ruleId, category, detail, recommendation, analysis, severity = SEVERITY.HIGH, missing = [], extra = {}) {
   return {
     ruleId,
     category,
@@ -222,11 +479,16 @@ function makeRawFinding(ruleId, category, detail, recommendation, analysis, seve
     severity,
     story_refs: analysis.storyRefs,
     missing,
+    ...extra,
   };
 }
 
-function findingsForAnalysis(analysis) {
+function findingsForAnalysis(analysis, context) {
   const findings = [];
+
+  if (analysis.implementationMetaOnly) {
+    return analysis.arithmetic.filter((finding) => phaseAllowsFinding(finding.ruleId, context));
+  }
 
   if (incomplete(analysis.supply, 3, ["supply", "emissions"])) {
     findings.push(makeRawFinding(
@@ -276,7 +538,18 @@ function findingsForAnalysis(analysis) {
     ));
   }
 
-  if (analysis.hasClaimLanguage && incomplete(analysis.claims, 3, ["not_financial_advice", "assumptions"])) {
+  if (analysis.guaranteedRoiClaim) {
+    findings.push(makeRawFinding(
+      "TK-005",
+      "guaranteed_roi_claim",
+      "Guaranteed ROI/return language is present; tokenomics outputs must not promise buyer returns.",
+      "Remove guaranteed ROI/return language or block the launch claim pending qualified financial/legal review.",
+      analysis,
+      SEVERITY.CRITICAL,
+      [],
+      { prolog_rule: "tokenomics_violation/4" }
+    ));
+  } else if (analysis.hasClaimLanguage && incomplete(analysis.claims, 3, ["not_financial_advice", "assumptions"])) {
     findings.push(makeRawFinding(
       "TK-005",
       "financial_claim_boundary",
@@ -289,18 +562,20 @@ function findingsForAnalysis(analysis) {
   }
 
   if (incomplete(analysis.regulatory, 2, ["owner"])) {
+    const phase = normalizeText(context?.currentState || "");
     findings.push(makeRawFinding(
       "TK-006",
       "legal_regulatory_boundary",
       `Tokenomics scope is present, but the legal/regulatory review boundary is incomplete (missing: ${analysis.regulatory.missing.join(", ")}).`,
       "Name the legal or regulatory owner, jurisdiction assumptions, and not-legal-advice boundary before relying on token launch or governance claims.",
       analysis,
-      SEVERITY.MEDIUM,
+      ["explore", "init"].includes(phase) ? SEVERITY.HIGH : SEVERITY.MEDIUM,
       analysis.regulatory.missing
     ));
   }
 
-  return findings;
+  findings.push(...analysis.arithmetic);
+  return findings.filter((finding) => phaseAllowsFinding(finding.ruleId, context));
 }
 
 function guidanceLines(lines) {
@@ -319,8 +594,8 @@ const tokenomicsPack = {
   },
 
   async audit(context) {
-    if (!hasScope(context) || !phaseAllowsBlockingFindings(context)) return [];
-    return findingsForAnalysis(analyze(context));
+    if (!hasScope(context)) return [];
+    return findingsForAnalysis(analyze(context), context);
   },
 
   getPhaseGuidance(phase, context) {
@@ -358,13 +633,19 @@ const tokenomicsPack = {
   getPlanConstraints(context) {
     if (!hasScope(context)) return [];
     const analysis = analyze(context);
-    return findingsForAnalysis(analysis).map((finding) => makeConstraint({
+    return findingsForAnalysis(analysis, context).map((finding) => makeConstraint({
       id: `${finding.ruleId.replace("TK-", "TK-C-")}`,
       role: PACK_ID,
       constraint: finding.recommendation,
       severity: finding.severity,
       rationale: RULE_DEFS.find((rule) => rule.id === finding.ruleId)?.rationale || "Tokenomics scope needs explicit assumptions before claims are trusted.",
       story_refs: finding.story_refs || [],
+      meta: {
+        tokenomics: {
+          category: finding.category,
+          prolog_rule: finding.prolog_rule || null,
+        },
+      },
     }));
   },
 
@@ -383,11 +664,17 @@ const tokenomicsPack = {
           rule_id: raw.ruleId,
           missing_groups: raw.missing || [],
           false_positive: rule.false_positive,
+          prolog_rule: raw.prolog_rule || null,
+          invariant_id: raw.category || null,
           advisory_boundary: "Not financial or legal advice; live token launches and investment decisions require qualified review.",
         },
       },
     });
   },
+
+  extractTokenomicsInput,
+  collectTokenomicsPrologFacts,
+  evaluateTokenomicsArithmetic,
 };
 
 export default tokenomicsPack;

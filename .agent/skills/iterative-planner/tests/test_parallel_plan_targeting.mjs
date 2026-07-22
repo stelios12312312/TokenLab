@@ -159,6 +159,55 @@ try {
   else delete process.env.CODEX_THREAD_ID;
   if (typeof originalTarget === "string") process.env._PLANNER_PLAN_TARGET = originalTarget;
   else delete process.env._PLANNER_PLAN_TARGET;
+
+  // --- Harness-agnostic thread identity: Claude Code session-id fallback ---
+  // Regression guard for the bug where per-agent isolation keyed ONLY on
+  // CODEX_THREAD_ID and silently went dark under Claude Code (which exposes
+  // CLAUDE_CODE_SESSION_ID, not CODEX_THREAD_ID), collapsing every concurrent
+  // agent onto the shared plans/.current_plan pointer. Empty CODEX_THREAD_ID /
+  // _PLANNER_PLAN_TARGET neutralize any value inherited from a Codex/CI host so
+  // the fallback is exercised regardless of where the suite runs.
+  const claudeEnvA = { CODEX_THREAD_ID: "", _PLANNER_PLAN_TARGET: "", CLAUDE_CODE_SESSION_ID: "claude-session-A" };
+  const claudeEnvB = { CODEX_THREAD_ID: "", _PLANNER_PLAN_TARGET: "", CLAUDE_CODE_SESSION_ID: "claude-session-B" };
+
+  const claudeTmp = mkdtempSync(join(tmpdir(), "planner-claude-session-"));
+  try {
+    symlinkSync(agentDir, join(claudeTmp, ".agent"), "dir");
+
+    const cPrimary = run([bootstrapScript, "new", "Claude session primary"], claudeTmp, claudeEnvA);
+    assert(cPrimary.ok, "bootstrap new works under CLAUDE_CODE_SESSION_ID with no CODEX_THREAD_ID");
+    const cPointer = readFileSync(join(claudeTmp, "plans", ".current_plan"), "utf-8").trim();
+    assert(existsSync(join(claudeTmp, "plans", ".thread_targets", "claude-session-A.txt")), "thread target is keyed on the Claude Code session id");
+
+    const cParallel = run([bootstrapScript, "new", "--parallel", "Claude session B"], claudeTmp, claudeEnvB);
+    assert(cParallel.ok, "second Claude session creates a parallel plan without clobbering the pointer");
+    const cThreadB = join(claudeTmp, "plans", ".thread_targets", "claude-session-B.txt");
+    assert(existsSync(cThreadB), "second Claude session writes its own thread target");
+    const cPlanB = readFileSync(cThreadB, "utf-8").trim();
+    assert(cPlanB.startsWith("plan_") && cPlanB !== cPointer, "two Claude Code sessions resolve to different plans (no shared-pointer collision)");
+
+    const cStatusB = run([bootstrapScript, "status"], claudeTmp, claudeEnvB);
+    assert(cStatusB.stdout.includes("Target source: thread"), "Claude session B resolves via thread, not the shared pointer");
+    assert(cStatusB.stdout.includes(`plans/${cPlanB}`), "Claude session B status reports its own plan");
+
+    // post_tool_use hook must route trace/telemetry into the Claude session's
+    // own plan, not the shared pointer (regression for the second instance of
+    // the bug: the hook read CODEX_THREAD_ID directly and went dark in Claude Code).
+    const cSourcePath = join(claudeTmp, "src", "claude-session-ui.tsx");
+    mkdirSync(dirname(cSourcePath), { recursive: true });
+    writeFileSync(cSourcePath, "export const ClaudeSessionUI = true;\n");
+    const cHook = run([postToolUseScript], claudeTmp, claudeEnvB, JSON.stringify({
+      tool_name: "Edit",
+      tool_input: { file_path: cSourcePath },
+      cwd: claudeTmp,
+    }));
+    assert(cHook.ok, "post_tool_use exits cleanly under a Claude Code session");
+    const cTraceB = join(claudeTmp, "plans", cPlanB, "artifacts", "tool_trace.jsonl");
+    assert(existsSync(cTraceB) && readFileSync(cTraceB, "utf-8").includes(`"plan_dir":"${cPlanB}"`), "post_tool_use routes trace into the Claude session plan via CLAUDE_CODE_SESSION_ID");
+    assert(!existsSync(join(claudeTmp, "plans", cPointer, "artifacts", "tool_trace.jsonl")), "post_tool_use does not misroute the Claude session trace into the pointer plan");
+  } finally {
+    try { rmSync(claudeTmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
 } finally {
   try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
 }

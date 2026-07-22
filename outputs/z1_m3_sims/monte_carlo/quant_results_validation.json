@@ -1,20 +1,20 @@
 {
   "verdict": {
     "is_promoted": true,
-    "justification": "The median final Audience Reserve ratio is 234.50% (well above the 30% collapse threshold), demonstrating high resilience under stress."
+    "justification": "The median final Audience Reserve ratio is 224.67% (well above the 30% collapse threshold), demonstrating high resilience under stress."
   },
   "statistics": {
     "n_trials": 100,
     "n_epochs": 100,
     "audience_reserve": {
-      "median_final_ratio": 2.3449548273769767,
-      "p05_final_ratio": 2.344942477862726,
-      "p95_final_ratio": 2.44495891728074
+      "median_final_ratio": 2.2467466143418617,
+      "p05_final_ratio": 2.246737272471821,
+      "p95_final_ratio": 2.2467590012374683
     },
     "spot_price": {
-      "median_final": 0.07320815464307764,
-      "p05_final": 0.07320742328610821,
-      "p95_final": 0.07320860376998668
+      "median_final": 0.11109741703732189,
+      "p05_final": 0.11036076419849834,
+      "p95_final": 0.1113559500714891
     }
   },
   "metadata": {

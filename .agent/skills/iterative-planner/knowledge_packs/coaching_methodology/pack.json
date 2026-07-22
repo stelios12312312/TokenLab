@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "id": "coaching_methodology",
+  "pack": "coaching_methodology",
+  "title": "Coaching Methodology Knowledge Pack",
+  "version": 1,
+  "trust_tier": "bundled",
+  "dependencies": [],
+  "applies_when": {
+    "file_glob_any": [
+      "**/*coach*.md",
+      "**/*coaching*.md"
+    ]
+  },
+  "provenance": {
+    "writer": "knowledge_pack",
+    "source": "knowledge_pack:coaching_methodology@v1"
+  },
+  "entry_files": [
+    "pitfalls.json",
+    "constraints.json"
+  ]
+}

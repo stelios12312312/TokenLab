@@ -262,6 +262,7 @@ class SupplyStakerLockup(SupplyStaker):
         rewards: Union[float, scipy.stats.rv_continuous],
         lockup_duration: int,
         reward_as_perc: bool = True,
+        quit_prob: float = 0.0,
     ):
         """
         Staking class for lockup types of vaults
@@ -280,16 +281,20 @@ class SupplyStakerLockup(SupplyStaker):
         None.
 
         """
-        super(SupplyStakerLockup, self).__init__(staking_amount, quit_prob=quit_prob)
+        super(SupplyStakerLockup, self).__init__(staking_amount=staking_amount, quit_prob=quit_prob)
+        self.staking_amount = staking_amount
+        self.rewards = rewards
         self.lockup_duration = lockup_duration
         self.reward_as_perc = reward_as_perc
 
     def execute(self):
-        self.source = get_linked_agentpool().treasury
+        agentpool = self.get_linked_agentpool()
+        self.source = agentpool.treasury if agentpool is not None else None
 
         if self._iteration == 0:
-            value = -1 * self._get_value(self.staking_amount)
-            self._staking_amount = value
+            staked = self._get_value(self.staking_amount)
+            value = -1 * staked
+            self._staking_amount = staked
         elif self._iteration == self.lockup_duration:
             if not self.reward_as_perc:
                 value = self._staking_amount + self._get_value(self.rewards)
@@ -304,12 +309,15 @@ class SupplyStakerLockup(SupplyStaker):
         if self.source is None:
             self.supply = value
         else:
-            agentpool = get_linked_agentpool()
             currency = agentpool.currency
-            # remove from treasury
-            agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
-            # the circulating supply increases in accordance with the total reward
-            self.supply = abs(value)
+            if value < 0:
+                agentpool.treasury.execute(currency_symbol=currency, value=-value)
+                self.supply = value
+            elif value > 0:
+                agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
+                self.supply = value
+            else:
+                self.supply = 0
 
         self._iteration += 1
 
@@ -351,17 +359,19 @@ class SupplyStakerMonthly(SupplyStaker):
         None.
 
         """
-        super(SupplyStakerMonthly, self).__init__(quit_prob=quit_prob)
+        super(SupplyStakerMonthly, self).__init__(staking_amount=staking_amount, quit_prob=quit_prob)
         self.staking_amount = staking_amount
         self.rewards = rewards
         self.reward_as_perc = reward_as_perc
 
     def execute(self):
-        self.source = super().get_linked_agentpool().treasury
+        agentpool = self.get_linked_agentpool()
+        self.source = agentpool.treasury if agentpool is not None else None
 
         if self._iteration == 0:
-            value = -1 * self._get_value(self.staking_amount)
-            self._staking_amount = value
+            staked = self._get_value(self.staking_amount)
+            value = -1 * staked
+            self._staking_amount = staked
         else:
             # monthly rewards
             if not self.reward_as_perc:
@@ -372,12 +382,13 @@ class SupplyStakerMonthly(SupplyStaker):
         if self.source is None:
             self.supply = value
         else:
-            agentpool = super().get_linked_agentpool()
             currency = agentpool.currency
-            # remove from treasury
-            agentpool.treasury.execute(currency_symbol=currency, value=value)
-            # the circulating supply increases in accordance with the total reward
-            self.supply = abs(value)
+            if value < 0:
+                agentpool.treasury.execute(currency_symbol=currency, value=-value)
+                self.supply = value
+            else:
+                agentpool.treasury.retrieve_asset(currency_symbol=currency, value=value)
+                self.supply = value
 
         self._iteration += 1
 

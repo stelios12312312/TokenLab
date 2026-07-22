@@ -5,6 +5,7 @@
     {
       "id": "US-Z1-M3-01",
       "title": "Genesis unlock with 7 buckets",
+      "description": "Genesis token supply is defined with a max supply and a total supply. The circulating supply is monitored by the mint authority. The emission schedule defines the inflation, issuance, and release schedule. Vesting schedules are tracked with a 1-year cliff lockup and team, investor, advisor, community, and ecosystem buckets for unlock cadence. Staking incentives objective utility behavioral goals are funded via a yield source (subsidy / transaction fees / revenue) with sybil abuse controls to prevent gaming wash trading. Reflexivity death spiral risk and sell pressure are evaluated. AMM liquidity pool depth, treasury runway reserves, voting multisig admin key governance authority, and timelock emergency guardian quorum risk controls are established. Disclaimer: not financial advice and not legal advice. This depends on assumptions evaluated via sensitivity stress tests, scenario analysis, and downside risk models. A qualified legal review by counsel has validated securities compliance across regulatory owner jurisdictions.",
       "status": "FULLY_COVERED",
       "priority": "high",
       "source": "dialogue",

@@ -139,9 +139,30 @@ invariant_violated(gate_chain_broken, info(Gate, SkippedGate)) :-
 %%   When tool_trace feature is disabled, trace_coverage defaults to
 %%   trace_coverage(unknown, 100) — no violation possible.
 %%   Minimum threshold: 60% coverage.
+%%
+%%   MATURITY-SCALED (FT-3, T-INTAKE-6E941AEA): low coverage is a hard VIOLATION
+%%   only in phases where trace obligations are genuinely due (execute/reflect/
+%%   validate/close — real work should appear in the trace). In early phases
+%%   (explore/plan) the agent is still gathering context and the required-reads
+%%   obligations are not yet met, so low coverage there is ADVISORY (warning),
+%%   not blocking. This stops an active EXPLORE plan under a trace-capable IDE
+%%   from false-redding local `check-invariants` / the ontology-invariants
+%%   conformance suite, while preserving hard enforcement where work has happened.
 invariant_violated(low_trace_coverage, info(Phase, Pct)) :-
     trace_coverage(Phase, Pct),
-    Pct < 60.
+    Pct < 60,
+    mature_trace_phase(Phase).
+
+invariant_warning(low_trace_coverage_early, info(Phase, Pct)) :-
+    trace_coverage(Phase, Pct),
+    Pct < 60,
+    \+ mature_trace_phase(Phase).
+
+%% Phases where trace obligations are due (work should already be traced).
+mature_trace_phase(execute).
+mature_trace_phase(reflect).
+mature_trace_phase(validate).
+mature_trace_phase(close).
 
 %% ═══════════════════════════════════════════════════════════
 %% STORY REGISTRY INTEGRITY (added by red-team hardening 2026-03-24)
@@ -289,6 +310,78 @@ invariant_violated(deliverable_missing_quality_contract, DeliverableId) :-
     \+ deliverable_required_section(DeliverableId, _),
     \+ deliverable_required_signal(DeliverableId, _),
     \+ deliverable_anti_goal(DeliverableId, _).
+
+%% IVE Phase 3: ideation anchors, operators, and intent binding must stay
+%% executable, traceable, and bound to real ontology nodes when the plan opts
+%% into phase-3 evidence. These invariants promote the validator's structured
+%% facts into the same ontology surface as the existing intent contract.
+invariant_violated(anchor_ref_not_in_story, AnchorId) :-
+    ive_phase3_required(true),
+    anchor_ref_not_in_story(AnchorId).
+
+invariant_violated(imperative_unbound, ImperativeId) :-
+    ive_phase3_required(true),
+    imperative_unbound(ImperativeId).
+
+invariant_violated(imperative_missing_from_contract, SourceId) :-
+    ive_phase3_required(true),
+    imperative_missing_from_contract(SourceId).
+
+invariant_violated(scope_addition_unbound, ScopeAdditionId) :-
+    ive_phase3_required(true),
+    scope_addition_unbound(ScopeAdditionId).
+
+invariant_violated(pre_mortem_risk_unaddressed, RiskId) :-
+    ive_phase3_required(true),
+    pre_mortem_risk_unaddressed(RiskId).
+
+invariant_violated(ive_ideation_fact_extraction_error, phase3_required) :-
+    ive_phase3_required(true),
+    ive_ideation_status('error').
+
+invariant_warning(imperative_advisory_majority, ContractId) :-
+    ive_phase3_required(true),
+    ive_ideation_warning('imperative_advisory_majority', ContractId).
+
+%% IVE Phase 4/4.6: generated evidence and reflection-diff surfaces must be
+%% backed by structured telemetry and predicate mappings when a plan opts into
+%% those phases. These rules keep the generated markdown surfaces subordinate
+%% to the ledger-derived facts.
+invariant_violated(generator_predicate_unmapped, Predicate) :-
+    ive_phase4_required(true),
+    generator_predicate_unmapped(Predicate).
+
+invariant_violated(planned_anchor_not_delivered, AnchorId) :-
+    ive_phase4_6_required(true),
+    planned_anchor_not_delivered(AnchorId).
+
+invariant_violated(acceptance_unmet, CriterionId) :-
+    ive_phase4_6_required(true),
+    acceptance_unmet(CriterionId).
+
+invariant_violated(pre_mortem_risk_unresolved, RiskId) :-
+    ive_phase4_6_required(true),
+    pre_mortem_risk_unresolved(RiskId).
+
+invariant_violated(verification_row_missing_evidence, RowId) :-
+    ive_phase4_6_required(true),
+    verification_row_missing_evidence(RowId).
+
+invariant_violated(telemetry_missing, MetricId) :-
+    ive_phase4_6_required(true),
+    telemetry_missing(MetricId).
+
+invariant_violated(reflection_unsubstantiated, ClaimId) :-
+    ive_phase4_6_required(true),
+    reflection_unsubstantiated(ClaimId).
+
+invariant_violated(learning_note_completeness_claim, NoteId) :-
+    ive_phase4_6_required(true),
+    learning_note_completeness_claim(NoteId).
+
+invariant_violated(learning_note_too_long, NoteId) :-
+    ive_phase4_6_required(true),
+    learning_note_too_long(NoteId).
 
 %% ═══════════════════════════════════════════════════════════
 %% PLAN-APPROVAL ENVELOPE INVARIANTS (I-057, I-058) — US-086
@@ -526,6 +619,25 @@ invariant_warning(anti_recurrence_guard_missing, plan) :-
     \+ anti_recurrence_satisfied(true),
     \+ evidence_phase_reached.
 
+%% I-055 (t14): Active AVA-discovered defects block validation/close.
+%%   A plan-local ava_defects.json artifact can synthesize prov:Defect-like
+%%   facts through autonomous_verification_agents.mjs. These facts are advisory
+%%   until evidence phases, then active story-linked defects become blockers.
+invariant_violated(ava_active_defect, info(StoryId, DefectId)) :-
+    evidence_phase_reached,
+    ava_discovered_defect(DefectId),
+    ava_defect_status(DefectId, active),
+    ava_defect_story(DefectId, StoryId).
+
+%% I-056 (t14): Every active AVA defect must pin to a physical code anchor.
+%%   The JS loader only asserts ava_defect_anchor/2 for anchors whose path exists
+%%   in the checkout, so this rule enforces artifact-backed CodeAnchor proof.
+invariant_violated(ava_defect_missing_anchor, DefectId) :-
+    evidence_phase_reached,
+    ava_discovered_defect(DefectId),
+    ava_defect_status(DefectId, active),
+    \+ ava_defect_anchor(DefectId, _).
+
 subject_has_passing_evidence(Subject) :-
     verification_evidence(_, Subject, _, Status),
     member(Status, [passed, pass, ok, success, verified]).
@@ -574,6 +686,30 @@ invariant_warning(review_intake_unresolved, count(N)) :-
     N > 0,
     \+ phase_reached(validate).
 
+unvalidated_load_bearing_assumption(AssumptionId) :-
+    session_assumption(AssumptionId, unvalidated, true, _).
+unvalidated_load_bearing_assumption(AssumptionId) :-
+    session_assumption(AssumptionId, testing, true, _).
+
+refuted_support_assumption(AssumptionId) :-
+    session_assumption(AssumptionId, refuted, _, true).
+
+invariant_violated(load_bearing_assumption_unvalidated, AssumptionId) :-
+    unvalidated_load_bearing_assumption(AssumptionId),
+    phase_reached(validate).
+
+invariant_warning(load_bearing_assumption_unvalidated, AssumptionId) :-
+    unvalidated_load_bearing_assumption(AssumptionId),
+    \+ phase_reached(validate).
+
+invariant_violated(refuted_assumption_cited_as_support, AssumptionId) :-
+    refuted_support_assumption(AssumptionId),
+    phase_reached(validate).
+
+invariant_warning(refuted_assumption_cited_as_support, AssumptionId) :-
+    refuted_support_assumption(AssumptionId),
+    \+ phase_reached(validate).
+
 invariant_warning(obligation_source_mistake_unregistered, ObligationId) :-
     obligation_source(ObligationId, learned_obligation, _),
     obligation_source_mistake(ObligationId, MistakeId),
@@ -613,6 +749,23 @@ invariant_violated(active_mistake_missing_verification_hook, MistakeId) :-
     mistake_verification_hook(MistakeId, Hook),
     phase_reached(reflect),
     \+ mistake_hook_satisfied(MistakeId, Hook).
+
+%% ───────────────────────────────────────────────────────────────────────────
+%% Agent journal advisory memory. Facts come from plans/knowledge/agent_journal.jsonl
+%% via fact_loader.mjs. Journal entries are queryable when accepted/promoted,
+%% but parse/schema issues stay advisory so a bad note does not block unrelated
+%% planner work or become a hidden source of truth.
+%% ───────────────────────────────────────────────────────────────────────────
+
+journal_queryable(EntryId) :-
+    journal_entry(EntryId),
+    journal_status(EntryId, accepted).
+journal_queryable(EntryId) :-
+    journal_entry(EntryId),
+    journal_status(EntryId, promoted).
+
+invariant_warning(journal_issue_detected, info(Code, Line)) :-
+    journal_issue(Code, Line).
 
 full_evidence_chain(Criterion) :-
     criterion_story(Criterion, Story),
@@ -674,3 +827,122 @@ invariant_warning(stale_pending_remediation, count(N)) :-
     remediation_queue_exists(true),
     pending_remediation_count(N),
     N > 0.
+
+%% -----------------------------------------------------------------------
+%% I-032 (t07): North Star metric comparator — measured-vs-threshold.
+%%
+%% Closes the design-only North Star flow: a plan no longer passes by DECLARING
+%% IC>0.05, only by MEASURING it. Facts (integer-scaled, see north_star_telemetry.mjs):
+%%   north_star_threshold(Metric, Comparator, ScaledThreshold)  -- from the manifesto
+%%   metric_actual(Metric, ScaledValue, Source)                 -- from reports/backtests/*.json
+%% Comparator in {gt, gte, lt, lte, eq}. metric_failed fires when the measured
+%% value violates the declared direction; metric_below_threshold is the AC3 alias.
+%% A missing metric_actual does NOT fire here (absence is handled by the existing
+%% measured-evidence gates); this rule fires only on a measured-but-failing metric.
+%% -----------------------------------------------------------------------
+
+metric_failed(Metric) :-
+    north_star_threshold(Metric, gt, T),
+    metric_actual(Metric, V, _),
+    V =< T.
+metric_failed(Metric) :-
+    north_star_threshold(Metric, gte, T),
+    metric_actual(Metric, V, _),
+    V < T.
+metric_failed(Metric) :-
+    north_star_threshold(Metric, lt, T),
+    metric_actual(Metric, V, _),
+    V >= T.
+metric_failed(Metric) :-
+    north_star_threshold(Metric, lte, T),
+    metric_actual(Metric, V, _),
+    V > T.
+metric_failed(Metric) :-
+    north_star_threshold(Metric, eq, T),
+    metric_actual(Metric, V, _),
+    V \= T.
+
+metric_below_threshold(Metric) :- metric_failed(Metric).
+
+invariant_violated(north_star_metric_failed, Metric) :-
+    metric_failed(Metric).
+
+%% ───────────────────────────────────────────────────────────────────────────
+%% Structured REFLECT contract invariants (I-044..I-047). All gated on
+%% current_state(reflect); facts are asserted by loadReflectionFacts only when a
+%% reflection.md exists, so non-REFLECT plans and plans without a reflection are
+%% never affected. Undefined reflection_* predicates fail silently in the engine.
+%% ───────────────────────────────────────────────────────────────────────────
+
+%% I-044: Required structured reflection questions remain unanswered at REFLECT.
+invariant_violated(reflection_required_questions_unanswered, count(Unanswered)) :-
+    current_state(reflect),
+    reflection_required_questions(Answered, Required),
+    Required > Answered,
+    Unanswered is Required - Answered.
+
+%% I-045: An "accept as known limitation" answer must name a follow-up story that
+%% exists in the registry. A named-but-missing story, or no story at all, blocks.
+invariant_violated(reflection_known_limitation_missing_followup, StoryId) :-
+    current_state(reflect),
+    reflection_known_limitation_followup(_, StoryId),
+    StoryId \= none,
+    \+ story(StoryId, _, _, _).
+invariant_violated(reflection_known_limitation_missing_followup, no_followup_story) :-
+    current_state(reflect),
+    reflection_known_limitation_followup(_, none).
+
+%% I-046: A pivot-back-to-execute decision must return the plan to EXECUTE; it
+%% cannot stand while the plan advances toward VALIDATE.
+invariant_violated(reflection_pivot_not_reverted, Subject) :-
+    current_state(reflect),
+    reflection_pivot_decision(Subject).
+
+%% I-047: A required retro must be explicitly named/addressed in the reflection.
+invariant_violated(reflection_required_retro_unaddressed, RetroId) :-
+    current_state(reflect),
+    reflection_required_retro(RetroId),
+    \+ reflection_addresses_retro(RetroId).
+
+%% ───────────────────────────────────────────────────────────────────────────
+%% Spot-check finding invariants (I-052..I-054). I-052/I-053 are transition-
+%% scoped: they fire only when semantic_transition_target/1 names the relevant
+%% gate (asserted by runSemanticChecks for the real gate, or injected by tests).
+%% Facts come from loadSpotCheckFacts (reports/spot_checks/<plan>/findings.jsonl);
+%% no findings → no facts → never blocks.
+%% ───────────────────────────────────────────────────────────────────────────
+
+%% I-052: any unacknowledged HIGH spot-check finding blocks CLOSE.
+invariant_violated(high_spot_check_unacknowledged_before_close, FindingId) :-
+    semantic_transition_target(close),
+    spot_check_finding(FindingId, high, _),
+    \+ spot_check_acknowledged(FindingId).
+
+%% I-053: an unacknowledged HIGH test_adequacy finding blocks VALIDATE.
+invariant_violated(high_test_adequacy_spot_check_blocks_validate, FindingId) :-
+    semantic_transition_target(validate),
+    spot_check_finding(FindingId, high, test_adequacy),
+    \+ spot_check_acknowledged(FindingId).
+
+%% I-054: persistent unacknowledged recurrence in one spot-check category
+%% (advisory — surfaces a pattern without blocking the gate).
+invariant_warning(persistent_spot_check_recurrence, Category) :-
+    spot_check_category_recurrence(Category, Count),
+    Count >= 3.
+
+%% I-055: a HIGH spot-check finding recorded as produced (in the append-only
+%% decision_log) but no longer readable was DELETED from reports/spot_checks/.
+%% Blocks VALIDATE and CLOSE — closes the AV-4 fail-open where emptying the
+%% findings dir silently cleared HIGH blockers. Tamper-EVIDENCE grade: catches
+%% casual/accidental deletion and an agent dropping findings to dodge a blocker;
+%% a motivated decision_log rewrite is a higher bar (CI re-run is the full fix).
+%% spot_check_missing_high_finding/1 is asserted by loadSpotCheckFacts. Two
+%% single-target clauses (close, validate) — mirrors I-052/I-053; the engine's
+%% Prolog dialect is happier with separate clauses than a (close ; validate)
+%% disjunction in the body.
+invariant_violated(high_spot_check_finding_deleted, FindingId) :-
+    semantic_transition_target(close),
+    spot_check_missing_high_finding(FindingId).
+invariant_violated(high_spot_check_finding_deleted, FindingId) :-
+    semantic_transition_target(validate),
+    spot_check_missing_high_finding(FindingId).

@@ -51,7 +51,7 @@
       "trace_audit": true,
       "reachability_audit": true,
       "hardline_audit": true,
-      "hardline_personas": ["wiring_auditor", "assumptions_challenger", "config_integrity", "traceability"],
+      "hardline_personas": ["wiring_auditor", "assumptions_challenger", "config_integrity", "traceability", "tokenomics"],
       "failure_code_prefix": "GATE-ETR"
     },
     "reflect-to-validate": {

@@ -1,0 +1,71 @@
+{
+  "anti_patterns": [
+    {
+      "id": "AP-001",
+      "label": "Mismatched Default Configuration Values",
+      "queries": [
+        "velocity_scale\\s*:\\s*float\\s*=\\s*0\\.1",
+        "tier_sr_modifiers.*1\\.05"
+      ],
+      "scope": ["projects/z1/m3_full_economy/"],
+      "confidence": "high",
+      "evidence_refs": ["F-001", "F-002"],
+      "recommended_guard": "requires_red_team"
+    },
+    {
+      "id": "AP-002",
+      "label": "Target Reserves calculated using Live Supply instead of Base Reserves",
+      "queries": [
+        "target_reserves\\s*=\\s*current_live_supply"
+      ],
+      "scope": ["projects/z1/m3_full_economy/"],
+      "confidence": "high",
+      "evidence_refs": ["F-004"],
+      "recommended_guard": "requires_red_team"
+    },
+    {
+      "id": "AP-003",
+      "label": "Uncapped Virtual Currency Loops",
+      "queries": [
+        "usd_to_spend\\s*=\\s*\\(surplus\\s*\\*\\s*buyback_ratio\\)"
+      ],
+      "scope": ["projects/z1/m3_full_economy/"],
+      "confidence": "high",
+      "evidence_refs": ["F-004"],
+      "recommended_guard": "requires_red_team"
+    },
+    {
+      "id": "AP-004",
+      "label": "Dead Configuration Parameters",
+      "queries": [
+        "vesting_extension_factor"
+      ],
+      "scope": ["projects/z1/m3_full_economy/"],
+      "confidence": "high",
+      "evidence_refs": ["F-003"],
+      "recommended_guard": "requires_red_team"
+    },
+    {
+      "id": "AP-005",
+      "label": "Unqualified Method Calls and Missing Parameters in Constructors",
+      "queries": [
+        "get_linked_agentpool\\(\\)"
+      ],
+      "scope": ["src/TokenLab/simulationcomponents/"],
+      "confidence": "high",
+      "evidence_refs": ["F-005"],
+      "recommended_guard": "requires_red_team"
+    },
+    {
+      "id": "AP-006",
+      "label": "Internal Sign Storing Mismatch",
+      "queries": [
+        "self\\._staking_amount\\s*=\\s*value"
+      ],
+      "scope": ["src/TokenLab/simulationcomponents/"],
+      "confidence": "high",
+      "evidence_refs": ["F-007"],
+      "recommended_guard": "requires_red_team"
+    }
+  ]
+}

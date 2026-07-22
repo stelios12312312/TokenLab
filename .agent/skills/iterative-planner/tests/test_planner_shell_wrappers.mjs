@@ -11,7 +11,9 @@ import { tmpdir } from "os";
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
 const plannerRoot = resolve(testDir, "..", "..", "..", "..");
+const skillRoot = join(plannerRoot, ".agent/skills/iterative-planner");
 const installedPreCommitHookPath = join(plannerRoot, ".agent/skills/iterative-planner/scripts/hooks/pre-commit");
+const installedPrePushHookPath = join(plannerRoot, ".agent/skills/iterative-planner/scripts/hooks/pre-push");
 const preCommitHookPath = join(plannerRoot, ".agent/skills/iterative-planner/scripts/pre-commit-hook.sh");
 const preCommitPolicySource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/scripts/pre_commit_policy.mjs"), "utf-8");
 const runNodeSource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/scripts/hooks/run-node.sh"), "utf-8");
@@ -30,13 +32,14 @@ function assert(condition, label) {
   }
 }
 
-function runBin(bin, args, cwd, extraEnv = {}) {
+function runBin(bin, args, cwd, extraEnv = {}, input = "") {
   try {
     return {
       ok: true,
       status: 0,
       stdout: execFileSync(bin, args, {
         cwd,
+        input,
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
         env: { ...process.env, ...extraEnv },
@@ -119,6 +122,18 @@ console.log(JSON.stringify({
   return { env: { TEST_RIPPLE_MODE: rippleMode } };
 }
 
+function seedFakeIveConformanceRunner(tmp) {
+  const runnerDir = join(tmp, ".agent/skills/iterative-planner/tests/ive");
+  mkdirSync(runnerDir, { recursive: true });
+  const runner = join(runnerDir, "run.mjs");
+  writeFileSync(runner, `#!/usr/bin/env node
+const mode = process.env.TEST_IVE_CONFORMANCE_MODE || "pass";
+console.log(JSON.stringify({ status: mode === "pass" ? "PASS" : "FAIL" }));
+process.exit(mode === "pass" ? 0 : 1);
+`);
+  chmodSync(runner, 0o755);
+}
+
 function scenarioInstalledPreCommitHook() {
   const tmp = mkdtempSync(join(tmpdir(), "planner-pre-commit-"));
   try {
@@ -147,12 +162,61 @@ function scenarioInstalledPreCommitHook() {
     assert((advisoryLedger.advisories || [])[0]?.staged_files?.includes(".agent/skills/iterative-planner/scripts/example.mjs"), "advisory ledger records the staged planner file");
 
     execFileSync("git", ["reset", "--hard", "-q"], { cwd: tmp, stdio: ["pipe", "pipe", "pipe"] });
-    const blocking = seedPreCommitPolicyRepo(tmp, "hard");
+    rmSync(join(tmp, "plans"), { recursive: true, force: true });
+    const overlapping = seedPreCommitPolicyRepo(tmp, "hard");
     stageFile(tmp, ".agent/skills/iterative-planner/config/failure-codes.json", "{\n  \"ok\": true\n}\n");
 
-    const blockingResult = runBin("sh", [installedPreCommitHookPath], tmp, blocking.env);
-    assert(!blockingResult.ok, "installed pre-commit hook blocks overlapping hard ripple gaps");
-    assert((blockingResult.stdout + blockingResult.stderr).includes("overlap the staged planner surfaces"), "installed pre-commit hook explains the blocking overlap");
+    const overlappingResult = runBin("sh", [installedPreCommitHookPath], tmp, overlapping.env);
+    assert(overlappingResult.ok, "installed pre-commit hook allows overlapping hard ripple gaps as advisory");
+    assert(overlappingResult.stdout.includes("deferred 1 hard ripple gap"), "installed pre-commit hook reports deferred overlapping hard gaps");
+    assert(!(overlappingResult.stdout + overlappingResult.stderr).includes("overlap the staged planner surfaces"), "installed pre-commit hook no longer reports a blocking overlap");
+    const overlappingLedgerPath = join(tmp, "plans", "commit_advisories.json");
+    assert(existsSync(overlappingLedgerPath), "overlap advisory ledger is written");
+    const overlappingLedger = existsSync(overlappingLedgerPath) ? JSON.parse(readFileSync(overlappingLedgerPath, "utf-8")) : {};
+    const overlappingAdvisory = (overlappingLedger.advisories || [])[0];
+    assert(overlappingAdvisory?.staged_files?.includes(".agent/skills/iterative-planner/config/failure-codes.json"), "overlap advisory ledger records the staged planner file");
+    assert(overlappingAdvisory?.impacted_paths?.includes(".agent/skills/iterative-planner/config/failure-codes.json"), "overlap advisory ledger records the impacted planner file");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioInstalledPrePushHook() {
+  const tmp = mkdtempSync(join(tmpdir(), "planner-pre-push-"));
+  try {
+    initGitRepo(tmp);
+    seedFakeIveConformanceRunner(tmp);
+    const baseEnv = { ITERATIVE_PLANNER_SKILL_DIR: skillRoot };
+
+    const nonMain = runBin(
+      "sh",
+      [installedPrePushHookPath],
+      tmp,
+      { ...baseEnv, TEST_IVE_CONFORMANCE_MODE: "fail" },
+      "refs/heads/feature abc refs/heads/feature def\n"
+    );
+    assert(nonMain.ok, "installed pre-push hook skips non-main refs");
+    assert(nonMain.stdout.includes("No main push refs detected"), "installed pre-push hook reports non-main skip");
+
+    const mainPass = runBin(
+      "sh",
+      [installedPrePushHookPath],
+      tmp,
+      { ...baseEnv, TEST_IVE_CONFORMANCE_MODE: "pass" },
+      "refs/heads/main abc refs/heads/main def\n"
+    );
+    assert(mainPass.ok, "installed pre-push hook allows main refs after green IVE conformance");
+    assert(mainPass.stdout.includes("conformance passed"), "installed pre-push hook reports green conformance");
+
+    const mainFail = runBin(
+      "sh",
+      [installedPrePushHookPath],
+      tmp,
+      { ...baseEnv, TEST_IVE_CONFORMANCE_MODE: "fail" },
+      "refs/heads/main abc refs/heads/main def\n"
+    );
+    assert(!mainFail.ok, "installed pre-push hook blocks main refs after red IVE conformance");
+    assert((mainFail.stdout + mainFail.stderr).includes("refusing push to main"), "installed pre-push hook reports main-push refusal");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -246,6 +310,7 @@ Preserve project-specific guidance.
 console.log("\nPlanner Shell Wrapper Tests\n");
 
 scenarioInstalledPreCommitHook();
+scenarioInstalledPrePushHook();
 scenarioLegacyPreCommitWrapper();
 scenarioMigrateAllProjectsShell();
 

@@ -23,7 +23,10 @@
         "T-INTAKE-58A7D18D",
         "T-INTAKE-DEB15B9C",
         "T-INTAKE-8685AC30",
-        "T-INTAKE-DDE5D6DF"
+        "T-INTAKE-DDE5D6DF",
+        "T-INTAKE-B1A96CC3",
+        "T-INTAKE-37542851",
+        "T-INTAKE-090DD62E"
       ]
     },
     {
@@ -614,6 +617,138 @@
         }
       },
       "last_review_status": "review_ready"
+    },
+    {
+      "id": "T-INTAKE-B1A96CC3",
+      "epic_id": "EP-INTAKE",
+      "title": "Update Z1 Simulation Report for Calibrated Parameters",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "closed",
+      "review_status": "review_ready",
+      "story_refs": [],
+      "defect_refs": [],
+      "gap_refs": [
+        "GAP-INTAKE-B1A96CC3"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-INTAKE-B1A96CC3"
+      ],
+      "child_plan": {
+        "policy": "not_required",
+        "plan_dir": null,
+        "reason": "Verified directly"
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-INTAKE-B1A96CC3"
+      ],
+      "external_refs": [
+        {
+          "kind": "local_text",
+          "source_hash": "c8999f0ed0d620b8",
+          "synced_at": "2026-06-19T20:46:46.684Z"
+        }
+      ],
+      "review_artifacts": [
+        {
+          "path": "plans/programs/z1-m3/intake/t-intake-b1a96cc3_intake_packet.json",
+          "kind": "program_intake_packet",
+          "generated_at": "2026-06-19T20:46:46.684Z"
+        }
+      ],
+      "persona_packs": []
+    },
+    {
+      "id": "T-INTAKE-37542851",
+      "epic_id": "EP-INTAKE",
+      "title": "Reconcile Token Lifecycle Narrative and Verification Audits",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "closed",
+      "review_status": "review_ready",
+      "story_refs": [],
+      "defect_refs": [],
+      "gap_refs": [
+        "GAP-INTAKE-37542851"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-INTAKE-37542851"
+      ],
+      "child_plan": {
+        "policy": "not_required",
+        "plan_dir": null,
+        "reason": "Verified directly"
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-INTAKE-37542851"
+      ],
+      "external_refs": [
+        {
+          "kind": "local_text",
+          "source_hash": "eba4b3233da842c4",
+          "synced_at": "2026-06-19T20:47:12.983Z"
+        }
+      ],
+      "review_artifacts": [
+        {
+          "path": "plans/programs/z1-m3/intake/t-intake-37542851_intake_packet.json",
+          "kind": "program_intake_packet",
+          "generated_at": "2026-06-19T20:47:12.983Z"
+        }
+      ],
+      "persona_packs": []
+    },
+    {
+      "id": "T-INTAKE-090DD62E",
+      "epic_id": "EP-INTAKE",
+      "title": "Reconcile Technical Appendix and DOCX defaults with calibrated codebase values",
+      "type": "feature",
+      "ticket_type": "feature",
+      "lifecycle": "closed",
+      "review_status": "review_ready",
+      "story_refs": [],
+      "defect_refs": [],
+      "gap_refs": [
+        "GAP-INTAKE-090DD62E"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "AC-T-INTAKE-090DD62E"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": "plan_2026-06-19_9864320542c86243",
+        "reason": "Executable intake ticket requires a child iterative plan before implementation."
+      },
+      "compatibility_contract_refs": [],
+      "migration_boundary_refs": [],
+      "deletion_move_census_refs": [],
+      "verification_refs": [
+        "VM-T-INTAKE-090DD62E"
+      ],
+      "external_refs": [
+        {
+          "kind": "local_text",
+          "source_hash": "c93ddec99a31f754",
+          "synced_at": "2026-06-19T21:05:02.167Z"
+        }
+      ],
+      "review_artifacts": [
+        {
+          "path": "plans/programs/z1-m3/intake/t-intake-090dd62e_intake_packet.json",
+          "kind": "program_intake_packet",
+          "generated_at": "2026-06-19T21:05:02.167Z"
+        }
+      ],
+      "persona_packs": []
     }
   ],
   "acceptance_criteria": [
@@ -702,6 +837,30 @@
         "US-Z1-M3-09"
       ],
       "maintenance_rationale": null
+    },
+    {
+      "id": "AC-T-INTAKE-B1A96CC3",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-B1A96CC3",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [],
+      "maintenance_rationale": "Draft intake gap requires story linkage before ready."
+    },
+    {
+      "id": "AC-T-INTAKE-37542851",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-37542851",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [],
+      "maintenance_rationale": "Draft intake gap requires story linkage before ready."
+    },
+    {
+      "id": "AC-T-INTAKE-090DD62E",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-090DD62E",
+      "text": "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+      "story_refs": [],
+      "maintenance_rationale": "Draft intake gap requires story linkage before ready."
     }
   ],
   "dependencies": [],
@@ -790,6 +949,39 @@
       "pass_means": "Monte Carlo simulations run successfully with randomized demand shocks and validator failures, saving distribution charts under outputs/z1_m3_sims/monte_carlo/.",
       "status": "pass",
       "verified_at": "2026-05-21T15:44:26Z"
+    },
+    {
+      "id": "VM-T-INTAKE-B1A96CC3",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-B1A96CC3",
+      "acceptance_criterion_ref": "AC-T-INTAKE-B1A96CC3",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-b1a96cc3_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers.",
+      "status": "pass",
+      "verified_at": "2026-06-19T21:00:00Z"
+    },
+    {
+      "id": "VM-T-INTAKE-37542851",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-37542851",
+      "acceptance_criterion_ref": "AC-T-INTAKE-37542851",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-37542851_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers.",
+      "status": "pass",
+      "verified_at": "2026-06-19T21:00:00Z"
+    },
+    {
+      "id": "VM-T-INTAKE-090DD62E",
+      "scope": "ticket",
+      "subject_ref": "T-INTAKE-090DD62E",
+      "acceptance_criterion_ref": "AC-T-INTAKE-090DD62E",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review plans/programs/z1-m3/intake/t-intake-090dd62e_intake_packet.json",
+      "pass_means": "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers.",
+      "status": "pass",
+      "verified_at": "2026-06-19T21:00:00Z"
     }
   ],
   "decisions": [],

@@ -505,6 +505,7 @@ console.log("\nProgram Idea Intake Contracts\n");
       programPath,
       "--from-text",
       "US-079: DeepSeek may critique this, but cannot promote lifecycle",
+      "--llm-review",
       "--json",
     ], { cwd: tmp, env: mockReviewReadyEnv });
 
@@ -525,14 +526,19 @@ console.log("\nProgram Idea Intake Contracts\n");
       programPath,
       "--from-text",
       "US-079: Update planner workflow migration in .agent/skills/iterative-planner/scripts/program_manager.mjs and .agent/workflows/program-manager.md",
+      "--llm-review",
       "--json",
     ], { cwd: tmp, env: mockReviewReadyEnv });
 
-    assert(result.intake_packet.retro_recurrence_check.status === "blocked", "planner-core intake includes blocked recurrence check");
-    assert(result.ticket_intake_receipt.retro_recurrence_status === "blocked", "intake receipt carries recurrence status");
-    assert(result.deterministic.blockers.some((entry) => entry.code === "retro_recurrence_blocked"), "recurrence blocker joins deterministic blockers");
-    assert(result.deepseek_advisory.status === "review_ready", "DeepSeek mock can still say recurrence-blocked intake is review_ready");
-    assert(result.intake_packet.final_status === "blocked", "DeepSeek cannot clear recurrence-blocked intake status");
+    // Right-altitude recurrence: a predictive guard (M-001) is CARRIED into the
+    // proposed ticket's verification plan at intake, not hard-blocking scope for
+    // evidence that can only be produced at implementation. The child-plan must
+    // still satisfy the carried guard downstream.
+    assert(result.intake_packet.retro_recurrence_check.status !== "blocked", "planner-core recurrence guard is carried at intake, not hard-blocking scope");
+    assert(!result.deterministic.blockers.some((entry) => entry.code === "retro_recurrence_blocked"), "carried recurrence guard does not become a deterministic intake blocker");
+    assert(result.intake_packet.retro_recurrence_check.matches.some((entry) => entry.id === "M-001" && entry.status !== "blocked"), "M-001 recurrence guard is satisfied by the auto-carried verification row");
+    assert(result.deepseek_advisory.status === "review_ready", "DeepSeek mock advisory is captured");
+    assert(result.candidate_ticket.lifecycle === "proposed", "advisory DeepSeek cannot advance the intake ticket lifecycle");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -548,6 +554,7 @@ console.log("\nProgram Idea Intake Contracts\n");
       programPath,
       "--from-text",
       "US-079: Polymarket odds model produced high-level summaries with no proper observed behavior overview.",
+      "--llm-review",
       "--json",
     ], { cwd: tmp, env: mockReviewReadyEnv });
 
@@ -573,6 +580,7 @@ console.log("\nProgram Idea Intake Contracts\n");
       "--from-text",
       `US-079: do not leak ${secret}`,
       "--write",
+      "--llm-review",
       "--json",
     ], {
       cwd: tmp,
@@ -592,6 +600,106 @@ console.log("\nProgram Idea Intake Contracts\n");
     assert(!artifact.includes(secret), "intake artifact redacts API keys");
     assert(!JSON.stringify(result.ticket_intake_receipt).includes(secret), "intake receipt redacts API keys");
     assert(!packet.includes(secret), "Program Packet intake write redacts API keys");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// ── Duplicate scan (PM-2, consolidation 2026-06-10): intake blocks candidates
+//    that resemble existing tickets unless --allow-duplicate is passed. ──
+{
+  const tmp = makeTemp();
+  try {
+    const packet = baseProgram({
+      tickets: [{
+        id: "T-EXISTING-1",
+        epic_id: "EP-001",
+        title: "Wire live visualizer cockpit payload and one steering action",
+        type: "feature",
+        lifecycle: "proposed",
+        story_refs: ["US-001"],
+        depends_on: [],
+        acceptance_criteria: [],
+        verification_refs: [],
+      }],
+    });
+    const programPath = writeProgram(tmp, packet);
+
+    const blocked = await runIntake([
+      "intake",
+      "--program",
+      programPath,
+      "--from-text",
+      "US-001: Wire the live visualizer cockpit payload and one steering action",
+      "--write",
+      "--json",
+    ], { cwd: tmp, env: {} });
+    assert(blocked.status === "BLOCKED", "near-identical candidate is blocked");
+    assert(blocked.blocked_reason === "duplicate_candidates", "blocked reason names duplicate_candidates");
+    assert((blocked.duplicate_scan?.matches || []).some((m) => m.id === "T-EXISTING-1"), "duplicate scan names the existing ticket");
+    assert(readJson(programPath).tickets.length === 1, "blocked duplicate intake does not write a new ticket");
+
+    const overridden = await runIntake([
+      "intake",
+      "--program",
+      programPath,
+      "--from-text",
+      "US-001: Wire the live visualizer cockpit payload and one steering action",
+      "--allow-duplicate",
+      "--write",
+      "--json",
+    ], { cwd: tmp, env: {} });
+    assert(overridden.status === "PASS", "--allow-duplicate lets the intake proceed");
+    assert(overridden.duplicate_scan?.status === "overridden", "override is recorded in the duplicate scan");
+    assert(overridden.ticket_intake_receipt?.duplicate_scan_status === "overridden", "receipt carries the override acknowledgement");
+    assert(readJson(programPath).tickets.length === 2, "override writes the new ticket");
+
+    const fresh = await runIntake([
+      "intake",
+      "--program",
+      programPath,
+      "--from-text",
+      "US-001: Add nightly retention cleanup for stale artifacts",
+      "--json",
+    ], { cwd: tmp, env: {} });
+    assert(fresh.status === "PASS", "non-duplicate candidate passes the scan");
+    assert(fresh.duplicate_scan?.status === "clear", "scan reports clear for novel titles");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// Cross-program duplicate detection: the scan must see sibling Program Packets.
+{
+  const tmp = makeTemp();
+  try {
+    const sibling = baseProgram({
+      id: "PGM-SIBLING",
+      tickets: [{
+        id: "T-SIBLING-1",
+        epic_id: "EP-001",
+        title: "Add committed harvest script for reproducible telemetry pulls",
+        type: "feature",
+        lifecycle: "proposed",
+        story_refs: ["US-001"],
+        depends_on: [],
+        acceptance_criteria: [],
+        verification_refs: [],
+      }],
+    });
+    writeProgram(tmp, sibling);
+    const programPath = writeProgram(tmp, baseProgram());
+
+    const blocked = await runIntake([
+      "intake",
+      "--program",
+      programPath,
+      "--from-text",
+      "US-001: Add a committed harvest script for reproducible telemetry pulls",
+      "--json",
+    ], { cwd: tmp, env: {} });
+    assert(blocked.status === "BLOCKED", "duplicate in a sibling program blocks intake");
+    assert((blocked.duplicate_scan?.matches || []).some((m) => m.id === "T-SIBLING-1" && m.program_id === "PGM-SIBLING"), "match attributes the sibling program");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }

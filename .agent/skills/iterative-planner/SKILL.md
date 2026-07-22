@@ -1,6 +1,6 @@
 ---
 name: iterative-planner
-planner_version: "7.6.40"
+planner_version: "10.0.0"
 description: >
   State-machine driven iterative planning and execution for complex coding tasks.
   Cycle: Explore → Plan → Execute → Reflect → Validate → Close / Re-plan. Filesystem as persistent memory.
@@ -555,7 +555,7 @@ node <skill-path>/scripts/ontology_serializer.mjs            # emit traceability
 # Pre-commit hook shell wrapper
 # <skill-path>/scripts/pre-commit-hook.sh                    # called by git pre-commit via install.mjs
 # <skill-path>/scripts/pre_commit_policy.mjs                 # shared commit-policy helper for installed and legacy pre-commit hook entrypoints
-# Non-overlapping hard ripple gaps are recorded in a local advisory ledger under plans/ and followed by a review recommendation; overlapping gaps still block.
+# Hard ripple gaps are recorded in a local advisory ledger under plans/ and followed by review recommendations; clean-checkout conformance and envelope CI remain authoritative.
 
 # PostToolUse hook — tool trace capture
 # <skill-path>/scripts/hooks/post_tool_use.mjs               # installed via install.mjs --trace-hook
@@ -1130,9 +1130,18 @@ See `references/decision-anchoring.md`.
 
 The `plans/knowledge/` directory is persistent memory that outlives individual plans. It records what the project has learned over time.
 
+`plans/knowledge/agent_journal.jsonl` is the low-friction advisory lane for
+agent/IVE observations, preferences, open questions, and promotion candidates.
+Journal entries are projected into ontology facts (`journal_entry`,
+`journal_status`, `journal_ref`, `journal_promoted_to`) but remain advisory
+until promoted into canonical KB, story, program, or verification surfaces.
+Use `node <skill-path>/scripts/journal.mjs append ...` to add an entry.
+
 ### When to Read
 
 - **Every EXPLORE**: read `knowledge/index.md`, then relevant topic files
+- **As needed**: inspect `agent_journal.jsonl` or run `journal.mjs list` for
+  advisory notes; do not treat raw entries as proof
 - **Every PLAN gate check**: consult knowledge for known patterns and gotchas
 - **RE-PLAN**: check if the failure matches a known mistake
 
@@ -1160,6 +1169,9 @@ At CLOSE, before writing `summary.md`, review the plan's `decisions.md` and extr
    - Common examples: `simulator.py ↔ fast_simulator.py`, multiple AI provider classes, `backtest.py ↔ live_engine.py`
 
 If nothing was learned (simple fix, no surprises), write "No new learnings" in `summary.md`. Don't force entries.
+
+Journal capture can happen before CLOSE, but promotion cannot be implicit:
+include `promoted_to` refs only after the durable target exists.
 
 ### Compaction Protocol
 

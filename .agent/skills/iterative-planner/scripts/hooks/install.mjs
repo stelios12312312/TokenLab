@@ -4,10 +4,12 @@
 // Usage:
 //   node .agent/skills/iterative-planner/scripts/hooks/install.mjs
 //   node .agent/skills/iterative-planner/scripts/hooks/install.mjs commit-msg
+//   node .agent/skills/iterative-planner/scripts/hooks/install.mjs pre-push
 //   node .agent/skills/iterative-planner/scripts/hooks/install.mjs --uninstall
 //
 // Installs:
 //   pre-commit  → ripple-through check + config integrity
+//   pre-push    → IVE conformance stopgap for main pushes
 //   post-commit → advisor session-review trigger (non-blocking advisory)
 //   commit-msg  → guarded commit body enforcement for planner commits
 
@@ -33,16 +35,20 @@ const preCommitTarget = join(gitHooksDir, "pre-commit");
 const preCommitSource = join(hookSourceDir, "pre-commit");
 const postCommitTarget = join(gitHooksDir, "post-commit");
 const postCommitSource = join(hookSourceDir, "post-commit");
+const prePushTarget = join(gitHooksDir, "pre-push");
+const prePushSource = join(hookSourceDir, "pre-push");
 const commitMsgTarget = join(gitHooksDir, "commit-msg");
 const commitMsgSource = join(hookSourceDir, "commit-msg");
 
 const MARKER = "# --- iterative-planner ripple-check hook ---";
 const POST_COMMIT_MARKER = "# --- iterative-planner advisor-check hook ---";
+const PRE_PUSH_MARKER = "# --- iterative-planner conformance pre-push hook ---";
 const COMMIT_MSG_MARKER = "# --- iterative-planner commit-msg hook ---";
 const PRE_COMMIT_DIRECT_MARKER = "iterative-planner managed pre-commit hook";
+const PRE_PUSH_DIRECT_MARKER = "iterative-planner managed pre-push hook";
 const LEGACY_PRE_COMMIT_SENTINEL = "Planner files staged — running ripple-through check...";
 const TRACE_HOOK_COMMAND = "sh .agent/skills/iterative-planner/scripts/hooks/run-node.sh .agent/skills/iterative-planner/scripts/hooks/post_tool_use.mjs";
-const targetHook = process.argv.find((arg) => ["pre-commit", "post-commit", "commit-msg"].includes(arg)) || "all";
+const targetHook = process.argv.find((arg) => ["pre-commit", "pre-push", "post-commit", "commit-msg"].includes(arg)) || "all";
 const wantsHook = (name) => targetHook === "all" || targetHook === name;
 
 function isManagedPreCommitHook(content) {
@@ -53,8 +59,18 @@ function isManagedPreCommitHook(content) {
     content.includes(LEGACY_PRE_COMMIT_SENTINEL);
 }
 
+function isManagedPrePushHook(content) {
+  return content.includes(PRE_PUSH_MARKER) ||
+    content.includes(PRE_PUSH_DIRECT_MARKER) ||
+    content.includes("pre_push_conformance.mjs");
+}
+
 function renderManagedPreCommitSection(content) {
   return `${MARKER}\n${content.replace(/^#!.*\n/, "")}\n${MARKER} end\n`;
+}
+
+function renderManagedPrePushSection(content) {
+  return `${PRE_PUSH_MARKER}\n${content.replace(/^#!.*\n/, "")}\n${PRE_PUSH_MARKER} end\n`;
 }
 
 function refreshManagedPreCommitHook(existing, sourceContent) {
@@ -66,6 +82,19 @@ function refreshManagedPreCommitHook(existing, sourceContent) {
   if (startIdx === -1 || endIdx === -1) return existing;
 
   const section = renderManagedPreCommitSection(sourceContent).trimEnd().split("\n");
+  lines.splice(startIdx, endIdx - startIdx + 1, ...section);
+  return `${lines.join("\n").replace(/\s+$/, "")}\n`;
+}
+
+function refreshManagedPrePushHook(existing, sourceContent) {
+  if (!existing.includes(PRE_PUSH_MARKER)) return sourceContent;
+
+  const lines = existing.split("\n");
+  const startIdx = lines.findIndex((line) => line.includes(PRE_PUSH_MARKER));
+  const endIdx = lines.findIndex((line, index) => index > startIdx && line.includes(`${PRE_PUSH_MARKER} end`));
+  if (startIdx === -1 || endIdx === -1) return existing;
+
+  const section = renderManagedPrePushSection(sourceContent).trimEnd().split("\n");
   lines.splice(startIdx, endIdx - startIdx + 1, ...section);
   return `${lines.join("\n").replace(/\s+$/, "")}\n`;
 }
@@ -96,6 +125,33 @@ if (process.argv.includes("--uninstall")) {
       console.log("Removed pre-commit hook (standalone planner install).");
     } else {
       console.log("Pre-commit hook exists but doesn't contain planner check. Nothing to uninstall.");
+    }
+  }
+  // Uninstall pre-push
+  if (wantsHook("pre-push") && !existsSync(prePushTarget)) {
+    console.log("No pre-push hook found. Nothing to uninstall.");
+  } else if (wantsHook("pre-push")) {
+    const content = readFileSync(prePushTarget, "utf-8");
+    if (content.includes(PRE_PUSH_MARKER)) {
+      const lines = content.split("\n");
+      const startIdx = lines.findIndex(l => l.includes(PRE_PUSH_MARKER));
+      const endIdx = lines.findIndex((l, i) => i > startIdx && l.includes(PRE_PUSH_MARKER + " end"));
+      if (startIdx >= 0) {
+        lines.splice(startIdx, endIdx >= 0 ? endIdx - startIdx + 1 : lines.length - startIdx);
+        const cleaned = lines.join("\n").trim();
+        if (cleaned === "#!/bin/sh" || cleaned === "") {
+          unlinkSync(prePushTarget);
+          console.log("Removed pre-push hook (was only planner check).");
+        } else {
+          writeFileSync(prePushTarget, cleaned + "\n");
+          console.log("Removed planner section from pre-push hook.");
+        }
+      }
+    } else if (isManagedPrePushHook(content)) {
+      unlinkSync(prePushTarget);
+      console.log("Removed pre-push hook (standalone planner install).");
+    } else {
+      console.log("Pre-push hook exists but doesn't contain planner check. Nothing to uninstall.");
     }
   }
   // Uninstall post-commit
@@ -147,6 +203,35 @@ if (wantsHook("pre-commit")) {
   }
 
   chmodSync(preCommitTarget, 0o755);
+}
+
+// Install pre-push conformance stopgap hook
+if (wantsHook("pre-push") && existsSync(prePushSource)) {
+  const hookContent = readFileSync(prePushSource, "utf-8");
+
+  if (existsSync(prePushTarget)) {
+    const existing = readFileSync(prePushTarget, "utf-8");
+    if (isManagedPrePushHook(existing)) {
+      const refreshed = refreshManagedPrePushHook(existing, hookContent);
+      if (refreshed === existing) {
+        console.log("Planner pre-push hook already installed. Nothing to do.");
+      } else {
+        writeFileSync(prePushTarget, refreshed);
+        console.log("Refreshed planner pre-push hook.");
+      }
+    } else {
+      const section = `\n${renderManagedPrePushSection(hookContent)}`;
+      writeFileSync(prePushTarget, existing.trimEnd() + "\n" + section);
+      console.log("Appended planner conformance check to existing pre-push hook.");
+    }
+  } else {
+    copyFileSync(prePushSource, prePushTarget);
+    console.log("Installed pre-push conformance hook.");
+  }
+
+  chmodSync(prePushTarget, 0o755);
+} else if (wantsHook("pre-push")) {
+  console.log("WARN: pre-push source not found — skipping pre-push installation.");
 }
 
 // Install post-commit advisor-check hook
@@ -210,6 +295,7 @@ for (const f of SECRET_FILES) {
 console.log("Restricted permissions on secret/integrity files (chmod 600).");
 
 if (wantsHook("pre-commit")) console.log(`Pre-commit hook location: ${preCommitTarget}`);
+if (wantsHook("pre-push")) console.log(`Pre-push hook location: ${prePushTarget}`);
 if (wantsHook("post-commit")) console.log(`Post-commit hook location: ${postCommitTarget}`);
 if (wantsHook("commit-msg")) console.log(`Commit-msg hook location: ${commitMsgTarget}`);
 console.log("To uninstall: node .agent/skills/iterative-planner/scripts/hooks/install.mjs --uninstall");

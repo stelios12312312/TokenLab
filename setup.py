@@ -32,5 +32,10 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
     ],
+    entry_points={
+        'console_scripts': [
+            'tokenlab-verify=TokenLab.utils.verifier:main',
+        ],
+    },
     python_requires='>=3.6'
 )

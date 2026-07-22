@@ -27,6 +27,7 @@ import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
 
 import { recordProofTelemetryFromToolUse } from "../lib/proof_telemetry.mjs";
+import { getPlannerThreadId } from "../lib/plan_utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -92,7 +93,7 @@ function getActivePlanDir(cwd) {
   const envTarget = resolvePlanDir(cwd, process.env._PLANNER_PLAN_TARGET);
   if (envTarget) return envTarget;
 
-  const safeThreadId = sanitizeThreadId(process.env.CODEX_THREAD_ID);
+  const safeThreadId = sanitizeThreadId(getPlannerThreadId());
   if (safeThreadId) {
     const threadTargetPath = join(cwd, "plans", ".thread_targets", `${safeThreadId}.txt`);
     try {
@@ -293,6 +294,23 @@ async function main() {
       });
     } catch {
       // Best-effort — never fail the tool call because of telemetry capture.
+    }
+  }
+
+  if ((toolName === "Write" || toolName === "Edit") && paths.length > 0) {
+    try {
+      const { enqueueSpotCheck } = await import("../lib/spot_check.mjs");
+      for (const filePath of paths) {
+        enqueueSpotCheck({
+          cwd,
+          planId: planDirName,
+          file: filePath,
+          source: "post_tool_use",
+          runAfterEnqueue: true,
+        });
+      }
+    } catch {
+      // Best-effort — spot checks must never fail the editor hook.
     }
   }
 

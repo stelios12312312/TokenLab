@@ -20,6 +20,9 @@ import { randomBytes } from "crypto";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { loadAsyncDriftSummary, loadDriftLlmConfig, publicDriftConfig } from "./lib/llm_drift_client.mjs";
+import { findIveBackupRetentionWarnings } from "./lib/ive_migration_bootstrap.mjs";
+import { measurePlanScaffolding, proportionalityVerdict } from "./lib/proportionality.mjs";
+import { renderArchetypeAccomplicePlanSection } from "../packs/quant/archetype_accomplices.mjs";
 
 const SELF_HEAL_ENV = "_PLANNER_SELF_HEAL_RUNNING";
 const SELF_HEAL_SKIP_ENV = "PLANNER_SKIP_SELF_HEAL";
@@ -101,13 +104,31 @@ function inspectInstallHealth(projectRoot) {
   }
 }
 
+function warnIveMigrationBackupRetention(projectRoot) {
+  let warnings = [];
+  try {
+    warnings = findIveBackupRetentionWarnings(projectRoot);
+  } catch {
+    warnings = [];
+  }
+  if (warnings.length === 0) return;
+  console.log();
+  console.log(`  ⚠️  IVE migration backup retention window expiring for ${warnings.length} backup(s).`);
+  for (const warning of warnings.slice(0, 5)) {
+    const dayText = warning.days_remaining < 0
+      ? `${Math.abs(warning.days_remaining)} day(s) expired`
+      : `${warning.days_remaining} day(s) remaining`;
+    console.log(`     Phase ${warning.phase}: ${warning.backup} expires ${warning.expires_at} (${dayText})`);
+  }
+}
+
 function maybeRunSelfHeal(projectRoot, entryArgs) {
   const command = process.argv[2];
   if (!command || command === "help" || command === "--help" || command === "-h") return;
   if (command === "install-health") return;
   // v7.4.4: triage subcommand is read-only and emits JSON; self-heal noise
   // would corrupt the output. Skip it for triage.
-  if (command === "triage") return;
+  if (command === "triage" || command === "contract") return;
   if (process.env[SELF_HEAL_ENV] === "1") return;
   if (process.env[SELF_HEAL_SKIP_ENV]) return;
 
@@ -117,7 +138,11 @@ function maybeRunSelfHeal(projectRoot, entryArgs) {
 
   const migrateScript = join(health.source_repo, ".agent", "skills", "iterative-planner", "scripts", "migrate.mjs");
   if (!existsSync(migrateScript)) {
-    console.warn(`⚠️  Planner self-heal skipped — canonical migrate.mjs not found at ${migrateScript}`);
+    // T-INTAKE-A0AAAFC1 AC4: a source repo absent on this machine means the
+    // registry path is stale (cloned from another machine) — skip silently.
+    if (existsSync(health.source_repo)) {
+      console.warn(`⚠️  Planner self-heal skipped — canonical migrate.mjs not found at ${migrateScript}`);
+    }
     return;
   }
 
@@ -198,10 +223,14 @@ const {
   resolvePlanTarget, writeThreadPlanTarget, clearThreadPlanTarget,
 } = await import("./lib/plan_utils.mjs");
 const { writeScopeContract } = await import("./lib/scope_contract.mjs");
+const { probeCapabilities, formatCapabilityBanner } = await import("./lib/capability_probe.mjs");
+const { initializePlanMetrics } = await import("./lib/plan_metrics.mjs");
 const { consumeOneTimeNonce } = await import("./lib/nonce.mjs");
 const { detectPlanShape, shapeMinFindings, shapeRequiresField } = await import("./lib/plan_shape.mjs");
 const { computeTriage, renderTriage } = await import("./lib/triage.mjs");
+const { previewContract, renderContractPreview } = await import("./lib/contract_preview.mjs");
 const { inferPersonaAdaptation, isProblematicPersonaStatus } = await import("./lib/persona_adaptation.mjs");
+const { formatSessionAssumption, summarizeSessionObligations } = await import("./lib/session_obligations.mjs");
 const { computeVerificationObligationSynthesis } = await import("./lib/verification_obligations.mjs");
 const {
   analyzeVerificationMatrix,
@@ -260,6 +289,63 @@ function warnPersonaAdaptation(projectRoot = cwd, opts = {}) {
   } catch (error) {
     debugLog("bootstrap", `persona adaptation scan failed: ${error.message}`);
     return null;
+  }
+}
+
+// Insight injection (ive-ontology-memory): resurface relevant prior insights/strategies
+// for the active plan so the agent reasons WITH them — routed advisory (one section),
+// trusted/derived only, never blocking. The positive half of long-term memory.
+async function renderRelevantInsightsSummary(planDirName) {
+  if (!planDirName) return "";
+  try {
+    // Best-effort dynamic import: a stale target (mid-self-heal) may not yet have this
+    // lib, and a missing optional capability must never break `bootstrap status`.
+    const { loadKnowledgeTriggers, selectInsightInjections } = await import("./lib/knowledge_triggers.mjs");
+    const planDir = join(plansDir, planDirName);
+    const stateJson = readStateJson(planDir);
+    const planContent = existsSync(join(planDir, "plan.md")) ? readFileSync(join(planDir, "plan.md"), "utf-8") : "";
+    const filesSection = planContent.match(/##\s+Files\s+[Tt]o\s+[Mm]odify\s*\n([\s\S]*?)(?=\n##|$)/);
+    let plannedFiles = [];
+    if (filesSection) {
+      plannedFiles = (filesSection[1].match(/^\s*[-*]\s+`?([^`\s]+)`?/gm) || [])
+        .map((line) => line.replace(/^\s*[-*]\s+`?/, "").replace(/`?\s*$/, "").trim())
+        .filter(Boolean);
+    }
+    const loaded = loadKnowledgeTriggers();
+    if (!loaded.ok) return "";
+    const insights = selectInsightInjections(loaded.triggers, { goalText: stateJson?.goal || "", files: plannedFiles });
+    if (insights.length === 0) return "";
+    const lines = ["  Relevant prior insights (Knowledge Triggers):"];
+    for (const a of insights) {
+      lines.push(`  - [${a.id}] ${a.title}`);
+      if (a.knowledge?.directive) lines.push(`      → ${a.knowledge.directive}${a.knowledge.prompt_ref ? ` (see ${a.knowledge.prompt_ref})` : ""}`);
+      lines.push(`      matched_by: ${(a.matched_by || []).join(", ")}`);
+    }
+    return lines.join("\n");
+  } catch {
+    return "";
+  }
+}
+
+// Forcing function (ive-ontology-memory ticket 5): resurface un-promoted draft Knowledge Triggers
+// at status so the operator can promote/discard them. Without this, captured drafts are invisible
+// (selectInsightInjections + evaluateObligationGate both filter non-trusted) and rot unpromoted —
+// the "advisory that isn't consumed becomes noise" failure. Best-effort dynamic import (a stale
+// self-heal target may lack the lib; an optional surface must never break `bootstrap status`).
+async function renderProposedDraftKtSummary() {
+  try {
+    const { listDraftTriggers } = await import("./lib/knowledge_triggers.mjs");
+    const drafts = listDraftTriggers();
+    if (!drafts || drafts.length === 0) return "";
+    const lines = [`  ${drafts.length} un-promoted draft Knowledge Trigger(s) — review/promote/discard:`];
+    for (const d of drafts.slice(0, 8)) {
+      lines.push(`  - [${d.kind}] ${d.id}: ${d.title}${d.proposed_from ? ` (from ${d.proposed_from})` : ""}`);
+    }
+    if (drafts.length > 8) lines.push(`  - … and ${drafts.length - 8} more`);
+    lines.push(`     Promote: node .agent/skills/iterative-planner/scripts/knowledge_triggers.mjs --promote <id> --to derived|trusted`);
+    return lines.join("\n");
+  } catch {
+    return "";
   }
 }
 
@@ -332,6 +418,23 @@ function renderActiveEvidenceGuidanceSummary(planDirName) {
       planArg: planDirName,
     });
     return renderVerificationEvidenceGuidance(guidance, { indent: "  ", compact: true });
+  } catch {
+    return "";
+  }
+}
+
+// Ceremony-to-substance advisory: if the active plan dir has accreted far more
+// planner bookkeeping than the work warrants, surface it (never blocks). Fully
+// guarded — a failure here must never break `status`.
+function renderProportionalitySummary(planDirName) {
+  if (!planDirName) return "";
+  try {
+    const planDir = join(plansDir, planDirName);
+    const { lines, files } = measurePlanScaffolding(planDir);
+    const verdict = proportionalityVerdict({ scaffoldingLines: lines });
+    if (!verdict.over_threshold) return "";
+    const top = files.slice(0, 3).map((f) => `${f.name} (${f.lines})`).join(", ");
+    return `  ⚠️  ${verdict.message}\n     Largest: ${top}`;
   } catch {
     return "";
   }
@@ -452,6 +555,20 @@ function readPointer() {
     return null;
   } catch {
     return null;
+  }
+}
+
+// Announce which runtime capabilities are actually live (trace capture, plan
+// isolation, branch protection). Honest reporting so the operator and gates do
+// not assume a sensor is on when it is unplugged.
+function printCapabilityBanner(projectRoot, planDirName) {
+  try {
+    const caps = probeCapabilities(projectRoot, {
+      planDir: planDirName ? join(plansDir, planDirName) : null,
+    });
+    console.log(formatCapabilityBanner(caps));
+  } catch (e) {
+    debugLog("bootstrap", `capability banner failed: ${e.message}`);
   }
 }
 
@@ -594,6 +711,21 @@ function getPlanSnapshot(planDirName) {
       : extractField(state, /^## Last Transition:\s*(.+)$/m) || "?",
     goal: stateJson?.goal || extractField(plan, /\n## Goal\s*\n([\s\S]+?)(?=\n## |$)/) || "No goal found",
   };
+}
+
+function printSessionObligations(planDirName, opts = {}) {
+  const planDir = join(plansDir, planDirName);
+  const obligations = summarizeSessionObligations(planDir);
+  if (!obligations.active || obligations.active.length === 0) return;
+  if (opts.compact) {
+    console.log(`  Session obligations: ${obligations.summary}`);
+    return;
+  }
+  console.log();
+  console.log(`  Session obligations: ${obligations.summary}`);
+  for (const assumption of obligations.active) {
+    console.log(`    - ${formatSessionAssumption(assumption)}`);
+  }
 }
 
 const ACTIVE_PLAN_ALIAS_LABEL = "plans/ACTIVE_PLAN.md";
@@ -1075,6 +1207,7 @@ function cmdNew(goal, opts = {}) {
   try {
     mkdirSync(join(planDir, "checkpoints"), { recursive: true });
     mkdirSync(join(planDir, "findings"), { recursive: true });
+    const archetypeAccompliceSection = renderArchetypeAccomplicePlanSection({ goal });
 
     // Seed KB files before state.json so new plans capture a real knowledge snapshot.
     ensureConsolidatedFiles();
@@ -1113,6 +1246,7 @@ ${goal}
 ## Context
 *Pending EXPLORE phase. Findings will inform the approach.*
 
+${archetypeAccompliceSection}
 ## Files To Modify
 *To be determined after EXPLORE. List every file that will be touched.*
 
@@ -1386,6 +1520,14 @@ Mitigation:
       refreshActivePlanAliasFor(planDirName);
     }
     writeThreadPlanTarget(plansDir, planDirName);
+    // Phase 0.5 metrics: initialize the per-plan metrics artifact (reports/metrics/
+    // + plans/<plan>/metrics.json) at creation so gate transitions have a target.
+    // Best-effort — a metrics write failure must never abort plan creation.
+    try {
+      initializePlanMetrics({ projectRoot: cwd, planDirName, planDir, createdAt: stateJson.created_at });
+    } catch (e) {
+      debugLog("bootstrap", `plan metrics init failed: ${e.message}`);
+    }
   } catch (err) {
     try { rmSync(planDir, { recursive: true, force: true }); } catch (e) { console.error(`WARNING: Failed to clean up partial plan directory: plans/${planDirName}`); }
     try { if (existsSync(pointerFile + ".tmp")) unlinkSync(pointerFile + ".tmp"); } catch (e) { console.error("WARNING: Failed to clean up temp pointer file."); }
@@ -1614,6 +1756,8 @@ function cmdResume() {
     }
   }
 
+  printSessionObligations(planDirName);
+
   // Print checkpoint listing
   const checkpointDir = join(plansDir, planDirName, "checkpoints");
   let checkpointFiles = [];
@@ -1681,8 +1825,18 @@ async function cmdStatus() {
     console.log("No active plan.");
     console.log(`  Canonical alias: ${ACTIVE_PLAN_ALIAS_LABEL}`);
     printAdvisoryEngineStatus(cwd);
+    printCapabilityBanner(cwd, null);
     warnTelemetryInstallHealth(cwd);
     warnPersonaAdaptation(cwd);
+    warnIveMigrationBackupRetention(cwd);
+    // Surface un-promoted draft Knowledge Triggers even with no active plan: a draft captured at the
+    // close prompt would otherwise be invisible for the whole post-close window (notify-user clears
+    // the pointer), defeating the forcing function exactly when it fires.
+    const noPlanDraftKtSummary = await renderProposedDraftKtSummary();
+    if (noPlanDraftKtSummary) {
+      console.log();
+      console.log(noPlanDraftKtSummary);
+    }
     process.exit(0);
   }
 
@@ -1692,8 +1846,10 @@ async function cmdStatus() {
 
   console.log(`[${currentState}] iter=${iteration} step=${step} | ${goal.split("\n")[0].slice(0, 60)} | plans/${planDirName}`);
   printAdvisoryEngineStatus(cwd);
+  printCapabilityBanner(cwd, planDirName);
   warnTelemetryInstallHealth(cwd);
   warnPersonaAdaptation(cwd);
+  warnIveMigrationBackupRetention(cwd);
   const personaRecommendationSummary = renderActivePersonaRecommendationSummary(planDirName);
   if (personaRecommendationSummary) {
     console.log();
@@ -1703,6 +1859,21 @@ async function cmdStatus() {
   if (evidenceGuidanceSummary) {
     console.log();
     console.log(evidenceGuidanceSummary);
+  }
+  const insightsSummary = await renderRelevantInsightsSummary(planDirName);
+  if (insightsSummary) {
+    console.log();
+    console.log(insightsSummary);
+  }
+  const draftKtSummary = await renderProposedDraftKtSummary();
+  if (draftKtSummary) {
+    console.log();
+    console.log(draftKtSummary);
+  }
+  const proportionalitySummary = renderProportionalitySummary(planDirName);
+  if (proportionalitySummary) {
+    console.log();
+    console.log(proportionalitySummary);
   }
   const driftSummary = loadAsyncDriftSummary(join(plansDir, planDirName));
   if (driftSummary) {
@@ -1723,6 +1894,7 @@ async function cmdStatus() {
       console.log(`  Pointer: plans/.current_plan → ${pointerPlanDirName}`);
     }
   }
+  printSessionObligations(planDirName, { compact: true });
   checkStaleness(planDirName);
   const staleContext = detectRecentNonActivePlanContext(plansDir, planDirName);
   if (staleContext.warned) {
@@ -1885,7 +2057,10 @@ function cmdClose(opts = {}) {
         marker: marker.trim() || undefined,
         is_forced: opts.forceMarker ? true : undefined,
       });
-      writeStateJson(join(plansDir, planDirName), stateJson);
+      writeStateJson(join(plansDir, planDirName), stateJson, {
+        allowPhaseMutation: true,
+        mutationOrigin: "bootstrap:close",
+      });
     }
   } catch (e) { debugLog("bootstrap", `state.json close update failed: ${e.message}`); }
 
@@ -2409,7 +2584,7 @@ Backward-compatible:
 // ---------------------------------------------------------------------------
 
 const args = process.argv.slice(2);
-const subcommands = new Set(["new", "resume", "status", "close", "list", "help", "reset-circuit-breaker", "abandon", "recover-poison", "fix-stuck", "install-health", "story-review", "triage"]);
+const subcommands = new Set(["new", "resume", "status", "close", "list", "help", "reset-circuit-breaker", "abandon", "recover-poison", "fix-stuck", "install-health", "story-review", "triage", "contract"]);
 
 if (args.length === 0) {
   printUsage();
@@ -2476,6 +2651,27 @@ if (!subcommands.has(cmd)) {
       console.log();
       console.log(renderPersonaAdaptationWarning(personaAdaptation));
     }
+  }
+} else if (cmd === "contract") {
+  // Front-loaded contract preview (cure for the #1 ritual cause): surface the routing,
+  // the meta-rules the planned files trigger (re-baseline, must-be-wired, namespace,
+  // ritual budget), and the invariants the plan shape will face — BEFORE acting, so a
+  // later Prolog/CI failure is never a surprise. Read-only; no plan dir, no writes.
+  const jsonMode = args.includes("--json");
+  const filesArg = (args.find((a) => a.startsWith("--files=")) || "").slice("--files=".length);
+  const plannedFiles = filesArg ? filesArg.split(",").map((s) => s.trim()).filter(Boolean) : [];
+  const goal = args.slice(1).filter((a) => a !== "--json" && !a.startsWith("--files=")).join(" ");
+  if (!goal.trim() && plannedFiles.length === 0) {
+    console.error("Usage: bootstrap.mjs contract \"<goal>\" [--files=a.mjs,b.pl] [--json]");
+    process.exit(2);
+  }
+  const triage = computeTriage({ goalText: goal, plannedFiles });
+  const contract = previewContract({ plannedFiles, planShape: triage.shape, triagePath: triage.recommended_path });
+  if (jsonMode) {
+    console.log(JSON.stringify({ goal, ...contract }, null, 2));
+  } else {
+    if (goal.trim()) console.log(`Goal: ${goal}`);
+    console.log(renderContractPreview(contract));
   }
 } else if (cmd === "help") {
   printUsage();

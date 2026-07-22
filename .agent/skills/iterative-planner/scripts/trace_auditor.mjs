@@ -21,7 +21,7 @@ import { readFileSync, existsSync, readdirSync } from "fs";
 import { join, dirname, resolve, basename } from "path";
 import { fileURLToPath } from "url";
 import {
-  getPaths, readPointer, readFile, getActivePlan,
+  getPaths, readPointer, readFile, resolvePlanTarget,
   check, PASS, WARN, FAIL,
   printHeader, printSection, printResultsWithCodes, printSummaryWithCodes,
   matchGlob, debugLog,
@@ -511,7 +511,7 @@ if (process.argv[1] && resolve(process.argv[1]) === __filename) {
   if (planDirOverride) {
     planDir = resolve(planDirOverride);
   } else {
-    const { planDir: activePlanDir } = getActivePlan(plansDir);
+    const { planDir: activePlanDir } = resolvePlanTarget(plansDir, { exitOnMissing: true });
     planDir = activePlanDir;
   }
 

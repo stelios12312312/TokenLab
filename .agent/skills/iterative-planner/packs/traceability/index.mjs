@@ -155,10 +155,10 @@ const traceabilityPack = {
     }
 
     // --- Run ontology serializer to get traceability facts ---
-    let planDir = null;
+    let planDir = context.planDir || context.personaAuthorityContext?.plan_dir || null;
     let planContent = planFiles?.plan || null;
     const pointerFile = join(cwd, "plans", ".current_plan");
-    if (existsSync(pointerFile)) {
+    if (!planDir && existsSync(pointerFile)) {
       try {
         const planDirName = readFileSync(pointerFile, "utf-8").trim();
         planDir = join(cwd, "plans", planDirName);

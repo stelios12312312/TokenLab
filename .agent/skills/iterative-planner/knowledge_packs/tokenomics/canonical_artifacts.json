@@ -1,0 +1,25 @@
+[
+  {
+    "id": "TK-ART-001",
+    "title": "Tokenomics validation artifact",
+    "summary": "A compact artifact that records supply, max supply, circulating supply, token price, FDV, allocations, emissions, APY source, vesting cliffs, unlock cadence, admin authority, timelock, and review boundary.",
+    "severity": "high",
+    "polarity": "artifact",
+    "tags": [
+      "validation",
+      "tokenomics"
+    ]
+  },
+  {
+    "id": "TK-ART-002",
+    "title": "Supply and vesting schedule",
+    "summary": "A dated table that makes allocations, emissions, vesting cliffs, unlock cadence, and circulating supply visible across time.",
+    "severity": "high",
+    "polarity": "artifact",
+    "tags": [
+      "supply",
+      "vesting",
+      "temporal"
+    ]
+  }
+]

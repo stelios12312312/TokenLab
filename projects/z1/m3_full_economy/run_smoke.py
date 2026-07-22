@@ -1,8 +1,8 @@
 import sys
 import os
 
-# Add the project root to sys.path to allow importing TokenLab and projects
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../src')))
 
 from projects.z1.m3_full_economy.config import M3EconomyConfig
 from projects.z1.m3_full_economy.state import initialize_state

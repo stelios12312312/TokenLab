@@ -3053,7 +3053,7 @@ function scenarioOntologySerializerReviewIntake() {
 Ensure review findings are represented in the ontology.
 
 ## Success Criteria
-1. Required review findings block close until dispositioned.
+1. Advisory LLM review findings stay visible without blocking close.
 `);
     writeFileSync(join(planDir, "review_intake_sources", "llm_drift_gate_validate-to-close.json"), JSON.stringify({
       status: "stale_blocking",
@@ -3074,10 +3074,13 @@ Ensure review findings are represented in the ontology.
     try { parsed = JSON.parse(result.stdout); } catch { /* asserted below */ }
     assert(!!parsed, "ontology_serializer emits valid JSON for review-intake sources");
     assert(parsed?.meta?.review_intake_items === 1, "ontology_serializer counts review-intake items in metadata");
-    assert(parsed?.facts?.some((fact) => fact.includes("review_intake_required(true)")), "ontology_serializer marks required review intake");
-    assert(parsed?.facts?.some((fact) => fact.includes("review_intake_satisfied(false)")), "ontology_serializer marks unresolved review intake as unsatisfied");
-    assert(parsed?.facts?.some((fact) => fact.includes("review_item_required('llm:stale_blocking:serializer_fixture')")), "ontology_serializer emits required review item facts");
-    assert(parsed?.facts?.some((fact) => fact.includes("review_item_unresolved('llm:stale_blocking:serializer_fixture')")), "ontology_serializer emits unresolved review item facts");
+    assert(parsed?.facts?.some((fact) => fact.includes("review_intake_required(false)")), "ontology_serializer marks LLM-only review intake as not required");
+    assert(parsed?.facts?.some((fact) => fact.includes("review_intake_satisfied(true)")), "ontology_serializer marks advisory LLM review intake as satisfied");
+    assert(parsed?.facts?.some((fact) => fact.includes("review_intake_unresolved_required_count(0)")), "ontology_serializer emits zero unresolved required review items");
+    assert(parsed?.facts?.some((fact) => fact.includes("review_item('llm:stale_blocking:serializer_fixture', 'llm_drift_gate', false)")), "ontology_serializer emits advisory review item facts");
+    assert(parsed?.facts?.some((fact) => fact.includes("review_item_classification('llm:stale_blocking:serializer_fixture', 'stale_blocking')")), "ontology_serializer preserves stale_blocking classification facts");
+    assert(!parsed?.facts?.some((fact) => fact.includes("review_item_required('llm:stale_blocking:serializer_fixture')")), "ontology_serializer does not emit required facts for advisory LLM findings");
+    assert(!parsed?.facts?.some((fact) => fact.includes("review_item_unresolved('llm:stale_blocking:serializer_fixture')")), "ontology_serializer does not emit unresolved facts for advisory LLM findings");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }

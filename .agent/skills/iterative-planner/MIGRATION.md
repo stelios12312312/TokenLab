@@ -406,6 +406,9 @@ If the project has a test suite, run test_baseline.mjs capture "<test-command>" 
 
 | Version | Codename | Key Features |
 |---------|----------|-------------|
+| 10.0.0 | IVE Studio 10 | Renames the current product/repo identity from Portable Agent Kit lineage to IVE Studio 10 / `ive-studio`, keeps the Visualizer package path compatible, and marks the major release boundary for local docs, app package metadata, browser branding, and planner migration/version surfaces; the 9.x major line was intentionally skipped/reserved so the public product line and planner major version stay aligned. |
+| 8.0.0 | IVE Runtime Release | Major release line for the closed IVE Runtime operating model: Runtime Build Phase 6 close proof, deterministic release handoff, Program Packet ticket-row verification discipline, Productization GitHub mirror governance, review-board/display authority boundaries, and replayable local truth over external mirror state. |
+| 7.6.41 | IVE Runtime Phase 6 Release Handoff | Adds the deterministic Phase 6 release-handoff verifier, `--phase 6` conformance runner suite, and runtime-build release docs for `T-INTAKE-0445AB16` / `CC-IVE-CANONICAL-MIGRATION`. |
 | 7.6.40 | Branch Consolidation: Tokenomics + Review-Intake-Close | Merges origin/main's Review Intake Close Contract (deterministic review-intake ledgers for DeepSeek/advisor + ontology findings; gate-time LLM drift outputs persistable into plan-local review sources; required findings must be consumed/rejected/verified/waived before close; review-intake status in close signals + Prolog facts/invariants + ontology serialization + validation checklists) and the multi-IDE root-instruction portability matrix (renderer-driven managed snapshot block; Cursor + VS Code targets refreshed only when existing) with the codex/tokenomics rollout (tokenomics persona pack v7.6.35, IVE Productization program close, program-manager-hardening close). Single consolidated main. |
 | 7.6.39 | Anti-Ritual Planner Review Flow | Adds Program Manager status advancement on passing `verify <gate> --write`, separates ticket `review_status` from dispatch lifecycle while accepting `submitted`/`review_ready` compatibility aliases, makes DeepSeek visible as compact status/summary/artifact proof by default, and adds `operator_action` routing so questions/open-page/read-only/status checks bypass planner ritual while ambiguous or risky actions ask the user. |
 | 7.6.38 | Visible Ticket Review Advisory | Makes `github_ticket_review.mjs review` carry the full fenced DeepSeek advisory verdict and verbatim reproduction contract in Ticket Intake Receipts, text output, and planned GitHub review comments while keeping deterministic blockers authoritative. Also routes simple read-only open/view page and URL tasks to `skip_planner` so agents do not bootstrap the planner for trivial browser/read actions. |
@@ -523,6 +526,17 @@ This rollout is additive and does not add states to the iterative planner state 
 - `prolog/programs.pl` adds ontology-backed program invariants that stay inert unless Program Packet facts are loaded
 - optional `state.json.program_context` lets child iterative plans carry their parent program/epic/ticket metadata without changing the existing state machine
 - the canonical version is `7.1.0`
+
+## Breaking Changes (v7.6.41 -> v8.0.0)
+
+No state-machine or schema breaking changes. v8.0.0 is a major operating-model
+release: IVE Runtime is treated as closed only when local Program Packet proof,
+ticket-row verification results, release handoff, conformance manifests, and
+mirror read-back agree. GitHub Issues, GitHub Projects, review boards, and
+advisory engines remain mirror/display surfaces; Program Packets and Prolog
+evidence stay authoritative. Existing projects can migrate through the normal
+`migrate.mjs upgrade` path, but operators should expect the release line to use
+stricter close semantics and local-truth-over-mirror language.
 
 ## Breaking Changes (v7.0.1 → v7.1.0)
 

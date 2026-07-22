@@ -1,0 +1,9 @@
+[
+  {
+    "id": "COACH-CON-001",
+    "title": "Persona boundary declared",
+    "summary": "Coaching products must declare which persona or role is allowed to make a claim and which claim classes are forbidden.",
+    "severity": "high",
+    "polarity": "guardrail"
+  }
+]

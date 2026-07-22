@@ -61,6 +61,28 @@ console.log("\nQuant Persona Gate Contracts\n");
 
 {
   const result = evaluateQuantPersonaGate({
+    sourceText: "Polymarket scenario fixture for IVE routing.",
+    ticket: {
+      title: "Scenario fixture quant guard",
+    },
+    acceptanceCriteria: [
+      {
+        text: "What happened overview: observed behavior was report_only closure despite unresolved market facts. Quant persona and quant_target must review target outcome, data source coverage, as-of timestamp, known-at-time boundary, temporal leakage, OOS, baseline control, alpha hypothesis, expected edge proof metric, falsification threshold, kill criterion, and next experiment.",
+      },
+    ],
+    verificationRows: [
+      {
+        proof_type: "proof:quant_results_validation",
+        command_or_action: "Run temporal split check, leakage check, benchmark comparison, and calibration check.",
+      },
+    ],
+  });
+  assert(result.required === true, "quant fixture text activates gate");
+  assert(!result.summary.missing_guard_ids.includes("what_happened_overview"), "ticket acceptance text can satisfy what-happened overview");
+}
+
+{
+  const result = evaluateQuantPersonaGate({
     sourceText: "Add quant persona hard gate to the planner ticket review workflow.",
     planShape: { primary: "planner-core" },
     changedFiles: [".agent/skills/iterative-planner/scripts/verify_gate.mjs"],
@@ -92,6 +114,27 @@ console.log("\nQuant Persona Gate Contracts\n");
     verificationContent: "Regression proof of work close gate",
   });
   assert(result.required === false, "default planner scaffold quant wording does not activate the project quant gate");
+}
+
+{
+  const quantHeavyMetaText = "Build seeded-defect fixtures: leakage via shift(-1), backtest sharpe above calibration band, temporal split without embargo. Harness measures gate catch rate.";
+  const withoutScope = evaluateQuantPersonaGate({ sourceText: quantHeavyMetaText });
+  assert(withoutScope.required === true, "quant-heavy meta text activates the gate when no scope is declared");
+
+  const declaredScope = evaluateQuantPersonaGate({ sourceText: quantHeavyMetaText, ticketScope: "planner_core" });
+  assert(declaredScope.required === false, "declared planner_core ticketScope exempts intake-time keyword detection");
+  assert(declaredScope.reason === "planner_core_ticket_scope", "exemption reason names the declared scope path");
+  assert(declaredScope.declared_scope === "planner_core", "declared scope is recorded on the gate result");
+  assert(declaredScope.matched_signals.length > 0, "matched quant signals stay visible for audit even when exempt");
+
+  const fromTicketField = evaluateQuantPersonaGate({
+    sourceText: quantHeavyMetaText,
+    ticket: { id: "T-TEST", quant_scope: "planner-core" },
+  });
+  assert(fromTicketField.required === false, "persisted ticket.quant_scope (hyphenated) exempts re-evaluation at review time");
+
+  const bogusScope = evaluateQuantPersonaGate({ sourceText: quantHeavyMetaText, ticketScope: "definitely_quant" });
+  assert(bogusScope.required === true, "unknown declared scope does not exempt the gate");
 }
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
