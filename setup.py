@@ -10,7 +10,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='TokenLab',  # Your package's name
-    version='0.2minor',  # Your package's version
+    version='0.2.0',  # Your package's version
     packages=find_packages(where="src"),  # Assuming your code is in the src directory
     package_dir={"": "src"},
     install_requires=[
@@ -20,6 +20,8 @@ setup(
         'scipy==1.9.3',
         'statsmodels==0.13.2',
         'tqdm==4.64.0',
+        'PyYAML>=6.0.0',
+        'python-docx>=1.1.0',
     ],
     author='Stylianos Kampakis',
     author_email='stylianos.kampakis@gmail.com',

@@ -20,10 +20,10 @@ from projects.z1.empirical_calibrated_simulation import calibrate_from_sources, 
 
 
 OUT = REPO / "outputs" / "z1_empirical_calibrated_simulation"
-FULL = Path(r"C:\Users\User\Downloads\z1_scale_base_period_full_v2.csv")
-MINIMUM = Path(r"C:\Users\User\Downloads\z1_scale_base_period_minimum_v2.csv")
-WORKBOOK = Path(r"C:\Users\User\Downloads\z1_scale_base_token_launch_model_v2.xlsx")
-PDF = Path(r"C:\Users\User\Downloads\ZEE Audience Participatory Ledger.pdf")
+FULL = REPO / "projects" / "z1" / "v2_growth" / "z1_scale_base_period_full_v2.csv"
+MINIMUM = REPO / "projects" / "z1" / "v2_growth" / "z1_scale_base_period_minimum_v2.csv"
+WORKBOOK = REPO / "projects" / "z1" / "v2_growth" / "z1_scale_base_token_launch_model_v2.xlsx"
+PDF = REPO / "docs" / "ZEE Audience Participatory Ledger.pdf"
 
 
 def write_csv(path: Path, rows: list[dict[str, Any]] | pd.DataFrame) -> None:
