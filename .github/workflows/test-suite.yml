@@ -47,9 +47,11 @@ jobs:
         run: |
           smoke_dir="$(mktemp -d)"
           python -m venv "${smoke_dir}/venv"
-          "${smoke_dir}/venv/bin/python" -m pip install \
+          cd "${smoke_dir}"
+          env -u PYTHONPATH "${smoke_dir}/venv/bin/python" -m pip install \
+            --force-reinstall \
             "${RUNNER_TEMP}"/tokenlab-wheel/*.whl
-          "${smoke_dir}/venv/bin/python" -m pip check
+          env -u PYTHONPATH "${smoke_dir}/venv/bin/python" -m pip check
 
           mkdir -p "${smoke_dir}/work/projects/smoke"
           printf '%s\n' \
