@@ -4,13 +4,22 @@ import json
 from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from projects.z1.empirical_calibrated_simulation import calibrate_from_sources, run_monte_carlo, run_scenario
 
 
-FULL = Path(r"C:\Users\User\Downloads\z1_scale_base_period_full_v2.csv")
-MINIMUM = Path(r"C:\Users\User\Downloads\z1_scale_base_period_minimum_v2.csv")
-WORKBOOK = Path(r"C:\Users\User\Downloads\z1_scale_base_token_launch_model_v2.xlsx")
+REPO = Path(__file__).resolve().parents[1]
+DATA_DIR = REPO / "projects" / "z1" / "v2_growth"
+FULL = DATA_DIR / "z1_scale_base_period_full_v2.csv"
+MINIMUM = DATA_DIR / "z1_scale_base_period_minimum_v2.csv"
+WORKBOOK = DATA_DIR / "z1_scale_base_token_launch_model_v2.xlsx"
+REQUIRED_INPUTS = (FULL, MINIMUM, WORKBOOK)
+
+pytestmark = pytest.mark.skipif(
+    not all(path.is_file() for path in REQUIRED_INPUTS),
+    reason="requires private Z1 calibration inputs; see CODEBASE_PREREQUISITES.md",
+)
 
 
 def _bundle():

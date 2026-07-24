@@ -9,12 +9,28 @@ from projects.z1.stochastic_stress_testing import StochasticConfig, run_stochast
 from projects.z1.stochastic_stress_testing.engine import SCENARIO_ORDER
 
 
+REPO = Path(__file__).resolve().parents[1]
+SOURCE = REPO / "outputs" / "z1_empirical_calibrated_simulation"
+REQUIRED_INPUTS = tuple(
+    SOURCE / name
+    for name in (
+        "BASE_CASE_PERIOD_DATA.csv",
+        "DOWNSIDE_CASE_PERIOD_DATA.csv",
+        "UPSIDE_CASE_PERIOD_DATA.csv",
+    )
+)
+
+pytestmark = pytest.mark.skipif(
+    not all(path.is_file() for path in REQUIRED_INPUTS),
+    reason="requires generated empirical Z1 outputs; see CODEBASE_PREREQUISITES.md",
+)
+
+
 def _baseline() -> dict[str, pd.DataFrame]:
-    source = Path("outputs/z1_empirical_calibrated_simulation")
     return {
-        "base": pd.read_csv(source / "BASE_CASE_PERIOD_DATA.csv"),
-        "downside": pd.read_csv(source / "DOWNSIDE_CASE_PERIOD_DATA.csv"),
-        "upside": pd.read_csv(source / "UPSIDE_CASE_PERIOD_DATA.csv"),
+        "base": pd.read_csv(SOURCE / "BASE_CASE_PERIOD_DATA.csv"),
+        "downside": pd.read_csv(SOURCE / "DOWNSIDE_CASE_PERIOD_DATA.csv"),
+        "upside": pd.read_csv(SOURCE / "UPSIDE_CASE_PERIOD_DATA.csv"),
     }
 
 

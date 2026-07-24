@@ -21,3 +21,47 @@ This document summarizes the codebase prerequisites and bug fixes completed duri
 - **Problem:** Provider payments exiting to fiat (1 - `provider_recirculation_rate`) and team/advisors/seed/private genesis unlocks were modeled as accounting identities rather than active sell flows, biasing the AMM spot price trajectories upward.
 - **Solution:** Routed non-recirculated provider payments and genesis unlocks (weighted by the new `genesis_sell_fraction_by_bucket` parameter) through the AMM `sell_z1u()` method when toggled on. Added `provider_amm_sell_enabled` and `genesis_sell_enabled` for backward compatibility.
 - **Verification:** Regression test `tests/test_regression_v1_baseline.py` asserts that the AMM spot price is degraded when V2 sell pressures are active compared to the baseline V1 run.
+
+## 5. Fresh-clone test prerequisites
+
+Use Python 3.10, install the declared dependencies, and run the suite from the
+repository root with a non-interactive plotting backend:
+
+```bash
+python -m pip install -r requirements.txt
+MPLBACKEND=Agg python -m pytest -q
+```
+
+Most tests are self-contained. The following integration tests require private
+calibration inputs, generated simulation outputs, or both. When those files are
+absent, only the dependent tests are skipped.
+
+Place the private calibration bundle at:
+
+- `projects/z1/v2_growth/z1_scale_base_period_full_v2.csv`
+- `projects/z1/v2_growth/z1_scale_base_period_minimum_v2.csv`
+- `projects/z1/v2_growth/z1_scale_base_token_launch_model_v2.xlsx`
+
+Generate the downstream data in dependency order:
+
+```bash
+python scripts/run_empirical_calibrated_simulation.py
+python scripts/run_z1_stochastic_stress_testing.py
+python scripts/generate_z1_full_token_lifecycle_report.py
+```
+
+The generated integration-test inputs live under:
+
+- `outputs/z1_empirical_calibrated_simulation/`
+- `outputs/z1_stochastic_stress_testing/`
+
+Local Z1 workflows may also receive these absolute-path environment variables:
+
+- `Z1_SPEC_PATH`: the canonical Z1 specification input.
+- `Z1_INSTRUCTIONS_PATH`: the client instruction document used by the local workflow.
+- `Z1_LEDGER_PDF_PATH`: an override for the participatory-ledger PDF; otherwise
+  `docs/ZEE Audience Participatory Ledger.pdf` is used.
+
+`Z1_SPEC_PATH` and `Z1_INSTRUCTIONS_PATH` are orchestration inputs rather than
+test-suite requirements. Do not commit client input files or generated output
+directories solely to make the tests pass.
