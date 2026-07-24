@@ -36,8 +36,40 @@ jobs:
       - name: Install declared dependencies
         run: |
           python -m pip install -r requirements.txt
-          python -m pip install --no-deps -e .
           python -m pip check
+
+      - name: Build wheel
+        run: |
+          mkdir -p "${RUNNER_TEMP}/tokenlab-wheel"
+          python -m pip wheel --no-deps --wheel-dir "${RUNNER_TEMP}/tokenlab-wheel" .
+
+      - name: Smoke-test installed commands
+        run: |
+          smoke_dir="$(mktemp -d)"
+          python -m venv "${smoke_dir}/venv"
+          "${smoke_dir}/venv/bin/python" -m pip install \
+            "${RUNNER_TEMP}"/tokenlab-wheel/*.whl
+          "${smoke_dir}/venv/bin/python" -m pip check
+
+          mkdir -p "${smoke_dir}/work/projects/smoke"
+          printf '%s\n' \
+            'import os' \
+            'import sys' \
+            'from pathlib import Path' \
+            'import TokenLab' \
+            'assert Path.cwd().name == "smoke"' \
+            'assert os.environ["MPLBACKEND"] == "Agg"' \
+            'assert Path(sys.prefix).resolve() in Path(TokenLab.__file__).resolve().parents' \
+            'print("installed TokenLab smoke passed")' \
+            > "${smoke_dir}/work/projects/smoke/smoke.py"
+
+          cd "${smoke_dir}/work"
+          env -u PYTHONPATH "${smoke_dir}/venv/bin/tokenlab" --help
+          env -u PYTHONPATH "${smoke_dir}/venv/bin/tokenlab-verify" --help
+          env -u PYTHONPATH "${smoke_dir}/venv/bin/tokenlab" --list
+          env -u PYTHONPATH "${smoke_dir}/venv/bin/tokenlab" --project smoke
+          env -u PYTHONPATH "${smoke_dir}/venv/bin/python" -c \
+            'import sys; from pathlib import Path; import TokenLab; assert Path(sys.prefix).resolve() in Path(TokenLab.__file__).resolve().parents'
 
       - name: Run test suite
         run: python -m pytest -q

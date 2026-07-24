@@ -35,9 +35,19 @@ Built by economists and data scientists with deep expertise in both traditional 
 ## Getting Started
 
 ### Installation & Prerequisites
-Install the required packages:
+TokenLab currently supports Python 3.10. The core numerical dependency stack
+is pinned to preserve the existing simulation contract.
+
+Install the core library and command-line tools:
+
 ```bash
-pip install -r requirements.txt
+python -m pip install .
+```
+
+For repository development, including the Z1, reporting, and test extras:
+
+```bash
+python -m pip install -r requirements.txt
 ```
 
 ### Directory Structure & Organization
@@ -45,33 +55,43 @@ The repository is organized to maintain a clean layout while keeping all client 
 - `src/`: Core Python package `TokenLab` containing the modular simulation framework.
 - `projects/`: Client-specific simulation directories (e.g. `friendocash/`, `andromeda/`) containing their respective Python scripts and custom datasets.
 - `resources/`: Persistent asset repository (archives, prompt templates, and logos).
-- `run_sim.py`: A unified, premium CLI simulation runner to list and execute simulations easily.
+- `tokenlab`: The installed CLI for listing and executing simulations from an external `projects/` directory.
+- `run_sim.py`: The backwards-compatible source-checkout wrapper for the same CLI.
 
-### Unified Simulation Runner (`run_sim.py`)
-The unified `run_sim.py` runner script allows you to discover, inspect, and run simulations easily while cleanly resolving library import paths and local data relative directories:
+### Unified Simulation Runner (`tokenlab`)
+The `tokenlab` command discovers, inspects, and runs simulations while cleanly
+resolving library imports and project-relative data paths. By default it uses
+`./projects`; use `--projects-dir <path>` or `TOKENLAB_PROJECTS_DIR` for an
+external project root.
 
 1. **List all available simulations**:
    ```bash
-   python run_sim.py --list
+   tokenlab --list
    ```
 
 2. **Execute a client simulation (Headless / Non-blocking - Recommended)**:
    Runs the simulation with a headless matplotlib backend (`MPLBACKEND=Agg`) to ensure it executes to completion in background/headless setups:
    ```bash
-   python run_sim.py --project friendocash
+   tokenlab --project friendocash
    ```
 
 3. **Execute in Interactive mode (GUI Plot Popups)**:
    Runs the simulation and opens interactive GUI windows to display plots on your desktop:
    ```bash
-   python run_sim.py --project friendocash --interactive
+   tokenlab --project friendocash --interactive
    ```
 
 4. **Specify a specific script**:
    If a client folder contains multiple simulation scripts, specify the target file:
    ```bash
-   python run_sim.py --project footboard --script footboard_tokenomics_2.py
+   tokenlab --project footboard --script footboard_tokenomics_2.py
    ```
+
+Existing source-checkout commands such as `python run_sim.py --list` remain
+supported and use the repository's own `projects/` directory.
+
+Notebook execution is optional and requires
+`python -m pip install ".[notebook]"`.
 
 ## Contact & Collaboration
 
