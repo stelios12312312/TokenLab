@@ -14,7 +14,7 @@ on:
       - "pytest.ini"
   push:
     branches:
-      - z1-simulation-v2
+      - main
     paths:
       - ".github/workflows/z1-shared-core-contract.yml"
       - "projects/z1/**"

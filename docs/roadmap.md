@@ -2,8 +2,26 @@
 
 This document outlines the four main milestones for the Z1 token economy simulation, derived from the project's strategy deck. 
 
-## Current Status: 🟢 Transitioning from M1 to M2
-We have completed the core solvency structure and found stable parameter ranges. We are currently implementing endogenous market feedback loops and expanded Treasury mechanics.
+## Current Status: 🟢 M1–M3 Integrated on `main`
+
+The M1, M2, and structural M3 implementations are integrated on `main`. Their
+shared ledger, invariant, supply-metric, configuration, and economy behavior now
+live in `projects/z1/shared_core/`, with milestone modules retaining compatible
+public entry points. Golden parity and fresh-clone test workflows protect the
+integrated implementation.
+
+The remaining unchecked M3 items below are additional analysis or product work,
+not blockers to the integrated Z1 simulation. M4 remains optional and deferred.
+
+## Development and Release Strategy
+
+- `main` is the integration branch for TokenLab and Z1.
+- Z1 changes use short-lived branches from current `main`, such as
+  `agent/z1-<ticket>`, and return through pull requests.
+- Stable client or model snapshots use annotated release tags rather than a
+  permanently diverging Z1 branch.
+- Private calibration data and generated client outputs remain outside version
+  control in their documented project-local locations.
 
 ---
 
@@ -36,11 +54,13 @@ We have completed the core solvency structure and found stable parameter ranges.
 
 ### ⏳ Milestone 3 (M3): Distribution & Agents
 *Focus: How do wealth and power distribute over time?*
-- [ ] PCS (Proof of Content/Curation) weight sensitivity sweeps
+- [x] PCS (Proof of Content/Curation) weight sensitivity sweeps
 - [ ] Gini coefficient analysis (wealth concentration)
 - [ ] Brand cohort / comprehensive campaign logic
-- [ ] Creator and validator cohorts introduction
-- [ ] Governance transition modeling (tenure-heavy to integrity-heavy)
+- [x] Creator and validator cohorts introduction
+- [x] Discrete CIP/VRP pools and governance staking
+- [x] Four-stage PCS epoch budget with tier-progression gates
+- [ ] Governance transition calibration (tenure-heavy to integrity-heavy)
 - [ ] Interactive Dashboard prototype
 
 ### ⏳ Milestone 4 (M4): Full Scope (If Needed)
