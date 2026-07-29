@@ -16,6 +16,9 @@ const installedPreCommitHookPath = join(plannerRoot, ".agent/skills/iterative-pl
 const installedPrePushHookPath = join(plannerRoot, ".agent/skills/iterative-planner/scripts/hooks/pre-push");
 const preCommitHookPath = join(plannerRoot, ".agent/skills/iterative-planner/scripts/pre-commit-hook.sh");
 const preCommitPolicySource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/scripts/pre_commit_policy.mjs"), "utf-8");
+const affectedTimeoutMatch = preCommitPolicySource.match(/const AFFECTED_TEST_TIMEOUT_MS = ([\d_]+);/);
+const verificationStatusHelperSource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/scripts/lib/verification_status_vocabulary.mjs"), "utf-8");
+const verificationStatusVocabularySource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/config/verification_status_vocabulary.json"), "utf-8");
 const runNodeSource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/scripts/hooks/run-node.sh"), "utf-8");
 const migrateAllSource = readFileSync(join(plannerRoot, ".agent/scripts/migrate-all-projects.sh"), "utf-8");
 
@@ -88,9 +91,15 @@ function seedPreCommitPolicyRepo(tmp, rippleMode) {
   initGitRepo(tmp);
   const scriptsDir = join(tmp, ".agent/skills/iterative-planner/scripts");
   const hooksDir = join(scriptsDir, "hooks");
+  const libDir = join(scriptsDir, "lib");
+  const configDir = join(tmp, ".agent/skills/iterative-planner/config");
   mkdirSync(scriptsDir, { recursive: true });
   mkdirSync(hooksDir, { recursive: true });
+  mkdirSync(libDir, { recursive: true });
+  mkdirSync(configDir, { recursive: true });
   writeFileSync(join(scriptsDir, "pre_commit_policy.mjs"), preCommitPolicySource);
+  writeFileSync(join(libDir, "verification_status_vocabulary.mjs"), verificationStatusHelperSource);
+  writeFileSync(join(configDir, "verification_status_vocabulary.json"), verificationStatusVocabularySource);
   writeFileSync(join(hooksDir, "run-node.sh"), runNodeSource);
   chmodSync(join(hooksDir, "run-node.sh"), 0o755);
   writeFileSync(join(scriptsDir, "ripple_check.mjs"), `#!/usr/bin/env node
@@ -119,17 +128,21 @@ console.log(JSON.stringify({
   summary: { gates: 1, total_gaps: 0, hard_gaps: 0 }
 }));
 `);
+  seedFakeIveConformanceRunner(tmp);
   return { env: { TEST_RIPPLE_MODE: rippleMode } };
 }
 
 function seedFakeIveConformanceRunner(tmp) {
   const runnerDir = join(tmp, ".agent/skills/iterative-planner/tests/ive");
   mkdirSync(runnerDir, { recursive: true });
-  const runner = join(runnerDir, "run.mjs");
+const runner = join(runnerDir, "run.mjs");
   writeFileSync(runner, `#!/usr/bin/env node
+import { writeFileSync } from "fs";
 const mode = process.env.TEST_IVE_CONFORMANCE_MODE || "pass";
-console.log(JSON.stringify({ status: mode === "pass" ? "PASS" : "FAIL" }));
-process.exit(mode === "pass" ? 0 : 1);
+const passed = mode === "pass" || mode === "large-pass";
+writeFileSync(".ive-args.json", JSON.stringify(process.argv.slice(2)));
+console.log(JSON.stringify({ status: passed ? "PASS" : "FAIL", results: [{ id: "fake-affected" }], padding: mode === "large-pass" ? "x".repeat(2 * 1024 * 1024) : "" }));
+process.exitCode = passed ? 0 : 1;
 `);
   chmodSync(runner, 0o755);
 }
@@ -140,9 +153,44 @@ function scenarioInstalledPreCommitHook() {
     const clean = seedPreCommitPolicyRepo(tmp, "clean");
     stageFile(tmp, ".agent/skills/iterative-planner/scripts/example.mjs", "export const example = true;\n");
 
-    const cleanResult = runBin("sh", [installedPreCommitHookPath], tmp, clean.env);
+    const affectedTimeoutMs = Number(String(affectedTimeoutMatch?.[1] || "0").replaceAll("_", ""));
+    assert(affectedTimeoutMs >= 900_000, "installed pre-commit hook gives the full affected-suite workload at least fifteen minutes");
+
+    const cleanResult = runBin("sh", [installedPreCommitHookPath], tmp, {
+      ...clean.env,
+      _PLANNER_PLAN_TARGET: "plan-test-target",
+    });
     assert(cleanResult.ok, "installed pre-commit hook exits cleanly when ripple check is clean");
     assert(cleanResult.stdout.includes("ripple-through check passed"), "installed pre-commit hook reports a clean pass");
+    assert(cleanResult.stdout.includes("affected IVE suites passed"), "installed pre-commit hook runs affected IVE suites");
+    const affectedArgs = JSON.parse(readFileSync(join(tmp, ".ive-args.json"), "utf8"));
+    assert(affectedArgs.includes("--changed-files") && affectedArgs.includes(".agent/skills/iterative-planner/scripts/example.mjs"), "installed pre-commit hook forwards the exact staged planner path to IVE");
+    assert(
+      affectedArgs.includes("--plan-target") && affectedArgs.includes("plan-test-target"),
+      "installed pre-commit hook forwards the explicit plan target to scoped IVE suites",
+    );
+
+    execFileSync("git", ["add", ".agent/skills/iterative-planner/tests/ive/run.mjs"], { cwd: tmp, stdio: ["pipe", "pipe", "pipe"] });
+    const governedResult = runBin("sh", [installedPreCommitHookPath], tmp, clean.env);
+    assert(governedResult.ok, "installed pre-commit hook exits cleanly for a governed runner-surface change");
+    const governedArgs = JSON.parse(readFileSync(join(tmp, ".ive-args.json"), "utf8"));
+    assert(governedArgs.includes("--profile") && governedArgs.includes("core-release"), "runner-surface changes use the governed core-release profile");
+    assert(!governedArgs.includes("--changed-files") && !governedArgs.includes("--no-manifest"), "governed pre-commit proof cannot be narrowed or suppress its manifest");
+
+    const affectedFailure = runBin("sh", [installedPreCommitHookPath], tmp, { ...clean.env, TEST_IVE_CONFORMANCE_MODE: "fail" });
+    assert(!affectedFailure.ok, "installed pre-commit hook blocks when an affected IVE suite fails");
+    const affectedFailureOutput = affectedFailure.stdout + affectedFailure.stderr;
+    assert(affectedFailureOutput.includes("refusing commit"), "installed pre-commit hook reports affected-suite refusal");
+    assert(
+      affectedFailureOutput.includes("half-applied payload detected")
+        && affectedFailureOutput.includes("stash or revert .agent/**")
+        && affectedFailureOutput.includes("migrate.mjs doctor"),
+      "installed pre-commit refusal prints the managed-upgrade diagnosis and recovery recipe",
+    );
+
+    const largePass = runBin("sh", [installedPreCommitHookPath], tmp, { ...clean.env, TEST_IVE_CONFORMANCE_MODE: "large-pass" });
+    assert(largePass.ok, "installed pre-commit hook accepts valid affected-suite JSON larger than Node's default child-process buffer");
+    assert(largePass.stdout.includes("affected IVE suites passed"), "installed pre-commit hook reports a large affected-suite payload as passed");
 
     const strippedEnv = seedFakeNvmNode(tmp);
     const strippedResult = runBin("sh", [installedPreCommitHookPath], tmp, { ...clean.env, ...strippedEnv });
@@ -202,11 +250,20 @@ function scenarioInstalledPrePushHook() {
       "sh",
       [installedPrePushHookPath],
       tmp,
-      { ...baseEnv, TEST_IVE_CONFORMANCE_MODE: "pass" },
+      {
+        ...baseEnv,
+        TEST_IVE_CONFORMANCE_MODE: "pass",
+        _PLANNER_PLAN_TARGET: "plan-test-target",
+      },
       "refs/heads/main abc refs/heads/main def\n"
     );
     assert(mainPass.ok, "installed pre-push hook allows main refs after green IVE conformance");
     assert(mainPass.stdout.includes("conformance passed"), "installed pre-push hook reports green conformance");
+    const prePushArgs = JSON.parse(readFileSync(join(tmp, ".ive-args.json"), "utf8"));
+    assert(
+      prePushArgs.includes("--plan-target") && prePushArgs.includes("plan-test-target"),
+      "installed pre-push hook forwards the explicit plan target to IVE",
+    );
 
     const mainFail = runBin(
       "sh",
@@ -231,6 +288,7 @@ function scenarioLegacyPreCommitWrapper() {
     const result = runBin("bash", [preCommitHookPath], tmp, seeded.env);
     assert(result.ok, "legacy pre-commit wrapper delegates cleanly to the shared policy helper");
     assert(result.stdout.includes("ripple-through check passed"), "legacy pre-commit wrapper surfaces the shared policy result");
+    assert(result.stdout.includes("affected IVE suites passed"), "legacy pre-commit wrapper runs the shared affected-test policy");
 
     const strippedEnv = seedFakeNvmNode(tmp);
     const strippedResult = runBin("bash", [preCommitHookPath], tmp, { ...seeded.env, ...strippedEnv });

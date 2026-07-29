@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "policy": "exact_same_path_blob_only",
+  "entries": [
+    {
+      "path": ".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs",
+      "git_blob": "0b22c6a6a73f9cf000630b0fea3e06fadda2700e",
+      "evidence": "legacy_fleet_release_cohort",
+      "matching_installations": 5,
+      "observed_versions": [
+        "10.0.0",
+        "10.2.0"
+      ]
+    },
+    {
+      "path": ".agent/skills/iterative-planner/scripts/lib/program_packet.mjs",
+      "git_blob": "1bcde6565f20b9038f320fe2d0b61d341b28eacd",
+      "evidence": "legacy_fleet_release_cohort",
+      "matching_installations": 5,
+      "observed_versions": [
+        "10.0.0",
+        "10.2.0"
+      ]
+    }
+  ]
+}

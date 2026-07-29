@@ -91,4 +91,4 @@ node .agent/skills/iterative-planner/scripts/planner.mjs install-hook story-veri
 ## Current Limits
 
 - No registry writes or code fixes from Agent B
-- No built-in CI installer or secrets manager; the shipped CI recipes are documented operator patterns under `docs/ci/`
+- No built-in CI installer or secrets manager; the shipped CI recipes are documented operator patterns under docs/ci/github_actions.md

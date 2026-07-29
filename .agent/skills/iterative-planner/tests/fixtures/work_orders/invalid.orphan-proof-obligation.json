@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "goal": "Validate that proof obligations cannot reference unknown claim ids.",
+  "inputs": [
+    {
+      "id": "fixture",
+      "ref": "plans/programs/ive-autocoder-v2/program_packet.json"
+    }
+  ],
+  "constraints": [
+    "Return only deterministic validation results."
+  ],
+  "claims_to_produce": [
+    {
+      "id": "known_claim",
+      "statement": "A known claim statement."
+    }
+  ],
+  "proof_obligations": [
+    {
+      "claim_id": "unknown_claim",
+      "method": "deterministic",
+      "check": "Orphan proof obligations are rejected."
+    }
+  ],
+  "stop_conditions": [
+    "Stop after validator output is produced."
+  ],
+  "budget": {
+    "max_tokens": 4000,
+    "max_cost_usd": 0,
+    "max_time_minutes": 5
+  }
+}

@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Frontend Journey Conformance Fixture</title>
+    <style>
+      :root {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color-scheme: light dark;
+      }
+      body {
+        margin: 0;
+        padding: 2rem;
+        background: #f6f7f9;
+        color: #1a1a1a;
+      }
+      .container {
+        max-width: 720px;
+        margin: 0 auto;
+        background: #fff;
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+      }
+      h1 {
+        margin-top: 0;
+        font-size: 1.25rem;
+      }
+      .toolbar {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin-bottom: 1rem;
+      }
+      button {
+        padding: 0.5rem 0.75rem;
+        border: 1px solid #d1d5db;
+        border-radius: 6px;
+        background: #fff;
+        cursor: pointer;
+        font-size: 0.875rem;
+      }
+      button:hover {
+        background: #f3f4f6;
+      }
+      button:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
+      }
+      .panel {
+        min-height: 120px;
+        border: 1px dashed #d1d5db;
+        border-radius: 8px;
+        padding: 1rem;
+      }
+      .loading {
+        color: #6b7280;
+      }
+      .empty {
+        color: #6b7280;
+        font-style: italic;
+      }
+      .error {
+        color: #b91c1c;
+        background: #fef2f2;
+        padding: 0.75rem;
+        border-radius: 6px;
+      }
+      .success {
+        color: #047857;
+        background: #ecfdf5;
+        padding: 0.75rem;
+        border-radius: 6px;
+      }
+      .item {
+        padding: 0.5rem;
+        border-bottom: 1px solid #e5e7eb;
+      }
+      .item:last-child {
+        border-bottom: none;
+      }
+      .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>Conformance Dashboard</h1>
+      <div class="toolbar" role="group" aria-label="State controls">
+        <button id="btn-loading" type="button" data-state="loading">Show loading</button>
+        <button id="btn-success" type="button" data-state="success">Load data</button>
+        <button id="btn-empty" type="button" data-state="empty">Show empty</button>
+        <button id="btn-error" type="button" data-state="error">Trigger error</button>
+      </div>
+      <div id="panel" class="panel" data-testid="state-panel" aria-live="polite">
+        <p class="empty">No data loaded yet.</p>
+      </div>
+    </div>
+
+    <script>
+      const panel = document.getElementById("panel");
+
+      function renderLoading() {
+        panel.innerHTML = `<p class="loading" data-testid="loading-state">Loading data…</p>`;
+      }
+
+      function renderSuccess() {
+        panel.innerHTML = `
+          <div data-testid="success-state">
+            <p class="success">Data loaded successfully.</p>
+            <div class="item" data-testid="data-item">Item A</div>
+            <div class="item" data-testid="data-item">Item B</div>
+            <div class="item" data-testid="data-item">Item C</div>
+          </div>
+        `;
+      }
+
+      function renderEmpty() {
+        panel.innerHTML = `<p class="empty" data-testid="empty-state">No records found.</p>`;
+      }
+
+      function renderError() {
+        panel.innerHTML = `
+          <div class="error" role="alert" data-testid="error-state">
+            <strong>Error:</strong> Failed to fetch dashboard data.
+          </div>
+        `;
+      }
+
+      document.querySelectorAll("button[data-state]").forEach((button) => {
+        button.addEventListener("click", () => {
+          const state = button.getAttribute("data-state");
+          if (state === "loading") renderLoading();
+          else if (state === "success") renderSuccess();
+          else if (state === "empty") renderEmpty();
+          else if (state === "error") renderError();
+        });
+      });
+    </script>
+  </body>
+</html>

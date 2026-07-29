@@ -3,6 +3,7 @@
 
 import { spawnSync } from "child_process";
 import { resolve } from "path";
+import { emitJson } from "./lib/emit_json.mjs";
 import {
   loadRecipeDefinition,
   resolvePrimaryRecipeCandidate,
@@ -245,7 +246,7 @@ const payload = buildPayload({
 });
 
 if (flags.json) {
-  console.log(JSON.stringify(payload, null, 2));
+  emitJson(payload);
 } else if (payload.ok) {
   console.log("Recipe Runner");
   console.log(`Recipe: ${payload.selected_recipe_id}`);
@@ -265,4 +266,4 @@ if (flags.json) {
   }
 }
 
-process.exit(payload.ok ? 0 : 1);
+process.exitCode = payload.ok ? 0 : 1;

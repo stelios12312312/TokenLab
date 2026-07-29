@@ -3,9 +3,9 @@ import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
 import { tmpdir } from "os";
-import { createHash } from "crypto";
 
 import { createInitialStateJson, writeStateJson } from "../../scripts/lib/determinism.mjs";
+import { plannerSubprocessEnv } from "./env.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const helperDir = dirname(__filename);
@@ -38,12 +38,7 @@ export function runNode(args, cwd, extraEnv = {}) {
         cwd,
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
-        env: {
-          ...process.env,
-          CODEX_THREAD_ID: "",
-          _PLANNER_PLAN_TARGET: "",
-          ...extraEnv,
-        },
+        env: plannerSubprocessEnv(extraEnv),
       }),
       stderr: "",
     };
@@ -499,14 +494,9 @@ function seedAcceptancePlan(projectRoot, scenario) {
   state.state = scenario.gate.name === "plan-to-execute" ? "PLAN" : "REFLECT";
 
   if (scenario.gate.name === "plan-to-execute") {
-    const approvalNonce = "abcdef0123456789";
-    state.approval_nonce_hash = createHash("sha256").update(approvalNonce).digest("hex").slice(0, 32);
-    state.nonce_generated_at = new Date().toISOString();
     writeText(join(planDir, "decisions.md"), `# Decision Log
 
 ## D-001
-[APPROVED:${approvalNonce}]
-
 Accepted the shared archetype acceptance fixture.
 `);
   } else {

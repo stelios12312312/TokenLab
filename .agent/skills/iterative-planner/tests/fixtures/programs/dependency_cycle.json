@@ -4,9 +4,21 @@
   "title": "Dependency Cycle",
   "status": "ready",
   "goal": "Show dependency cycle failure.",
-  "story_refs": ["US-001"],
+  "story_refs": [
+    "US-001"
+  ],
   "epics": [
-    { "id": "EP-001", "title": "Cycle epic", "story_refs": ["US-001"], "ticket_refs": ["T-001", "T-002"] }
+    {
+      "id": "EP-001",
+      "title": "Cycle epic",
+      "story_refs": [
+        "US-001"
+      ],
+      "ticket_refs": [
+        "T-001",
+        "T-002"
+      ]
+    }
   ],
   "tickets": [
     {
@@ -15,16 +27,39 @@
       "title": "First ticket",
       "type": "feature",
       "lifecycle": "ready",
-      "story_refs": ["US-001"],
+      "story_refs": [
+        "US-001"
+      ],
       "defect_refs": [],
       "gap_refs": [],
-      "depends_on": ["T-002"],
-      "acceptance_criteria": ["AC-001"],
-      "child_plan": { "policy": "not_required", "plan_dir": null, "reason": "Fixture" },
+      "depends_on": [
+        "T-002"
+      ],
+      "acceptance_criteria": [
+        "AC-001"
+      ],
+      "child_plan": {
+        "policy": "not_required",
+        "plan_dir": null,
+        "reason": "Fixture"
+      },
       "compatibility_contract_refs": [],
       "migration_boundary_refs": [],
       "deletion_move_census_refs": [],
-      "verification_refs": ["VM-001"]
+      "verification_refs": [
+        "VM-001"
+      ],
+      "external_refs": [
+        {
+          "kind": "github_issue",
+          "repo": "owner/repo",
+          "issue_number": 9007,
+          "title": "First ticket",
+          "state": "OPEN",
+          "url": "https://github.com/owner/repo/issues/9007",
+          "synced_at": "2026-07-01T00:00:00.000Z"
+        }
+      ]
     },
     {
       "id": "T-002",
@@ -32,29 +67,86 @@
       "title": "Second ticket",
       "type": "feature",
       "lifecycle": "ready",
-      "story_refs": ["US-001"],
+      "story_refs": [
+        "US-001"
+      ],
       "defect_refs": [],
       "gap_refs": [],
-      "depends_on": ["T-001"],
-      "acceptance_criteria": ["AC-002"],
-      "child_plan": { "policy": "not_required", "plan_dir": null, "reason": "Fixture" },
+      "depends_on": [
+        "T-001"
+      ],
+      "acceptance_criteria": [
+        "AC-002"
+      ],
+      "child_plan": {
+        "policy": "not_required",
+        "plan_dir": null,
+        "reason": "Fixture"
+      },
       "compatibility_contract_refs": [],
       "migration_boundary_refs": [],
       "deletion_move_census_refs": [],
-      "verification_refs": ["VM-002"]
+      "verification_refs": [
+        "VM-002"
+      ],
+      "external_refs": [
+        {
+          "kind": "github_issue",
+          "repo": "owner/repo",
+          "issue_number": 9008,
+          "title": "Second ticket",
+          "state": "OPEN",
+          "url": "https://github.com/owner/repo/issues/9008",
+          "synced_at": "2026-07-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "acceptance_criteria": [
-    { "id": "AC-001", "scope": "ticket", "subject_ref": "T-001", "text": "First ticket is ready.", "story_refs": ["US-001"], "maintenance_rationale": null },
-    { "id": "AC-002", "scope": "ticket", "subject_ref": "T-002", "text": "Second ticket is ready.", "story_refs": ["US-001"], "maintenance_rationale": null }
+    {
+      "id": "AC-001",
+      "scope": "ticket",
+      "subject_ref": "T-001",
+      "text": "First ticket is ready.",
+      "story_refs": [
+        "US-001"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-002",
+      "scope": "ticket",
+      "subject_ref": "T-002",
+      "text": "Second ticket is ready.",
+      "story_refs": [
+        "US-001"
+      ],
+      "maintenance_rationale": null
+    }
   ],
   "dependencies": [],
   "compatibility_contracts": [],
   "migration_boundaries": [],
   "deletion_move_census": [],
   "verification_matrix": [
-    { "id": "VM-001", "scope": "ticket", "subject_ref": "T-001", "acceptance_criterion_ref": "AC-001", "proof_type": "proof:artifact_review", "command_or_action": "Review", "pass_means": "Review passes" },
-    { "id": "VM-002", "scope": "ticket", "subject_ref": "T-002", "acceptance_criterion_ref": "AC-002", "proof_type": "proof:artifact_review", "command_or_action": "Review", "pass_means": "Review passes" }
+    {
+      "id": "VM-001",
+      "scope": "ticket",
+      "subject_ref": "T-001",
+      "acceptance_criterion_ref": "AC-001",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review",
+      "pass_means": "Review passes"
+    },
+    {
+      "id": "VM-002",
+      "scope": "ticket",
+      "subject_ref": "T-002",
+      "acceptance_criterion_ref": "AC-002",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review",
+      "pass_means": "Review passes"
+    }
   ],
   "decisions": []
 }

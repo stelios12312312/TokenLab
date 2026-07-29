@@ -2,6 +2,7 @@
 // Complexity Budget — tracks and enforces complexity limits during execution.
 //
 // Usage:
+//   node complexity_budget.mjs --self-test           Run this script's local smoke check
 //   node complexity_budget.mjs check              Check current complexity against budget
 //   node complexity_budget.mjs record <metric> <n> Record a complexity increment
 //   node complexity_budget.mjs snapshot            Capture current state from git diff
@@ -18,6 +19,14 @@ import { join } from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { getPaths, resolvePlanTarget, debugLog } from "./lib/plan_utils.mjs";
+import {
+  assertSelfTest,
+  cleanupSelfTestTemp,
+  makeSelfTestTemp,
+  printSelfTestPass,
+  runNodeScript,
+  seedActivePlan,
+} from "./lib/script_self_test.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -222,9 +231,35 @@ function showStatus(planDir) {
   }
 }
 
+function runSelfTest() {
+  const tmp = makeSelfTestTemp("complexity-budget");
+  try {
+    seedActivePlan(tmp, "plan_complexity_self_test");
+
+    const recordResult = runNodeScript([__filename, "record", "net_lines", "12"], tmp);
+    assertSelfTest(recordResult.ok, "complexity_budget records a metric increment", recordResult.stderr || recordResult.stdout);
+
+    const checkResult = runNodeScript([__filename, "check"], tmp);
+    assertSelfTest(checkResult.ok, "complexity_budget check passes within budget", checkResult.stderr || checkResult.stdout);
+
+    const statusResult = runNodeScript([__filename, "status"], tmp);
+    assertSelfTest(statusResult.ok, "complexity_budget status exits cleanly", statusResult.stderr || statusResult.stdout);
+    assertSelfTest(statusResult.stdout.includes("\"net_lines\": 12"), "complexity_budget status reports the recorded net_lines value", statusResult.stdout);
+
+    printSelfTestPass("complexity_budget");
+  } finally {
+    cleanupSelfTestTemp(tmp);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+
+if (process.argv[2] === "--self-test") {
+  runSelfTest();
+  process.exit(0);
+}
 
 const { plansDir } = getPaths();
 const { planDir } = resolvePlanTarget(plansDir, { exitOnMissing: false });

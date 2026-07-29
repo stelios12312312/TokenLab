@@ -3,6 +3,8 @@
 // The pack is intentionally data-only plus small deterministic evaluators. Domain
 // accomplice lists live here, while planner/runtime gates import the pack.
 
+import { verificationStatusIsPass } from "../../scripts/lib/verification_status_vocabulary.mjs";
+
 // Scope-gap trigger thresholds (textbook statistics, derived independently — not lifted):
 //  - 0.30 = the conventional |r| boundary between "weak" and "moderate" linear correlation;
 //    below it a confounder is too weak to force a PLAN scope reopen.
@@ -201,11 +203,10 @@ function normalizeObligations(input) {
 }
 
 function obligationCovered(obligation) {
-  const status = normalizeText(obligation.status || obligation.verdict || obligation.decision);
-  const reason = String(obligation.reason || obligation.evidence || obligation.rationale || "").trim();
-  if (["addressed", "covered", "included", "tested", "measured"].includes(status)) return true;
-  if (["dismissed", "excluded", "not applicable", "n/a", "waived"].includes(status)) return reason.length > 0;
-  return false;
+  return verificationStatusIsPass(
+    obligation.status || obligation.verdict || obligation.decision,
+    "execution",
+  );
 }
 
 export function evaluateAccompliceObligations({ archetype, obligations = [] } = {}) {

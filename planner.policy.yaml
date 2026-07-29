@@ -1,0 +1,17 @@
+version: 1
+shape: null
+domain: null
+default_route: auto
+verification:
+  compact_by_default: true
+story_registry:
+  enforced_for: [code, integration, quant, security]
+persona:
+  ambient: true
+  surface_on_session_start: true
+ive:
+  ambient: true
+  surface_on_session_start: true
+session:
+  kb_reads_required: false
+transition_output: full

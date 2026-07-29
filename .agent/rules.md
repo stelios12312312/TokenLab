@@ -95,6 +95,7 @@ Mandatory rules for every AI session on this project. These rules prevent common
 **Protocol**:
 - When using the iterative planner, NEVER transition between states manually.
 - Use `node <skill-path>/scripts/transition.mjs <gate-name>` for ALL transitions.
+- Immediately before each actual transition, run `node <skill-path>/scripts/transition.mjs <gate-name> --dry-run`; it is the same evaluator with persistence disabled.
 - This single command runs health checks, gate verification, and checklists.
 - If it outputs FAIL, you may NOT proceed. Fix the failing items first.
 - Do NOT run `verify_gate.mjs`, `checklist_runner.mjs`, or `project_health.mjs` individually at gate points.
@@ -138,8 +139,10 @@ Mandatory rules for every AI session on this project. These rules prevent common
 - When modifying ANY file under `.agent/skills/iterative-planner/`, treat it as a shared-module change requiring full safe-change discipline.
 - **Before coding**: grep for the feature/gate name you're changing across the entire `.agent/` directory. Every hit is a potential update target.
 - **After coding**: run `node <skill-path>/scripts/ripple_check.mjs`. This is non-optional — the pre-commit hook enforces it, but run it early to catch gaps before you accumulate changes.
+
 - **After second fix to same feature**: STOP. Write down the actual user journey. Redesign instead of patching. Four patches to one feature in one session means wrong level of abstraction.
-- **Test the user journey**: if the change affects migration, run `node <skill-path>/tests/test_migration.mjs` to simulate a fresh project setup.
+- **Test the user journey**: if the change affects migration, run `node <skill-path>/tests/ive/run.mjs --only migration-bootstrap --only transition-gate-flows --json --no-manifest` so the governed migration and planner-transition paths are both exercised.
+- **Keep managed upgrades transactional**: never write an upgrade payload directly into a live consumer and leave proof or commit for a later session. Require clean managed preflight, an immutable source pin, scratch-candidate apply/setup, census plus planner-core proof, explicit `--commit` consent, one live fast-forward, and a durable receipt/recovery path. Preserve all provenance refusals and unrelated consumer work.
 
 **Why**: The planner's own code has the highest blast radius in the project — a bug in `transition.mjs` or `migrate.mjs` breaks every project that uses the planner. In the v2.1.0 session, the same class of bug (incomplete ripple-through) occurred four times because the agent modified planner code without following the planner's own discipline. The checks existed but weren't run.
 
@@ -153,7 +156,7 @@ Mandatory rules for every AI session on this project. These rules prevent common
 - If `reports/user_story_audit/story_registry.json` exists and `plan.md` uses `## Success Criteria`, `## Verification Strategy` must be a table with `Criterion | Story linkage | Check | Pass means`.
 - Every success criterion must map to at least one real story ID from the registry. If no story registry exists, write `Story linkage: N/A — no story registry`.
 - Do **not** treat `Files To Modify` overlap as the primary proof path. Overlap heuristics are fallback-only; deliberate story linkage belongs in the plan.
-- Validate with `node <skill-path>/scripts/transition.mjs plan-to-execute` or `verify_gate.mjs plan-to-execute` before starting heavy execution or rollout work.
+- Preflight with `node <skill-path>/scripts/transition.mjs plan-to-execute --dry-run`, then run the actual transition immediately before starting heavy execution or rollout work.
 
 **Why**: The `4.0.5` release rollout only failed at `reflect-to-close`, after fleet work was already complete, because the plan looked well-verified in prose but never declared explicit criterion-to-story traceability. This rule moves that failure to PLAN where it belongs.
 
@@ -182,7 +185,7 @@ Mandatory rules for every AI session on this project. These rules prevent common
 - First capture the failing plan through the deterministic packet:
   ```bash
   node .agent/skills/iterative-planner/scripts/bootstrap.mjs status
-  node .agent/skills/iterative-planner/scripts/verify_gate.mjs <gate> --plan <plan-dir>
+  node .agent/skills/iterative-planner/scripts/transition.mjs <gate> --dry-run --plan <plan-dir>
   node .agent/skills/iterative-planner/scripts/planner_findings.mjs --dir <repo-root> --plan <plan-dir> --gate <gate> --json
   _PLANNER_PLAN_TARGET=<plan-dir> node .agent/skills/iterative-planner/scripts/ontology_serializer.mjs --json
   ```
@@ -206,6 +209,21 @@ Mandatory rules for every AI session on this project. These rules prevent common
 - For parser and reader regressions, exercise both the primary failing path and at least one mirror consumer before closing.
 
 **Why**: On `2026-04-14`, `verification.md` parsing was fixed in `ontology_serializer.mjs`, but `fact_loader.mjs` still used a substring-based mirror parser, so `validate-to-close` kept failing. The first regression fixture also used planner-core file paths and synthetic state, which obscured the real contract bug behind unrelated close requirements.
+
+---
+
+## 12a. Close-Boundary Evaluator Preflight (Retro 2026-07-22)
+
+**Goal**: Prevent a multi-session planner finish line from draining one pre-existing evaluator defect per close attempt because downstream boundaries remain serially masked.
+
+**Protocol**:
+- Activate this rule when planner-core work resumes near CLOSE or crosses at least two of these families: lifecycle mutation, proof ordering, freshness, live/replay parity, integrity, clean/staged state, or shipped-proof provenance. Ordinary bounded changes do not activate it.
+- Before the first expensive close attempt, inventory commands, artifacts, phase snapshots, mutation authority, freshness headroom, and canonical/mirror consumers for six pairs: dry-run/write, proof producer/consumer, fresh/stale, live/replay, clean/staged plus integrity, and historical shipped/staged proof.
+- Exercise every safe dry-run or faithful temporary fixture, with a positive and a genuine negative. Negative controls must remain red for the intended reason.
+- If the preflight exposes another defect, stop and intake it separately. Never widen the active repair, weaken a gate, waive stale evidence, hand-edit lifecycle or integrity state, or treat generic title overlap as proof.
+- The later deterministic close gate remains authoritative; preflight evidence cannot promote lifecycle or clear a real failure.
+
+**Why**: Wave 2 exposed six pre-existing defects one per session only after the preceding close blocker cleared. Testing the complete downstream evaluator graph earlier preserves fail-closed authority while moving discovery ahead of closeout.
 
 ---
 
@@ -252,7 +270,56 @@ Mandatory rules for every AI session on this project. These rules prevent common
 
 **Protocol**:
 - NEVER dispatch live emails (e.g. `gmail.send_draft`), Slack messages, Telegram broadcasts, or any other external communication without showing the exact payload to the user first.
-- You must receive explicit "YES SEND IT" approval from the user before executing the send command.
-- If a workflow involves drafting communications, use `gmail.create_draft` or equivalent, present the draft ID or content to the user, and STOP. Do not proceed to send without explicit instruction.
+- You must receive a fresh, direct, unambiguous affirmative from the user after
+  showing the exact target and payload. Ordinary wording such as `yes`,
+  `go ahead`, or `ok, let's do it` is valid only when recorded as direct,
+  non-generated, non-delegated, fresh input bound to that unchanged action
+  envelope.
+- If a workflow involves drafting communications, use `gmail.create_draft` or
+  equivalent, present the draft ID or content to the user, and STOP. Draft,
+  conditional, delayed, inferred, delegated, stale, or mismatched confirmation
+  never authorizes sending.
 
 **Why**: An agent automatically dispatched VIP onboarding follow-ups without user review based on a generic instruction to "update what we say". This bypassed human-in-the-loop review for live customer interaction, violating basic safety constraints.
+
+---
+
+## 15. Measurement Receipts — Scores Must Be User-Visible
+
+**Goal**: Prevent green quality artifacts from hiding the actual measurement values the user asked for.
+
+**Protocol**:
+- When citing IVE, scoreboard, quality-test, Insight Velocity, or ritual replay evidence, report the measured `quality_score`, `iv_score`, and `ritual_score` by name and value in the user-facing closeout.
+- If a score is not selected or not scored, say `n/a` and include the source status.
+- Artifact links, JSON paths, component lists, or generic "quality passed" wording do not satisfy this rule by themselves.
+
+**Why**: A quality run that hides its headline scores forces the user to rediscover the measurement and makes regressions look like successful closeout.
+
+---
+
+## 16. Traceability Bookkeeping Must Be Mechanically Consistent (Retro 2026-07-02)
+
+**Goal**: Prevent closeout from becoming pure bookkeeping because the planner's traceability channels disagree.
+
+**Protocol**:
+- When a file is referenced as a validation artifact (e.g., `@planner:proves` or criterion-to-script linkage), it must also satisfy `source_file_mapped/1` through `code_ref`, `test_ref`, `validation_ref`, or an explicit mapping. Do not assume `validation_artifact/2` alone is enough unless the ontology bridge rule is confirmed active.
+- Before transitioning from EXECUTE to REFLECT on plans that add or edit `@planner:` annotations, run `node .agent/skills/iterative-planner/scripts/annotation_parser.mjs --validate` and fix any unknown-key errors (e.g., replace `story_id` with `story`).
+- When `review_intake.json` shows required items sourced from `check-invariants_*.json` artifacts, treat it as a self-referential cycle: archive stale artifacts and confirm `review_intake.mjs` excludes `check-invariants` traces.
+- If `story_registry.json` is edited, do not manually compute or edit `state.json.registry_hash`. Run a planner transition; write mode refreshes the hash and retracts `registry_tampered` automatically.
+
+**Why**: EXP-011b's closeout was blocked by four untraced files, one invalid annotation key, one self-sustaining review-intake cycle, and one stale registry hash — none of which indicated an experimental defect. Reconciling traceability channels at execution time keeps closeout focused on science, not bookkeeping.
+
+---
+
+## 17. User Story Elicitation on User Requests (Retro 2026-07-06)
+
+**Goal**: Ensure all new user requests for features, capabilities, or major behavioral changes are registered in the user story registry at the time of intake.
+
+**Protocol**:
+- When the user makes a request to implement a new feature, capability, or non-trivial change:
+  1. Ask the user explicitly if they would like to register their request as a user story: *"Would you like to register this request as a user story?"*
+  2. Help the user draft the story title, description (As a... I want... So that...), priority, and acceptance criteria.
+  3. Register the story programmatically using `story_cli.mjs` before writing the implementation plan.
+- If the user request is a simple bug fix, diagnostic, question, or administrative chore, you do not need to elicit a user story.
+
+**Why**: Keeping the user story registry synchronized with actual user requests in real-time ensures that we maintain perfect traceability from user requirements to code and verification matrix checks.

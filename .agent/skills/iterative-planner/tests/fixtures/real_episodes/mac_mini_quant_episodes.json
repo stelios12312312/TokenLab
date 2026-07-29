@@ -72,6 +72,70 @@
         "calibration": "missing calibration blocks promotion; fixture performs no calibration fit",
         "promotion_allowed": false
       },
+      "leakage_recurrence": {
+        "leakage_vector": "cpcv_future_to_past_training_window",
+        "known_at_time_statement": "Only fold definitions and retro facts known by 2026-05-24 are available to the replay.",
+        "temporal_split": "Training folds must be earlier than each evaluation fold; any fold using later evidence for an earlier evaluation period is leakage.",
+        "controls_baselines": [
+          "walk_forward_temporal_cutoff",
+          "market_control_baseline"
+        ],
+        "required_diagnostics": [
+          "leakage_boundary",
+          "data_lineage",
+          "controls_baselines",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
+      "controls_calibration_replay": {
+        "target_outcome": "block promotion when temporal OOF evidence lacks calibration proof and control baselines",
+        "data_lineage": "hashed Trueskill CPCV retro and mistake references only; no raw odds or match rows loaded",
+        "as_of": "2026-05-24T00:00:00Z",
+        "known_at_time_evaluation_boundary": "Train folds must be known before validation/OOS folds; calibration evidence is absent in the cited replay facts.",
+        "temporal_leakage_handling": "Future-to-past CPCV leakage is suspected; no same-fold or future-fold calibration may support a result claim.",
+        "controls_baselines": [
+          "market_baseline",
+          "naive_rating_baseline"
+        ],
+        "benchmark_comparison": "Compare any claimed metric against market and naive baselines only after temporal lineage and calibration proof exist.",
+        "calibration_check": "missing: calibration curve, Brier score, and log-loss evidence are absent, so promotion remains blocked.",
+        "stability_confidence": "low: temporal split proof and calibration evidence are missing.",
+        "strongest_counterargument": "The impressive metric may be temporal leakage or uncalibrated probability noise.",
+        "alpha_discovery_loop": "Queue calibration curve, Brier score, and log-loss replay after temporal split repair.",
+        "next_experiment": "Run a calibration replay with train-fold fitting and validation-fold evaluation.",
+        "evidence_families": [
+          "market_baseline",
+          "naive_baseline",
+          "calibration_curve"
+        ],
+        "required_diagnostics": [
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_evaluation_boundary",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "benchmark_comparison",
+          "calibration_check",
+          "stability_confidence",
+          "strongest_counterargument",
+          "alpha_discovery_loop",
+          "next_experiment",
+          "evidence_families",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
       "non_claims": [
         "No tennis ROI, alpha, betting, or model-performance claim is made by this replay."
       ]
@@ -165,9 +229,169 @@
         "calibration": "not_applicable: fixture does not fit or calibrate a model",
         "promotion_allowed": false
       },
+      "experiment_ledger_provenance": {
+        "experiment_record": "EXP-TRUESKILL-FAST-EVAL-ROI-SMOKE",
+        "run_record": "RUN-TRUESKILL-FAST-EVAL-ROI-SMOKE",
+        "command": "redacted:fast-eval-smoke",
+        "config_hash": "sha256:trueskill-fast-eval-config-redacted",
+        "dataset_source_hash": "sha256:trueskill-fast-eval-dataset-redacted",
+        "split_id": "smoke_split_not_final_oos",
+        "objective_version": "objective:smoke_roi_not_frozen_for_promotion",
+        "baseline_refs": [
+          "canonical_joint_search_pipeline",
+          "market_control_baseline"
+        ],
+        "result_artifact": "artifact:fast_eval_smoke_summary_redacted",
+        "run_class": "smoke",
+        "target_outcome": "run-class honesty before result interpretation",
+        "data_lineage": "hashed Trueskill optimization retro reference only",
+        "as_of": "2026-05-05T00:00:00Z",
+        "known_at_time_split_lineage": "The split was known as a smoke split before any result wording.",
+        "temporal_leakage_handling": "No final OOS interpretation is allowed from smoke split lineage.",
+        "controls_baselines": [
+          "canonical_joint_search_pipeline",
+          "market_control_baseline"
+        ],
+        "benchmark_comparison": "Compare smoke output only to the canonical pipeline requirement, not to final OOS evidence.",
+        "alpha_discovery_loop": "If smoke wiring is useful, queue a separate final-OOS ledger repair ticket before any alpha interpretation.",
+        "required_diagnostics": [
+          "experiment_record",
+          "run_record",
+          "command",
+          "config_hash",
+          "dataset_source_hash",
+          "split_id",
+          "objective_version",
+          "baseline_refs",
+          "result_artifact",
+          "run_class",
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_split_lineage",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "benchmark_comparison",
+          "alpha_discovery_loop",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
       "non_claims": [
-        "No ROI or edge claim is made from smoke-class optimizer output."
-      ]
+        "No ROI or edge claim is made from smoke-class optimizer output.",
+        "No optimizer-scale contract in this fixture is a model-performance, alpha, ROI, CLV, or promotion claim."
+      ],
+      "optimizer_scale_contract": {
+        "run_class": "smoke",
+        "trial_count": 4,
+        "unique_param_count": 12,
+        "active_param_count": 4,
+        "search_surface_hash": "sha256:trueskill-fast-eval-search-surface-redacted",
+        "search_surface": [
+          "rating_prior",
+          "surface_weight",
+          "smoke_roi_threshold"
+        ],
+        "objective_version": "objective:smoke_roi_not_frozen_for_promotion",
+        "objective_frozen": true,
+        "eval_feedback_tuning": false,
+        "target_outcome": "optimizer smoke scale disclosure before ROI wording",
+        "data_lineage": "hashed TrueSkill fast-eval smoke reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time_split_lineage": "The smoke split and small trial budget were known before ROI wording.",
+        "temporal_leakage_handling": "No final OOS or future-event data is interpreted from smoke-class output.",
+        "controls_baselines": [
+          "canonical_joint_search_pipeline",
+          "market_control_baseline"
+        ],
+        "benchmark_comparison": "Compare smoke search only against the required serious-search contract before interpreting output.",
+        "alpha_discovery_loop": "Queue a separate adequately powered search before any alpha or model-performance interpretation.",
+        "scale_verdict": "smoke_only",
+        "required_diagnostics": [
+          "run_class",
+          "trial_count",
+          "unique_param_count",
+          "active_param_count",
+          "search_surface_hash",
+          "search_surface",
+          "objective_version",
+          "objective_frozen",
+          "eval_feedback_tuning",
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_split_lineage",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "benchmark_comparison",
+          "alpha_discovery_loop",
+          "scale_verdict",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
+      "software_validation_path": {
+        "validation_case": "wrapper_only_fast_eval_rejected",
+        "exercised_system_path": "real_episode_corpus_test -> scenario_harness -> focused_ive_conformance -> program_packet_check",
+        "contract_owner": "ive_real_episode_replay",
+        "direct_plus_conformance_parity": "Direct corpus assertions and focused IVE conformance must both expose smoke-only validation before any optimizer result wording.",
+        "validation_layers": [
+          "direct_real_episode_corpus_test",
+          "scenario_harness_quant_guard",
+          "focused_ive_conformance",
+          "program_packet_check",
+          "migration_smoke"
+        ],
+        "detected_failure_modes": [
+          "wrapper_only_proof",
+          "convoluted_implementation_route"
+        ],
+        "target_outcome": "software path rejects fast-eval wrapper proof before final edge wording",
+        "data_lineage": "hashed Trueskill fast-eval retro reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time_split_lineage": "The smoke endpoint and non-final split were known before the replay was interpreted.",
+        "temporal_leakage_handling": "No final OOS or future-event interpretation is allowed from wrapper-only smoke proof.",
+        "controls_baselines": [
+          "canonical_joint_search_pipeline",
+          "direct_plus_conformance_parity_baseline"
+        ],
+        "alpha_discovery_loop": "Run the canonical path and compare direct/conformance outputs before queuing any alpha experiment.",
+        "migration_smoke_required": true,
+        "configuration_default_parity": "Fast-eval defaults must not bypass canonical pipeline defaults in migration or conformance proof.",
+        "quant_results_validation_required": true,
+        "required_diagnostics": [
+          "validation_case",
+          "exercised_system_path",
+          "contract_owner",
+          "direct_plus_conformance_parity",
+          "validation_layers",
+          "detected_failure_modes",
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_split_lineage",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "alpha_discovery_loop",
+          "migration_smoke_required",
+          "configuration_default_parity",
+          "quant_results_validation",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      }
     },
     {
       "id": "trueskill_model_worse_than_market",
@@ -209,6 +433,40 @@
         "baseline": "market/control baseline is authoritative for this fixture",
         "calibration": "not_applicable: fixture does not fit or calibrate a model",
         "promotion_allowed": false
+      },
+      "missed_feature_replay": {
+        "candidate_signal": "control_baseline_beats_model",
+        "edge_mechanism": "A control that beats the model can be a stronger next-experiment signal than another feature search.",
+        "target_outcome": "preserve negative-control memory before proposing new features",
+        "expected_metric": "control_baseline_comparison is present before any model-improvement claim",
+        "known_at_time_feature_availability": "Only fixture metadata and the historical control comparison are used; no future match rows are consumed.",
+        "leakage_check": "The replay cannot use post-hoc model diagnostics to rescue a failed result; it records the control outcome as a blocker.",
+        "controls_baselines": [
+          "market_control_baseline",
+          "no_new_feature_baseline"
+        ],
+        "benchmark_comparison": "Compare any next feature idea against the existing market/control baseline before treating it as research progress.",
+        "strongest_counterargument": "The model may simply lack usable signal, so the right next experiment may be stopping rather than adding features.",
+        "next_experiment": "Queue a no-new-feature baseline replay and require any future feature proposal to beat the control first.",
+        "required_diagnostics": [
+          "candidate_signal",
+          "edge_mechanism",
+          "target_outcome",
+          "expected_metric",
+          "known_at_time_feature_availability",
+          "leakage_check",
+          "controls_baselines",
+          "benchmark_comparison",
+          "strongest_counterargument",
+          "next_experiment",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
       },
       "non_claims": [
         "No positive model, market, ROI, or betting claim is made."
@@ -261,6 +519,94 @@
         "calibration": "not_applicable: fixture does not fit or calibrate a model",
         "promotion_allowed": false
       },
+      "missed_feature_replay": {
+        "candidate_signal": "feature_consumer_visibility_gap",
+        "edge_mechanism": "A feature can look absent from results because one model consumer never received it, so parity proof comes before feature value testing.",
+        "target_outcome": "feature parity next experiment queued before any model-gain claim",
+        "expected_metric": "consumer_visibility_coverage reaches every declared production model consumer",
+        "known_at_time_feature_availability": "Only feature registry metadata, consumer declarations, and allowlists known before evaluation are used.",
+        "leakage_check": "No target outcomes, post-evaluation importances, or final metrics can decide whether the feature is visible.",
+        "controls_baselines": [
+          "no_feature_baseline",
+          "all_consumer_parity_baseline"
+        ],
+        "benchmark_comparison": "Compare the candidate feature path with no-feature and all-consumer parity baselines before any effect-size claim.",
+        "strongest_counterargument": "The missed feature may be pure wiring hygiene rather than a predictive signal.",
+        "next_experiment": "Run consumer parity assertions, then queue a no-feature ablation only if all consumers see the feature.",
+        "required_diagnostics": [
+          "candidate_signal",
+          "edge_mechanism",
+          "target_outcome",
+          "expected_metric",
+          "known_at_time_feature_availability",
+          "leakage_check",
+          "controls_baselines",
+          "benchmark_comparison",
+          "strongest_counterargument",
+          "next_experiment",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
+      "software_validation_path": {
+        "validation_case": "feature_adapter_bypass_rejected",
+        "exercised_system_path": "real_episode_corpus_test -> adapter_fixture_preservation -> scenario_quant_report -> focused_ive_conformance",
+        "contract_owner": "ive_scenario_harness",
+        "direct_plus_conformance_parity": "Direct adapter assertions and focused conformance must both show feature consumer parity before validation closes.",
+        "validation_layers": [
+          "direct_real_episode_corpus_test",
+          "adapter_preservation_assertion",
+          "scenario_quant_report",
+          "focused_ive_conformance",
+          "migration_smoke"
+        ],
+        "detected_failure_modes": [
+          "adapter_bypass",
+          "duplicate_validation"
+        ],
+        "target_outcome": "software path rejects feature registration when one adapter path bypasses declared consumers",
+        "data_lineage": "hashed Trueskill feature retro and mistake references only",
+        "as_of": "2026-05-08T00:00:00Z",
+        "known_at_time_split_lineage": "Consumer declarations and feature registries are known before any model-result interpretation.",
+        "temporal_leakage_handling": "Feature visibility is checked before any target-aware metric or post-evaluation feature importance is consulted.",
+        "controls_baselines": [
+          "all_consumer_parity_baseline",
+          "single_consumer_wrapper_baseline"
+        ],
+        "alpha_discovery_loop": "Run parity assertions across every declared consumer before any ablation or feature-value experiment.",
+        "migration_smoke_required": true,
+        "configuration_default_parity": "Feature registry defaults and adapter allowlists must agree across migrated planner fixtures.",
+        "quant_results_validation_required": true,
+        "required_diagnostics": [
+          "validation_case",
+          "exercised_system_path",
+          "contract_owner",
+          "direct_plus_conformance_parity",
+          "validation_layers",
+          "detected_failure_modes",
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_split_lineage",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "alpha_discovery_loop",
+          "migration_smoke_required",
+          "configuration_default_parity",
+          "quant_results_validation",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
       "non_claims": [
         "No model gain claim is made from feature registration alone."
       ]
@@ -310,6 +656,40 @@
         "calibration": "not_applicable: fixture does not fit or calibrate a model",
         "promotion_allowed": false
       },
+      "missed_feature_replay": {
+        "candidate_signal": "operator_next_experiment_gap",
+        "edge_mechanism": "A blocked promotion report can still preserve useful candidate experiments when the evidence boundary is explicit.",
+        "target_outcome": "operator receives ranked next experiment memory without model promotion",
+        "expected_metric": "report_advice_coverage includes blocker, current control, expected proof metric, and next experiment",
+        "known_at_time_feature_availability": "Only redacted report metadata and known governance blockers are available to the replay.",
+        "leakage_check": "No selected-bet rows, future outcomes, or post-report performance can be used to rank advice.",
+        "controls_baselines": [
+          "current_control_strategy",
+          "blocked_promotion_baseline"
+        ],
+        "benchmark_comparison": "Compare each candidate advice item with the current control and the unresolved blocker before ranking it.",
+        "strongest_counterargument": "Useful advice may still be premature if the missing proof artifact is more important than any candidate experiment.",
+        "next_experiment": "Queue the smallest report section that separates governance block, current best control, and candidate experiment.",
+        "required_diagnostics": [
+          "candidate_signal",
+          "edge_mechanism",
+          "target_outcome",
+          "expected_metric",
+          "known_at_time_feature_availability",
+          "leakage_check",
+          "controls_baselines",
+          "benchmark_comparison",
+          "strongest_counterargument",
+          "next_experiment",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
       "non_claims": [
         "No UFC promotion or betting edge claim is made."
       ]
@@ -355,9 +735,168 @@
         "calibration": "not_applicable: fixture does not fit or calibrate a model",
         "promotion_allowed": false
       },
+      "experiment_ledger_provenance": {
+        "experiment_record": "EXP-IPBS-AGGREGATE-BET-LEVEL-OOS-BLOCK",
+        "run_record": "RUN-IPBS-AGGREGATE-BET-LEVEL-OOS-BLOCK",
+        "command": "redacted:aggregate-verification-summary",
+        "config_hash": "sha256:ipbs-aggregate-config-redacted",
+        "dataset_source_hash": "sha256:ipbs-aggregate-source-redacted",
+        "split_id": "aggregate_only_no_bet_level_oos",
+        "objective_version": "objective:aggregate_blend_not_bet_level",
+        "baseline_refs": [
+          "control_strategy",
+          "aggregate_only_baseline"
+        ],
+        "result_artifact": "artifact:aggregate_verification_summary_redacted",
+        "run_class": "exploratory",
+        "target_outcome": "missing bet-level artifact is explicit before result interpretation",
+        "data_lineage": "hashed IPBS verification summary reference only",
+        "as_of": "2026-05-08T00:00:00Z",
+        "known_at_time_split_lineage": "Only aggregate summary lineage is known; bet-level OOS rows are absent.",
+        "temporal_leakage_handling": "No selected-bet or daily lineage can be inferred from aggregate-only evidence.",
+        "controls_baselines": [
+          "control_strategy",
+          "bet_level_oos_required_baseline"
+        ],
+        "benchmark_comparison": "Compare aggregate-only artifact with the missing bet-level OOS requirement before any promotion decision.",
+        "alpha_discovery_loop": "Queue a ledger repair that persists selected-bet records, reference prices, and daily lineage.",
+        "required_diagnostics": [
+          "experiment_record",
+          "run_record",
+          "command",
+          "config_hash",
+          "dataset_source_hash",
+          "split_id",
+          "objective_version",
+          "baseline_refs",
+          "result_artifact",
+          "run_class",
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_split_lineage",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "benchmark_comparison",
+          "alpha_discovery_loop",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
       "non_claims": [
-        "No promotion claim is made from aggregate-only evidence."
-      ]
+        "No promotion claim is made from aggregate-only evidence.",
+        "No optimizer-scale contract in this fixture is a model-performance, alpha, ROI, CLV, or promotion claim."
+      ],
+      "optimizer_scale_contract": {
+        "run_class": "exploratory",
+        "trial_count": 1,
+        "unique_param_count": 6,
+        "active_param_count": 3,
+        "search_surface_hash": "sha256:ipbs-aggregate-search-surface-redacted",
+        "search_surface": [
+          "aggregate_blend_weight",
+          "market_filter",
+          "oos_summary_cut"
+        ],
+        "objective_version": "objective:aggregate_blend_not_bet_level",
+        "objective_frozen": true,
+        "eval_feedback_tuning": false,
+        "target_outcome": "aggregate-only optimizer scale is blocked before bet-level result interpretation",
+        "data_lineage": "hashed IPBS aggregate-only source reference",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time_split_lineage": "Only aggregate lineage is known; bet-level OOS split lineage is absent.",
+        "temporal_leakage_handling": "No selected-bet or daily result lineage can be inferred from aggregate-only evidence.",
+        "controls_baselines": [
+          "control_strategy",
+          "aggregate_only_baseline"
+        ],
+        "benchmark_comparison": "Compare exploratory aggregate search with the missing bet-level OOS requirement.",
+        "alpha_discovery_loop": "Repair selected-bet records and split lineage before running a serious optimizer search.",
+        "scale_verdict": "blocked_by_missing_oos_lineage",
+        "required_diagnostics": [
+          "run_class",
+          "trial_count",
+          "unique_param_count",
+          "active_param_count",
+          "search_surface_hash",
+          "search_surface",
+          "objective_version",
+          "objective_frozen",
+          "eval_feedback_tuning",
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_split_lineage",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "benchmark_comparison",
+          "alpha_discovery_loop",
+          "scale_verdict",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
+      "software_validation_path": {
+        "validation_case": "aggregate_oos_migration_path_rejected",
+        "exercised_system_path": "real_episode_corpus_test -> scenario_harness_quant_guard -> migration_smoke -> focused_ive_conformance",
+        "contract_owner": "ive_real_episode_replay",
+        "direct_plus_conformance_parity": "Direct corpus validation and focused conformance must both require bet-level OOS lineage before aggregate evidence can validate a path.",
+        "validation_layers": [
+          "direct_real_episode_corpus_test",
+          "scenario_harness_quant_guard",
+          "migration_smoke",
+          "configuration_default_parity_check",
+          "focused_ive_conformance"
+        ],
+        "detected_failure_modes": [
+          "brittle_migration_path"
+        ],
+        "target_outcome": "software path rejects aggregate-only evidence when bet-level OOS lineage is missing",
+        "data_lineage": "hashed IPBS aggregate-only source reference",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time_split_lineage": "Only aggregate lineage is known; bet-level OOS split lineage is absent.",
+        "temporal_leakage_handling": "No selected-bet or daily result lineage can be inferred from aggregate-only evidence.",
+        "controls_baselines": [
+          "control_strategy",
+          "aggregate_only_baseline"
+        ],
+        "alpha_discovery_loop": "Repair selected-bet records and split lineage before running any optimizer comparison or alpha experiment.",
+        "migration_smoke_required": true,
+        "configuration_default_parity": "Aggregate proof defaults must not bypass bet-level OOS requirements after migration.",
+        "quant_results_validation_required": true,
+        "required_diagnostics": [
+          "validation_case",
+          "exercised_system_path",
+          "contract_owner",
+          "direct_plus_conformance_parity",
+          "validation_layers",
+          "detected_failure_modes",
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_split_lineage",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "alpha_discovery_loop",
+          "migration_smoke_required",
+          "configuration_default_parity",
+          "quant_results_validation",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      }
     },
     {
       "id": "ipbs_platt_calibration_temporal_guard",
@@ -398,6 +937,49 @@
         "baseline": "uncalibrated or same-fold calibration is the rejected baseline",
         "calibration": "train-fold Platt fit evaluated on validation fold; fixture performs no live fit",
         "promotion_allowed": false
+      },
+      "controls_calibration_replay": {
+        "target_outcome": "preserve a clean train-fold calibration fit and later validation-fold evaluation proof shape",
+        "data_lineage": "hashed IPBS Platt calibration verification reference only",
+        "as_of": "2026-05-08T00:00:00Z",
+        "known_at_time_evaluation_boundary": "The Platt calibrator is fit on a train fold and evaluated on a later validation fold.",
+        "temporal_leakage_handling": "Fit and evaluation folds are disjoint and time ordered; same-fold calibration is rejected.",
+        "controls_baselines": [
+          "uncalibrated_model_baseline",
+          "same_fold_calibration_rejected_baseline"
+        ],
+        "benchmark_comparison": "Compare train-fold Platt calibration with uncalibrated and same-fold baselines; no live fit is performed by the replay.",
+        "calibration_check": "calibration curve, Brier score, and log-loss evidence shape is preserved from the verification reference.",
+        "stability_confidence": "medium: this is a reusable proof shape, not a future-performance claim.",
+        "strongest_counterargument": "A clean calibration boundary still does not prove edge, ROI, or future model performance.",
+        "alpha_discovery_loop": "Reuse this guard before any calibration quality or promotion claim.",
+        "next_experiment": "Add a Brier/log-loss replay when metric artifacts are available.",
+        "evidence_families": [
+          "calibration_curve",
+          "brier_score",
+          "log_loss"
+        ],
+        "required_diagnostics": [
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_evaluation_boundary",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "benchmark_comparison",
+          "calibration_check",
+          "stability_confidence",
+          "strongest_counterargument",
+          "alpha_discovery_loop",
+          "next_experiment",
+          "evidence_families",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
       },
       "non_claims": [
         "No calibrated edge claim is made; the fixture only preserves a proof shape."
@@ -448,6 +1030,27 @@
         "calibration": "not_applicable: fixture does not fit or calibrate a model",
         "promotion_allowed": false
       },
+      "leakage_recurrence": {
+        "leakage_vector": "full_dataset_train_mask_includes_test_period",
+        "known_at_time_statement": "The final-model replay may use only source metadata and the declared training mask known before the claimed test period.",
+        "temporal_split": "Training rows must stop before the held-out test period; full-dataset fitting is leakage for any test-period claim.",
+        "controls_baselines": [
+          "time_split_train_test_mask",
+          "no_future_market_outcomes_in_training"
+        ],
+        "required_diagnostics": [
+          "leakage_boundary",
+          "data_lineage",
+          "controls_baselines",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
       "non_claims": [
         "No Polymarket alpha or win-rate claim is made."
       ]
@@ -492,9 +1095,160 @@
         "calibration": "not_applicable: fixture does not fit or calibrate a model",
         "promotion_allowed": false
       },
+      "experiment_ledger_provenance": {
+        "experiment_record": "EXP-POLYMARKET-STALE-HPARAM-CACHE",
+        "run_record": "RUN-POLYMARKET-STALE-HPARAM-CACHE",
+        "command": "redacted:optimizer-cache-replay",
+        "config_hash": "sha256:polymarket-cache-config-redacted",
+        "dataset_source_hash": "sha256:polymarket-cache-dataset-redacted",
+        "split_id": "split_changed_cache_must_invalidate",
+        "objective_version": "objective:split_aware_cache_key",
+        "baseline_refs": [
+          "cache_key_includes_split",
+          "no_stale_params_baseline"
+        ],
+        "result_artifact": "artifact:cache_key_replay_redacted",
+        "run_class": "exploratory",
+        "target_outcome": "cache result reuse blocked without split-aware provenance",
+        "data_lineage": "hashed Polymarket stale-cache mistake reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time_split_lineage": "The split id is part of the cache key before any optimizer result reuse.",
+        "temporal_leakage_handling": "Old parameters cannot cross into a changed temporal split lineage.",
+        "controls_baselines": [
+          "cache_key_includes_split",
+          "objective_version_key_baseline"
+        ],
+        "benchmark_comparison": "Compare old cache key with split-aware cache key before accepting any reused result.",
+        "alpha_discovery_loop": "Queue cache-key repair before running any further optimizer comparison.",
+        "required_diagnostics": [
+          "experiment_record",
+          "run_record",
+          "command",
+          "config_hash",
+          "dataset_source_hash",
+          "split_id",
+          "objective_version",
+          "baseline_refs",
+          "result_artifact",
+          "run_class",
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_split_lineage",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "benchmark_comparison",
+          "alpha_discovery_loop",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
+      "controls_calibration_replay": {
+        "target_outcome": "block stale optimizer/cache result wording until controls, calibration, and stability proof are explicit",
+        "data_lineage": "hashed Polymarket stale-cache mistake reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time_evaluation_boundary": "The changed split id and cache key requirements are known before any reused optimizer result is interpreted.",
+        "temporal_leakage_handling": "Old parameters cannot cross a changed temporal split; cache reuse is a leakage boundary.",
+        "controls_baselines": [
+          "current_production_baseline",
+          "shuffled_label_baseline",
+          "feature_ablation_baseline"
+        ],
+        "benchmark_comparison": "Compare stale cache reuse with current-production, shuffled-label, and feature-ablation baselines before accepting optimizer output.",
+        "calibration_check": "not yet measured: require calibration curve, Brier score, or log-loss evidence before any probability-quality claim.",
+        "stability_confidence": "low until cache-key, objective-version, and split-lineage proof are fixed.",
+        "strongest_counterargument": "The observed result may be stale-cache reuse rather than a stable or calibrated signal.",
+        "alpha_discovery_loop": "Repair cache invalidation, then queue shuffled and ablation controls before any optimizer comparison.",
+        "next_experiment": "Run split-aware cache replay with current-production, shuffled-label, and ablation baselines.",
+        "evidence_families": [
+          "current_production_baseline",
+          "shuffled_baseline",
+          "ablation_baseline"
+        ],
+        "required_diagnostics": [
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_evaluation_boundary",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "benchmark_comparison",
+          "calibration_check",
+          "stability_confidence",
+          "strongest_counterargument",
+          "alpha_discovery_loop",
+          "next_experiment",
+          "evidence_families",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
       "non_claims": [
-        "No optimizer result claim is made from stale cached parameters."
-      ]
+        "No optimizer result claim is made from stale cached parameters.",
+        "No optimizer-scale contract in this fixture is a model-performance, alpha, ROI, CLV, or promotion claim."
+      ],
+      "optimizer_scale_contract": {
+        "run_class": "exploratory",
+        "trial_count": 6,
+        "unique_param_count": 24,
+        "active_param_count": 6,
+        "search_surface_hash": "sha256:polymarket-cache-search-surface-redacted",
+        "search_surface": [
+          "split_id",
+          "cache_key",
+          "objective_version",
+          "parameter_grid_digest"
+        ],
+        "objective_version": "objective:split_aware_cache_key",
+        "objective_frozen": true,
+        "eval_feedback_tuning": false,
+        "target_outcome": "cache-sensitive optimizer scale is blocked before reused-result wording",
+        "data_lineage": "hashed Polymarket cache-key mistake reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time_split_lineage": "The changed split id is known before any cached optimizer result can be reused.",
+        "temporal_leakage_handling": "Old parameters cannot cross into a changed temporal split lineage.",
+        "controls_baselines": [
+          "cache_key_includes_split",
+          "no_stale_params_baseline"
+        ],
+        "benchmark_comparison": "Compare stale cache reuse with split-aware cache requirements before interpreting optimizer output.",
+        "alpha_discovery_loop": "Repair cache-key invalidation before running any further optimizer comparison.",
+        "scale_verdict": "blocked_by_stale_cache",
+        "required_diagnostics": [
+          "run_class",
+          "trial_count",
+          "unique_param_count",
+          "active_param_count",
+          "search_surface_hash",
+          "search_surface",
+          "objective_version",
+          "objective_frozen",
+          "eval_feedback_tuning",
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_split_lineage",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "benchmark_comparison",
+          "alpha_discovery_loop",
+          "scale_verdict",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      }
     },
     {
       "id": "polymarket_underpowered_optimizer",
@@ -537,9 +1291,117 @@
         "calibration": "not_applicable: fixture does not fit or calibrate a model",
         "promotion_allowed": false
       },
+      "experiment_ledger_provenance": {
+        "experiment_record": "EXP-POLYMARKET-UNDERPOWERED-OPTIMIZER",
+        "run_record": "RUN-POLYMARKET-UNDERPOWERED-OPTIMIZER",
+        "command": "redacted:optimizer-scale-smoke",
+        "config_hash": "sha256:polymarket-underpowered-config-redacted",
+        "dataset_source_hash": "sha256:polymarket-underpowered-dataset-redacted",
+        "split_id": "optimizer_smoke_split",
+        "objective_version": "objective:smoke_scale_disclosure",
+        "baseline_refs": [
+          "adequate_trial_budget_baseline",
+          "frozen_objective_baseline"
+        ],
+        "result_artifact": "artifact:optimizer_scale_summary_redacted",
+        "run_class": "smoke",
+        "target_outcome": "optimizer run-class disclosure before result wording",
+        "data_lineage": "hashed Polymarket optimizer-scale mistake reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time_split_lineage": "The run class and split id are known before any optimizer adjective is used.",
+        "temporal_leakage_handling": "No future market data or post-outcome objective change is allowed in the replay.",
+        "controls_baselines": [
+          "adequate_trial_budget_baseline",
+          "frozen_objective_baseline"
+        ],
+        "benchmark_comparison": "Compare the smoke run with declared serious-search requirements before interpreting optimizer output.",
+        "alpha_discovery_loop": "Queue optimizer-scale repair in the separate scale-contract replay ticket before result interpretation.",
+        "required_diagnostics": [
+          "experiment_record",
+          "run_record",
+          "command",
+          "config_hash",
+          "dataset_source_hash",
+          "split_id",
+          "objective_version",
+          "baseline_refs",
+          "result_artifact",
+          "run_class",
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_split_lineage",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "benchmark_comparison",
+          "alpha_discovery_loop",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
       "non_claims": [
-        "No alpha, serious-search, or optimizer-success claim is made."
-      ]
+        "No alpha, serious-search, or optimizer-success claim is made.",
+        "No optimizer-scale contract in this fixture is a model-performance, alpha, ROI, CLV, or promotion claim."
+      ],
+      "optimizer_scale_contract": {
+        "run_class": "smoke",
+        "trial_count": 12,
+        "unique_param_count": 48,
+        "active_param_count": 12,
+        "search_surface_hash": "sha256:polymarket-underpowered-search-surface-redacted",
+        "search_surface": [
+          "lookback_window",
+          "market_filter",
+          "threshold",
+          "position_sizing",
+          "objective_version"
+        ],
+        "objective_version": "objective:smoke_scale_disclosure",
+        "objective_frozen": true,
+        "eval_feedback_tuning": false,
+        "target_outcome": "optimizer run-class and trial-budget disclosure before result wording",
+        "data_lineage": "hashed Polymarket optimizer-scale mistake reference only",
+        "as_of": "2026-05-31T00:00:00Z",
+        "known_at_time_split_lineage": "The smoke run class, trial count, and parameter counts are known before any optimizer adjective is used.",
+        "temporal_leakage_handling": "No future market data or post-outcome objective change is allowed in the replay.",
+        "controls_baselines": [
+          "adequate_trial_budget_baseline",
+          "frozen_objective_baseline"
+        ],
+        "benchmark_comparison": "Compare 12 smoke trials against the 48-dimension unique search surface before interpreting output.",
+        "alpha_discovery_loop": "Queue an adequately powered optimizer-budget replay before any serious-search interpretation.",
+        "scale_verdict": "underpowered",
+        "required_diagnostics": [
+          "run_class",
+          "trial_count",
+          "unique_param_count",
+          "active_param_count",
+          "search_surface_hash",
+          "search_surface",
+          "objective_version",
+          "objective_frozen",
+          "eval_feedback_tuning",
+          "target_outcome",
+          "data_lineage",
+          "known_at_time_split_lineage",
+          "temporal_leakage_handling",
+          "controls_baselines",
+          "benchmark_comparison",
+          "alpha_discovery_loop",
+          "scale_verdict",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      }
     },
     {
       "id": "valueinvesting_shift_minus_one_leakage",
@@ -580,6 +1442,61 @@
         "baseline": "lagged features with positive known-at-time shifts",
         "calibration": "not_applicable: fixture does not fit or calibrate a model",
         "promotion_allowed": false
+      },
+      "leakage_recurrence": {
+        "leakage_vector": "negative_shift_future_feature",
+        "known_at_time_statement": "The replay only permits feature values available at or before the prediction timestamp.",
+        "temporal_split": "Feature engineering must preserve lag direction so evaluation rows cannot see future target-period values.",
+        "controls_baselines": [
+          "positive_lag_feature_baseline",
+          "known_at_time_feature_allowlist"
+        ],
+        "required_diagnostics": [
+          "leakage_boundary",
+          "data_lineage",
+          "controls_baselines",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
+      },
+      "missed_feature_replay": {
+        "candidate_signal": "negative_shift_feature_smell",
+        "edge_mechanism": "A suspiciously predictive shifted feature is treated as a leakage smell and converted into a lag-direction experiment.",
+        "target_outcome": "future-shift feature idea is rejected or repaired before any investment-model claim",
+        "expected_metric": "feature_lag_direction_check blocks negative shifts and records the safe lag baseline",
+        "known_at_time_feature_availability": "Only feature values available at or before the prediction timestamp may be considered.",
+        "leakage_check": "Reject shift(-1), target-aware transforms, and post-period values before interpreting any feature result.",
+        "controls_baselines": [
+          "positive_lag_feature_baseline",
+          "known_at_time_feature_allowlist"
+        ],
+        "benchmark_comparison": "Compare the suspicious feature against positive-lag and no-feature baselines, not against post-outcome performance.",
+        "strongest_counterargument": "The apparent feature opportunity is more likely leakage than alpha until lag direction proof passes.",
+        "next_experiment": "Queue a lag-direction static guard and a no-feature baseline replay before any feature ablation.",
+        "required_diagnostics": [
+          "candidate_signal",
+          "edge_mechanism",
+          "target_outcome",
+          "expected_metric",
+          "known_at_time_feature_availability",
+          "leakage_check",
+          "controls_baselines",
+          "benchmark_comparison",
+          "strongest_counterargument",
+          "next_experiment",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
       },
       "non_claims": [
         "No investment model performance claim is made."
@@ -629,6 +1546,27 @@
         "baseline": "fit postprocessor on disjoint training data or use untouched OOF predictions",
         "calibration": "calibration/postprocessing must have disjoint fit and evaluation lineage",
         "promotion_allowed": false
+      },
+      "leakage_recurrence": {
+        "leakage_vector": "target_aware_postprocessing_on_evaluation_predictions",
+        "known_at_time_statement": "Postprocessing may use only training targets disjoint from the evaluation predictions being claimed.",
+        "temporal_split": "Fit postprocessing on training data and evaluate on later/disjoint OOF predictions; same-set target edits are leakage.",
+        "controls_baselines": [
+          "untouched_oof_prediction_baseline",
+          "disjoint_fit_evaluate_postprocessor"
+        ],
+        "required_diagnostics": [
+          "leakage_boundary",
+          "data_lineage",
+          "controls_baselines",
+          "diagnostic_only",
+          "result_claim_validation"
+        ],
+        "result_claim_validation": {
+          "promotion_allowed": false,
+          "promotion_verdict": "diagnostic_only",
+          "result_claims": []
+        }
       },
       "non_claims": [
         "No investment return or model-quality claim is made."

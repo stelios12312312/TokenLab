@@ -10,6 +10,7 @@
 | Verification with no proof | Blocked by GATE-REF-002 | Paste command outputs in code blocks |
 | Template text still present | Blocked (various gates) | Replace all "To be defined" / "To be determined" text |
 | Cleanup/admin/audit task finishes during EXPLORE | Allowed — no EXECUTE/REFLECT work required | Record findings/KB updates, then run `bootstrap.mjs close --informational` |
+| Third ideation REFLECT cycle adds no new decision, lesson, or self-generated risk | Blocked by GATE-REF-020 / I-050 | Add a real `## D-###` decision, substantive lesson, self-generated pre-mortem risk, or explicit execution-only waiver |
 
 ## Concurrent Modifications
 
@@ -28,7 +29,7 @@
 |----------|--------|----------|
 | `transition.mjs` crashes mid-way | State.json is atomic (write via tmp+rename) — either fully written or unchanged | Re-run the transition safely |
 | Session disconnects during EXECUTE | Uncommitted changes may be lost | Use `bootstrap.mjs resume` to re-enter; check `git stash list` |
-| Approval daemon killed mid-approval | Nonce file persists (24h TTL) | Restart daemon — it picks up existing nonces |
+| Transition interrupted mid-run | State.json is atomic; no approval/nonce state to recover | Re-run the transition safely |
 | Context limit hit mid-EXECUTE | Partial work may be uncommitted | Run `bootstrap.mjs resume`; drift detection at 15-call intervals prompts REFLECT |
 | Token limit approaching | SKILL.md instructs: write minimal summary.md, append learnings to KB | Partial CLOSE is better than no CLOSE |
 
@@ -40,10 +41,9 @@
 | `state.md` | No impact — `state.json` is canonical | Recreate from `state.json` content |
 | `plan.md` | PLAN gate checks fail | Restore from git |
 | `findings.md` | EXPLORE gate checks fail | Check `plans/FINDINGS.md` (consolidated copy) |
-| `decisions.md` | Approval nonce check fails | Re-run `explore-to-plan` to generate new nonce |
+| `decisions.md` | Decision history unavailable | Restore from git or continue with a new decision entry |
 | `progress.md` | WARN on progress checks (not blocking) | Recreate from git diff |
 | `baseline.json` | Test baseline verification skipped | Re-run `test_baseline.mjs capture` |
-| `.config_integrity` | All transitions blocked | Run `migrate.mjs upgrade` to re-baseline |
 
 ## Large / Malformed Input
 
@@ -51,38 +51,17 @@
 |----------|----------|-------|
 | `findings.md` > 1MB | Skipped with WARN (not blocking) | 1MB per artifact file |
 | `decisions.md` > 1MB | Skipped with WARN | 1MB |
-| `state.json` > 1MB | Read returns null (transitions blocked) | 1MB |
+| `state.json` > 5MB | Read returns null (transitions blocked) | 5MB |
 | Malformed JSON in `state.json` | Read returns null (transitions blocked) | Restore from git |
-| Invalid nonce file JSON | Skipped silently | Daemon continues polling |
 | Very long Prolog query (circular rules) | Depth limit (500) + cycle detection | Solver returns empty result |
 
 ## Version Mismatches
 
 | Scenario | Behavior |
 |----------|----------|
-| Old 16-char state hash with new code | Backwards compatible — old plans continue to work |
-| New 32-char hash with old code | Old code won't validate — run `migrate.mjs upgrade` |
-| Missing `approval_nonce_hash` in state.json | Gate fails — re-run `explore-to-plan` |
+| Legacy state hash / approval fields | Ignored by current runtime | Leave old plans as-is unless another gate reports a real artifact issue |
+| Old code with new plans | Old code may expect retired fields | Upgrade planner runtime before continuing |
 | Old decision log (16-char chain hashes) | Backwards compatible — chain validation accepts both |
-
-## Nonce Edge Cases
-
-| Scenario | Behavior |
-|----------|----------|
-| Same nonce used twice | Blocked by RT10-H1 replay prevention |
-| Nonce > 24h old | Expired — re-run `explore-to-plan` |
-| Future timestamp in nonce | Rejected (RT10-H2) — treated as expired |
-| Nonce file is a symlink | Blocked by O_EXCL flag (RT10-C4) |
-| Multiple nonces for same plan | Only the latest is accepted |
-
-## Approval Daemon Edge Cases
-
-| Scenario | Behavior |
-|----------|----------|
-| Daemon not running | Nonce written to file; user must run `nonce_reveal.mjs` manually |
-| Two daemons started | Second one fails with EADDRINUSE |
-| Daemon in `--auto` mode, plan has >3 files | Skipped — requires interactive approval |
-| Socket file left from crashed daemon | Remove the daemon socket file from your home iterative-planner config directory and restart |
 
 ## Token/Context Exhaustion
 
@@ -106,7 +85,7 @@
 
 | Scenario | Impact | Recovery |
 |----------|--------|----------|
-| User approves plan then closes terminal | Approved nonce persists (24h TTL) — plan remains in PLAN state with approval | Resume with `bootstrap.mjs resume`; nonce is still valid within TTL |
+| User starts plan then closes terminal | Plan state is durable; no approval/nonce TTL to worry about | Resume with `bootstrap.mjs resume` |
 | User starts EXECUTE then abandons | Uncommitted changes may exist alongside partially-updated progress.md | Check `git status` and `git stash list`; resume or close the plan |
 | Plan left in EXPLORE for days | No degradation — plan state is durable. Knowledge base may be stale for the topic | Re-run EXPLORE to refresh findings before transitioning |
 | Multiple abandoned plans accumulate | Disk usage grows; `.current_plan` points to latest | Run `bootstrap.mjs list` to see all plans; `bootstrap.mjs close` to archive old ones |

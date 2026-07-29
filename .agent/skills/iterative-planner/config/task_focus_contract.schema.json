@@ -1,0 +1,123 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portable-agent-kit.local/schemas/task_focus_contract.schema.json",
+  "title": "Task Focus Contract",
+  "type": "object",
+  "required": [
+    "version",
+    "operator_question",
+    "work_intent",
+    "zoom_level",
+    "plan_shape",
+    "owned_scope",
+    "ambient_scope",
+    "allowed_claims",
+    "forbidden_claims",
+    "authoritative_packs",
+    "advisory_packs",
+    "suppressed_packs",
+    "required_proof_families",
+    "confidence",
+    "blockers"
+  ],
+  "properties": {
+    "version": { "const": 1 },
+    "operator_question": { "type": "string" },
+    "work_intent": {
+      "type": "string",
+      "enum": ["analysis_only", "planning_only", "implementation", "repair", "operational", "release", "program_intake"]
+    },
+    "zoom_level": {
+      "type": "string",
+      "enum": ["read_only", "design_plan", "focused_change", "shared_planner_core", "domain_result", "program_level"]
+    },
+    "plan_shape": {
+      "type": "object",
+      "required": ["primary", "confidence"],
+      "properties": {
+        "primary": { "type": "string" },
+        "detected_primary": { "type": "string" },
+        "source": { "type": "string" },
+        "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
+      },
+      "additionalProperties": true
+    },
+    "owned_scope": {
+      "type": "object",
+      "required": ["files", "sufficient_for_blocking_obligations"],
+      "properties": {
+        "files": { "type": "array", "items": { "type": "string" } },
+        "declared_files": { "type": "array", "items": { "type": "string" } },
+        "source": { "type": "string" },
+        "sufficient_for_blocking_obligations": { "type": "boolean" },
+        "confidence": { "type": "string", "enum": ["high", "medium", "low"] }
+      },
+      "additionalProperties": true
+    },
+    "ambient_scope": {
+      "type": "object",
+      "required": ["dirty_count", "quarantined"],
+      "properties": {
+        "dirty_files": { "type": "array", "items": { "type": "string" } },
+        "dirty_count": { "type": "integer", "minimum": 0 },
+        "observed_dirty_count": { "type": "integer", "minimum": 0 },
+        "examples": { "type": "array", "items": { "type": "string" } },
+        "quarantined": { "type": "boolean" },
+        "large": { "type": "boolean" },
+        "warning": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "allowed_claims": { "type": "array", "items": { "type": "string" } },
+    "forbidden_claims": { "type": "array", "items": { "type": "string" } },
+    "authoritative_packs": { "type": "array", "items": { "type": "string" } },
+    "advisory_packs": { "type": "array", "items": { "type": "string" } },
+    "suppressed_packs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["pack_id", "authority", "rationale"],
+        "properties": {
+          "pack_id": { "type": "string" },
+          "authority": { "type": "string", "enum": ["advisory", "suppressed"] },
+          "rationale": { "type": "string" },
+          "reactivation": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
+    "required_proof_families": { "type": "array", "items": { "type": "string" } },
+    "explicit_domain_claims": {
+      "type": "object",
+      "properties": {
+        "quant": { "type": "boolean" },
+        "ux_ui": { "type": "boolean" },
+        "tokenomics": { "type": "boolean" }
+      },
+      "additionalProperties": true
+    },
+    "escalation": {
+      "type": "object",
+      "properties": {
+        "workflow": { "type": ["string", "null"] },
+        "reason": { "type": ["string", "null"] }
+      },
+      "additionalProperties": true
+    },
+    "confidence": { "type": "string", "enum": ["high", "medium", "low"] },
+    "blockers": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "severity", "message"],
+        "properties": {
+          "id": { "type": "string" },
+          "severity": { "type": "string" },
+          "message": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

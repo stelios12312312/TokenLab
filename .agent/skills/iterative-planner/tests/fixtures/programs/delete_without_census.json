@@ -4,9 +4,20 @@
   "title": "Delete Missing Census",
   "status": "ready",
   "goal": "Show deletion census failure.",
-  "story_refs": ["US-001"],
+  "story_refs": [
+    "US-001"
+  ],
   "epics": [
-    { "id": "EP-001", "title": "Cleanup epic", "story_refs": ["US-001"], "ticket_refs": ["T-001"] }
+    {
+      "id": "EP-001",
+      "title": "Cleanup epic",
+      "story_refs": [
+        "US-001"
+      ],
+      "ticket_refs": [
+        "T-001"
+      ]
+    }
   ],
   "tickets": [
     {
@@ -15,28 +26,68 @@
       "title": "Remove obsolete file",
       "type": "delete_move",
       "lifecycle": "ready",
-      "story_refs": ["US-001"],
+      "story_refs": [
+        "US-001"
+      ],
       "defect_refs": [],
       "gap_refs": [],
       "depends_on": [],
-      "acceptance_criteria": ["AC-001"],
-      "child_plan": { "policy": "required", "plan_dir": null, "reason": "Delete/move work" },
-      "deletes_files": ["src/old.js"],
+      "acceptance_criteria": [
+        "AC-001"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": null,
+        "reason": "Delete/move work"
+      },
+      "deletes_files": [
+        "src/old.js"
+      ],
       "compatibility_contract_refs": [],
       "migration_boundary_refs": [],
       "deletion_move_census_refs": [],
-      "verification_refs": ["VM-001"]
+      "verification_refs": [
+        "VM-001"
+      ],
+      "external_refs": [
+        {
+          "kind": "github_issue",
+          "repo": "owner/repo",
+          "issue_number": 9006,
+          "title": "Remove obsolete file",
+          "state": "OPEN",
+          "url": "https://github.com/owner/repo/issues/9006",
+          "synced_at": "2026-07-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "acceptance_criteria": [
-    { "id": "AC-001", "scope": "ticket", "subject_ref": "T-001", "text": "Deletion has a dependency census.", "story_refs": ["US-001"], "maintenance_rationale": null }
+    {
+      "id": "AC-001",
+      "scope": "ticket",
+      "subject_ref": "T-001",
+      "text": "Deletion has a dependency census.",
+      "story_refs": [
+        "US-001"
+      ],
+      "maintenance_rationale": null
+    }
   ],
   "dependencies": [],
   "compatibility_contracts": [],
   "migration_boundaries": [],
   "deletion_move_census": [],
   "verification_matrix": [
-    { "id": "VM-001", "scope": "ticket", "subject_ref": "T-001", "acceptance_criterion_ref": "AC-001", "proof_type": "proof:artifact_review", "command_or_action": "Review census", "pass_means": "Census exists" }
+    {
+      "id": "VM-001",
+      "scope": "ticket",
+      "subject_ref": "T-001",
+      "acceptance_criterion_ref": "AC-001",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review census",
+      "pass_means": "Census exists"
+    }
   ],
   "decisions": []
 }

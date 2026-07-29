@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
 import { tmpdir } from "os";
 import { verdictOf, diffVerdicts, checkGateIdempotence } from "../scripts/gate_idempotence_check.mjs";
+import { plannerSubprocessEnv } from "./helpers/env.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const skillDir = resolve(dirname(__filename), "..");
@@ -24,7 +25,10 @@ function assert(cond, label) {
   else { failed++; console.log(`  FAIL: ${label}`); }
 }
 
-const fixtureEnv = { ...process.env, CODEX_THREAD_ID: "", CLAUDE_CODE_SESSION_ID: "idem-test" };
+const fixtureEnv = plannerSubprocessEnv({
+  CLAUDE_CODE_SESSION_ID: "idem-test",
+  PLANNER_VERBOSE_CHECKS: "1",
+});
 
 function runNode(args, cwd) {
   return execFileSync(NODE, args, { cwd, encoding: "utf-8", env: fixtureEnv });
@@ -49,7 +53,7 @@ assert(verdictOf([{ name: "x", status: "PASS" }, { name: "x", status: "FAIL" }])
 const tmp = mkdtempSync(join(tmpdir(), "idempotence-test-"));
 try {
   symlinkSync(agentDir, join(tmp, ".agent"), "dir");
-  runNode([bootstrap, "new", "Idempotence harness fixture plan"], tmp);
+  runNode([bootstrap, "new", "--force", "Idempotence harness fixture plan"], tmp);
 
   const plansDir = join(tmp, "plans");
   // Resolve the freshly created plan dir via the pointer.
@@ -115,9 +119,9 @@ try {
   writeFileSync(join(planDir, "progress.md"), "# Progress\n\n## Completed\n- [x] Seed fixture\n");
   const reflectGateOut = runNodeCapture([verifyGate, "execute-to-reflect", "--plan", planName], tmp);
   assert(reflectGateOut.includes("GATE-ETR-008"), "execute-to-reflect fixture exercises GATE-ETR-008");
-  assert(/\[FAIL\]\s+\[GATE-ETR-008\]/.test(reflectGateOut), "execute-to-reflect fixture makes GATE-ETR-008 fail");
+  assert(/\[WARN\]\s+\[GATE-ETR-008\]/.test(reflectGateOut), "execute-to-reflect fixture makes GATE-ETR-008 advisory");
   const reflectIdem = JSON.parse(runNode([idempotence, "--cwd", tmp, "--plan", planName, "--gate", "execute-to-reflect", "--json"], tmp));
-  assert(reflectIdem.ok === true && reflectIdem.results[0]?.idempotent === true, "execute-to-reflect remains idempotent while GATE-ETR-008 fires");
+  assert(reflectIdem.ok === true && reflectIdem.results[0]?.idempotent === true, "execute-to-reflect remains idempotent while advisory GATE-ETR-008 fires");
 
   // The CLI exits 0 and reports stability for the active plan.
   const cliOut = runNode([idempotence, "--cwd", tmp, "--gate", "explore-to-plan"], tmp);

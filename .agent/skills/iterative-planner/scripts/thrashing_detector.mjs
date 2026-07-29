@@ -26,7 +26,7 @@ import {
   loadThrashingThresholds,
   THRASHING_SIGNAL_ORDER,
 } from "./lib/thrashing_thresholds.mjs";
-import { recentSpotCheckSignals } from "./lib/spot_check.mjs";
+import { normalizeVerificationStatus } from "./lib/verification_status_vocabulary.mjs";
 
 const SIGNAL_FAMILY = Object.freeze({
   thrashing_repeat_edit: "structural",
@@ -43,8 +43,6 @@ const SIGNAL_FAMILY = Object.freeze({
   thrashing_session_overbudget: "budget",
   thrashing_reflect_overdue: "reflection_skip",
   thrashing_plan_not_reread: "reflection_skip",
-  thrashing_spot_check_severe: "spot_check",
-  thrashing_spot_check_persistent: "spot_check",
 });
 
 const SEVERITY_RANK = Object.freeze({
@@ -538,7 +536,7 @@ function commandLooksLikeProofActivity(command) {
   const normalized = String(command || "").toLowerCase();
   return /\b(pytest|node --test|jest|vitest|mocha|rspec|go test|cargo test)\b/.test(normalized)
     || /\b(npm|pnpm|yarn|bun)\s+(test|run test|run check|run lint)\b/.test(normalized)
-    || /\b(ripple_check|check-invariants|verify-stories|story_registry\.mjs check|test_migration|test_planner_script_smoke|test_transition_gate_flows)\b/.test(normalized)
+    || /\b(ripple_check|check-invariants|verify-stories|story_registry\.mjs check|migration-bootstrap|transition-gate-flows|test_transition_gate_flows)\b/.test(normalized)
     || /\b(validate-strategy|verify|smoke)\b/.test(normalized);
 }
 
@@ -617,6 +615,7 @@ function extractErrorPatternsFromRawOutput(rawOutput, { normalizeWhitespace: sho
 
   const matches = [];
   for (const line of lines) {
+    // proof-status-lint: exempt T-INTAKE-B07B8898 -- Raw command-log parser recognizes exception and failure-shaped output lines for telemetry extraction.
     if (/^(typeerror|referenceerror|syntaxerror|assertionerror|error:|fail|failed:|cannot |unexpected )/i.test(line)) {
       matches.push(shouldNormalize ? normalizeWhitespace(line) : line);
     }
@@ -631,7 +630,7 @@ function extractOscillatingErrorPatterns(testRuns, thresholdConfig) {
 
   for (const record of runs) {
     const failedSummaries = (record?.run?.tests || [])
-      .filter((test) => String(test?.outcome || "").toLowerCase() === "fail")
+      .filter((test) => normalizeVerificationStatus(test?.outcome, "execution").kind === "fail")
       .map((test) => test?.output_summary)
       .filter(Boolean);
 
@@ -1204,7 +1203,7 @@ function evaluateTestRegression(context, config) {
   }
 
   const latestFailingTests = (latest.run.tests || [])
-    .filter((test) => String(test?.outcome || "").toLowerCase() === "fail")
+    .filter((test) => normalizeVerificationStatus(test?.outcome, "execution").kind === "fail")
     .map((test) => ({
       name: String(test?.name || "").trim(),
       file: String(test?.file || "").trim(),
@@ -1240,7 +1239,7 @@ function evaluateTestRegression(context, config) {
   const priorPassKeys = new Set();
   for (const record of context.testRuns.runs.slice(1)) {
     for (const test of record.run.tests || []) {
-      if (String(test?.outcome || "").toLowerCase() !== "pass") continue;
+      if (normalizeVerificationStatus(test?.outcome, "execution").kind !== "pass") continue;
       const key = `${String(test?.file || "").trim()}::${String(test?.name || "").trim()}`;
       priorPassKeys.add(key);
     }
@@ -1474,70 +1473,6 @@ function evaluatePlanNotReread(context, config) {
   });
 }
 
-function evaluateSpotCheckSevere(context, config) {
-  const signals = recentSpotCheckSignals({
-    cwd: context.cwd,
-    planId: context.planId,
-    severeThreshold: config.high_finding_count,
-    persistentThreshold: Number.MAX_SAFE_INTEGER,
-  });
-  if (!signals.severe) {
-    return signalResult({
-      id: "thrashing_spot_check_severe",
-      severity: config.severity,
-      status: "inactive",
-      reason: "Unacknowledged HIGH spot-check findings are below the severe threshold.",
-      context: {
-        high_unacknowledged_count: signals.high_unacknowledged_count,
-        threshold: config.high_finding_count,
-        lookback_tool_calls: config.lookback_tool_calls,
-      },
-    });
-  }
-  return signalResult({
-    id: "thrashing_spot_check_severe",
-    severity: config.severity,
-    status: "active",
-    reason: "Unacknowledged HIGH spot-check findings crossed the severe threshold.",
-    context: {
-      high_unacknowledged_count: signals.high_unacknowledged_count,
-      threshold: config.high_finding_count,
-      lookback_tool_calls: config.lookback_tool_calls,
-    },
-  });
-}
-
-function evaluateSpotCheckPersistent(context, config) {
-  const findings = recentSpotCheckSignals({
-    cwd: context.cwd,
-    planId: context.planId,
-    severeThreshold: Number.MAX_SAFE_INTEGER,
-    persistentThreshold: config.recurrence_count,
-  });
-  if (findings.persistent_categories.length === 0) {
-    return signalResult({
-      id: "thrashing_spot_check_persistent",
-      severity: config.severity,
-      status: "inactive",
-      reason: "No unacknowledged spot-check category recurred enough times to count as persistent.",
-      context: {
-        threshold: config.recurrence_count,
-        persistent_categories: [],
-      },
-    });
-  }
-  return signalResult({
-    id: "thrashing_spot_check_persistent",
-    severity: config.severity,
-    status: "active",
-    reason: "The same spot-check category is recurring without acknowledgement.",
-    context: {
-      threshold: config.recurrence_count,
-      persistent_categories: findings.persistent_categories,
-    },
-  });
-}
-
 function findLastIndex(values, predicate) {
   for (let index = values.length - 1; index >= 0; index -= 1) {
     if (predicate(values[index], index)) return index;
@@ -1741,10 +1676,6 @@ export function evaluateThrashingDetector({
         return evaluateReflectOverdue(context, config);
       case "thrashing_plan_not_reread":
         return evaluatePlanNotReread(context, config);
-      case "thrashing_spot_check_severe":
-        return evaluateSpotCheckSevere(context, config);
-      case "thrashing_spot_check_persistent":
-        return evaluateSpotCheckPersistent(context, config);
       default:
         return signalResult({
           id: signalId,

@@ -49,6 +49,78 @@
       ],
       "severity": "warn_then_fail",
       "required_by_phase": "reflect"
+    },
+    {
+      "id": "planner_dogfood_truth_packet",
+      "source_mistake": "M-PLANNER-DOGFOOD-001",
+      "subject_id": "planner_truth_packet",
+      "verification_mode": "artifact_review",
+      "triggers": {
+        "plan_terms": [
+          "dogfood",
+          "false green",
+          "false-green",
+          "advisor not used",
+          "advisor being used",
+          "ontology not used",
+          "iv not used",
+          "health audit missed",
+          "user stories missing",
+          "north star missing",
+          "north star not mentioned",
+          "not eating its own dogfood"
+        ]
+      },
+      "guard_types": [
+        "planner_truth_packet"
+      ],
+      "severity": "warn_then_fail",
+      "required_by_phase": "validate",
+      "personas": [
+        "assumptions_challenger",
+        "wiring_auditor",
+        "config_integrity",
+        "traceability"
+      ],
+      "minimum_trigger_families": 1
+    },
+    {
+      "id": "managed_upgrade_transaction_boundary",
+      "source_mistake": "M-045",
+      "effective_from": "2026-07-27T00:00:00.000Z",
+      "subject_id": "managed_planner_upgrade",
+      "verification_mode": "integration_smoke",
+      "triggers": {
+        "file_globs": [
+          ".agent/skills/iterative-planner/scripts/migrate.mjs",
+          ".agent/skills/iterative-planner/scripts/lib/migration_source_pin.mjs",
+          ".agent/skills/iterative-planner/scripts/lib/managed_upgrade_transaction.mjs",
+          ".agent/skills/iterative-planner/config/managed_upgrade_transaction.json"
+        ],
+        "plan_terms": [
+          "managed upgrade",
+          "planner migration",
+          "half-applied",
+          "recover-upgrade"
+        ]
+      },
+      "guard_types": [
+        "clean_managed_preflight",
+        "scratch_candidate",
+        "atomic_conformance",
+        "indivisible_proof_bundle",
+        "explicit_commit_consent",
+        "durable_recovery_receipt"
+      ],
+      "severity": "fail",
+      "required_by_phase": "execute",
+      "personas": [
+        "config_integrity",
+        "wiring_auditor",
+        "assumptions_challenger",
+        "traceability"
+      ],
+      "minimum_trigger_families": 1
     }
   ]
 }

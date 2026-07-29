@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// verify_gate.mjs — Deterministic pre-flight checker for iterative planner state transitions.
+// verify_gate.mjs — Programmatic gate-check library and planning-only diagnostic.
 //
 // Usage:
 //   node verify_gate.mjs explore-to-plan [--plan <plan-dir>]    Check EXPLORE → PLAN gate requirements
@@ -22,22 +22,26 @@ import {
   analyzeIntentContract, loadIntentContract, resolveFindingsTruth, debugLog,
   PASS, WARN, FAIL, check
 } from "./lib/plan_utils.mjs";
-import { validateEnvelopeAgainstDisk, REASON_CODES as PLAN_CONTRACT_REASON_CODES } from "./lib/plan_contract.mjs";
 import { detectPlanShape, shapeRequiresField, shapeMinFindings } from "./lib/plan_shape.mjs";
-import { join } from "path";
+import { basename, join } from "path";
 import { readFileSync, existsSync, statSync, realpathSync } from "fs";
 import { createHash } from "crypto";
-import { withFailureCode, readStateJson, NONCE_HEX_LEN, KB_SALT_HEX_LEN } from "./lib/determinism.mjs";
+import { spawnSync } from "child_process";
+import { withFailureCode, readStateJson, KB_SALT_HEX_LEN, isFeatureEnabled } from "./lib/determinism.mjs";
+import { captureEnvValues, restoreEnvValues } from "./lib/env_scope.mjs";
 import { refreshPlanArtifacts } from "./lib/plan_refresh.mjs";
-import { loadGateRepairTemplate } from "./lib/repair_packet.mjs";
-import { analyzeAnnotationDiscipline } from "./lib/annotation_discipline.mjs";
+import { loadGateRegistry } from "./lib/gate_registry.mjs";
 import {
-  computePlanApprovalIntegrityForState,
-  computePlanTamperFingerprint,
-  summarizePlanApprovalArtifacts,
-  summarizePlanTamperArtifacts,
-  usesPlanApprovalIntegrityBundle,
-} from "./lib/plan_integrity.mjs";
+  deriveVerificationTruth,
+  deriveVerificationPresentationTruth,
+  presentationResultGuidance,
+} from "./lib/verification_truth.mjs";
+import {
+  loadGateRepairTemplate,
+  renderEvidenceGuidanceLines,
+  renderRepairSurface,
+} from "./lib/repair_packet.mjs";
+import { analyzeAnnotationDiscipline } from "./lib/annotation_discipline.mjs";
 import { extractNormalizedStoryIdsFromText } from "./lib/planner_canonicalizer.mjs";
 import {
   canonicalizeVerificationProofText,
@@ -45,6 +49,7 @@ import {
   VERIFICATION_OBLIGATION_FAMILIES,
 } from "./lib/verification_obligations.mjs";
 import {
+  analyzeCompactLowRiskVerification,
   analyzeVerificationMatrix,
   buildVerificationEvidenceGuidance,
   CONTEXT_MATRIX_COLUMNS,
@@ -52,7 +57,6 @@ import {
   extractSuccessCriteria as extractMatrixSuccessCriteria,
   getTableCell as getVerificationTableCell,
   normalizeMatrixText,
-  renderVerificationEvidenceGuidance,
   selectCriterionStoryTable,
   summarizeVerificationMatrixDiagnostics,
 } from "./lib/verification_matrix.mjs";
@@ -62,15 +66,45 @@ import {
   scopeContractRequiresAmbientAcknowledgement,
   summarizeScopeContract,
 } from "./lib/scope_contract.mjs";
+import { loadPlanWorkOrder } from "./lib/work_order_contract.mjs";
 import { evaluateSemanticUpkeepContract } from "./lib/task_profile_contracts.mjs";
 import { resolveAntiRitualAssessment } from "./lib/anti_ritual_contract.mjs";
 import { buildPhaseContract, resolveAuthorityProfile, resolveProofPosture } from "./lib/planner_phase_routing.mjs";
 import { resolveKnowledgeFromContext } from "./knowledge_resolver.mjs";
+import { analyzeKbTagObligation, resolveKbTagKnowledgeContext } from "./lib/kb_plan_tags.mjs";
 import { collectKbSignoff } from "./lib/kb_signoff.mjs";
 import { evaluateQuantPersonaGate, summarizeQuantPersonaGate } from "./lib/quant_persona_gate.mjs";
+import { computePlanLearnedObligationsSignal } from "./lib/learned_obligations.mjs";
+import { loadMistakeRegistry } from "./lib/mistake_registry.mjs";
+import { evaluateDirtyInputProofArtifacts } from "./lib/repo_state_stamp.mjs";
+import {
+  evaluateLeakageProofArtifactRequirements,
+  evaluateOptimizationScaleContract,
+  evaluateRunClassInflation,
+  quantGateCompatibilityStatus,
+  resolveQuantGatePlanContext,
+  summarizeLeakageProofArtifactGate,
+  summarizeOptimizationScaleContractGate,
+  summarizeRunClassInflationGate,
+} from "./lib/quant_gate_hardening.mjs";
 import { formatSessionAssumptionBlockers, loadSessionObligations } from "./lib/session_obligations.mjs";
 import { resolveExecutedTestEvidenceSignal } from "./lib/autonomous_driver.mjs";
+import { runSemanticChecks } from "./rule_engine.mjs";
+import {
+  normalizeVerificationStatus,
+  verificationStatusIsPass,
+} from "./lib/verification_status_vocabulary.mjs";
 import { evaluateAvaGate } from "./lib/autonomous_verification_agents.mjs";
+import {
+  evaluateReuseBeforeCreateGate,
+  summarizeReuseBeforeCreateGate,
+} from "./lib/reuse_before_create_gate.mjs";
+import { evaluateNovelInsightFloor } from "./lib/novel_insight_floor.mjs";
+import {
+  evaluateIncidentCloseout,
+  summarizeIncidentCloseout,
+} from "./lib/incident_contract.mjs";
+import { classifySemanticDivergence } from "./lib/semantic_divergence.mjs";
 
 const cwd = process.cwd();
 const { plansDir, knowledgeDir } = getPaths(cwd);
@@ -91,17 +125,55 @@ function safeReadFile(filePath) {
   } catch { return null; }
 }
 
+let transientCloseSignals = null;
+
 function getCloseSignals(planDir) {
-  return readStateJson(planDir)?.close_signals || null;
+  return transientCloseSignals || readStateJson(planDir)?.close_signals;
 }
 
 function normalizeVerdict(value) {
-  const text = String(value || "").trim().toLowerCase();
-  if (!text) return null;
-  if (/\b(pass|ready|satisfied|complete|complete_enough|proceed|close|validated|good)\b/.test(text)) return "pass";
-  if (/\b(warn|warning|partial|needs_followup|mixed)\b/.test(text)) return "warn";
-  if (/\b(fail|blocked|insufficient|missing|replan|explore|not_ready|no)\b/.test(text)) return "fail";
-  return null;
+  const firstLine = String(value || "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find(Boolean) || "";
+  const withoutLabel = firstLine
+    .replace(/^[-*]\s*/, "")
+    .replace(/^(?:status|verdict)\s*:\s*/i, "");
+  const leadingDecision = withoutLabel.match(
+    /^([A-Za-z][A-Za-z_-]*(?:\s+[A-Za-z][A-Za-z_-]*)?)(?:[.!?:;]\s*|\s+[—–-]\s+|$)/,
+  ) || withoutLabel.match(/^([A-Za-z][A-Za-z_-]*)\s+for\s+[^,.;:]{1,80},\s+/i);
+  const boundedToken = leadingDecision?.[1]?.trim() || "";
+  const normalized = normalizeVerificationStatus(boundedToken, "decision");
+  if (!normalized.valid) return null;
+  if (normalized.kind === "pass") return "pass";
+  if (normalized.kind === "fail") return "fail";
+  return "warn";
+}
+
+function gateResultBlocks(result) {
+  const normalized = normalizeVerificationStatus(result?.status, "gate");
+  return !normalized.valid || normalized.kind === "fail";
+}
+
+function requiredExecutionOutcomeBlocks(outcome) {
+  if (outcome?.required === false) return false;
+  const normalized = normalizeVerificationStatus(outcome?.status, "execution");
+  return !normalized.valid || normalized.kind !== "pass";
+}
+
+function requiredExecutionOutcomeGateStatus(outcome, { waiverPasses = false } = {}) {
+  if (outcome?.required === false || (waiverPasses && outcome?.waived === true)) return PASS;
+  const normalized = normalizeVerificationStatus(outcome?.status, "execution");
+  if (!normalized.valid || normalized.kind === "fail") return FAIL;
+  if (normalized.kind === "pass") return PASS;
+  return WARN;
+}
+
+function canonicalGateStatus(value) {
+  const normalized = normalizeVerificationStatus(value, "gate");
+  if (!normalized.valid || normalized.kind === "fail") return FAIL;
+  if (normalized.kind === "pass") return PASS;
+  return WARN;
 }
 
 function resolveReflectionSignal(planDir) {
@@ -156,10 +228,13 @@ function resolveReflectionSignal(planDir) {
     { name: "semantic", verdict: semanticVerdict },
     { name: "evidence_readiness", verdict: evidenceVerdict },
   ];
-  const failVerdicts = verdictEntries.filter((entry) => entry.verdict === "fail").map((entry) => entry.name);
+  const failVerdicts = verdictEntries.filter((entry) =>
+    normalizeVerificationStatus(entry.verdict, "decision").kind === "fail"
+  ).map((entry) => entry.name);
   const nullVerdicts = verdictEntries.filter((entry) => entry.verdict === null).map((entry) => entry.name);
   const warnVerdicts = verdictEntries.filter((entry) => entry.verdict === "warn").map((entry) => entry.name);
-  const acknowledgesWarnings = /(^|\n)\s*(##+\s*)?(warning[s]?\s+acknowledged|warnings?\s*:\s*acknowledged|acknowledged\s+warnings?)\b/i.test(reflectionContent);
+  const acknowledgesWarnings = !/\b(?:do|does|did)?\s*not\s+acknowledg\w*\b/i.test(reflectionContent)
+    && /(^|\n)\s*(##+\s*)?(warning[s]?\s+acknowledged|warnings?\s*:\s*acknowledged|acknowledged\s+warnings?)\b/i.test(reflectionContent);
   const nextMoveAllowsValidation = !/\b(re_?plan|re-plan|explore)\b/i.test(nextMoveText) && nextMove !== "fail";
 
   let routingAction = "proceed_to_validate";
@@ -208,17 +283,27 @@ function resolveProgressSignal(planDir, progressContent) {
   const closeSignals = getCloseSignals(planDir);
   if (typeof closeSignals?.progress?.satisfied === "boolean") {
     const openItems = Number(closeSignals.progress.open_items || 0);
+    const blockingOpenItems = Array.isArray(closeSignals.progress.blocking_open_items)
+      ? closeSignals.progress.blocking_open_items
+      : [];
+    const blockingSatisfied = typeof closeSignals.progress.blocking_satisfied === "boolean"
+      ? closeSignals.progress.blocking_satisfied
+      : closeSignals.progress.satisfied;
     return {
       satisfied: closeSignals.progress.satisfied,
-      detail: closeSignals.progress.satisfied
+      blockingSatisfied,
+      blockingOpenItems,
+      detail: closeSignals.progress.detail || (closeSignals.progress.satisfied
         ? "Structured close signal: all progress items completed"
-        : `${openItems} open progress item(s) remain`,
+        : `${openItems} open progress item(s) remain`),
     };
   }
 
   const remainingItems = progressContent ? (progressContent.match(/^- \[ \] .+$/gm) || []) : [];
   return {
     satisfied: remainingItems.length === 0,
+    blockingSatisfied: remainingItems.length === 0,
+    blockingOpenItems: remainingItems,
     detail: remainingItems.length === 0
       ? "All items completed or accounted for"
       : `${remainingItems.length} uncompleted item(s) remaining`,
@@ -325,9 +410,9 @@ function resolvePlannerCoreSignal(planDir) {
         ? (verified && journeyVerified && (!proofBundleRequired || proofBundleVerified)
             ? "Planner-core self-proof verified via migration smoke + planner journey close signals"
             : !verified
-              ? "Planner-core change detected but `test_migration.mjs` PASS was not recorded"
+              ? "Planner-core change detected but governed `migration-bootstrap` IVE PASS was not recorded"
               : !journeyVerified
-                ? "Planner-core change detected but no planner journey PASS (for example `test_transition_gate_flows.mjs`) was recorded"
+                ? "Planner-core change detected but governed `transition-gate-flows` IVE PASS was not recorded"
                 : `Sensitive planner-core surface changed but the required proof bundle PASS was not recorded: ${missingProofCommands.join(", ")}`)
         : "Planner-core self-proof not required for this plan",
     };
@@ -339,9 +424,9 @@ function resolvePlannerCoreSignal(planDir) {
   };
 }
 
-function resolveTestEvidenceSignal(planDir, gateName = null) {
+function resolveTestEvidenceSignal(planDir, gateName = null, currentGateEvidence = null) {
   if (gateName) {
-    const executed = resolveExecutedTestEvidenceSignal(planDir, gateName);
+    const executed = resolveExecutedTestEvidenceSignal(planDir, gateName, currentGateEvidence);
     if (executed.present) {
       return {
         required: executed.required,
@@ -362,7 +447,7 @@ function resolveTestEvidenceSignal(planDir, gateName = null) {
       satisfied: closeSignals.test_evidence.satisfied,
       detail: required
         ? closeSignals.test_evidence.satisfied
-          ? status === "waived"
+          ? normalizeVerificationStatus(status, "execution").kind === "waived"
             ? `Structured close signal: test evidence waived by ${closeSignals.test_evidence.waiver_approved_by || "unknown"}`
             : `Structured close signal: ${testPaths.length} planned test file(s) + passing test command recorded (advisory unless executed gate evidence exists)`
           : `Code changes require test evidence — status=${status}; code paths=${codePaths.length}, test paths=${testPaths.length}`
@@ -395,7 +480,7 @@ function resolveAntiRecurrenceSignal(planDir) {
       detail: !required
         ? "Structured close signal: anti-recurrence guard not required for this plan"
         : signal.satisfied
-          ? status === "waived"
+          ? normalizeVerificationStatus(status, "execution").kind === "waived"
             ? `Structured close signal: anti-recurrence guard waived by ${signal.waiver_approved_by || "unknown"}`
             : `Structured close signal: anti-recurrence guard satisfied via ${status}${typeDetail}`
           : status === "section_without_guard_type"
@@ -413,39 +498,34 @@ function resolveAntiRecurrenceSignal(planDir) {
   };
 }
 
-function resolveLearnedObligationsSignal(planDir) {
-  const closeSignals = getCloseSignals(planDir);
-  if (typeof closeSignals?.learned_obligations?.satisfied === "boolean") {
-    const signal = closeSignals.learned_obligations;
-    const obligations = Array.isArray(signal.active_obligations) ? signal.active_obligations : [];
-    const missing = obligations.filter((obligation) => !obligation.satisfied);
-    const degraded = obligations.filter((obligation) => obligation.source_registry_degraded);
-    const degradedDetail = degraded
-      .map((obligation) => `${obligation.id} (source=${obligation.source_mistake || "unknown"}, registry=${obligation.source_registry_status || "degraded"})`)
-      .join("; ");
-    const missingDetail = missing
-      .map((obligation) => `${obligation.id} (${obligation.subject_id}, mode=${obligation.verification_mode})`)
-      .join("; ");
-    return {
-      required: signal.required === true,
-      satisfied: signal.satisfied,
-      detail: signal.required !== true
-        ? "Structured close signal: no learned verification obligations active for this plan"
-        : degraded.length > 0
-          ? missing.length > 0
-            ? `Active learned obligations rely on a missing or unusable source mistake registry and still lack proof or waiver: ${degradedDetail}. Missing evidence: ${missingDetail}`
-            : `Active learned obligations rely on a missing or unusable source mistake registry: ${degradedDetail}. Restore or repair the source registry before close.`
-        : signal.satisfied
-          ? `Structured close signal: ${signal.satisfied_count || 0}/${signal.active_count || obligations.length} learned obligation(s) satisfied`
-          : `Active learned obligations missing evidence or waiver: ${missingDetail}`,
-    };
-  }
-
+export function summarizeLearnedObligationsSignal(signal, { phase = "close" } = {}) {
+  const obligations = Array.isArray(signal.active_obligations) ? signal.active_obligations : [];
+  const missing = obligations.filter((obligation) => !obligation.satisfied);
+  const degraded = obligations.filter((obligation) => obligation.source_registry_degraded);
+  const degradedDetail = degraded
+    .map((obligation) => `source mistake registry degraded for ${obligation.id} (source=${obligation.source_mistake}, registry=${obligation.source_registry_status})`)
+    .join("; ");
+  const missingDetail = missing
+    .map((obligation) => `${obligation.id} (${obligation.subject_id}, mode=${obligation.verification_mode})`)
+    .join("; ");
+  const unsatisfiedDetail = [degradedDetail, missingDetail].filter(Boolean).join(". ");
   return {
-    required: false,
-    satisfied: true,
-    detail: "Legacy plan without structured learned-obligations signal",
+    ...signal,
+    detail: signal.required !== true
+      ? `No learned verification obligations are due by ${phase.toUpperCase()} for this plan`
+      : signal.satisfied
+        ? `${signal.satisfied_count || 0}/${signal.active_count || obligations.length} learned obligation(s) due by ${phase.toUpperCase()} satisfied from the live plan evidence surface`
+        : `Active learned obligations due by ${phase.toUpperCase()} are unsatisfied: ${unsatisfiedDetail}`,
   };
+}
+
+function resolveLearnedObligationsSignal(planDir, { phase = "close" } = {}) {
+  const signal = computePlanLearnedObligationsSignal({
+    cwd,
+    planDir,
+    requiredAtOrBefore: phase,
+  });
+  return summarizeLearnedObligationsSignal(signal, { phase });
 }
 
 function resolveSessionObligationsSignal(planDir) {
@@ -553,6 +633,38 @@ function resolveReviewIntakeSignal(planDir) {
   };
 }
 
+function resolveRecipePromotionSignal(planDir) {
+  const closeSignals = getCloseSignals(planDir);
+  if (typeof closeSignals?.recipe_promotion?.satisfied === "boolean") {
+    const signal = closeSignals.recipe_promotion;
+    const candidates = Array.isArray(signal.candidates) ? signal.candidates : [];
+    const unacknowledged = candidates.filter((candidate) => candidate.status !== "acknowledged");
+    return {
+      required: signal.required === true,
+      satisfied: signal.satisfied === true,
+      status: signal.status || "unknown",
+      candidate_count: signal.candidate_count || candidates.length,
+      unacknowledged_count: signal.unacknowledged_count || unacknowledged.length,
+      candidates,
+      detail: signal.required !== true
+        ? "Structured close signal: recipe promotion not required"
+        : signal.satisfied
+          ? `Structured close signal: ${signal.candidate_count || candidates.length} recipe-promotion candidate(s) have explicit disposition`
+          : signal.detail || `Recipe-promotion candidates need disposition: ${unacknowledged.map((candidate) => candidate.id).join(", ") || "unknown candidate"}`,
+    };
+  }
+
+  return {
+    required: false,
+    satisfied: true,
+    status: "legacy",
+    candidate_count: 0,
+    unacknowledged_count: 0,
+    candidates: [],
+    detail: "Legacy plan without structured recipe-promotion close signal",
+  };
+}
+
 function resolveAvaGateSignal(planDir) {
   const signal = evaluateAvaGate({ planDir, repoRoot: cwd });
   return {
@@ -576,26 +688,21 @@ function resolveQuantPersonaGateSignal(planDir, {
   const effectiveVerificationContent = verificationContent ?? readFile(join(planDir, "verification.md")) ?? "";
   const effectiveRedTeamContent = redTeamContent ?? readFile(join(planDir, "red_team_notes.md")) ?? "";
   const effectiveReflectionContent = reflectionContent ?? readFile(join(planDir, "reflection.md")) ?? "";
-  const goalText = effectiveStateJson?.goal || extractGoalFromPlanContent(effectivePlanContent);
-  const plannedFiles = extractFilesToModify(effectivePlanContent);
-  let planShape = effectiveStateJson?.plan_shape || null;
-  try {
-    const detected = detectPlanShape({
-      goalText,
-      plannedFiles,
-      intentContract: loadIntentContract(planDir).parsed,
-    });
-    if (detected?.primary && detected.primary !== "unknown") planShape = detected;
-  } catch {
-    // Fall back to state shape.
-  }
+  const context = resolveQuantGatePlanContext({
+    cwd,
+    planDir,
+    planContent: effectivePlanContent,
+    findingsContent,
+    verificationContent: effectiveVerificationContent,
+    stateJson: effectiveStateJson,
+  });
 
   return evaluateQuantPersonaGate({
-    sourceText: [goalText, findingsContent, effectivePlanContent].filter(Boolean).join("\n\n"),
+    sourceText: [context.goalText, findingsContent, effectivePlanContent].filter(Boolean).join("\n\n"),
     planContent: [effectivePlanContent, effectiveRedTeamContent, effectiveReflectionContent].filter(Boolean).join("\n\n"),
     verificationContent: [effectivePlanContent, effectiveVerificationContent].filter(Boolean).join("\n\n"),
-    changedFiles: plannedFiles,
-    planShape,
+    changedFiles: context.plannedFiles,
+    planShape: context.planShape,
   });
 }
 
@@ -786,32 +893,6 @@ function extractMarkdownSection(planContent, heading) {
   return nextHeadingMatch ? afterHeading.slice(0, nextHeadingMatch.index) : afterHeading;
 }
 
-function extractSuccessCriteria(planContent) {
-  const section = extractMarkdownSection(planContent, "Success Criteria");
-  if (!section) return [];
-
-  const criteria = [];
-  for (const line of section.split("\n")) {
-    const numbered = line.match(/^\s*(\d+)\.\s+(.+)/);
-    if (numbered) {
-      criteria.push({ id: `sc_${numbered[1]}`, label: numbered[2].trim() });
-      continue;
-    }
-
-    const bullet = line.match(/^\s*[-*]\s+(.+)/);
-    if (bullet) {
-      criteria.push({ id: `sc_${criteria.length + 1}`, label: bullet[1].trim() });
-    }
-  }
-
-  return criteria;
-}
-
-function extractVerificationStrategyTable(planContent) {
-  const section = extractMarkdownSection(planContent, "Verification Strategy");
-  return extractMarkdownTable(section);
-}
-
 function extractMarkdownTable(sectionContent) {
   const section = String(sectionContent || "");
   if (!section) return { header: null, rows: [] };
@@ -837,10 +918,11 @@ function normalizeTraceabilityText(value) {
 }
 
 const VALID_ACTIVE_STORY_STATUSES = new Set(["FULLY_COVERED", "PARTIALLY_COVERED", "NOT_IMPLEMENTED"]);
+const NON_LINKABLE_DRAFT_STORY_STATUSES = new Set(["DRAFT", "PROPOSED", "PLANNED"]);
 
 function loadStoryRegistryIndex() {
   const registryPath = join(cwd, "reports", "user_story_audit", "story_registry.json");
-  if (!existsSync(registryPath)) return { ids: [], invalidById: new Map() };
+  if (!existsSync(registryPath)) return { ids: [], invalidById: new Map(), entries: [] };
 
   try {
     const parsed = JSON.parse(readFileSync(registryPath, "utf-8"));
@@ -850,16 +932,21 @@ function loadStoryRegistryIndex() {
     ];
     const ids = [];
     const invalidById = new Map();
+    const entries = [];
     for (const story of stories) {
       const id = typeof story?.id === "string" ? story.id.trim() : "";
       if (!id) continue;
       const status = typeof story?.status === "string" ? story.status.trim() : "";
-      if (VALID_ACTIVE_STORY_STATUSES.has(status)) ids.push(id);
-      else invalidById.set(id, status ? `invalid status '${status}'` : "missing status");
+      if (VALID_ACTIVE_STORY_STATUSES.has(status)) {
+        ids.push(id);
+        entries.push(story);
+      } else if (!NON_LINKABLE_DRAFT_STORY_STATUSES.has(status)) {
+        invalidById.set(id, status ? `invalid status '${status}'` : "missing status");
+      }
     }
-    return { ids, invalidById };
+    return { ids, invalidById, entries };
   } catch {
-    return { ids: [], invalidById: new Map([["story_registry.json", "invalid JSON"]]) };
+    return { ids: [], invalidById: new Map([["story_registry.json", "invalid JSON"]]), entries: [] };
   }
 }
 
@@ -867,11 +954,77 @@ function loadStoryRegistryIds() {
   return loadStoryRegistryIndex().ids;
 }
 
-function analyzeCriterionStoryTraceability(planContent) {
+function tokenizeForStoryMatch(text) {
+  if (!text) return new Set();
+  const normalized = String(text)
+    .toLowerCase()
+    .replace(/[^a-z0-9\/._ -]/g, " ")
+    .split(/[\s\/_\.\-]+/)
+    .filter((t) => t.length >= 2 && !new Set(["the", "and", "for", "with", "from", "into", "that", "this", "are", "will", "must", "should", "can", "use", "using", "via", "per", "all", "each", "any", "new", "add", "fix", "refactor", "update", "doc", "docs", "test", "tests", "script", "scripts"]).has(t));
+  return new Set(normalized);
+}
+
+function scoreStoryRelevance(story, criterionTokens, fileTokens) {
+  const storyTokens = new Set([
+    ...tokenizeForStoryMatch(story.title),
+    ...tokenizeForStoryMatch(story.summary),
+    ...tokenizeForStoryMatch(story.description),
+    ...tokenizeForStoryMatch(story.keywords),
+    ...tokenizeForStoryMatch(story.code_refs?.join(" ")),
+    ...tokenizeForStoryMatch(story.test_refs?.join(" ")),
+    ...tokenizeForStoryMatch(story.validation_refs?.join(" ")),
+    ...tokenizeForStoryMatch(story.doc_refs?.join(" ")),
+  ]);
+  let score = 0;
+  for (const token of criterionTokens) {
+    if (storyTokens.has(token)) score += 1;
+  }
+  if (fileTokens.size > 0 && story.code_refs?.length) {
+    for (const ref of story.code_refs) {
+      const refTokens = tokenizeForStoryMatch(ref);
+      for (const token of fileTokens) {
+        if (refTokens.has(token)) score += 2;
+      }
+    }
+  }
+  if (fileTokens.size > 0 && story.test_refs?.length) {
+    for (const ref of story.test_refs) {
+      const refTokens = tokenizeForStoryMatch(ref);
+      for (const token of fileTokens) {
+        if (refTokens.has(token)) score += 1;
+      }
+    }
+  }
+  return score;
+}
+
+function suggestStoryIdsForCriterion(criterion, stories, filesToModify) {
+  const criterionTokens = tokenizeForStoryMatch(criterion.label);
+  const fileTokens = tokenizeForStoryMatch(filesToModify.join(" "));
+  const scored = stories
+    .map((story) => ({ story, score: scoreStoryRelevance(story, criterionTokens, fileTokens) }))
+    .filter((entry) => entry.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 3)
+    .map((entry) => entry.story.id);
+  return scored;
+}
+
+function storyLinkageSuggestionText(criterion, stories, filesToModify) {
+  const suggestions = suggestStoryIdsForCriterion(criterion, stories, filesToModify);
+  const label = `${criterion.id} (${criterion.label})`;
+  if (suggestions.length === 0) {
+    return `${label} — no candidate story IDs found; add a matching story to story_registry.json or explicitly mark as N/A`;
+  }
+  return `${label} — suggested story ID(s): ${suggestions.join(", ")}`;
+}
+
+function analyzeCriterionStoryTraceability(planContent, { workOrder = null, planDir = null, stateJson = null } = {}) {
   const storyRegistry = loadStoryRegistryIndex();
   const storyIds = storyRegistry.ids;
   const invalidById = storyRegistry.invalidById;
-  const criteria = extractMatrixSuccessCriteria(planContent);
+  const criteria = extractMatrixSuccessCriteria(planContent, { workOrder });
+  const filesToModify = extractFilesToModify(planContent);
 
   if (storyIds.length === 0 && invalidById.size === 0) {
     return {
@@ -889,12 +1042,55 @@ function analyzeCriterionStoryTraceability(planContent) {
     };
   }
 
-  const table = selectCriterionStoryTable(planContent);
+  const table = selectCriterionStoryTable(planContent, { workOrder });
   if (!table?.header) {
+    const synthesis = computeVerificationObligationSynthesis({
+      cwd,
+      planDir,
+      stateJson,
+      planContent,
+    });
+    const compact = analyzeCompactLowRiskVerification({ planContent, criteria, synthesis });
+    if (compact.applicable && compact.satisfied) {
+      if (criteria.length !== 1) {
+        return {
+          applicable: true,
+          satisfied: false,
+          detail: "Compact low-risk verification story linkage is only accepted for single-criterion plans; use the full Verification Strategy table for multiple criteria",
+        };
+      }
+      const normalizedStoryIds = extractNormalizedStoryIdsFromText(compact.compact_obligation?.text || "");
+      const matchedStoryIds = storyIds.filter((storyId) => normalizedStoryIds.includes(storyId));
+      const invalidStoryIds = [...invalidById.entries()]
+        .filter(([storyId]) => normalizedStoryIds.includes(storyId))
+        .map(([storyId, reason]) => `${storyId} ${reason}`);
+      if (invalidStoryIds.length > 0) {
+        return {
+          applicable: true,
+          satisfied: false,
+          detail: `Compact low-risk verification obligation references invalid story IDs: ${invalidStoryIds.join(", ")}`,
+        };
+      }
+      if (matchedStoryIds.length > 0) {
+        return {
+          applicable: true,
+          satisfied: true,
+          detail: `Compact low-risk verification obligation links ${criteria[0].id} to ${matchedStoryIds.join(", ")}`,
+        };
+      }
+      return {
+        applicable: true,
+        satisfied: false,
+        detail: `Compact low-risk verification obligation must name an active story ID from story_registry.json for ${storyLinkageSuggestionText(criteria[0], storyRegistry.entries, filesToModify)}`,
+      };
+    }
+    const suggestions = criteria
+      .map((criterion) => storyLinkageSuggestionText(criterion, storyRegistry.entries, filesToModify))
+      .join("; ");
     return {
       applicable: true,
       satisfied: false,
-      detail: "Verification Strategy must use a markdown table with 'Criterion' and 'Story linkage' columns when story_registry.json exists",
+      detail: `Verification Strategy must use a markdown table with 'Criterion' and 'Story linkage' columns when story_registry.json exists. ${suggestions}`,
     };
   }
 
@@ -903,10 +1099,13 @@ function analyzeCriterionStoryTraceability(planContent) {
   const storyColumn = headerCells.findIndex((cell) => cell.includes("story linkage"));
 
   if (criterionColumn === -1 || storyColumn === -1) {
+    const suggestions = criteria
+      .map((criterion) => storyLinkageSuggestionText(criterion, storyRegistry.entries, filesToModify))
+      .join("; ");
     return {
       applicable: true,
       satisfied: false,
-      detail: "Verification Strategy must include explicit 'Criterion' and 'Story linkage' columns when story_registry.json exists",
+      detail: `Verification Strategy must include explicit 'Criterion' and 'Story linkage' columns when story_registry.json exists. ${suggestions}`,
     };
   }
 
@@ -918,7 +1117,8 @@ function analyzeCriterionStoryTraceability(planContent) {
     );
 
     if (!matchedRow) {
-      missing.push(`${criterion.id} (${criterion.label})`);
+      const suggestions = suggestStoryIdsForCriterion(criterion, storyRegistry.entries, filesToModify);
+      missing.push({ label: `${criterion.id} (${criterion.label})`, suggestions });
       continue;
     }
 
@@ -932,12 +1132,21 @@ function analyzeCriterionStoryTraceability(planContent) {
       continue;
     }
     if (matchedStoryIds.length === 0) {
-      missing.push(`${criterion.id} (${criterion.label})`);
+      const suggestions = suggestStoryIdsForCriterion(criterion, storyRegistry.entries, filesToModify);
+      missing.push({ label: `${criterion.id} (${criterion.label})`, suggestions });
     }
   }
 
   const issues = [];
-  if (missing.length > 0) issues.push(`Verification Strategy missing explicit story linkage for: ${missing.join("; ")}`);
+  if (missing.length > 0) {
+    const lines = missing.map((entry) => {
+      const suggestionText = entry.suggestions.length > 0
+        ? ` — suggested story ID(s): ${entry.suggestions.join(", ")}`
+        : " — no candidate story IDs found; add a matching story to story_registry.json or explicitly mark as N/A";
+      return `${entry.label}${suggestionText}`;
+    });
+    issues.push(`Verification Strategy missing explicit story linkage for: ${lines.join("; ")}`);
+  }
   if (invalid.length > 0) issues.push(`Verification Strategy references invalid story IDs: ${invalid.join("; ")}`);
 
   return {
@@ -955,7 +1164,6 @@ const WEAK_PROOF_ONLY_PATTERN = /\b(unit|wrapper)\b/;
 const HEADER_CONTEXT_PATTERNS = ["repo/system context", "system context", "repo context", "context"];
 const HEADER_PROOF_PATTERNS = ["required proof type", "proof type", "proof"];
 const HEADER_ACTION_PATTERNS = ["concrete command or action", "command/action", "command or action", "action", "command"];
-const HEADER_PASS_PATTERNS = ["pass means", "pass"];
 const HEADER_UNVERIFIED_PATTERNS = ["what remains unverified", "remains unverified", "unverified", "residual risk", "residual unknown"];
 
 function findVerificationColumn(headerCells, candidates) {
@@ -979,16 +1187,6 @@ function normalizeStringList(value) {
   }
   if (typeof value === "string" && value.trim()) return [value.trim()];
   return [];
-}
-
-function textMatchesKeywordList(value, keywords) {
-  const normalizedText = canonicalizeVerificationProofText(value);
-  return normalizeStringList(keywords).some((keyword) => normalizedText.includes(canonicalizeVerificationProofText(keyword)));
-}
-
-function obligationMatchesMatrixRow(obligation, contextValue, proofValue) {
-  return textMatchesKeywordList(contextValue, [obligation.label, ...(obligation.context_keywords || [])]) ||
-    textMatchesKeywordList(proofValue, obligation.proof_keywords || []);
 }
 
 function formatRequiredColumnList(columns) {
@@ -1449,7 +1647,80 @@ function collectMissingSynthesisLabels(planContent) {
     .map((requirement) => requirement.label);
 }
 
-function buildPlanToExecuteLowLevelAgentPacket({ planDirName, planContent, intentContract }) {
+function targetHotspotRepairGuidance(codes, { planArg = "<plan-dir>" } = {}) {
+  const codeSet = codes instanceof Set ? codes : new Set(Array.isArray(codes) ? codes : []);
+  const lines = [];
+  if (codeSet.has("GATE-EXP-010")) {
+    lines.push("GATE-EXP-010 KB-digest repair:");
+    lines.push("- Add the transition-printed KB digest salt to `findings_ledger.json` as `kb_digest_salt`, or to `findings.md` as `[KB_DIGEST:<salt>]`.");
+    lines.push("- Do not invent the salt; it is printed by the first successful explore-to-plan bootstrap run and verified against `state.json.kb_digest_hash`.");
+    lines.push(`- Preflight before retry: node .agent/skills/iterative-planner/scripts/evidence_preflight.mjs check --plan ${planArg} --gate GATE-EXP-010 --json`);
+  }
+  if (codeSet.has("GATE-REF-003")) {
+    lines.push("GATE-REF-003 progress repair:");
+    lines.push("- Do not edit `state.json.close_signals`; it is generated by the planner.");
+    lines.push("- In `progress.md`, complete evidence-backed administrative items or move substantive unfinished work back to EXECUTE.");
+    lines.push(`- Inspect generated progress signals: node .agent/skills/iterative-planner/scripts/close_signals.mjs explain --plan ${planArg} --json`);
+  }
+  if (codeSet.has("GATE-REF-004")) {
+    lines.push("GATE-REF-004 KB repair:");
+    lines.push("- Do not edit `state.json.close_signals`; it is generated by the planner.");
+    lines.push("- In `reflection.md`, complete `## Knowledge Base Sign-Off` with `Decision: no_new_learnings` plus a specific reason, or update `plans/knowledge/mistakes.md`, `patterns.md`, or `gotchas.md` for durable learnings.");
+    lines.push(`- Inspect generated KB signals: node .agent/skills/iterative-planner/scripts/close_signals.mjs explain --plan ${planArg} --json`);
+  }
+  if (codeSet.has("GATE-PLN-016")) {
+    lines.push("GATE-PLN-016 story-linkage repair:");
+    lines.push("- Every Success Criteria row needs an active `Story linkage` value from `reports/user_story_audit/story_registry.json`, or `N/A` only when no registry exists.");
+    lines.push("- Use stable `sc_N` criterion IDs in the Criterion column so the matrix maps each success criterion without copying full prose.");
+  }
+  if (codeSet.has("GATE-PLN-017")) {
+    lines.push("GATE-PLN-017 verification-matrix repair:");
+    lines.push("- In `plan.md -> ## Verification Strategy`, use the context-sensitive matrix columns exactly: Criterion | Story linkage | Repo/system context | Required proof type | Concrete command or action | Pass means | What remains unverified.");
+    lines.push("- Use recognized proof IDs such as `proof:dry_run`, `proof:planner_smoke`, `proof:integration_smoke`, `proof:artifact_review`, or `proof:migration_parity` when the synthesized obligation requires them.");
+    lines.push(`- Lint before retry: node .agent/skills/iterative-planner/scripts/verification_matrix.mjs lint --plan ${planArg} --json`);
+  }
+  if (codeSet.has("GATE-PLN-020")) {
+    lines.push("GATE-PLN-020 semantic-upkeep repair:");
+    lines.push("- Complete `plan.md -> ## Semantic Upkeep Contract` with concrete values for Profile, Ontology action, Story action, Validation bundle, Strictness mode, and Close blocker if skipped.");
+    lines.push("- Replace placeholders such as `choose one`, `to be`, or generic template prose with task-specific values.");
+    lines.push(`- Preflight before retry: node .agent/skills/iterative-planner/scripts/evidence_preflight.mjs check --plan ${planArg} --gate GATE-PLN-020 --json`);
+  }
+  if (codeSet.has("GATE-PLN-021")) {
+    lines.push("GATE-PLN-021 KB-tag repair:");
+    lines.push("- Add a concrete knowledge application marker to `plan.md`: `[KB_APPLIED:<id>]` for relevant prior learning, or `[KB_NOT_APPLICABLE:<reason>]` when no prior learning applies.");
+    lines.push("- Keep the reason substantive; placeholder `TBD`, `N/A`, or empty tags do not prove KB review.");
+    lines.push(`- Preflight before retry: node .agent/skills/iterative-planner/scripts/evidence_preflight.mjs check --plan ${planArg} --gate GATE-PLN-021 --json`);
+  }
+  if (codeSet.has("GATE-VAL-012")) {
+    lines.push("GATE-VAL-012 deliverable-evidence repair:");
+    lines.push("- For each required deliverable, record a PASS command or output block in `verification.md` that names the deliverable by id or name.");
+    lines.push("- Or add a structured waiver entry to `verification.md` for deliverables that cannot be exercised directly.");
+    lines.push(`- Inspect generated intent-evidence signals: node .agent/skills/iterative-planner/scripts/close_signals.mjs explain --plan ${planArg} --json`);
+  }
+  if (codeSet.has("GATE-VAL-013")) {
+    lines.push("GATE-VAL-013 anti-recurrence repair:");
+    lines.push("- Add an `## Anti-Recurrence Guard` section to `verification.md` with a Guard Type (test, ontology, annotation, or kb) and a PASS/FAIL verdict.");
+    lines.push("- Or add a structured waiver entry to `verification.md` for this guard.");
+    lines.push(`- Inspect generated anti-recurrence signals: node .agent/skills/iterative-planner/scripts/close_signals.mjs explain --plan ${planArg} --json`);
+  }
+  if (codeSet.has("GATE-VAL-022")) {
+    lines.push("GATE-VAL-022 incident-closeout repair:");
+    lines.push("- Ensure `incident_contract.json` exists for incident-shaped plans and keep it generated from `incident_contract.mjs`.");
+    lines.push("- In `verification.md -> ## Incident Closeout`, record PASS evidence for every `closeout_gates[].id` and every required `required_preflights[].id` from the contract.");
+    lines.push("- Include advisor/persona consumption, rerun command, artifact lineage, residual risk, and accepted-risk waivers when any proof is deferred.");
+    lines.push(`- Preflight before retry: node .agent/skills/iterative-planner/scripts/evidence_preflight.mjs check --plan ${planArg} --gate GATE-VAL-022 --json`);
+  }
+  if (codeSet.has("GATE-SEM-001")) {
+    lines.push("GATE-SEM-001 semantic-substrate repair:");
+    lines.push("- Run `node .agent/skills/iterative-planner/scripts/rule_engine.mjs check-invariants` and resolve invariant violations.");
+    lines.push("- Run `node .agent/skills/iterative-planner/scripts/rule_engine.mjs verify-stories` and repair story-registry coverage gaps.");
+    lines.push("- If `story_registry.json` changed after the last signed transition, run a planner transition to refresh `state.json.registry_hash` rather than editing the hash by hand.");
+    lines.push(`- Inspect generated semantic substrate signals: node .agent/skills/iterative-planner/scripts/close_signals.mjs explain --plan ${planArg} --json`);
+  }
+  return lines;
+}
+
+function buildPlanToExecuteRepairSurface({ planDirName, planContent, intentContract, workOrder = null, results = [] }) {
   const planArg = planDirName || "<plan-dir>";
   const scalarFields = collectIntentContractScalarListFields(intentContract);
   const storyIssues = collectStoryRegistryLinkageIssues(planContent);
@@ -1466,8 +1737,8 @@ function buildPlanToExecuteLowLevelAgentPacket({ planDirName, planContent, inten
       stateJson: planDir && existsSync(planDir) ? readStateJson(planDir) : null,
       planContent,
     });
-    const criteria = extractMatrixSuccessCriteria(planContent);
-    const analysis = analyzeVerificationMatrix({ planContent, criteria, synthesis });
+    const criteria = extractMatrixSuccessCriteria(planContent, { workOrder });
+    const analysis = analyzeVerificationMatrix({ planContent, workOrder, criteria, synthesis });
     const guidance = buildVerificationEvidenceGuidance({
       analysis,
       synthesis,
@@ -1475,8 +1746,7 @@ function buildPlanToExecuteLowLevelAgentPacket({ planDirName, planContent, inten
       planArg,
       forceRequired: true,
     });
-    const rendered = renderVerificationEvidenceGuidance(guidance, { compact: true });
-    if (rendered) evidenceGuidanceLines = rendered.split("\n");
+    evidenceGuidanceLines = renderEvidenceGuidanceLines(guidance, { compact: true });
   } catch {
     evidenceGuidanceLines = [];
   }
@@ -1489,10 +1759,16 @@ function buildPlanToExecuteLowLevelAgentPacket({ planDirName, planContent, inten
         ? `Current story refs detected: ${storyIssues.storyRefs.join(", ")}`
         : "No story refs detected in Verification Strategy.";
 
-  return [
-    "Low-Level Agent Gate Packet",
-    `Do not say EXECUTE-ready until this passes: node .agent/skills/iterative-planner/scripts/transition.mjs plan-to-execute`,
-    `Diagnosis first: node .agent/skills/iterative-planner/scripts/verify_gate.mjs plan-to-execute --plan ${planArg}`,
+  return renderRepairSurface({
+    gateId: "plan-to-execute",
+    title: "Plan is not EXECUTE-ready",
+    primaryArtifact: `plans/${planArg}/plan.md`,
+    missing: [
+      `Do not say EXECUTE-ready until this passes: node .agent/skills/iterative-planner/scripts/transition.mjs plan-to-execute --dry-run --plan ${planArg}`,
+      `Deep diagnostics: node .agent/skills/iterative-planner/scripts/planner_findings.mjs --dir . --plan ${planArg} --gate plan-to-execute --json`,
+    ],
+    actions: [
+    ...targetHotspotRepairGuidance(failedGateCodes(results), { planArg }),
     "intent_contract.json list-like fields must be arrays: desired_outcomes, anti_goals, constraints, deliverables[].quality_bars, deliverables[].required_sections, deliverables[].required_signals, deliverables[].anti_goals.",
     scalarFields.length > 0
       ? `Current scalar list-like fields: ${scalarFields.join(", ")}`
@@ -1506,9 +1782,13 @@ function buildPlanToExecuteLowLevelAgentPacket({ planDirName, planContent, inten
       ? `Missing/empty synthesis labels now: ${missingSynthesisLabels.join(", ")}`
       : "Missing/empty synthesis labels now: none detected.",
     `Context-sensitive Verification Strategy columns: ${matrixColumns.join(" | ")}`,
-    ...evidenceGuidanceLines,
+    ],
+    diagnostics: [
+      ...evidenceGuidanceLines,
     `Matrix parser truth: node .agent/skills/iterative-planner/scripts/verification_matrix.mjs lint --plan ${planArg} --json`,
-  ];
+    ],
+    retry: `node .agent/skills/iterative-planner/scripts/transition.mjs plan-to-execute`,
+  });
 }
 
 function compactPacketText(value, max = 220) {
@@ -1518,7 +1798,7 @@ function compactPacketText(value, max = 220) {
 }
 
 function failedGateResults(results) {
-  return (Array.isArray(results) ? results : []).filter((result) => result?.status === FAIL);
+  return (Array.isArray(results) ? results : []).filter(gateResultBlocks);
 }
 
 function failedGateCodes(results) {
@@ -1559,41 +1839,45 @@ function buildExploreToPlanRepairLines({ planDirName, results }) {
   if (needsIntent) checklist.push(`Run intent repair: node .agent/skills/iterative-planner/scripts/intent_contract_bootstrap.mjs --plan ${planArg} --dry-run --json`);
   if (checklist.length === 0) checklist.push("Fix the failed checks listed below, then retry the transition once.");
 
-  return [
-    "Gate: explore-to-plan",
-    `Primary artifact: plans/${planArg}/findings.md (or findings_ledger.json for structured findings).`,
-    "Repair checklist:",
-    ...checklist.map((item) => `- ${item}`),
-    "Suggested minimum findings.md shape:",
-    "```markdown",
-    "## Index",
-    "- F-001: Observed failure and direct evidence.",
-    "- F-002: Root cause or contract gap.",
-    "- F-003: Blast radius or adjacency finding.",
-    "",
-    "## F-001 - Observed failure and direct evidence",
-    "- Symptom: ...",
-    "- Evidence: ...",
-    "",
-    "## F-002 - Root cause or contract gap",
-    "- Cause: ...",
-    "- Why current behavior allowed it: ...",
-    "",
-    "## F-003 - Blast radius or adjacency finding",
-    "- Adjacent files: ...",
-    "- Risk if missed: ...",
-    "",
-    "## Root Cause",
-    "Describe the causal chain from user-visible failure to code/process gap.",
-    "",
-    "## Assumption Ledger",
-    "- VERIFIED: ...",
-    "- VIOLATED: ...",
-    "",
-    "## Adjacency",
-    "- path/to/file: why it is adjacent",
-    "```",
-  ];
+  return renderRepairSurface({
+    gateId: "explore-to-plan",
+    title: "Findings are not PLAN-ready",
+    primaryArtifact: `plans/${planArg}/findings.md (or findings_ledger.json for structured findings)`,
+    missing: checklist.map((item) => `- ${item}`),
+    sections: [{
+      heading: "Suggested minimum findings.md shape",
+      lines: [
+        "```markdown",
+        "## Index",
+        "- F-001: Observed failure and direct evidence.",
+        "- F-002: Root cause or contract gap.",
+        "- F-003: Blast radius or adjacency finding.",
+        "",
+        "## F-001 - Observed failure and direct evidence",
+        "- Symptom: ...",
+        "- Evidence: ...",
+        "",
+        "## F-002 - Root cause or contract gap",
+        "- Cause: ...",
+        "- Why current behavior allowed it: ...",
+        "",
+        "## F-003 - Blast radius or adjacency finding",
+        "- Adjacent files: ...",
+        "- Risk if missed: ...",
+        "",
+        "## Root Cause",
+        "Describe the causal chain from user-visible failure to code/process gap.",
+        "",
+        "## Assumption Ledger",
+        "- VERIFIED: ...",
+        "- VIOLATED: ...",
+        "",
+        "## Adjacency",
+        "- path/to/file: why it is adjacent",
+        "```",
+      ],
+    }],
+  });
 }
 
 function buildGenericGateRepairLines({ planDirName, gateName, results, planningOnly = false }) {
@@ -1602,48 +1886,28 @@ function buildGenericGateRepairLines({ planDirName, gateName, results, planningO
   const planningFlag = planningOnly ? " --planning-only" : "";
   const failed = failedGateResults(results);
   const codes = failedGateCodes(results);
-  const kbReflectLines = gateArg === "reflect-to-validate" && codes.has("GATE-REF-004")
-    ? [
-        "KB sign-off repair:",
-        "- Do not edit `state.json.close_signals`; it is generated by the planner.",
-        "- In `plans/<plan-dir>/reflection.md`, add or complete:",
-        "```markdown",
-        "## Knowledge Base Sign-Off",
-        "- Decision: no_new_learnings",
-        "- Reason: <specific reason no durable mistake/pattern/gotcha was learned>",
-        "```",
-        "- Or update `plans/knowledge/mistakes.md`, `patterns.md`, or `gotchas.md` when there is a real reusable learning.",
-      ]
-    : [];
-  // For failed codes that ship a gate_templates/<code>.json scaffold, teach the
-  // exact accepted shapes + a worked example in the compact packet too — not
-  // only in the full renderRepairPacket output. Without this the agent sees the
-  // diagnosis but not the precise format (e.g. `**Attack**:` accepted vs
-  // `**Attack:**` rejected), which is the recurring authoring trap.
-  const scaffoldLines = [];
-  for (const code of codes) {
-    const tmpl = loadGateRepairTemplate(code);
-    if (!tmpl) continue;
-    if (Array.isArray(tmpl.accepted_patterns) && tmpl.accepted_patterns.length > 0) {
-      scaffoldLines.push(`[${code}] Accepted patterns:`, ...tmpl.accepted_patterns);
-    }
-    if (typeof tmpl.worked_example === "string" && tmpl.worked_example.trim()) {
-      scaffoldLines.push(`[${code}] Worked example: ${tmpl.worked_example}`);
-    }
-  }
-
-  return [
-    `Gate: ${gateArg}`,
-    "Failed checks:",
-    ...failed.slice(0, 8).map((result) => `- ${formatFailedResultForPacket(result)}`),
-    failed.length > 8 ? `- ... ${failed.length - 8} more failed check(s) omitted from the compact packet.` : null,
-    ...kbReflectLines,
-    ...scaffoldLines,
-    `Truth command: node .agent/skills/iterative-planner/scripts/verify_gate.mjs ${gateArg} --plan ${planArg}${planningFlag}`,
-    `Deep diagnostics: node .agent/skills/iterative-planner/scripts/planner_findings.mjs --dir . --plan ${planArg} --gate ${gateArg} --json`,
-    "Loop recovery: node .agent/skills/iterative-planner/scripts/bootstrap.mjs fix-stuck --json",
-    `Retry after edits: node .agent/skills/iterative-planner/scripts/transition.mjs ${gateArg}`,
-  ].filter(Boolean);
+  const primaryCode = [...codes].find((code) => loadGateRepairTemplate(code)) || failed[0]?.code || gateArg;
+  const template = loadGateRepairTemplate(primaryCode);
+  const truthCommand = planningOnly
+    ? `node .agent/skills/iterative-planner/scripts/verify_gate.mjs ${gateArg} --plan ${planArg}${planningFlag}`
+    : `node .agent/skills/iterative-planner/scripts/transition.mjs ${gateArg} --dry-run --plan ${planArg}`;
+  return renderRepairSurface({
+    template,
+    gateId: primaryCode,
+    title: template?.title || `${gateArg} failed`,
+    primaryArtifact: `plans/${planArg}`,
+    missing: [
+      ...failed.slice(0, 8).map((result) => `- ${formatFailedResultForPacket(result)}`),
+      failed.length > 8 ? `- ... ${failed.length - 8} more failed check(s) omitted from the compact surface.` : null,
+    ].filter(Boolean),
+    actions: targetHotspotRepairGuidance(codes, { planArg }),
+    diagnostics: [
+      `Truth command: ${truthCommand}`,
+      `Deep diagnostics: node .agent/skills/iterative-planner/scripts/planner_findings.mjs --dir . --plan ${planArg} --gate ${gateArg} --json`,
+      "Loop recovery: node .agent/skills/iterative-planner/scripts/bootstrap.mjs fix-stuck --json",
+    ],
+    retry: `node .agent/skills/iterative-planner/scripts/transition.mjs ${gateArg}`,
+  });
 }
 
 function buildGateRepairPacket({ planDir, planDirName, gateName, results, planningOnly = false } = {}) {
@@ -1655,11 +1919,14 @@ function buildGateRepairPacket({ planDir, planDirName, gateName, results, planni
   if (gateName === "plan-to-execute" && !planningOnly && resolvedPlanDir) {
     const planContentForPacket = readFile(join(resolvedPlanDir, "plan.md"));
     const intentInfoForPacket = loadIntentContract(resolvedPlanDir);
+    const workOrderInfoForPacket = loadPlanWorkOrder(resolvedPlanDir);
     return [
-      ...buildPlanToExecuteLowLevelAgentPacket({
+      ...buildPlanToExecuteRepairSurface({
         planDirName: planArg,
         planContent: planContentForPacket,
         intentContract: intentInfoForPacket.parsed,
+        workOrder: workOrderInfoForPacket.error ? null : workOrderInfoForPacket.parsed,
+        results,
       }),
       "Loop recovery: node .agent/skills/iterative-planner/scripts/bootstrap.mjs fix-stuck --json",
     ];
@@ -1671,7 +1938,10 @@ function buildGateRepairPacket({ planDir, planDirName, gateName, results, planni
 
   return [
     ...buildExploreToPlanRepairLines({ planDirName: planArg, results }),
-    `Truth command: node .agent/skills/iterative-planner/scripts/verify_gate.mjs ${gateName} --plan ${planArg}${planningOnly ? " --planning-only" : ""}`,
+    "Diagnostics:",
+    `Truth command: ${planningOnly
+      ? `node .agent/skills/iterative-planner/scripts/verify_gate.mjs ${gateName} --plan ${planArg} --planning-only`
+      : `node .agent/skills/iterative-planner/scripts/transition.mjs ${gateName} --dry-run --plan ${planArg}`}`,
     `Deep diagnostics: node .agent/skills/iterative-planner/scripts/planner_findings.mjs --dir . --plan ${planArg} --gate ${gateName} --json`,
     "Loop recovery: node .agent/skills/iterative-planner/scripts/bootstrap.mjs fix-stuck --json",
     `Retry after edits: node .agent/skills/iterative-planner/scripts/transition.mjs ${gateName}`,
@@ -1753,7 +2023,7 @@ function detectContextSensitiveVerificationNeed(planContent, goalText, planDir, 
   };
 }
 
-function analyzeContextSensitiveVerificationMatrix(planContent, goalText, planDir, stateJson) {
+function analyzeContextSensitiveVerificationMatrix(planContent, goalText, planDir, stateJson, { workOrder = null } = {}) {
   const trigger = detectContextSensitiveVerificationNeed(planContent, goalText, planDir, stateJson);
   if (!trigger.required) {
     return {
@@ -1765,7 +2035,8 @@ function analyzeContextSensitiveVerificationMatrix(planContent, goalText, planDi
 
   const analysis = analyzeVerificationMatrix({
     planContent,
-    criteria: extractMatrixSuccessCriteria(planContent),
+    workOrder,
+    criteria: extractMatrixSuccessCriteria(planContent, { workOrder }),
     synthesis: trigger.synthesis,
   });
   return {
@@ -1782,211 +2053,6 @@ function readIntentAnalysis(planDir, planContent = null) {
   const intentInfo = loadIntentContract(planDir);
   const analysis = analyzeIntentContract(intentInfo.parsed, { goalText });
   return { stateJson, goalText, intentInfo, analysis };
-}
-
-function extractGoalFromTaskContent(taskContent) {
-  const text = String(taskContent || "");
-  const headingMatch = text.match(/^# .+\n+([\s\S]+)$/m);
-  if (!headingMatch) return "";
-  const firstMeaningfulLine = headingMatch[1]
-    .split("\n")
-    .map((line) => line.trim())
-    .find((line) => line && !/^[-*#]/.test(line));
-  return firstMeaningfulLine || "";
-}
-
-// @planner:config_flag = execution_ready_mode
-// @planner:mutually_exclusive = planning_only_mode
-function gatePlanToExecuteLightweightPlanningOnly(rootDir) {
-  const results = [];
-  const taskPath = join(rootDir, "task.md");
-  const implementationPlanPath = join(rootDir, "implementation_plan.md");
-  const taskContent = readFile(taskPath);
-  const planContent = readFile(implementationPlanPath);
-  const goalText = extractGoalFromPlanContent(planContent) || extractGoalFromTaskContent(taskContent);
-
-  results.push(withFailureCode(check(
-    "task.md exists for lightweight planning-only work",
-    fileExists(taskPath) && !!String(taskContent || "").trim() ? PASS : FAIL,
-    fileExists(taskPath) && !!String(taskContent || "").trim()
-      ? "task.md found"
-      : "task.md missing or empty — lightweight /safe-plan still needs a scope tracker"
-  ), "GATE-PLN-LW-001"));
-
-  results.push(withFailureCode(check(
-    "implementation_plan.md exists for lightweight planning-only work",
-    fileExists(implementationPlanPath) && !!String(planContent || "").trim() ? PASS : FAIL,
-    fileExists(implementationPlanPath) && !!String(planContent || "").trim()
-      ? "implementation_plan.md found"
-      : "implementation_plan.md missing or empty — lightweight /safe-plan needs a handoff artifact"
-  ), "GATE-PLN-LW-002"));
-
-  const hasProblemStatement = containsString(planContent, "## Problem Statement");
-  results.push(withFailureCode(check(
-    "Problem Statement defined in implementation_plan.md",
-    hasProblemStatement ? PASS : FAIL,
-    hasProblemStatement ? "Problem statement found" : "Problem statement missing from implementation_plan.md"
-  ), "GATE-PLN-LW-003"));
-
-  const hasFileList = containsString(planContent, "## Files To Modify") || containsString(planContent, "## Files to Modify");
-  results.push(withFailureCode(check(
-    "Files to modify listed in implementation_plan.md",
-    hasFileList ? PASS : FAIL,
-    hasFileList ? "File list found" : "Files To Modify missing from implementation_plan.md"
-  ), "GATE-PLN-LW-004"));
-
-  const stepsSection = extractMarkdownSection(planContent, "Steps");
-  results.push(withFailureCode(check(
-    "Execution steps defined in implementation_plan.md",
-    !!stepsSection.trim() ? PASS : FAIL,
-    !!stepsSection.trim() ? "Steps found" : "Steps missing from implementation_plan.md"
-  ), "GATE-PLN-LW-005"));
-
-  const hasVerificationStrategy = containsString(planContent, "## Verification Strategy");
-  results.push(withFailureCode(check(
-    "Verification Strategy section present in implementation_plan.md",
-    hasVerificationStrategy ? PASS : FAIL,
-    hasVerificationStrategy ? "Verification Strategy found" : "Verification Strategy missing from implementation_plan.md"
-  ), "GATE-PLN-LW-006"));
-
-  const hasSuccessCriteria = containsString(planContent, "## Success Criteria");
-  results.push(withFailureCode(check(
-    "Success Criteria section present in implementation_plan.md",
-    hasSuccessCriteria ? PASS : WARN,
-    hasSuccessCriteria ? "Success Criteria found" : "Success Criteria missing (recommended for clarity)"
-  ), "GATE-PLN-LW-007"));
-
-  const semanticUpkeepContract = evaluateSemanticUpkeepContract({
-    planContent,
-    goalText,
-    classification: classifyPlannerPreflight(goalText, {
-      plannedFiles: extractFilesToModify(planContent),
-      hasActivePlan: false,
-      activePlanPoisoned: false,
-      activePlanState: null,
-      intentAnalysis: null,
-    }),
-    plannedFiles: extractFilesToModify(planContent),
-  });
-  results.push(withFailureCode(check(
-    "Semantic Upkeep Contract section is present in implementation_plan.md",
-    semanticUpkeepContract.present ? PASS : FAIL,
-    semanticUpkeepContract.present ? "Semantic Upkeep Contract section found" : semanticUpkeepContract.detail
-  ), "GATE-PLN-LW-008"));
-
-  const lightweightStateJson = null;
-  const verificationObligationSynthesis = computeVerificationObligationSynthesis({
-    cwd: rootDir,
-    planDir: null,
-    stateJson: lightweightStateJson,
-    planContent,
-  });
-  const synthesisSection = analyzeVerificationObligationSynthesisSection(planContent, verificationObligationSynthesis);
-  results.push(withFailureCode(check(
-    "Verification Obligation Synthesis is documented for relevant lightweight plans",
-    synthesisSection.satisfied ? PASS : FAIL,
-    synthesisSection.detail
-  ), "GATE-PLN-LW-009"));
-
-  const criterionTraceability = analyzeCriterionStoryTraceability(planContent);
-  results.push(withFailureCode(check(
-    "Success criteria have explicit story linkage when story registry exists",
-    criterionTraceability.satisfied ? PASS : FAIL,
-    criterionTraceability.detail
-  ), "GATE-PLN-LW-010"));
-
-  const verificationMatrix = analyzeContextSensitiveVerificationMatrix(planContent, goalText, null, null);
-  results.push(withFailureCode(check(
-    "Context-sensitive verification matrix is defined for recipe/orchestration/integration-style lightweight work",
-    verificationMatrix.satisfied ? PASS : FAIL,
-    verificationMatrix.detail
-  ), "GATE-PLN-LW-011"));
-
-  const knowledgeContext = resolvePlanningOnlyKnowledgeContext({
-    planDir: null,
-    stateJson: null,
-    planContent,
-    goalText,
-  });
-
-  const retroGuards = analyzePlanningOnlyRetrosSection(planContent);
-  results.push(withFailureCode(check(
-    "Planning-only plans document active retros and mistake guards",
-    retroGuards.satisfied ? PASS : FAIL,
-    retroGuards.detail
-  ), "GATE-PLN-021"));
-
-  const retroProvenance = analyzePlanningOnlyRetroProvenance(planContent, knowledgeContext);
-  results.push(withFailureCode(check(
-    "Planning-only retro guards cite concrete matched sources",
-    retroProvenance.satisfied ? PASS : FAIL,
-    retroProvenance.detail
-  ), "GATE-PLN-027"));
-
-  const exactTestInventory = analyzePlanningOnlyExactTestInventory(planContent);
-  results.push(withFailureCode(check(
-    "Planning-only plans document the exact future test inventory",
-    exactTestInventory.satisfied ? PASS : FAIL,
-    exactTestInventory.detail
-  ), "GATE-PLN-022"));
-
-  const exactTestSpecificity = analyzePlanningOnlyTestInventorySpecificity(planContent);
-  results.push(withFailureCode(check(
-    "Planning-only exact test inventory names concrete tests",
-    exactTestSpecificity.satisfied ? PASS : FAIL,
-    exactTestSpecificity.detail
-  ), "GATE-PLN-028"));
-
-  const redTeamReview = analyzePlanningOnlyRedTeamReview(planContent);
-  results.push(withFailureCode(check(
-    "Planning-only plans include a substantive red-team review",
-    redTeamReview.satisfied ? PASS : FAIL,
-    redTeamReview.detail
-  ), "GATE-PLN-023"));
-
-  const redTeamProvenance = analyzePlanningOnlyRedTeamProvenance(planContent, knowledgeContext);
-  results.push(withFailureCode(check(
-    "Planning-only red-team review aligns with deterministic attack vectors",
-    redTeamProvenance.satisfied ? PASS : FAIL,
-    redTeamProvenance.detail
-  ), "GATE-PLN-029"));
-
-  const storyAudit = analyzePlanningOnlyStoryAudit(planContent);
-  results.push(withFailureCode(check(
-    "Planning-only plans include a targeted story and traceability audit when stories are in play",
-    storyAudit.satisfied ? PASS : FAIL,
-    storyAudit.detail
-  ), "GATE-PLN-024"));
-
-  const storyAuditProvenance = analyzePlanningOnlyStoryAuditProvenance(planContent);
-  results.push(withFailureCode(check(
-    "Planning-only story audit cites real story ids when stories are in play",
-    storyAuditProvenance.satisfied ? PASS : FAIL,
-    storyAuditProvenance.detail
-  ), "GATE-PLN-030"));
-
-  const personaChallenges = analyzePlanningOnlyPersonaChallenges(planContent);
-  results.push(withFailureCode(check(
-    "Planning-only plans record persona-driven challenges",
-    personaChallenges.satisfied ? PASS : FAIL,
-    personaChallenges.detail
-  ), "GATE-PLN-025"));
-
-  const personaExpansion = analyzePlanningOnlyPersonaExpansion(planContent);
-  results.push(withFailureCode(check(
-    "Planning-only plans record persona-driven expansion opportunities",
-    personaExpansion.satisfied ? PASS : FAIL,
-    personaExpansion.detail
-  ), "GATE-PLN-026"));
-
-  const personaProvenance = analyzePlanningOnlyPersonaProvenance(planContent, knowledgeContext);
-  results.push(withFailureCode(check(
-    "Planning-only persona sections stay grounded in available persona context",
-    personaProvenance.satisfied ? PASS : FAIL,
-    personaProvenance.detail
-  ), "GATE-PLN-031"));
-
-  return results;
 }
 
 function resolveIntentEvidenceSignal(planDir) {
@@ -2019,37 +2085,21 @@ function resolveIntentEvidenceSignal(planDir) {
 // Check definitions
 // ---------------------------------------------------------------------------
 
-function detectPlanShapeForGate(planDir, stateJson) {
-  // v7.3.0: shape detection used by GATE-EXP-001/002/004 + assumption ledger.
-  // Falls back to "unknown" (the strict default) when state.json or plan.md
-  // can't be read — preserves legacy behavior on malformed plans.
-  let plannedFiles = [];
-  let intentContract = null;
-  try {
-    const planContent = readFile(join(planDir, "plan.md")) || "";
-    plannedFiles = extractFilesToModify(planContent) || [];
-  } catch { /* tolerate */ }
-  try {
-    const ic = loadIntentContract(planDir);
-    intentContract = ic?.parsed || null;
-  } catch { /* tolerate */ }
-  return detectPlanShape({
-    goalText: stateJson?.goal || "",
-    plannedFiles,
-    intentContract,
-  });
-}
-
 function gateExploreToPlan(planDir) {
   const results = [];
   const findingsTruth = resolveFindingsTruth(planDir);
   const findingsContent = findingsTruth.findingsContent || "";
-  const { intentInfo, analysis: intentAnalysis, stateJson: gateStateJson } = readIntentAnalysis(planDir);
+  const planContentForShape = readFile(join(planDir, "plan.md")) || "";
+  const { intentInfo, analysis: intentAnalysis, stateJson: gateStateJson, goalText } = readIntentAnalysis(planDir, planContentForShape);
   // v7.3.0: detect plan shape so EXPLORE requirements scale to task type.
   // bug-fix / regression / migration / planner-core need root cause + adjacency.
   // feature / integration / refactor / docs do not — demanding "Root Cause: N/A"
   // padding from them is pure ritual.
-  const planShape = detectPlanShapeForGate(planDir, gateStateJson);
+  const planShape = detectPlanShape({
+    goalText: goalText || gateStateJson?.goal || "",
+    plannedFiles: extractFilesToModify(planContentForShape) || [],
+    intentContract: intentInfo?.parsed || null,
+  });
   const effectiveFindings = findingsTruth.effective || {
     source: "none",
     findingCount: 0,
@@ -2136,27 +2186,11 @@ function gateExploreToPlan(planDir) {
   const kbDigestHash = kbStateJson?.kb_digest_hash;
 
   if (kbDigestHash && fileExists(kbIndexPath)) {
-    // RT-HARDENING-003: Check KB digest nonce expiration (shares timestamp with approval nonce)
-    const kbNonceGeneratedAt = kbStateJson?.nonce_generated_at;
-    const KB_NONCE_TTL_MS = 24 * 60 * 60 * 1000;
-    let kbNonceExpired = false;
-    if (kbNonceGeneratedAt) {
-      const kbAgeMs = Date.now() - new Date(kbNonceGeneratedAt).getTime();
-      // RT10-H2: Reject future timestamps for KB digest nonce too
-      kbNonceExpired = kbAgeMs > KB_NONCE_TTL_MS || kbAgeMs < 0;
-    } else {
-      // RT-REDTEAM-M5: Missing nonce_generated_at = treat as expired
-      kbNonceExpired = true;
-    }
-
     // Extract salt from findings.md: [KB_DIGEST:<salt>]
     // H2-FIX + RT8-H2 + RT9-M2: Use centralized KB_SALT_HEX_LEN constant
     const kbDigestSalt = findingsTruth.json?.kbDigestSalt || findingsTruth.markdown?.kbDigestSalt || null;
     let kbVerified = false;
-    if (kbNonceExpired) {
-      // Nonce expired — force re-run
-      kbVerified = false;
-    } else if (kbDigestSalt && new RegExp(`^[0-9a-f]{${KB_SALT_HEX_LEN}}$`).test(kbDigestSalt)) {
+    if (kbDigestSalt && new RegExp(`^[0-9a-f]{${KB_SALT_HEX_LEN}}$`).test(kbDigestSalt)) {
       let kbContent = "";
       for (const kbFile of kbFiles) {
         const kbPath = join(knowledgeDir, kbFile);
@@ -2170,9 +2204,7 @@ function gateExploreToPlan(planDir) {
       kbVerified ? PASS : FAIL,
       kbVerified
         ? "KB digest salt verified — KB was read"
-        : kbNonceExpired
-          ? "KB digest nonce expired (>24h) — re-run explore-to-plan to generate fresh salt"
-          : "Missing or incorrect KB digest salt in findings_ledger.json or findings.md — salt was printed by explore-to-plan transition"
+        : "Missing or incorrect KB digest salt in findings_ledger.json or findings.md — salt was printed by explore-to-plan transition"
     ), "GATE-EXP-010"));
   } else if (!kbDigestHash && fileExists(kbIndexPath)) {
     // Bootstrap case: new plan has no kb_digest_hash yet. The hash is generated by the
@@ -2261,7 +2293,137 @@ function gateExploreToPlan(planDir) {
     // state.json unreadable or no goal field — skip check
   }
 
+  const quantScaleContract = evaluateOptimizationScaleContract({
+    cwd,
+    planDir,
+    planContent: planContentForShape,
+    findingsContent,
+    stateJson: gateStateJson,
+  });
+  const quantScaleCompatibility = quantGateCompatibilityStatus("GATE-EXP-020", requiredExecutionOutcomeBlocks(quantScaleContract), { cwd });
+  results.push(withFailureCode(check(
+    "Quant Optimization Scale Contract has numeric scope content before PLAN",
+    quantScaleCompatibility.status,
+    `${summarizeOptimizationScaleContractGate(quantScaleContract)}${quantScaleCompatibility.detail_suffix}`
+  ), "GATE-EXP-020"));
+
+  const quantRunClassInflation = evaluateRunClassInflation({
+    cwd,
+    planDir,
+    planContent: planContentForShape,
+    findingsContent,
+    stateJson: gateStateJson,
+  });
+  const quantRunClassCompatibility = quantGateCompatibilityStatus("GATE-EXP-021", requiredExecutionOutcomeBlocks(quantRunClassInflation), { cwd });
+  results.push(withFailureCode(check(
+    "Quant run class matches discovered search scale before PLAN",
+    quantRunClassCompatibility.status,
+    `${summarizeRunClassInflationGate(quantRunClassInflation)}${quantRunClassCompatibility.detail_suffix}`
+  ), "GATE-EXP-021"));
+
+  const quantLeakageArtifacts = evaluateLeakageProofArtifactRequirements({
+    cwd,
+    planDir,
+    planContent: planContentForShape,
+    findingsContent,
+    stateJson: gateStateJson,
+  });
+  results.push(withFailureCode(check(
+    "Quant leakage/temporal proof rows link firing negative fixtures before PLAN",
+    requiredExecutionOutcomeGateStatus(quantLeakageArtifacts),
+    summarizeLeakageProofArtifactGate(quantLeakageArtifacts)
+  ), "GATE-EXP-022"));
+
   return results;
+}
+
+function evaluateOpportunityStagnation(planDir) {
+  // Locate opportunity queue
+  const pathsToTry = [
+    join(cwd, "reports", "stewardship", "opportunity_queue.json"),
+    join(cwd, "reports", "knowledge_steward", "opportunity_queue.json"),
+  ];
+  let queuePath = null;
+  for (const p of pathsToTry) {
+    if (existsSync(p)) {
+      queuePath = p;
+      break;
+    }
+  }
+
+  if (!queuePath) {
+    return { satisfied: true, detail: "No opportunity queue found — stagnation check passed" };
+  }
+
+  let queueDoc = null;
+  try {
+    queueDoc = JSON.parse(readFileSync(queuePath, "utf-8"));
+  } catch (e) {
+    return { satisfied: true, detail: `Failed to parse opportunity queue: ${e.message} — ignoring` };
+  }
+
+  let opportunities = [];
+  if (Array.isArray(queueDoc)) {
+    opportunities = queueDoc;
+  } else if (Array.isArray(queueDoc?.opportunities)) {
+    opportunities = queueDoc.opportunities;
+  } else if (Array.isArray(queueDoc?.actions)) {
+    opportunities = queueDoc.actions;
+  } else if (Array.isArray(queueDoc?.proposals)) {
+    opportunities = queueDoc.proposals;
+  }
+
+  const highConfEscalate = opportunities.filter((op) => {
+    const isEscalate = String(op?.action_tier || "").toLowerCase() === "escalate";
+    const isHighConf = String(op?.confidence || "").toLowerCase() === "high";
+    return isEscalate || isHighConf;
+  });
+
+  if (highConfEscalate.length === 0) {
+    return { satisfied: true, detail: "No high-confidence or escalate opportunities found in queue" };
+  }
+
+  const decisionsPath = join(planDir, "decisions.md");
+  const decisionsContent = safeReadFile(decisionsPath) || "";
+
+  const planPath = join(planDir, "plan.md");
+  const planContent = existsSync(planPath) ? readFileSync(planPath, "utf-8") : "";
+
+  const findingsPath = join(planDir, "findings.md");
+  const findingsContent = existsSync(findingsPath) ? readFileSync(findingsPath, "utf-8") : "";
+
+  const globalDecisionsPath = join(cwd, "plans", "DECISIONS.md");
+  const globalDecisionsContent = existsSync(globalDecisionsPath) ? readFileSync(globalDecisionsPath, "utf-8") : "";
+
+  const unaddressed = [];
+  for (const op of highConfEscalate) {
+    const opId = op.id;
+    if (!opId) continue;
+
+    const regex = new RegExp(`\\b${opId}\\b`, "i");
+    const inLocalDecisions = regex.test(decisionsContent);
+    const inGlobalDecisions = regex.test(globalDecisionsContent);
+    const inPlan = regex.test(planContent);
+    const inFindings = regex.test(findingsContent);
+
+    if (!inLocalDecisions && !inGlobalDecisions && !inPlan && !inFindings) {
+      unaddressed.push(op);
+    }
+  }
+
+  if (unaddressed.length > 0) {
+    const ids = unaddressed.map((op) => `${op.id} ("${op.title}")`).join(", ");
+    return {
+      satisfied: false,
+      detail: `Stagnation block: high-confidence/escalate opportunity queue items must be addressed by this plan or deferred via a decision ledger entry in decisions.md. Unaddressed/un-decided: ${ids}`,
+      unaddressedIds: unaddressed.map((op) => op.id),
+    };
+  }
+
+  return {
+    satisfied: true,
+    detail: `All ${highConfEscalate.length} high-confidence/escalate opportunities are addressed or deferred in decision ledger`,
+  };
 }
 
 function gatePlanToExecute(planDir, options = {}) {
@@ -2269,6 +2431,9 @@ function gatePlanToExecute(planDir, options = {}) {
   const planningOnly = options?.planningOnly === true;
   const planPath = join(planDir, "plan.md");
   const planContent = readFile(planPath);
+  const stateJson = readStateJson(planDir);
+  const workOrderInfo = loadPlanWorkOrder(planDir);
+  const workOrder = workOrderInfo.error ? null : workOrderInfo.parsed;
   const { intentInfo, analysis: intentAnalysis } = readIntentAnalysis(planDir, planContent);
   const decisionsPath = join(planDir, "decisions.md");
   // RT7-H3: Use size-capped read for decisions.md (nonce regex target)
@@ -2336,10 +2501,10 @@ function gatePlanToExecute(planDir, options = {}) {
   if (scopeContractRequiresAmbientAcknowledgement(scopeContract)) {
     results.push(withFailureCode(check(
       "Ambient dirty scope acknowledged",
-      ambientAck ? PASS : FAIL,
+      ambientAck ? PASS : WARN,
       ambientAck
         ? `Ambient dirty scope acknowledged (${summarizeScopeContract(scopeContract)})`
-        : `Large unrelated dirty diff detected. Add "## Ambient Dirty Scope" with "Unowned changes exist and are not part of this plan." (${summarizeScopeContract(scopeContract)})`
+        : `Large unrelated dirty diff is already deterministically quarantined. Optional clarity: add "## Ambient Dirty Scope" with "Unowned changes exist and are not part of this plan." (${summarizeScopeContract(scopeContract)})`
     ), "GATE-PLN-018"));
   }
 
@@ -2391,106 +2556,6 @@ function gatePlanToExecute(planDir, options = {}) {
     hasAnyDecision ? PASS : WARN,
     hasAnyDecision ? `${Math.max(decisionCount, countH2Headings(decisionsContent) - 1)} decision(s) logged` : "No decisions logged (recommended: log chosen approach)"
   ), "GATE-PLN-007"));
-
-  // 7. RT-002 + RT2-001: User approval via nonce hash — not self-assertable.
-  // state.json stores only the HASH of the nonce. The plaintext was printed to console.
-  // User adds [APPROVED:<nonce>] to decisions.md. Gate hashes it and compares.
-  const stateJson = readStateJson(planDir);
-
-  // 7a. Plan-approval envelope verification (US-086).
-  // Single decision point: envelope present AND valid AND matches disk → PASS;
-  // otherwise FAIL with the explicit reason code from the contract validator.
-  // No legacy hash fallback — backward compatibility for plans approved before
-  // the envelope contract is migrate.mjs upgrade-approval-envelope's job, not
-  // the verifier's. The verifier never accepts an envelope-less approval claim.
-  const stateClaimsApproval =
-    typeof stateJson?.approval_nonce_hash === "string" && stateJson.approval_nonce_hash.length > 0;
-  if (!planningOnly && stateClaimsApproval) {
-    const envelopeResult = validateEnvelopeAgainstDisk(planDir);
-    const ok = !!envelopeResult.ok;
-    results.push(withFailureCode(check(
-      "Plan-approval envelope integrity (US-086)",
-      ok ? PASS : FAIL,
-      ok
-        ? `envelope verified (schema_version=${envelopeResult.envelope.schema_version}, canonical_hash matches disk, projection equivalence ${envelopeResult.envelope.projection_check})`
-        : `[${envelopeResult.reason_code}] ${envelopeResult.detail}`
-    ), "GATE-PLN-010"));
-  }
-  // If state.json does not claim approval (no nonce hash), the nonce checks
-  // below will handle the actual rejection; no envelope check is performed.
-
-  // 7b. Nonce verification.
-  const approvalNonceHash = stateJson?.approval_nonce_hash;
-  if (!planningOnly && approvalNonceHash) {
-    // RT-HARDENING-003: Check nonce expiration (24h TTL).
-    // Prevents replay attacks with old state.json files.
-    const nonceGeneratedAt = stateJson?.nonce_generated_at;
-    const NONCE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-    let nonceExpired = false;
-    if (nonceGeneratedAt) {
-      const ageMs = Date.now() - new Date(nonceGeneratedAt).getTime();
-      // RT10-H2: Reject future timestamps — negative age means the timestamp
-      // was set in the future, which bypasses TTL (negative > positive is false).
-      nonceExpired = ageMs > NONCE_TTL_MS || ageMs < 0;
-    } else {
-      // RT-REDTEAM-M5: Missing nonce_generated_at = nonce predates TTL feature.
-      // Treat as expired to force re-generation with proper timestamp.
-      nonceExpired = true;
-    }
-    if (nonceExpired) {
-      results.push(withFailureCode(check(
-        "Nonce expiration check (24h TTL)",
-        FAIL,
-        `Approval nonce expired (generated ${nonceGeneratedAt}). Re-run explore-to-plan to generate a fresh nonce.`
-      ), "GATE-PLN-009"));
-    }
-
-    // Extract nonce from decisions.md: [APPROVED:<hex>]
-    // H2-FIX + RT8-M2 + RT9-M2: Use centralized NONCE_HEX_LEN constant
-    const nonceMatch = decisionsContent ? decisionsContent.match(new RegExp(`\\[APPROVED:([0-9a-f]{${NONCE_HEX_LEN}})\\]`)) : null;
-    let nonceVerified = false;
-    if (nonceMatch && !nonceExpired) {
-      const candidateHash = createHash("sha256").update(nonceMatch[1]).digest("hex").slice(0, 32);
-      nonceVerified = candidateHash === approvalNonceHash;
-
-      // RT10-H1: Nonce replay prevention — check if this nonce was already consumed.
-      // state.json.consumed_nonces tracks hashes of previously used nonces.
-      // Prevents the same nonce from being used across different gate transitions.
-      if (nonceVerified && Array.isArray(stateJson.consumed_nonces) && stateJson.consumed_nonces.includes(approvalNonceHash)) {
-        nonceVerified = false;
-        const passedPlanToExecute = (stateJson.transitions || [])
-          .slice()
-          .reverse()
-          .find((entry) => entry?.from === "PLAN" && entry?.to === "EXECUTE" && entry?.gate_result === "PASS");
-        const replayDetail = passedPlanToExecute
-          ? `This approval nonce was already consumed by the successful plan-to-execute transition at ${passedPlanToExecute.timestamp}; current state is ${stateJson.state || "unknown"}, so use the current phase's next gate. For plan matrix diagnostics, run verification_matrix.mjs lint --plan <plan-dir> --json`
-          : "This approval nonce was already consumed by a prior transition — re-run explore-to-plan to generate a fresh nonce";
-        results.push(withFailureCode(check(
-          "Nonce replay prevention",
-          FAIL,
-          replayDetail
-        ), "GATE-PLN-011"));
-      }
-    }
-    results.push(withFailureCode(check(
-      "User approval nonce verified (hash-based)",
-      nonceVerified ? PASS : FAIL,
-      nonceVerified
-        ? `Nonce hash verified — user approved the plan`
-        : nonceExpired
-          ? `Nonce expired — re-run explore-to-plan transition`
-          : `Missing or incorrect [APPROVED:<nonce>] in decisions.md — nonce was printed by explore-to-plan transition`
-    ), "GATE-PLN-008"));
-  } else if (!planningOnly) {
-    // AV-9: Legacy [APPROVED] fallback REMOVED — LLM can write bare [APPROVED] to decisions.md,
-    // completely bypassing nonce-based user approval (RT-002). Plans without approval_nonce_hash
-    // must re-run explore-to-plan to generate a proper nonce.
-    results.push(withFailureCode(check(
-      "User approval nonce required (hash-based)",
-      FAIL,
-      "No approval_nonce_hash in state.json — re-run explore-to-plan transition to generate approval nonce"
-    ), "GATE-PLN-008"));
-  }
 
   const intentRequired = intentAnalysis.requiredByGoal;
   const planLower = String(planContent || "").toLowerCase();
@@ -2547,7 +2612,7 @@ function gatePlanToExecute(planDir, options = {}) {
         : "Intent contract missing false-green / anti-goal coverage"
   ), "GATE-PLN-015"));
 
-  const criterionTraceability = analyzeCriterionStoryTraceability(planContent);
+  const criterionTraceability = analyzeCriterionStoryTraceability(planContent, { workOrder, planDir, stateJson });
   results.push(withFailureCode(check(
     "Success criteria have explicit story linkage when story registry exists",
     criterionTraceability.satisfied ? PASS : FAIL,
@@ -2568,7 +2633,7 @@ function gatePlanToExecute(planDir, options = {}) {
     synthesisSection.detail
   ), "GATE-PLN-018"));
 
-  const verificationMatrix = analyzeContextSensitiveVerificationMatrix(planContent, goalText, planDir, stateJson);
+  const verificationMatrix = analyzeContextSensitiveVerificationMatrix(planContent, goalText, planDir, stateJson, { workOrder });
   results.push(withFailureCode(check(
     "Context-sensitive verification matrix is defined for recipe/orchestration/integration-style work",
     verificationMatrix.satisfied ? PASS : FAIL,
@@ -2600,6 +2665,32 @@ function gatePlanToExecute(planDir, options = {}) {
       : semanticUpkeepContract.detail
   ), "GATE-PLN-020"));
 
+  if (!planningOnly) {
+    const knowledgeContext = resolveKbTagKnowledgeContext({
+      cwd,
+      planDir,
+      stateJson,
+      planContent,
+      goalText,
+      plannedFiles: extractFilesToModify(planContent),
+    });
+    const kbTagObligation = analyzeKbTagObligation(planContent, knowledgeContext);
+    results.push(withFailureCode(check(
+      "Plan references relevant KB learnings only when a deterministic KB hit exists",
+      kbTagObligation.satisfied ? PASS : FAIL,
+      kbTagObligation.satisfied
+        ? kbTagObligation.detail
+        : `${kbTagObligation.detail}. ${kbTagObligation.guidance?.join("; ") || "Add a concrete [KB_APPLIED:<id>] marker."}`
+    ), "GATE-PLN-021"));
+  }
+
+  const planLearnedObligations = resolveLearnedObligationsSignal(planDir, { phase: "plan" });
+  results.push(withFailureCode(check(
+    "Active PLAN-phase learned verification obligations have live structured evidence or approved waiver",
+    planLearnedObligations.satisfied ? PASS : FAIL,
+    planLearnedObligations.detail
+  ), "GATE-PLN-038"));
+
   const quantPersonaGate = resolveQuantPersonaGateSignal(planDir, {
     planContent,
     stateJson,
@@ -2607,9 +2698,73 @@ function gatePlanToExecute(planDir, options = {}) {
   });
   results.push(withFailureCode(check(
     "Quant-shaped work satisfies the hard quant persona gate before EXECUTE",
-    quantPersonaGate.status === "blocked" ? FAIL : PASS,
+    requiredExecutionOutcomeGateStatus(quantPersonaGate),
     summarizeQuantPersonaGate(quantPersonaGate)
   ), "GATE-PLN-032"));
+
+  const quantScaleContract = evaluateOptimizationScaleContract({
+    cwd,
+    planDir,
+    planContent,
+    findingsContent: readFile(join(planDir, "findings.md")) || "",
+    verificationContent,
+    stateJson,
+  });
+  const quantScaleCompatibility = quantGateCompatibilityStatus("GATE-PLN-035", requiredExecutionOutcomeBlocks(quantScaleContract), { cwd });
+  results.push(withFailureCode(check(
+    "Quant Optimization Scale Contract has numeric scope content before EXECUTE",
+    quantScaleCompatibility.status,
+    `${summarizeOptimizationScaleContractGate(quantScaleContract)}${quantScaleCompatibility.detail_suffix}`
+  ), "GATE-PLN-035"));
+
+  const quantRunClassInflation = evaluateRunClassInflation({
+    cwd,
+    planDir,
+    planContent,
+    findingsContent: readFile(join(planDir, "findings.md")) || "",
+    verificationContent,
+    stateJson,
+  });
+  const quantRunClassCompatibility = quantGateCompatibilityStatus("GATE-PLN-036", requiredExecutionOutcomeBlocks(quantRunClassInflation), { cwd });
+  results.push(withFailureCode(check(
+    "Quant run class matches discovered search scale before EXECUTE",
+    quantRunClassCompatibility.status,
+    `${summarizeRunClassInflationGate(quantRunClassInflation)}${quantRunClassCompatibility.detail_suffix}`
+  ), "GATE-PLN-036"));
+
+  const quantLeakageArtifacts = evaluateLeakageProofArtifactRequirements({
+    cwd,
+    planDir,
+    planContent,
+    findingsContent: readFile(join(planDir, "findings.md")) || "",
+    verificationContent,
+    stateJson,
+  });
+  results.push(withFailureCode(check(
+    "Quant leakage/temporal proof rows link firing negative fixtures before EXECUTE",
+    requiredExecutionOutcomeGateStatus(quantLeakageArtifacts),
+    summarizeLeakageProofArtifactGate(quantLeakageArtifacts)
+  ), "GATE-PLN-037"));
+
+  if (planningOnly) {
+    results.push(withFailureCode(check(
+      "Reuse-before-create gate checks proposed script creations",
+      PASS,
+      "Planning-only handoff does not enter EXECUTE; reuse-before-create is enforced for implementation plans."
+    ), "GATE-PLN-033"));
+  } else {
+    const reuseBeforeCreate = evaluateReuseBeforeCreateGate({
+      cwd,
+      planDir,
+      planContent,
+      workOrder,
+    });
+    results.push(withFailureCode(check(
+      "Reuse-before-create gate checks proposed script creations",
+      canonicalGateStatus(reuseBeforeCreate.status),
+      summarizeReuseBeforeCreateGate(reuseBeforeCreate)
+    ), "GATE-PLN-033"));
+  }
 
   if (planningOnly) {
     const knowledgeContext = resolvePlanningOnlyKnowledgeContext({
@@ -2697,10 +2852,17 @@ function gatePlanToExecute(planDir, options = {}) {
     ), "GATE-PLN-031"));
   }
 
+  const stagnation = evaluateOpportunityStagnation(planDir);
+  results.push(withFailureCode(check(
+    "High-confidence/escalate opportunities addressed or deferred",
+    stagnation.satisfied ? PASS : FAIL,
+    stagnation.detail
+  ), "GATE-PLN-034"));
+
   return results;
 }
 
-function gateExecuteToReflect(planDir) {
+function gateExecuteToReflect(planDir, options = {}) {
   const results = [];
   const redTeamPath = join(planDir, "red_team_notes.md");
   const redTeamContent = readFile(redTeamPath);
@@ -2812,11 +2974,15 @@ function gateExecuteToReflect(planDir) {
   });
   results.push(withFailureCode(check(
     "Quant-shaped work preserves the hard quant persona gate before REFLECT",
-    quantPersonaGate.status === "blocked" ? FAIL : PASS,
+    requiredExecutionOutcomeGateStatus(quantPersonaGate),
     summarizeQuantPersonaGate(quantPersonaGate)
   ), "GATE-ETR-011"));
 
-  const executedTestEvidence = resolveExecutedTestEvidenceSignal(planDir, "execute-to-reflect");
+  const executedTestEvidence = resolveExecutedTestEvidenceSignal(
+    planDir,
+    "execute-to-reflect",
+    options.executedTestEvidence,
+  );
   if (executedTestEvidence.present) {
     results.push(withFailureCode(check(
       "Executed test baseline gate passed before REFLECT",
@@ -2853,6 +3019,14 @@ function gateReflectToValidate(planDir) {
     progressSignal.detail
   ), "GATE-REF-003"));
 
+  results.push(withFailureCode(check(
+    "No substantive unfinished work remains before VALIDATE",
+    progressSignal.blockingSatisfied ? PASS : FAIL,
+    progressSignal.blockingSatisfied
+      ? "No blocking progress items remain"
+      : `${progressSignal.blockingOpenItems.length || 1} substantive blocking progress item(s) remain`
+  ), "GATE-REF-021"));
+
   const kbSignal = resolveKBSignal(planDir);
   results.push(withFailureCode(check(
     "Knowledge base/semantic record is updated before VALIDATE",
@@ -2881,24 +3055,60 @@ function gateReflectToValidate(planDir) {
   });
   results.push(withFailureCode(check(
     "Quant-shaped work preserves the hard quant persona gate before VALIDATE",
-    quantPersonaGate.status === "blocked" ? FAIL : PASS,
+    requiredExecutionOutcomeGateStatus(quantPersonaGate),
     summarizeQuantPersonaGate(quantPersonaGate)
   ), "GATE-REF-018"));
+
+  const recipePromotion = resolveRecipePromotionSignal(planDir);
+  results.push(withFailureCode(check(
+    "Repeatable operational flows have recipe-promotion disposition before VALIDATE",
+    recipePromotion.satisfied ? PASS : WARN,
+    recipePromotion.detail
+  ), "GATE-REF-019"));
+
+  const novelInsightFloor = evaluateNovelInsightFloor({ planDir, cwd });
+  results.push(withFailureCode(check(
+    "Novel insight floor is satisfied or waived before VALIDATE",
+    requiredExecutionOutcomeGateStatus(novelInsightFloor, { waiverPasses: true }),
+    novelInsightFloor.detail
+  ), "GATE-REF-020"));
 
   return results;
 }
 
-function gateValidateToClose(planDir) {
+function gateValidateToClose(planDir, options = {}) {
   const results = [];
   const verificationPath = join(planDir, "verification.md");
   const verificationContent = readFile(verificationPath);
+  const planContent = readFile(join(planDir, "plan.md"));
 
-  const hasResults = verificationContent && !containsString(verificationContent, "To be populated during PLAN");
-  const hasPassFail = containsString(verificationContent, "PASS") || containsString(verificationContent, "FAIL");
+  const presentationTruth = deriveVerificationPresentationTruth(verificationContent || "");
+  const verificationTruth = deriveVerificationTruth({
+    cwd,
+    planDir,
+    planContent,
+    verificationContent,
+  });
+  const hasResults = verificationContent &&
+    !containsString(verificationContent, "To be populated during PLAN") &&
+    presentationTruth.structuredResultsRecorded &&
+    verificationTruth.resultsRecorded;
+  const verificationPasses = hasResults && verificationTruth.allVerificationPass;
+  const presentationDetails = presentationTruth.details;
+  const unsupportedModeDetails = Array.isArray(verificationTruth.unsupportedModes) && verificationTruth.unsupportedModes.length > 0
+    ? [`unsupported_verification_modes:${verificationTruth.unsupportedModes.join(",")}`]
+    : [];
   results.push(withFailureCode(check(
     "Verification results recorded",
-    hasResults && hasPassFail ? PASS : FAIL,
-    hasResults && hasPassFail ? "Verification results found" : "Verification still template or missing PASS/FAIL results"
+    verificationPasses ? PASS : FAIL,
+    verificationPasses
+      ? "Structured verification results use configured passing forms"
+      : [
+          hasResults ? "Structured verification results include invalid or non-passing truth" : "Verification still template or has no structured results",
+          ...presentationDetails,
+          ...unsupportedModeDetails,
+          presentationResultGuidance(),
+        ].join("; ")
   ), "GATE-VAL-001"));
 
   const hasUnverified = containsString(verificationContent, "UNVERIFIED: Requires manual user validation");
@@ -2943,12 +3153,33 @@ function gateValidateToClose(planDir) {
     plannerCoreMigration.detail
   ), "GATE-VAL-010"));
 
-  const testEvidence = resolveTestEvidenceSignal(planDir, "validate-to-close");
+  const testEvidence = resolveTestEvidenceSignal(
+    planDir,
+    "validate-to-close",
+    options.executedTestEvidence,
+  );
   results.push(withFailureCode(check(
     "Code changes have test evidence or approved waiver",
     testEvidence.satisfied ? PASS : FAIL,
     testEvidence.detail
   ), "GATE-VAL-011"));
+
+  const dirtyProofArtifacts = evaluateDirtyInputProofArtifacts({
+    cwd: process.cwd(),
+    verificationContent,
+    scopeFiles: extractFilesToModify(planContent),
+  });
+  const dirtyArtifactStatus = dirtyProofArtifacts.dirty_input_artifact_count > 0 ? WARN : PASS;
+  const dirtyArtifactDetail = dirtyProofArtifacts.dirty_input_artifact_count > 0
+    ? `${dirtyProofArtifacts.dirty_input_artifact_count} stamped proof artifact(s) cite dirty files intersecting plan scope: ${dirtyProofArtifacts.intersections.map((entry) => `${entry.artifact_path}${entry.line ? `:${entry.line}` : ""} -> ${entry.dirty_files.slice(0, 5).join(", ")}`).join("; ")}`
+    : dirtyProofArtifacts.stamped_artifact_count > 0
+      ? `${dirtyProofArtifacts.stamped_artifact_count} stamped proof artifact(s) cited; none intersect declared plan scope dirty files.`
+      : "No stamped proof artifacts cited in verification.md.";
+  results.push(check(
+    "Stamped proof artifacts dirty-input advisory",
+    dirtyArtifactStatus,
+    dirtyArtifactDetail
+  ));
 
   const intentEvidence = resolveIntentEvidenceSignal(planDir);
   results.push(withFailureCode(check(
@@ -2997,7 +3228,7 @@ function gateValidateToClose(planDir) {
   });
   results.push(withFailureCode(check(
     "Quant-shaped work preserves the hard quant persona gate before close",
-    quantPersonaGate.status === "blocked" ? FAIL : PASS,
+    requiredExecutionOutcomeGateStatus(quantPersonaGate),
     summarizeQuantPersonaGate(quantPersonaGate)
   ), "GATE-VAL-017"));
 
@@ -3008,6 +3239,20 @@ function gateValidateToClose(planDir) {
     reviewIntake.detail
   ), "GATE-VAL-018"));
 
+  const recipePromotion = resolveRecipePromotionSignal(planDir);
+  results.push(withFailureCode(check(
+    "Repeatable operational flows have recipe-promotion disposition before close",
+    recipePromotion.satisfied ? PASS : WARN,
+    recipePromotion.detail
+  ), "GATE-VAL-021"));
+
+  const incidentCloseout = evaluateIncidentCloseout({ cwd, planDir, verificationContent });
+  results.push(withFailureCode(check(
+    "Incident repair closeout is fail-closed when an incident contract is required",
+    incidentCloseout.satisfied ? PASS : FAIL,
+    summarizeIncidentCloseout(incidentCloseout)
+  ), "GATE-VAL-022"));
+
   const avaGate = resolveAvaGateSignal(planDir);
   results.push(withFailureCode(check(
     "AVA-discovered defects are resolved and anchored before close",
@@ -3016,6 +3261,13 @@ function gateValidateToClose(planDir) {
       ? avaGate.detail
       : "No AVA defect artifact present"
   ), "GATE-VAL-020"));
+
+  const stagnation = evaluateOpportunityStagnation(planDir);
+  results.push(withFailureCode(check(
+    "High-confidence/escalate opportunities addressed or deferred before close",
+    stagnation.satisfied ? PASS : FAIL,
+    stagnation.detail
+  ), "GATE-VAL-023"));
 
   return results;
 }
@@ -3027,12 +3279,24 @@ function gateReflectToCloseLegacy(planDir) {
   const progressPath = join(planDir, "progress.md");
   const progressContent = readFile(progressPath);
 
-  const hasResults = verificationContent && !containsString(verificationContent, "To be populated during PLAN");
-  const hasPassFail = containsString(verificationContent, "PASS") || containsString(verificationContent, "FAIL");
+  const presentationTruth = deriveVerificationPresentationTruth(verificationContent || "");
+  const verificationTruth = deriveVerificationTruth({
+    cwd,
+    planDir,
+    planContent: readFile(join(planDir, "plan.md")),
+    verificationContent,
+  });
+  const hasResults = verificationContent &&
+    !containsString(verificationContent, "To be populated during PLAN") &&
+    presentationTruth.structuredResultsRecorded &&
+    verificationTruth.resultsRecorded;
+  const verificationPasses = hasResults && verificationTruth.allVerificationPass;
   results.push(withFailureCode(check(
     "Verification results recorded",
-    hasResults && hasPassFail ? PASS : FAIL,
-    hasResults && hasPassFail ? "Verification results found" : "Verification still template or missing PASS/FAIL results"
+    verificationPasses ? PASS : FAIL,
+    verificationPasses
+      ? "Structured verification results use configured passing forms"
+      : "Verification still template, has no structured results, or contains invalid/non-passing truth"
   ), "GATE-VAL-001"));
 
   const hasUnverified = containsString(verificationContent, "UNVERIFIED: Requires manual user validation");
@@ -3138,7 +3402,7 @@ function gateReflectToCloseLegacy(planDir) {
   });
   results.push(withFailureCode(check(
     "Quant-shaped work preserves the hard quant persona gate before close",
-    quantPersonaGate.status === "blocked" ? FAIL : PASS,
+    requiredExecutionOutcomeGateStatus(quantPersonaGate),
     summarizeQuantPersonaGate(quantPersonaGate)
   ), "GATE-VAL-017"));
 
@@ -3213,116 +3477,36 @@ const GATES = {
   "notify-user": gateNotifyUser,
 };
 
-function tamperApprovalPath(planDir) {
-  return join(planDir, "..", "..", ".git", "iterative-planner", "tamper-fingerprint-approval.json");
-}
-
-function hashTamperApprovalNonce(nonce) {
-  return createHash("sha256").update(String(nonce || "")).digest("hex");
-}
-
-function readTamperFingerprintApproval(planDir, current, gateName) {
-  const nonce = process.env.PLANNER_TAMPER_APPROVAL_NONCE || "";
-  if (!nonce) return { ok: false, reason: "No PLANNER_TAMPER_APPROVAL_NONCE was provided." };
-
-  const approvalPath = tamperApprovalPath(planDir);
-  if (!existsSync(approvalPath)) {
-    return { ok: false, reason: `No tamper approval file found at ${approvalPath}.` };
-  }
-
-  let approval;
-  try {
-    approval = JSON.parse(readFileSync(approvalPath, "utf-8"));
-  } catch (e) {
-    return { ok: false, reason: `Tamper approval file is unreadable: ${e.message}.` };
-  }
-
-  if (approval?.purpose !== "plan_tamper_fingerprint_refresh") {
-    return { ok: false, reason: "Tamper approval purpose mismatch." };
-  }
-  if (typeof approval.expires_at !== "string" || Number.isNaN(Date.parse(approval.expires_at))) {
-    return { ok: false, reason: "Tamper approval is missing a valid expires_at timestamp." };
-  }
-  if (Date.parse(approval.expires_at) < Date.now()) {
-    return { ok: false, reason: "Tamper approval nonce has expired." };
-  }
-  if (approval.gate && approval.gate !== "*" && approval.gate !== gateName) {
-    return { ok: false, reason: `Tamper approval is for gate ${approval.gate}, not ${gateName}.` };
-  }
-  if (approval.fingerprint_version !== current.version || approval.fingerprint_hash !== current.hash) {
-    return { ok: false, reason: "Tamper approval does not match the current fingerprint." };
-  }
-  if (approval.approval_nonce_hash !== hashTamperApprovalNonce(nonce)) {
-    return { ok: false, reason: "Tamper approval nonce hash mismatch." };
-  }
-
-  return { ok: true, path: approvalPath };
-}
-
-function evaluateTamperFingerprintGate(planDir, gateName) {
-  if (!planDir || !gateName) return [];
-  const stateJson = readStateJson(planDir);
-  if (!stateJson) {
-    return [withFailureCode(check(
-      "Tamper fingerprint state readable",
-      WARN,
-      "state.json could not be read; tamper fingerprint check skipped"
-    ), "GATE-TMP-001")];
-  }
-
-  const current = computePlanTamperFingerprint(planDir, { stateJson });
-  if (!current?.hash) {
-    return [withFailureCode(check(
-      "Tamper fingerprint computed",
-      WARN,
-      "No tamper-tracked artifacts were available to fingerprint"
-    ), "GATE-TMP-001")];
-  }
-
-  const stored = stateJson.tamper_fingerprint;
-  if (!stored?.hash) {
-    return [withFailureCode(check(
-      "Tamper fingerprint present",
-      WARN,
-      `No stored tamper_fingerprint in state.json yet; the next successful transition will sign ${summarizePlanTamperArtifacts(current)}`
-    ), "GATE-TMP-001")];
-  }
-
-  const versionMatches = stored.version === current.version;
-  const hashMatches = stored.hash === current.hash;
-  if (!versionMatches || !hashMatches) {
-    const approval = readTamperFingerprintApproval(planDir, current, gateName);
-    if (approval.ok) {
-      return [withFailureCode(check(
-        "Tamper fingerprint matches signed gate snapshot",
-        PASS,
-        `Stored tamper fingerprint ${stored.hash || "missing"} (${stored.version || "unknown"}) differs from current ${current.hash} (${current.version}), but a fresh out-of-band tamper approval authorizes this exact fingerprint for ${gateName}.`
-      ), "GATE-TMP-002")];
-    }
-    return [withFailureCode(check(
-      "Tamper fingerprint matches signed gate snapshot",
-      FAIL,
-      `Stored tamper fingerprint ${stored.hash || "missing"} (${stored.version || "unknown"}) does not match current ${current.hash} (${current.version}) for ${summarizePlanTamperArtifacts(current)}. A fresh out-of-band tamper approval nonce is required before this gate may refresh the signed fingerprint. ${approval.reason}`
-    ), "GATE-TMP-002")];
-  }
-
-  return [withFailureCode(check(
-    "Tamper fingerprint matches signed gate snapshot",
-    PASS,
-    `Signed fingerprint ${current.hash} covers ${summarizePlanTamperArtifacts(current)}`
-  ), "GATE-TMP-002")];
+export function mistakeHookTargetIntegrityResult(missingHookTargets = []) {
+  const missing = Array.isArray(missingHookTargets) ? missingHookTargets : [];
+  return withFailureCode(check(
+    "Active mistake verification hooks resolve to existing test targets",
+    missing.length === 0 ? PASS : FAIL,
+    missing.length === 0
+      ? "All test-shaped hooks in the base registry and active/approved overlays resolve"
+      : missing
+          .map((entry) => `mistake_verification_hook_target_missing(${entry.mistake_id}, ${entry.hook}) -> ${entry.target_path}`)
+          .join("; "),
+  ), "GATE-MST-001");
 }
 
 function evaluateGateResults(planDir, gateName, options = {}) {
   const gateFn = GATES[gateName];
-  const baseResults = gateFn ? gateFn(planDir, options) : [];
-  const tamperResults = evaluateTamperFingerprintGate(planDir, gateName);
-  const antiRitual = resolveLatePhaseAntiRitualAssessment(planDir, gateName);
-  const results = normalizeLatePhaseGateResults([...tamperResults, ...baseResults], antiRitual);
-  return {
-    results,
-    anti_ritual: antiRitual,
-  };
+  const previousCloseSignals = transientCloseSignals;
+  transientCloseSignals = options.refreshSnapshot?.closeSignals || null;
+  try {
+    const registry = loadMistakeRegistry({ cwd });
+    const hookTargetIntegrity = mistakeHookTargetIntegrityResult(registry.missing_hook_targets);
+    const baseResults = [hookTargetIntegrity, ...(gateFn ? gateFn(planDir, options) : [])];
+    const antiRitual = resolveLatePhaseAntiRitualAssessment(planDir, gateName);
+    const results = normalizeLatePhaseGateResults(baseResults, antiRitual);
+    return {
+      results,
+      anti_ritual: antiRitual,
+    };
+  } finally {
+    transientCloseSignals = previousCloseSignals;
+  }
 }
 
 // Export for programmatic use by transition.mjs
@@ -3331,9 +3515,12 @@ export { GATES, evaluateGateResults, buildGateRepairPacket, gateExploreToPlan, g
 function printUsage() {
   console.log(`Usage: node verify_gate.mjs <gate> [--plan <plan-dir>] [--planning-only]
 
+Ordinary CLI use delegates to transition.mjs <gate> --dry-run, the authoritative
+transition preflight. --planning-only retains the scoped plan-content diagnostic.
+
 Gates:
   explore-to-plan     Check EXPLORE → PLAN transition requirements
-  plan-to-execute     Check PLAN → EXECUTE transition requirements (use --planning-only for /safe-plan quality validation)
+  plan-to-execute     Check PLAN → EXECUTE transition requirements (use --planning-only with --plan for /safe-plan quality validation)
   execute-to-reflect  Check EXECUTE → REFLECT transition requirements (red-team gate)
   reflect-to-validate Check REFLECT → VALIDATE transition requirements
   validate-to-close   Check VALIDATE → CLOSE transition requirements
@@ -3375,44 +3562,50 @@ if (__verify_gate_entry === __verify_gate_target) {
     process.exit(1);
   }
 
+  const legacyDiagnostic = gateName === "reflect-to-close";
+  if (!planningOnly && !legacyDiagnostic) {
+    const transitionScript = _fileURLToPath(new URL("./transition.mjs", import.meta.url));
+    const delegatedArgs = [transitionScript, gateName, "--dry-run"];
+    if (planOverride) delegatedArgs.push("--plan", planOverride);
+    console.log(`Delegating authoritative preflight: node ${delegatedArgs.join(" ")}\n`);
+    const delegated = spawnSync(process.execPath, delegatedArgs, {
+      cwd,
+      stdio: "inherit",
+      env: process.env,
+    });
+    process.exit(delegated.status ?? 2);
+  }
+  if (legacyDiagnostic) {
+    console.log("DIAGNOSTIC ONLY — reflect-to-close is a legacy compatibility check, not a transition predictor.\n");
+  }
+
   const target = resolvePlanTarget(plansDir, { exitOnMissing: false, plan: planOverride });
   const { planDirName, planDir } = target;
   if (!planDirName) {
-    if (!(planningOnly && gateName === "plan-to-execute")) {
-      console.error("ERROR: No target plan. Create one with bootstrap.mjs first or pass --plan.");
-      console.error("  If using lightweight mode (no plans/), this gate check is optional unless you are validating /safe-plan with --planning-only.");
-      process.exit(1);
+    console.error("ERROR: No target plan. Create one with bootstrap.mjs first or pass --plan.");
+    if (planningOnly && gateName === "plan-to-execute") {
+      console.error("  planning-only validation now requires a plan spine; root-level task.md + implementation_plan.md is no longer accepted.");
     }
-
-    console.log(`\n╔══════════════════════════════════════════════════════╗`);
-    console.log(`║  GATE CHECK: ${"plan-to-execute [planning-only]".padEnd(40)}║`);
-    console.log(`║  Plan: ${"lightweight cwd".padEnd(45)}║`);
-    console.log(`╚══════════════════════════════════════════════════════╝\n`);
-
-    const results = gatePlanToExecuteLightweightPlanningOnly(cwd);
-    let hasFail = false;
-    for (const r of results) {
-      const icon = r.status === PASS ? "✅" : r.status === FAIL ? "❌" : "⚠️";
-      const codeStr = r.code ? ` [${r.code}]` : "";
-      console.log(`  ${icon} [${r.status}]${codeStr} ${r.name}`);
-      if (r.detail) console.log(`          ${r.detail}`);
-      if (r.status === FAIL) hasFail = true;
-    }
-
-    console.log();
-    if (hasFail) {
-      console.log(`  ══ RESULT: ❌ BLOCKED — fix FAIL items before transitioning ══`);
-      process.exit(1);
-    }
-    console.log(`  ══ RESULT: ✅ GATE PASSED — transition allowed ══`);
-    process.exit(0);
+    process.exit(1);
   }
 
+  const plannerEnvScope = captureEnvValues(["_PLANNER_PLAN_TARGET"]);
   process.env._PLANNER_PLAN_TARGET = planDirName;
-  // Skip refreshPlanArtifacts when called internally from transition.mjs to avoid timeout
+  try {
+  // Build a transient same-invocation snapshot for both JavaScript and Prolog.
+  // Standalone verification is a preflight and must not rewrite planner evidence.
+  let refreshSnapshot = null;
   if (!process.env._PLANNER_FAST_VERIFY) {
     try {
-      refreshPlanArtifacts({ cwd, planDirName });
+      refreshSnapshot = refreshPlanArtifacts({
+        cwd,
+        planDirName,
+        gateName,
+        persistState: false,
+        persistOntology: false,
+        syncFindings: false,
+        backfillScaffold: false,
+      });
     } catch (e) {
       debugLog("verify_gate", `Plan refresh failed before ${gateName}: ${e.message}`);
     }
@@ -3453,6 +3646,7 @@ if (__verify_gate_entry === __verify_gate_target) {
     "validate-to-close": "CLOSE",
     "reflect-to-close": "CLOSE",
   };
+  let staleGateAlreadyPassed = false;
   const expectedStates = GATE_SOURCE_STATES[gateName];
   if (expectedStates) {
     const stateJsonStandalone = readStateJson(planDir);
@@ -3464,11 +3658,12 @@ if (__verify_gate_entry === __verify_gate_target) {
         .slice()
         .reverse()
         .find((entry) =>
-          entry?.gate_result === "PASS" &&
+          verificationStatusIsPass(entry?.gate_result, "gate") &&
           expectedStates.includes(entry?.from) &&
           (!targetState || entry?.to === targetState)
-        );
+      );
       if (passedTransition) {
+        staleGateAlreadyPassed = true;
         console.log(`          This gate already passed at ${passedTransition.timestamp}; use the current phase's next gate for transition readiness.`);
         if (gateName === "plan-to-execute") {
           console.log(`          For plan-content diagnostics, run: node .agent/skills/iterative-planner/scripts/verification_matrix.mjs lint --plan ${planDirName} --json`);
@@ -3480,18 +3675,29 @@ if (__verify_gate_entry === __verify_gate_target) {
     }
   }
 
-  const evaluation = evaluateGateResults(planDir, gateName, { planningOnly });
-  const results = evaluation.results;
+  const evaluation = evaluateGateResults(planDir, gateName, { planningOnly, refreshSnapshot });
+  const jsResults = evaluation.results;
+  const registeredGates = new Set(Object.keys(loadGateRegistry().gates));
+  const semanticResults = !planningOnly && registeredGates.has(gateName)
+    ? runSemanticChecks(gateName, planDir, { refreshSnapshot, transientRegistryRefresh: true })
+    : [];
+  const jsGateBlocked = jsResults.some(gateResultBlocks);
+  const parityResults = classifySemanticDivergence({
+    jsGateBlocked,
+    semanticResults,
+    enforcePrologDivergence: isFeatureEnabled("prolog_enforce_mode"),
+  });
+  const results = [...jsResults, ...semanticResults, ...parityResults];
   let hasFail = false;
 
   for (const r of results) {
-    const icon = r.status === PASS ? "✅" : r.status === FAIL ? "❌" : "⚠️";
+    const icon = verificationStatusIsPass(r.status, "gate") ? "✅" : gateResultBlocks(r) ? "❌" : "⚠️";
     const codeStr = r.code ? ` [${r.code}]` : "";
     console.log(`  ${icon} [${r.status}]${codeStr} ${r.name}`);
     if (r.detail) {
       console.log(`          ${r.detail}`);
     }
-    if (r.status === FAIL) hasFail = true;
+    if (gateResultBlocks(r)) hasFail = true;
   }
 
   if (evaluation.anti_ritual?.status && evaluation.anti_ritual.status !== "clean") {
@@ -3501,34 +3707,26 @@ if (__verify_gate_entry === __verify_gate_target) {
   }
 
   console.log();
-  if (hasFail) {
-    if (gateName === "plan-to-execute" && !planningOnly) {
-      const planContentForPacket = readFile(join(planDir, "plan.md"));
-      const intentInfoForPacket = loadIntentContract(planDir);
-      console.log(`  -- Low-Level Agent Gate Packet --`);
-      for (const line of buildPlanToExecuteLowLevelAgentPacket({
-        planDirName,
-        planContent: planContentForPacket,
-        intentContract: intentInfoForPacket.parsed,
-      })) {
+  if (hasFail || staleGateAlreadyPassed) {
+    const repairPacket = buildGateRepairPacket({ planDir, planDirName, gateName, results, planningOnly });
+    if (repairPacket.length > 0) {
+      console.log(`  -- Repair Surface --`);
+      for (const line of repairPacket) {
         console.log(`  ${line}`);
       }
       console.log();
     }
-    if (!(gateName === "plan-to-execute" && !planningOnly)) {
-      const repairPacket = buildGateRepairPacket({ planDir, planDirName, gateName, results, planningOnly });
-      if (repairPacket.length > 0) {
-        console.log(`  -- Deterministic Repair Packet --`);
-        for (const line of repairPacket) {
-          console.log(`  ${line}`);
-        }
-        console.log();
-      }
+    if (staleGateAlreadyPassed && !hasFail) {
+      console.log(`  ══ RESULT: ⚠️ STALE GATE — this gate already passed; use the current phase's next gate for transition readiness ══`);
+    } else {
+      console.log(`  ══ RESULT: ❌ BLOCKED — fix FAIL items before transitioning ══`);
     }
-    console.log(`  ══ RESULT: ❌ BLOCKED — fix FAIL items before transitioning ══`);
     process.exitCode = 1;
   } else {
     console.log(`  ══ RESULT: ✅ GATE PASSED — transition allowed ══`);
     process.exitCode = 0;
+  }
+  } finally {
+    restoreEnvValues(plannerEnvScope);
   }
 }

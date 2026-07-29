@@ -6,6 +6,10 @@ description: Situation report — reads project state and recommends the next mo
 
 > **Invoke with**: `/advisor`
 
+## Ambient Persona Context
+
+At workflow start, use the ambient persona and IVE block from `bootstrap.mjs status` when `planner.policy.yaml` keeps `persona.ambient` or `ive.ambient` enabled (default). Factor domain persona obligations into advisor recommendations and incident routing, but keep the deterministic authority ladder intact: advisor output can recommend, never clear or override failing checks.
+
 ## Supervisor Mode (Default — v7.6.26+)
 
 As of v7.6.26 the advisor verdict is produced **automatically by an LLM supervisor** invoked inside `bootstrap.mjs status` and via `escalation_check.mjs --json --with-supervisor`. The agent's obligations reduce to three steps:
@@ -39,6 +43,16 @@ deterministic checks and blockers
 
 If the supervisor says `review_ready` or gives a green recommendation while deterministic checks show failures, keep the deterministic failures visible and route the next action through the deterministic blocker. The advisor block is compact proof that a review happened, not proof that a gate, story, ontology invariant, or Program Packet item is clear.
 
+## Incident Routing
+
+When the user describes a live/near-live failure, a retro-worthy incident, a false-green artifact, or a domain-shaped result problem, run the deterministic incident contract before recommending a repair workflow:
+
+```bash
+node .agent/skills/iterative-planner/scripts/incident_contract.mjs check --entrypoint advisor --from-text "<incident summary>" --json
+```
+
+If it returns `status=required`, the recommended next move must preserve the contract: required persona packs, required preflights, fail-closed closeout gates, and active-plan isolation. Do not recommend a plain rerun or ad hoc debugging path for quant/WFO, optimizer, report-lineage, connector, migration, or backend-boundary incidents unless the contract says no incident shape is present.
+
 ---
 
 ## Manual Recipe (Fallback when supervisor is unavailable)
@@ -63,7 +77,7 @@ trying to do the full consolidation inside `/advisor`.
 If the real problem is a concrete roadmap spanning multiple epics, tickets, migrations,
 child plans, dependencies, or program-level close criteria, recommend `/program-manager`
 instead of stretching `/steward` into an execution program layer.
-If a Program Packet ticket, GitHub ticket review, Ticket Intake Receipt, or DeepSeek advisory
+If a Program Packet ticket, GitHub ticket review, Ticket Intake Receipt, or advisory review
 already exists and says `needs_story`, `ticket_without_traceability`, missing `story_refs`,
 or "gap reference but no linked stories", recommend `/ticket-traceability-repair` rather than
 generic `/program-manager`. Use `/program-manager` first only when the local Program Packet

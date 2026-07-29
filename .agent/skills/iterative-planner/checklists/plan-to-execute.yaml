@@ -45,12 +45,9 @@ items:
     description: "At least one decision logged in decisions.md"
 
   - id: kb-applied-tag
-    check: contains_any_string
+    check: kb_learning_reference
     path: "{plan-dir}/plan.md"
-    include:
-      - "[KB_APPLIED"
-      - "[KB_NOT_APPLICABLE"
-    description: "Plan references KB learnings via [KB_APPLIED] or [KB_NOT_APPLICABLE] tag (FAIL — must prove past learnings were considered)"
+    description: "Plan references relevant KB learnings when deterministic KB hits exist (PLN-021)"
 
   - id: invariants-documented
     check: contains_string

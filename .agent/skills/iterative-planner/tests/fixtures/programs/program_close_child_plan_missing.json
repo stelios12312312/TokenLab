@@ -4,9 +4,20 @@
   "title": "Program Close Child Plan Missing",
   "status": "closed",
   "goal": "Closed program status must not hide missing child-plan proof.",
-  "story_refs": ["US-001"],
+  "story_refs": [
+    "US-001"
+  ],
   "epics": [
-    { "id": "EP-001", "title": "Close epic", "story_refs": ["US-001"], "ticket_refs": ["T-001"] }
+    {
+      "id": "EP-001",
+      "title": "Close epic",
+      "story_refs": [
+        "US-001"
+      ],
+      "ticket_refs": [
+        "T-001"
+      ]
+    }
   ],
   "tickets": [
     {
@@ -15,11 +26,15 @@
       "title": "Claim closed despite missing required plan dir",
       "type": "feature",
       "lifecycle": "closed",
-      "story_refs": ["US-001"],
+      "story_refs": [
+        "US-001"
+      ],
       "defect_refs": [],
       "gap_refs": [],
       "depends_on": [],
-      "acceptance_criteria": ["AC-001"],
+      "acceptance_criteria": [
+        "AC-001"
+      ],
       "child_plan": {
         "policy": "required",
         "plan_dir": "plan_does_not_exist",
@@ -29,20 +44,69 @@
       "compatibility_contract_refs": [],
       "migration_boundary_refs": [],
       "deletion_move_census_refs": [],
-      "verification_refs": ["VM-001"]
+      "verification_refs": [
+        "VM-001"
+      ],
+      "external_refs": [
+        {
+          "kind": "github_issue",
+          "repo": "owner/repo",
+          "issue_number": 9015,
+          "title": "Claim closed despite missing required plan dir",
+          "state": "OPEN",
+          "url": "https://github.com/owner/repo/issues/9015",
+          "synced_at": "2026-07-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "acceptance_criteria": [
-    { "id": "AC-001", "scope": "ticket", "subject_ref": "T-001", "text": "Required child plan dir must exist on disk.", "story_refs": ["US-001"], "maintenance_rationale": null },
-    { "id": "AC-PGM", "scope": "program", "subject_ref": "PGM-TEST", "text": "Program verification passes.", "story_refs": ["US-001"], "maintenance_rationale": null }
+    {
+      "id": "AC-001",
+      "scope": "ticket",
+      "subject_ref": "T-001",
+      "text": "Required child plan dir must exist on disk.",
+      "story_refs": [
+        "US-001"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-PGM",
+      "scope": "program",
+      "subject_ref": "PGM-TEST",
+      "text": "Program verification passes.",
+      "story_refs": [
+        "US-001"
+      ],
+      "maintenance_rationale": null
+    }
   ],
   "dependencies": [],
   "compatibility_contracts": [],
   "migration_boundaries": [],
   "deletion_move_census": [],
   "verification_matrix": [
-    { "id": "VM-001", "scope": "ticket", "subject_ref": "T-001", "acceptance_criterion_ref": "AC-001", "proof_type": "proof:planner_smoke", "command_or_action": "Inspect child plan state", "pass_means": "Filesystem state.json confirms CLOSE", "result": "pass" },
-    { "id": "VM-PGM", "scope": "program", "subject_ref": "PGM-TEST", "acceptance_criterion_ref": "AC-PGM", "proof_type": "proof:artifact_review", "command_or_action": "Review program close", "pass_means": "Program evidence passes", "result": "pass" }
+    {
+      "id": "VM-001",
+      "scope": "ticket",
+      "subject_ref": "T-001",
+      "acceptance_criterion_ref": "AC-001",
+      "proof_type": "proof:planner_smoke",
+      "command_or_action": "Inspect child plan state",
+      "pass_means": "Filesystem state.json confirms CLOSE",
+      "result": "pass"
+    },
+    {
+      "id": "VM-PGM",
+      "scope": "program",
+      "subject_ref": "PGM-TEST",
+      "acceptance_criterion_ref": "AC-PGM",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "Review program close",
+      "pass_means": "Program evidence passes",
+      "result": "pass"
+    }
   ],
   "decisions": []
 }

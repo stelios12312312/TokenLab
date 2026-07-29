@@ -39,7 +39,7 @@ For each found project, read its `version.json` to know the starting version.
 
 Pick one project and run:
 ```bash
-/opt/homebrew/bin/node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade <target-path>
+/opt/homebrew/bin/node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade <target-path> --commit
 ```
 
 Check the output for:
@@ -68,6 +68,32 @@ For each migrated project, confirm `version.json` shows the new version:
 ```bash
 cat <target-path>/.agent/skills/iterative-planner/config/version.json | grep version
 ```
+
+Create the release candidate commit before generating release proof. From a
+clean checkout of that exact candidate, run the governed stable profile:
+
+```bash
+node .agent/skills/iterative-planner/tests/ive/run.mjs --profile core-release --run-id core-release-candidate --json
+```
+
+Then bind the generated profile manifest to the same candidate SHA:
+
+```bash
+node .agent/skills/iterative-planner/scripts/clean_checkout_conformance.mjs --ref HEAD --profile-manifest <repo-relative-manifest.json> --require-profile core-release --json
+```
+
+Release is blocked unless every selected profile suite reports `PASS` with no
+warning, skip, not-applicable, not-implemented, timeout, or failure; the profile
+manifest reports a clean repo-state stamp at the candidate SHA; and the detached
+receipt reports `status: PASS`. Canonical story health, invariant health,
+consistency, project health, target-checkout cleanliness, cleanup, and the
+governed-profile binding must all pass. An active-worktree test, the full
+diagnostic catalog, hosted CI, or an invariant-only PASS is not a substitute.
+
+The candidate commit and the proof-storage commit are intentionally different:
+the manifest and receipt are generated after the candidate exists. Store those
+artifacts in a later proof-only commit, but tag and release the candidate SHA
+that both artifacts name.
 
 ## Step 7: COMMIT and PUSH
 

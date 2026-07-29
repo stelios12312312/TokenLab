@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "return_type": "claims_evidence",
+  "bounce": {
+    "attempt": 0,
+    "max_bounces": 2
+  },
+  "claims": [
+    {
+      "id": "claim_without_evidence",
+      "statement": "This claim has no usable evidence references.",
+      "type": "implementation",
+      "evidence_refs": [],
+      "verification_method": "executed",
+      "cost": {
+        "tokens": 10,
+        "usd": 0,
+        "wall_clock_ms": 1
+      }
+    }
+  ]
+}

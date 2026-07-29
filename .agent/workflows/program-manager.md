@@ -6,6 +6,10 @@ description: Roadmap/program orchestration — turn broad roadmaps into validate
 
 > **Invoke with**: `/program-manager`
 
+## Ambient Persona Context
+
+Before creating or updating tickets, use the ambient persona and IVE block from `bootstrap.mjs status` when `planner.policy.yaml` keeps `persona.ambient` or `ive.ambient` enabled (default). Carry domain persona obligations into ticket type, acceptance criteria, story linkage, verification rows, and residual-risk notes. Program Packet validation, ontology checks, and executed verification rows remain authoritative.
+
 Use this when the work is broader than one iterative plan: multiple epics, tickets, migrations, child plans, user stories, defects, gaps, dependencies, compatibility contracts, or close criteria need one durable parent program.
 
 `/program-manager` is a roadmap stewarding layer. It does not replace the iterative planner state machine. It creates and validates Program Packets, then dispatches executable tickets into `/safe-plan`, `/safe-change`, or `/safe-change-power`.
@@ -42,11 +46,11 @@ node .agent/skills/iterative-planner/scripts/rule_engine.mjs find-conflicts --js
 ```
 
 For generic idea, backlog, GitHub Issue, or GitHub Project intake, use the Program
-Manager intake surface. It drafts local Program Packet tickets first and never
-publishes to GitHub implicitly:
+Manager intake surface. It may draft proposed local Program Packet tickets, but
+ready-or-later tickets must always work through a GitHub Issue mirror:
 
 ```bash
-node .agent/skills/iterative-planner/scripts/program_manager.mjs init --program <program-id> --title "<program title>" --goal "<program goal>" --json
+node .agent/skills/iterative-planner/scripts/program_manager.mjs init --program <program-id> --title "<program title>" --goal "<program goal>" --remote-mode local-only --json
 node .agent/skills/iterative-planner/scripts/program_manager.mjs intake --program <program-id-or-path> --from-text "<idea>" --title "<short ticket title>" --json
 node .agent/skills/iterative-planner/scripts/program_manager.mjs intake --program <program-id-or-path> --from-text "<idea>" --title "<short ticket title>" --ticket-type quant_exploration --persona-review --json
 node .agent/skills/iterative-planner/scripts/program_manager.mjs intake --program <program-id-or-path> --from-text "<idea>" --auto-story --write --json
@@ -56,8 +60,47 @@ node .agent/skills/iterative-planner/scripts/program_manager.mjs intake --progra
 node .agent/skills/iterative-planner/scripts/program_manager.mjs intake --program <program-id-or-path> --project-item <id-or-url> --repo owner/name --write --json
 ```
 
+### Remote Mode Contract
+
+Program Manager is local-compute-first. The Program Packet, story registry,
+ontology checks, and verification rows remain the deterministic source of truth;
+GitHub Issues and Project items are durable collaboration mirrors, not a hidden
+runtime dependency.
+
+Remote access is explicit and mode-gated:
+
+- `local-only`: no GitHub reads or writes. Local draft intake, packet checks,
+  dispatch queries, and artifact review remain available offline.
+- `remote-read`: permits GitHub Issue and Project item reads for intake/review,
+  but rejects mirror writes.
+- `remote-sync`: permits explicit `--write` mirror synchronization through
+  `github_ticket_review.mjs publish` or `github_ticket_review.mjs review`.
+
+Use `--remote-mode local-only|remote-read|remote-sync` on the CLI or set
+`PLANNER_REMOTE_MODE`. Issue or Project item intake requires `remote-read` or
+`remote-sync`. Publish/review dry-runs can render local bodies without writes;
+publish/review `--write` requires `remote-sync`.
+
+Program init and first gate touch also enforce structural satisfiability. An
+absent mode plus absent repository identity is unresolved, not implicitly
+local-only. Resolve it explicitly by setting local-only, supplying `--repo
+owner/name` (which selects remote-sync when no mode exists), or recording a
+decision-backed governed waiver with all three init flags:
+
+```bash
+--waive-gate-requirement <requirement-id> --waiver-decision <decision-id> --waiver-reason "<reason>"
+```
+
+Remote-read/remote-sync without one canonical repository identity and ambiguous
+multi-repository packets stop before remote access. Conflicting packet-level mode
+or repository aliases also fail rather than resolving by field order. `check` and
+`verify` report the provider-neutral `gate_satisfiability` outcomes and remain
+read-only; lifecycle `disposition` treats unresolved structural requirements as
+non-grandfatherable blockers and leaves the packet unchanged.
+
 Use `init` before first intake when `plans/programs/<program-id>/program_packet.json`
-does not exist. It writes a valid empty Program Packet, including the required
+does not exist, and choose the explicit policy resolution in the same command.
+It writes a valid empty Program Packet, including the required
 empty arrays for epics, tickets, acceptance criteria, dependencies,
 compatibility contracts, migration boundaries, deletion/move census,
 verification rows, and decisions. It refuses to overwrite an existing packet
@@ -79,7 +122,8 @@ contains discrete tickets. The flag accepts a JSON array string; each object
 represents one ticket and should include `title` plus `text` (or `body`,
 `description`, or `content`). The command emits one Ticket Intake Receipt per
 candidate ticket and `--write` updates only the local Program Packet plus local
-intake artifacts.
+intake artifacts. A local proposed ticket is not executable yet; publish or link
+a GitHub Issue before moving it to `ready`.
 
 Use `--ticket-type` when a project has distinct ticket lanes inside the same
 Program Packet. The base schema `type` remains validation-safe, while
@@ -107,36 +151,37 @@ Packet validation, story validation, and later child-plan verification remain
 authoritative.
 
 If a derived title is longer than 70 characters and `--title` was not provided,
-intake attempts a redacted cheap LLM/DeepSeek title summary and falls back to a
-deterministic concise title. Explicit `--title` and explicit JSON-array item
-titles always win.
+intake uses a deterministic concise title. Explicit `--title` and explicit
+JSON-array item titles always win.
 
 Dry-run is default. `--write` may update only the local Program Packet and local
 `intake/<ticket-id>_intake_packet.json` artifact. The intake packet must include
 source text, candidate tickets, story/gap links, persona obligations, acceptance
 criteria, verification rows, ontology findings, annotation status,
-`retro_recurrence_check`, `quant_persona_gate` when quant/betting/modeling
-scope is detected, and advisory DeepSeek findings when configured.
+`retro_recurrence_check`, and `quant_persona_gate` when quant/betting/modeling
+scope is detected.
+Local-only proposed intake is allowed as a draft, but Program Manager validation
+blocks `ready`, `in_progress`, `done`, `verified`, and `closed` executable
+tickets until `external_refs` contains a GitHub Issue mirror.
 Retros are predictive ticket guards: trusted active mistakes and
 retro-promoted obligations can block intake until the ticket carries required
-guards or evidence. Deterministic evidence remains authoritative: DeepSeek can
-critique or classify candidates, but cannot mark a ticket ready, verified, or
-closed.
+guards or evidence. Deterministic evidence remains authoritative and is the only
+path to mark a ticket ready, verified, or closed.
 For quant-shaped intake, the gate is intentionally hard: the ticket must carry a
 proper what-happened overview, quant/quant_target persona obligation,
 target/outcome, data lineage or odds snapshot semantics, temporal/leakage
 handling, controls or baselines, and quant verification proof rows before it can
 be treated as review-ready.
 
-Every intake result must surface a **Ticket Intake Receipt**. The receipt is the
-compact compliance proof agents should paste or summarize before creating,
-reviewing, or publishing tickets. It records the `/program-manager` front door,
-source/action, Program Packet path, ticket id, story/gap/defect refs,
-acceptance-criteria refs, verification refs, deterministic status, advisory
-DeepSeek status/summary/artifact path, recurrence status/counts, quant persona
-gate status when applicable, and next required command. If the receipt is
-missing, rerun the appropriate `program_manager.mjs intake` command before
-touching GitHub.
+Every intake result must surface the compact **Ticket Intake Receipt** block
+from default non-JSON output. Paste or summarize that compact block, never raw
+receipt JSON. The block must show status, blocker count, top blockers, artifact
+path, and next command. Full structured receipt fields (`/program-manager`
+front door, source/action, story/gap/defect refs, acceptance criteria,
+verification refs, recurrence counts, quant persona gate status, and advisory
+metadata) live in the referenced artifact or `--json` output. If the compact
+receipt block is missing, rerun the appropriate `program_manager.mjs intake`
+command before touching GitHub.
 
 **Parallel intake for multi-epic programs (recommended when ≥2 epics).** Spawn one Explore subagent per epic in a single message with multiple Agent tool calls. Each subagent investigates that epic's scope, related code, and existing stories independently, writing to `plans/programs/<program-id>/findings/epic-{epic-id}.md`. The main agent reconciles findings before drafting the Program Packet. Worked example:
 
@@ -180,23 +225,23 @@ proposed -> ready -> in_progress -> blocked -> done -> verified -> closed
 aliases, but gates normalize them through effective lifecycle semantics; use
 ticket `review_status` for review state instead of overloading dispatch state.
 
-### External GitHub Tickets
+### Required GitHub Tickets
 
-GitHub Issues or GitHub Project items may be the external collaboration surface,
-but the Program Packet remains the local deterministic source of truth. Mirror
-the GitHub issue or project item into a Program Packet ticket, keep the GitHub
-URL or item id in `external_refs`, and let `program_manager.mjs` validate the
-local packet before child plans begin.
+GitHub Issues are the required external collaboration surface for executable
+Program Manager work. GitHub Project items may be used when they carry a linked
+issue URL or issue number. The Program Packet remains the local deterministic
+source of truth, but `program_manager.mjs` blocks ready-or-later
+tickets that do not have a GitHub Issue mirror in `external_refs`.
 
 Use the ticket review CLI for the executable loop:
 
 ```bash
 node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs review --issue <n> --program <program-id-or-path> --ticket <ticket-id> --json
 node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs review --project-item <project-item-id-or-url> --program <program-id-or-path> --ticket <ticket-id> --write --json
-node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs review --issue <n> --program <program-id-or-path> --ticket <ticket-id> --show-deepseek-block --json
+node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs review --issue <n> --program <program-id-or-path> --ticket <ticket-id> --write --accept-remote-close --json
 ```
 
-Publish local tickets to GitHub only through an explicit publish command:
+Publish proposed local tickets to GitHub before moving them to `ready`:
 
 ```bash
 node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs publish --program <program-id-or-path> --ticket <ticket-id> --repo owner/name --json
@@ -207,8 +252,9 @@ Publishing is also dry-run by default. Repeated `--write` runs reuse existing
 ticket `external_refs` instead of creating duplicate GitHub Issues.
 Do not create GitHub tickets directly from an idea/backlog prompt. Create or
 update the local Program Packet ticket first with `program_manager.mjs intake`,
-surface the Ticket Intake Receipt, then publish with `github_ticket_review.mjs
-publish` only when GitHub should mirror the local ticket.
+surface the compact Ticket Intake Receipt block, then publish with
+`github_ticket_review.mjs publish`. The publish step is no longer optional for
+executable Program Manager tickets.
 
 Dry-run is the default. `--write` is required for Program Packet edits, Review
 Packet artifact writes, GitHub comments, labels, or Project Status updates. The
@@ -216,36 +262,46 @@ command writes or updates ticket metadata fields `external_refs`,
 `review_artifacts`, `github_sync`, `review_status`, and deterministic
 `last_review_status`. It must not close GitHub issues unless
 `--close-github-issue` is passed.
-Review and publish results also emit a Ticket Intake Receipt so agents can show
-which local ticket, deterministic status, advisory status/summary/artifact, and
-GitHub mirror action were used. Review Packets and GitHub review comments must
-include a **Retro Recurrence Check** section before advisory findings so prior
-mistakes are treated as current ticket risks, not only closeout history.
+It must not advance local lifecycle from a closed GitHub Issue unless
+`--write --accept-remote-close` is passed and the deterministic review result is
+`review_ready`; without that explicit gate, a closed remote issue stays a
+`remote_closed_local_non_terminal` conflict for non-terminal local tickets.
+Review and publish results also emit compact Ticket Intake Receipt blocks so
+agents can show the local ticket, blocker count, artifact path, and next command
+without pasting raw JSON. Review Packets and GitHub review comments must include
+a **Retro Recurrence Check** section so prior mistakes are treated as current
+ticket risks, not only closeout history.
 Quant-shaped Review Packets and comments must include a **Quant Persona Gate**
-section before advisory findings. DeepSeek receives that gate in the packet and
-may critique the ticket, but it cannot override deterministic quant blockers.
+section, and deterministic quant blockers cannot be overridden by review metadata.
 
 Use GitHub status as a reflection of the packet lifecycle, not a replacement
 for it:
 
 ```text
 GitHub Issue/Project item -> Program Packet ticket -> child plan -> verification row -> GitHub status/comment update
+Local text/file/JSON intake -> proposed Program Packet ticket -> GitHub publish -> ready ticket -> child plan
 ```
 
-DeepSeek or another cheap reviewer may participate in the review stage by
-reading the issue text, Program Packet ticket, child plan evidence, diff/test
-proof, and verification rows, then writing a review artifact. That artifact can
-be referenced from `verification_matrix` or ticket metadata, but it is advisory
-evidence only. It must not mark a ticket `verified`, close a child plan, or
-override deterministic Program Packet gates. The Review Packet must run
-deterministic checks first: Program Manager checks/gates, story evidence,
+`github_ticket_review.mjs review` emits `github_sync.sync_contract` in dry-run
+and write mode. The contract is the required sync matrix for ticket mirrors:
+
+| Direction | Trigger | GitHub action | Local action | Conflict rule |
+|---|---|---|---|---|
+| Local -> remote | Review result is `blocked` or `review_ready` | Add `planner:blocked` or `planner:review-ready`; remove the other review label | None | Deterministic Program Packet blockers win over advisory review |
+| Local -> remote | Ticket lifecycle changes | Add current `planner:ticket-<lifecycle>` label and remove stale known lifecycle labels | None | Only known planner lifecycle labels are removed; non-planner labels stay untouched |
+| Local -> remote | Review packet generated | Create or update the planner review comment and Project status when a linked Project item exists | Write review artifact and `ticket.github_sync` metadata only with `--write` | Dry-run must show the same planned contract without writes |
+| Local -> remote | Operator passes `--close-github-issue` | Close the linked GitHub Issue with the deterministic review comment | None | Issue close is never implicit |
+| Remote -> local | GitHub Issue is closed while local ticket is non-terminal and `--accept-remote-close` is absent | None | Report `remote_closed_local_non_terminal` conflict | Do not advance local lifecycle implicitly |
+| Remote -> local | GitHub Issue is closed while local ticket is non-terminal and review runs with `--write --accept-remote-close` | Apply closed lifecycle label and remove stale lifecycle labels | Advance local ticket to `closed` only when deterministic review is `review_ready`; record `github_sync.last_remote_to_local.action=accepted_remote_close` | Dry-run reports `candidate_remote_close` only; blocked review cannot advance lifecycle |
+| Remote -> local | GitHub Issue is open or local ticket is already terminal | None | No lifecycle change | Program Packet remains source of truth |
+
+Review Packet artifacts can be referenced from `verification_matrix` or ticket
+metadata, but lifecycle movement remains deterministic. A review artifact must
+not mark a ticket `verified`, close a child plan, or override Program Packet
+gates. The Review Packet must run Program Manager checks/gates, story evidence,
 story conflicts, annotation validation/assist, ontology serialization, and
 invariant checks, plus the hard quant persona gate for quant-shaped tickets.
-GitHub comments/status must surface deterministic failures even when DeepSeek
-reports `review_ready`.
-Default text output and GitHub comments show DeepSeek as compact proof:
-`status`, one-line `summary`, and local artifact path. Full fenced verdicts stay
-in JSON artifacts unless an operator passes `--show-deepseek-block`.
+GitHub comments/status must surface deterministic failures whenever they exist.
 
 ### IVE Advisory Authority Ladder
 
@@ -254,10 +310,21 @@ For IVE tickets, the Program Packet is the source of lifecycle truth.
 | Surface | Authority |
 |---|---|
 | Program Packet validation, story checks, ontology invariants, recurrence checks, quant gates, and child-plan verification | Own blockers, readiness, verified/closed state, and required next actions |
-| DeepSeek, secondary agent review, AVA, or other advisory review | Propose, summarize, and critique; may classify advisory status such as `review_ready`, `needs_story`, or `stale_advisory` |
+| Secondary agent review, AVA, or other advisory review | Propose, summarize, and critique; may classify advisory status such as `review_ready`, `needs_story`, or `stale_advisory` |
 | GitHub Issue/Project item | Collaboration mirror of the local deterministic state |
 
 When advisory status is `review_ready` and deterministic status is blocked or failing, the review packet, GitHub comment, and project status must keep the deterministic failure visible. Advisory review cannot clear blockers, close tickets, or move a child plan to verified without deterministic evidence.
+
+For a ticket that is deliberately open after its local child work ships, use
+the schema-backed `awaiting_external_action` field only on `in_progress` or
+`blocked`. Name the external action, reason, timestamp, and a repository-local
+`json_match` evidence contract. On `in_progress`, a valid object also explicitly
+propagates child-plan failure signals during honest recovery; otherwise the
+parent must still move to `blocked`. Lifecycle reconciliation records an explicit
+exemption while the evidence is absent; the first matching artifact expires
+the exemption and restores shipped-open reconciliation. Free-text blocker
+notes, ticket IDs, and permanent allowlists are not exemptions, and evidence
+discovery never closes the ticket automatically.
 
 ## Phase 3: Validate Program Gates
 

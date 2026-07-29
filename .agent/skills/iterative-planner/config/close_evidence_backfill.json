@@ -1,0 +1,139 @@
+{
+  "schema_version": 1,
+  "generated_at": "2026-06-23T12:11:42.000Z",
+  "ticket_ref": "T-INTAKE-354DB568",
+  "scope": "planner_core_close_evidence_backfill",
+  "quant_scope": "planner_core",
+  "entries": [
+    {
+      "plan_id": "plan_2026-06-21_48a90b5cd941680f",
+      "ticket_ref": "T-INTAKE-354DB568",
+      "reviewed_at": "2026-06-23T12:11:42.000Z",
+      "source_kind": "reviewed_historical_plan_artifacts",
+      "proof_basis": "reviewed_plan_artifacts_show_close_state_validate_to_close_passed_and_no_manual_human_or_approval_markers",
+      "close_evidence": {
+        "mode": "autonomous",
+        "classification": "clean_autonomy"
+      },
+      "evidence_refs": [
+        "plans/plan_2026-06-21_48a90b5cd941680f/state.json",
+        "plans/plan_2026-06-21_48a90b5cd941680f/metrics.json",
+        "plans/plan_2026-06-21_48a90b5cd941680f/verification.md",
+        "plans/plan_2026-06-21_48a90b5cd941680f/summary.md"
+      ],
+      "controls": {
+        "residual_classification_before_backfill": "right_action_missing_evidence",
+        "state_close": true,
+        "validate_to_close_passed": true,
+        "approval_markers": 0,
+        "human_intervention_markers": 0,
+        "manual_intervention_markers": 0,
+        "close_evidence_fields_present_before_backfill": false
+      }
+    },
+    {
+      "plan_id": "plan_2026-06-21_626266f8130f3154",
+      "ticket_ref": "T-INTAKE-354DB568",
+      "reviewed_at": "2026-06-23T12:11:42.000Z",
+      "source_kind": "reviewed_historical_plan_artifacts",
+      "proof_basis": "reviewed_plan_artifacts_show_close_state_validate_to_close_passed_and_no_manual_human_or_approval_markers",
+      "close_evidence": {
+        "mode": "autonomous",
+        "classification": "clean_autonomy"
+      },
+      "evidence_refs": [
+        "plans/plan_2026-06-21_626266f8130f3154/state.json",
+        "plans/plan_2026-06-21_626266f8130f3154/metrics.json",
+        "plans/plan_2026-06-21_626266f8130f3154/verification.md",
+        "plans/plan_2026-06-21_626266f8130f3154/summary.md"
+      ],
+      "controls": {
+        "residual_classification_before_backfill": "right_action_missing_evidence",
+        "state_close": true,
+        "validate_to_close_passed": true,
+        "approval_markers": 0,
+        "human_intervention_markers": 0,
+        "manual_intervention_markers": 0,
+        "close_evidence_fields_present_before_backfill": false
+      }
+    },
+    {
+      "plan_id": "plan_2026-06-22_70693e6d1a1bb052",
+      "ticket_ref": "T-INTAKE-354DB568",
+      "reviewed_at": "2026-06-23T12:11:42.000Z",
+      "source_kind": "reviewed_historical_plan_artifacts",
+      "proof_basis": "reviewed_plan_artifacts_show_close_state_validate_to_close_passed_and_no_manual_human_or_approval_markers",
+      "close_evidence": {
+        "mode": "autonomous",
+        "classification": "clean_autonomy"
+      },
+      "evidence_refs": [
+        "plans/plan_2026-06-22_70693e6d1a1bb052/state.json",
+        "plans/plan_2026-06-22_70693e6d1a1bb052/metrics.json",
+        "plans/plan_2026-06-22_70693e6d1a1bb052/verification.md",
+        "plans/plan_2026-06-22_70693e6d1a1bb052/summary.md"
+      ],
+      "controls": {
+        "residual_classification_before_backfill": "right_action_missing_evidence",
+        "state_close": true,
+        "validate_to_close_passed": true,
+        "approval_markers": 0,
+        "human_intervention_markers": 0,
+        "manual_intervention_markers": 0,
+        "close_evidence_fields_present_before_backfill": false
+      }
+    },
+    {
+      "plan_id": "plan_2026-06-22_c8dac3e5eb8afa70",
+      "ticket_ref": "T-INTAKE-354DB568",
+      "reviewed_at": "2026-06-23T12:11:42.000Z",
+      "source_kind": "reviewed_historical_plan_artifacts",
+      "proof_basis": "reviewed_plan_artifacts_show_close_state_validate_to_close_passed_and_no_manual_human_or_approval_markers",
+      "close_evidence": {
+        "mode": "autonomous",
+        "classification": "clean_autonomy"
+      },
+      "evidence_refs": [
+        "plans/plan_2026-06-22_c8dac3e5eb8afa70/state.json",
+        "plans/plan_2026-06-22_c8dac3e5eb8afa70/metrics.json",
+        "plans/plan_2026-06-22_c8dac3e5eb8afa70/verification.md",
+        "plans/plan_2026-06-22_c8dac3e5eb8afa70/summary.md"
+      ],
+      "controls": {
+        "residual_classification_before_backfill": "right_action_missing_evidence",
+        "state_close": true,
+        "validate_to_close_passed": true,
+        "approval_markers": 0,
+        "human_intervention_markers": 0,
+        "manual_intervention_markers": 0,
+        "close_evidence_fields_present_before_backfill": false
+      }
+    },
+    {
+      "plan_id": "plan_2026-06-22_f39cfb6b4034f412",
+      "ticket_ref": "T-INTAKE-354DB568",
+      "reviewed_at": "2026-06-23T12:11:42.000Z",
+      "source_kind": "reviewed_historical_plan_artifacts",
+      "proof_basis": "reviewed_plan_artifacts_show_close_state_validate_to_close_passed_and_no_manual_human_or_approval_markers",
+      "close_evidence": {
+        "mode": "autonomous",
+        "classification": "clean_autonomy"
+      },
+      "evidence_refs": [
+        "plans/plan_2026-06-22_f39cfb6b4034f412/state.json",
+        "plans/plan_2026-06-22_f39cfb6b4034f412/metrics.json",
+        "plans/plan_2026-06-22_f39cfb6b4034f412/verification.md",
+        "plans/plan_2026-06-22_f39cfb6b4034f412/summary.md"
+      ],
+      "controls": {
+        "residual_classification_before_backfill": "right_action_missing_evidence",
+        "state_close": true,
+        "validate_to_close_passed": true,
+        "approval_markers": 0,
+        "human_intervention_markers": 0,
+        "manual_intervention_markers": 0,
+        "close_evidence_fields_present_before_backfill": false
+      }
+    }
+  ]
+}

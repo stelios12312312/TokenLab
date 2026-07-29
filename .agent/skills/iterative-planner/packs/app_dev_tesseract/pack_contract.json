@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "pack_id": "app_dev_tesseract",
+  "rubrics": [
+    {
+      "id": "async_state_coverage",
+      "question": "Do user-visible async/API flows include loading, error, and empty states?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no", "not_applicable"]
+    },
+    {
+      "id": "env_single_owner",
+      "question": "Is each new environment variable read in exactly one owner surface?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no", "not_applicable"]
+    },
+    {
+      "id": "webhook_delivery_semantics",
+      "question": "Do webhook handlers prove signature/secret verification plus idempotency or retry behavior?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no", "not_applicable"]
+    },
+    {
+      "id": "migration_journey",
+      "question": "Does every migration/backfill/import path have dry-run, rollback, checkpoint, or before/after journey proof?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no", "not_applicable"]
+    }
+  ],
+  "checkers": [
+    {
+      "id": "app_dev_async_state_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/scripts/lib/app_dev_tesseract_pack.mjs",
+      "seeded_defect_ids": ["app-dev-seeded-fetch-missing-error-state"]
+    },
+    {
+      "id": "app_dev_env_reader_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/scripts/lib/app_dev_tesseract_pack.mjs",
+      "seeded_defect_ids": ["app-dev-seeded-env-duplicate-read"]
+    },
+    {
+      "id": "app_dev_webhook_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/scripts/lib/app_dev_tesseract_pack.mjs",
+      "seeded_defect_ids": ["app-dev-seeded-webhook-missing-idempotency"]
+    },
+    {
+      "id": "app_dev_migration_journey_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/scripts/lib/app_dev_tesseract_pack.mjs",
+      "seeded_defect_ids": ["app-dev-seeded-migration-no-journey-test"]
+    }
+  ],
+  "calibration_ref": ".agent/skills/iterative-planner/knowledge_packs/app_dev_tesseract/calibration.json",
+  "goldens_ref": ".agent/skills/iterative-planner/tests/fixtures/pack_contract/goldens.json",
+  "seeded_defects_ref": ".agent/skills/iterative-planner/tests/fixtures/pack_contract/seeded_defects.json",
+  "serves_projects": [
+    {
+      "id": "tesseract-automation-engine",
+      "evidence_ref": "plans/programs/ive-autocoder-v2/intake/t-intake-51e06930_intake_packet.json"
+    },
+    {
+      "id": "wp-membership-plugin-tesseract",
+      "evidence_ref": "plans/programs/ive-autocoder-v2/intake/t-intake-51e06930_intake_packet.json"
+    }
+  ]
+}

@@ -2,15 +2,28 @@
 // verify_manifest.mjs — Compare state.md change manifest against actual git diff.
 //
 // Usage:
+//   node verify_manifest.mjs --self-test           Run this script's local smoke check
 //   node verify_manifest.mjs check                Compare manifest to git diff
 //   node verify_manifest.mjs auto-approve-check   Check auto-approval criteria (≤3 files, ≤30 lines)
 //
 // Reads change manifest from {plan-dir}/state.md and compares with git diff output.
 // Zero dependencies — Node 18+.
 
+import { mkdirSync, writeFileSync } from "fs";
 import { join } from "path";
 import { spawnSync } from "child_process";
 import { getPaths, readPointer, readFile, debugLog, matchesBasename } from "./lib/plan_utils.mjs";
+import {
+  assertSelfTest,
+  cleanupSelfTestTemp,
+  initGitRepo,
+  makeSelfTestTemp,
+  printSelfTestPass,
+  runBin,
+  runNodeScript,
+  seedActivePlan,
+  selfPath,
+} from "./lib/script_self_test.mjs";
 
 const cwd = process.cwd();
 const { plansDir } = getPaths(cwd);
@@ -193,6 +206,42 @@ Reads from active plan directory (plans/.current_plan).`);
 }
 
 const args = process.argv.slice(2);
+if (args[0] === "--self-test") {
+  const scriptPath = selfPath(import.meta.url);
+  const tmp = makeSelfTestTemp("verify-manifest");
+  try {
+    initGitRepo(tmp);
+    const planDir = seedActivePlan(tmp, "plan_manifest_self_test");
+    mkdirSync(join(tmp, "src"), { recursive: true });
+    writeFileSync(join(tmp, "src", "main.js"), "export const value = 1;\n");
+    writeFileSync(join(planDir, "state.md"), `# State
+
+## Change Manifest
+- src/main.js
+`);
+
+    const add = runBin("git", ["add", "."], tmp);
+    assertSelfTest(add.ok, "git add succeeds for verify_manifest fixture", add.stderr || add.stdout);
+    const commit = runBin("git", ["commit", "-m", "initial fixture"], tmp);
+    assertSelfTest(commit.ok, "git commit succeeds for verify_manifest fixture", commit.stderr || commit.stdout);
+
+    writeFileSync(join(tmp, "src", "main.js"), "export const value = 2;\n");
+
+    const checkResult = runNodeScript([scriptPath, "check"], tmp);
+    assertSelfTest(checkResult.ok, "verify_manifest check exits cleanly for a matching manifest", checkResult.stderr || checkResult.stdout);
+    assertSelfTest(checkResult.stdout.includes("MANIFEST VERIFIED"), "verify_manifest check reports a verified manifest", checkResult.stdout);
+
+    const autoApprove = runNodeScript([scriptPath, "auto-approve-check"], tmp);
+    assertSelfTest(autoApprove.ok, "verify_manifest auto-approve-check exits cleanly for a small diff", autoApprove.stderr || autoApprove.stdout);
+    assertSelfTest(autoApprove.stdout.includes("AUTO-APPROVAL ELIGIBLE"), "verify_manifest auto-approve-check reports eligibility for a small diff", autoApprove.stdout);
+
+    printSelfTestPass("verify_manifest");
+  } finally {
+    cleanupSelfTestTemp(tmp);
+  }
+  process.exit(0);
+}
+
 if (args.length === 0 || args[0] === "--help" || args[0] === "help") {
   printUsage();
   process.exit(0);

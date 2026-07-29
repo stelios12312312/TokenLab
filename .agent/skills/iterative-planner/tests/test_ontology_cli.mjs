@@ -90,7 +90,7 @@ function seedStoryRegistry(tmp) {
           ".agent/skills/iterative-planner/scripts/planner.mjs",
         ],
         test_refs: [
-          ".agent/skills/iterative-planner/tests/test_ontology_context.mjs",
+          ".agent/skills/iterative-planner/tests/test_ontology_cli.mjs",
         ],
         validation_refs: [
           "reports/test_runs/plan_ontology_context_latest.yaml",
@@ -118,7 +118,7 @@ function seedVerificationStrategy(tmp) {
           tests: [
             {
               name: "scenarioBuildInducesAllOntologyClasses",
-              file: ".agent/skills/iterative-planner/tests/test_ontology_inducer.mjs",
+              file: ".agent/skills/iterative-planner/tests/test_ontology_cli.mjs",
               type: "integration",
             },
           ],

@@ -29,6 +29,39 @@
       "enum": ["design", "ready", "executing", "validating", "closed", "deferred"]
     },
     "goal": { "type": "string", "minLength": 1 },
+    "remote_mode": {
+      "type": "string",
+      "enum": ["local-only", "remote-read", "remote-sync"],
+      "description": "Explicit Program remote policy. Absence requires repository-backed inference or a governed gate requirement waiver."
+    },
+    "repository_slug": {
+      "type": "string",
+      "pattern": "^[^/\\s]+/[^/\\s]+$",
+      "description": "Legacy top-level canonical repository identity; remote_policy.repository_slug is preferred."
+    },
+    "remote_policy": {
+      "type": "object",
+      "properties": {
+        "mode": { "type": "string", "enum": ["local-only", "remote-read", "remote-sync"] },
+        "remote_mode": { "type": "string", "enum": ["local-only", "remote-read", "remote-sync"] },
+        "repository_slug": { "type": "string", "pattern": "^[^/\\s]+/[^/\\s]+$" }
+      },
+      "additionalProperties": true
+    },
+    "gate_requirement_waivers": {
+      "type": "array",
+      "description": "Governed structural requirement waivers. Each row must cite a matching decisions[] entry of type gate_requirement_waiver.",
+      "items": {
+        "type": "object",
+        "required": ["requirement_id", "decision_ref", "reason"],
+        "properties": {
+          "requirement_id": { "type": "string", "minLength": 1 },
+          "decision_ref": { "type": "string", "minLength": 1 },
+          "reason": { "type": "string", "minLength": 1 }
+        },
+        "additionalProperties": false
+      }
+    },
     "story_refs": {
       "type": "array",
       "items": { "type": "string" }
@@ -36,6 +69,44 @@
     "canonical_files": {
       "type": "array",
       "items": { "type": "string" }
+    },
+    "persona_packs": {
+      "type": "array",
+      "description": "Optional persona packs that should pressure program-level claims. Advisory metadata; deterministic packet gates remain authoritative.",
+      "items": { "type": "string" }
+    },
+    "hypothesis_space": {
+      "type": ["object", "array"],
+      "description": "Optional domain-agnostic ledger of tested and untested scope dimensions. Gate layers may require negative verdicts to cite entries here.",
+      "additionalProperties": true
+    },
+    "findings_ledger": {
+      "type": "array",
+      "description": "Optional structured program findings. Negative-grade entries may need tested_region or hypothesis_space_refs before validation.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "grade": { "type": "string" },
+          "status": { "type": "string" },
+          "result": { "type": "string" },
+          "verdict": { "type": "string" },
+          "tested_region": {},
+          "tested_region_summary": { "type": "string" },
+          "tested_region_ref": { "type": "string" },
+          "hypothesis_space_refs": { "type": "array", "items": { "type": "string" } }
+        },
+        "additionalProperties": true
+      }
+    },
+    "program_verdict": {
+      "type": ["object", "string"],
+      "description": "Optional program-level verdict. Negative/no_go verdicts may need tested_region or hypothesis_space_refs before validation.",
+      "additionalProperties": true
+    },
+    "verdict": {
+      "type": "string",
+      "description": "Optional shorthand program-level verdict; program_verdict is preferred when evidence fields are needed."
     },
     "epics": {
       "type": "array",
@@ -91,6 +162,37 @@
           "lifecycle": {
             "type": "string",
             "enum": ["proposed", "submitted", "review_ready", "ready", "in_progress", "blocked", "done", "verified", "closed", "deferred"]
+          },
+          "awaiting_external_action": {
+            "type": "object",
+            "description": "Explicit external wait for an in_progress or blocked ticket. Lifecycle legality is enforced by Program Packet validation. The lifecycle reconciler exempts shipped-open only while the declared evidence is absent and expires the exemption as soon as it appears.",
+            "required": ["kind", "reason", "expected_evidence", "recorded_at"],
+            "properties": {
+              "kind": { "type": "string", "enum": ["operator_run", "human_decision"] },
+              "reason": { "type": "string", "minLength": 1 },
+              "expected_evidence": {
+                "type": "object",
+                "required": ["type", "root", "match"],
+                "properties": {
+                  "type": { "const": "json_match" },
+                  "root": {
+                    "type": "string",
+                    "minLength": 1,
+                    "pattern": "^(?!/)(?![A-Za-z]:/)(?!.*(?:^|/)\\.\\.(?:/|$)).+$"
+                  },
+                  "match": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "maxProperties": 8,
+                    "propertyNames": { "pattern": "^[A-Za-z][A-Za-z0-9_.-]*$" },
+                    "additionalProperties": { "type": ["string", "number", "boolean", "null"] }
+                  }
+                },
+                "additionalProperties": false
+              },
+              "recorded_at": { "type": "string", "format": "date-time" }
+            },
+            "additionalProperties": false
           },
           "review_status": {
             "type": "string",

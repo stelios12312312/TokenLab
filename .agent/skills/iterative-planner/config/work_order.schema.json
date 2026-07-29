@@ -1,0 +1,383 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iterative-planner.local/schemas/work_order.schema.json",
+  "title": "Iterative Planner Work Order",
+  "description": "Downward execution contract for handing bounded, proof-bearing work from expensive planning to cheap execution agents.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "goal",
+    "inputs",
+    "constraints",
+    "claims_to_produce",
+    "proof_obligations",
+    "stop_conditions",
+    "budget"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [1],
+      "description": "Work-order schema version."
+    },
+    "id": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+      "description": "Optional stable work-order id."
+    },
+    "goal": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Specific execution goal. Deterministic validators may reject ambiguous goals."
+    },
+    "inputs": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Artifact references the executing agent may inspect.",
+      "items": {
+        "type": "object",
+        "required": ["id", "ref"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+          },
+          "ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "kind": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "constraints": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "claims_to_produce": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Claims the executing agent must return upward.",
+      "items": {
+        "type": "object",
+        "required": ["id", "statement"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1
+          },
+          "consumer": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "proof_obligations": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Required proof method for each claim.",
+      "items": {
+        "type": "object",
+        "required": ["claim_id", "method"],
+        "properties": {
+          "claim_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "method": {
+            "type": "string",
+            "enum": ["executed", "deterministic", "rubric"]
+          },
+          "command": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "minLength": 1 }
+              }
+            ]
+          },
+          "command_or_action": {
+            "type": "string",
+            "minLength": 1
+          },
+          "check": {
+            "type": "string",
+            "minLength": 1
+          },
+          "predicate": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rubric_ref": {
+            "type": "string",
+            "minLength": 1
+          },
+          "rubric": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "stop_conditions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "budget": {
+      "type": "object",
+      "required": ["max_tokens", "max_cost_usd", "max_time_minutes"],
+      "properties": {
+        "max_tokens": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "max_cost_usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "max_time_minutes": {
+          "type": "number",
+          "exclusiveMinimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "profile": {
+      "type": "object",
+      "description": "Optional promoted-work profile. Recipe profiles represent canonical recipes as work orders while preserving fail-closed dry-run execution.",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["recipe"]
+        },
+        "recipe_id": {
+          "type": "string",
+          "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "capability_id": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]*$"
+        },
+        "required_params": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "dry_run_fail_closed": {
+          "type": "boolean",
+          "const": true,
+          "description": "Must be true for recipe profiles; absence of dry-run flags must fail validation."
+        },
+        "runner": {
+          "type": "object",
+          "required": ["type", "command", "dry_run_flags"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["command"]
+            },
+            "cwd": {
+              "type": "string",
+              "minLength": 1
+            },
+            "command": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "defaults": {
+              "type": "object",
+              "additionalProperties": { "type": "string" }
+            },
+            "dry_run_flags": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            },
+            "live_flags": {
+              "type": "array",
+              "items": { "type": "string", "minLength": 1 }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    },
+    "projections": {
+      "type": "object",
+      "description": "Optional planner projections that let legacy plan intent and verification surfaces be read through the work-order contract. Absence preserves backward compatibility for old work orders and plan directories.",
+      "properties": {
+        "version": {
+          "type": "integer",
+          "enum": [1]
+        },
+        "intent_contract": {
+          "type": "object",
+          "properties": {
+            "version": { "type": "integer", "enum": [1] },
+            "primary_user": { "type": ["string", "null"] },
+            "job_to_be_done": { "type": ["string", "null"] },
+            "desired_outcomes": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "anti_goals": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "constraints": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "deliverables": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "string" },
+                  "name": { "type": "string" },
+                  "kind": { "type": "string" },
+                  "required": { "type": "boolean" },
+                  "purpose": { "type": ["string", "null"] },
+                  "quality_bars": { "type": "array", "items": { "type": "string" } },
+                  "required_sections": { "type": "array", "items": { "type": "string" } },
+                  "required_signals": { "type": "array", "items": { "type": "string" } },
+                  "anti_goals": { "type": "array", "items": { "type": "string" } },
+                  "evidence_mode": { "type": ["string", "null"] }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        },
+        "verification_matrix": {
+          "type": "object",
+          "properties": {
+            "success_criteria": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["id", "label"],
+                "properties": {
+                  "id": { "type": "string" },
+                  "label": { "type": "string" },
+                  "story_refs": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                },
+                "additionalProperties": true
+              }
+            },
+            "verification_strategy": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": ["criterion_id"],
+                "properties": {
+                  "criterion_id": { "type": "string" },
+                  "story_linkage": { "type": "string" },
+                  "repo_context": { "type": "string" },
+                  "required_proof_type": { "type": "string" },
+                  "command": { "type": "string" },
+                  "pass_means": { "type": "string" },
+                  "what_remains_unverified": { "type": "string" }
+                },
+                "additionalProperties": true
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "schema_version": 1,
+      "id": "wo_validate_contract",
+      "goal": "Validate the work-order contract fixtures and report deterministic proof outcomes.",
+      "inputs": [
+        {
+          "id": "fixture_dir",
+          "kind": "path",
+          "ref": ".agent/skills/iterative-planner/tests/fixtures/work_orders"
+        }
+      ],
+      "constraints": [
+        "Do not modify files outside the named fixture and validator surfaces."
+      ],
+      "claims_to_produce": [
+        {
+          "id": "fixtures_validated",
+          "statement": "The golden fixture passes and seeded-invalid fixtures fail with actionable errors."
+        }
+      ],
+      "proof_obligations": [
+        {
+          "claim_id": "fixtures_validated",
+          "method": "executed",
+          "command": [
+            "node",
+            ".agent/skills/iterative-planner/tests/test_work_order_contract.mjs"
+          ]
+        }
+      ],
+      "stop_conditions": [
+        "Stop if any seeded-invalid fixture passes validation."
+      ],
+      "budget": {
+        "max_tokens": 12000,
+        "max_cost_usd": 0,
+        "max_time_minutes": 20
+      },
+      "profile": {
+        "type": "recipe",
+        "recipe_id": "sample-flow",
+        "capability_id": "run_sample_flow",
+        "required_params": [],
+        "dry_run_fail_closed": true,
+        "runner": {
+          "type": "command",
+          "cwd": ".",
+          "command": [
+            "python",
+            "scripts/sample_flow.py"
+          ],
+          "defaults": {},
+          "dry_run_flags": [
+            "--dry-run"
+          ],
+          "live_flags": []
+        }
+      }
+    }
+  ]
+}

@@ -21,6 +21,7 @@ import { readFileSync, existsSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { resolvePlanTarget } from "./lib/plan_utils.mjs";
+import { verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -131,7 +132,7 @@ function auditCompliance(stateJson, currentState) {
       };
       allAttempts.push(entry);
 
-      if (entry.result === "PASS") {
+      if (verificationStatusIsPass(entry.result, "gate")) {
         // RT5-M4: Ignore pre-replan passes for gates that must be re-earned
         if (lastReplanIndex >= 0 && i < lastReplanIndex && GATES_INVALIDATED_BY_REPLAN.has(gateName)) {
           continue; // stale pass from previous cycle
@@ -189,7 +190,7 @@ function printHuman(plan, audit) {
 
   console.log(`  Gate Chain Status:`);
   for (const r of audit.results) {
-    const icon = r.status === "pass" ? "✅" : r.status === "missing" ? "❌" : "⬜";
+    const icon = r.passed ? "✅" : r.required ? "❌" : "⬜";
     const label = r.required ? (r.passed ? "PASS" : "MISSING") : "n/a";
     const ts = r.timestamp ? `  ${r.timestamp.slice(0, 19)}` : "";
     console.log(`    ${icon}  ${r.gate.padEnd(25)} ${label.padEnd(8)}${ts}`);

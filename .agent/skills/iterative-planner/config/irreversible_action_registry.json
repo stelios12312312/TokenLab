@@ -1,0 +1,168 @@
+{
+  "$schema": "./irreversible_action_registry.schema.json",
+  "version": 1,
+  "overlay_path": "planner.irreversible-actions.json",
+  "supported_modes": [
+    "draft",
+    "dry_run",
+    "execute"
+  ],
+  "preview_modes": [
+    "draft",
+    "dry_run"
+  ],
+  "confirmation": {
+    "required_source": "direct_user_input",
+    "generated_must_be": false,
+    "delegated_must_be": false,
+    "require_actor": true,
+    "require_recorded_at": true,
+    "require_context_binding": true,
+    "max_age_seconds": 900,
+    "max_future_skew_seconds": 60,
+    "text_hash": "sha256",
+    "intent_policy": "bounded_affirmative_v1"
+  },
+  "persona_obligations": [
+    "assumptions_challenger",
+    "config_integrity",
+    "wiring_auditor",
+    "traceability"
+  ],
+  "action_classes": [
+    {
+      "id": "external_communication",
+      "label": "Send email or message",
+      "aliases": [
+        "external_communication",
+        "send_email",
+        "send_message",
+        "email",
+        "message"
+      ],
+      "intent_phrases": [
+        "send email",
+        "send the email",
+        "send customer email",
+        "send the customer email",
+        "send message",
+        "send the message",
+        "email customer",
+        "message customer",
+        "gmail.send_draft"
+      ],
+      "required_fields": [
+        "target",
+        "payload_ref"
+      ]
+    },
+    {
+      "id": "publish",
+      "label": "Publish externally",
+      "aliases": [
+        "publish",
+        "publication",
+        "publish_release",
+        "go_live"
+      ],
+      "intent_phrases": [
+        "publish",
+        "publish release",
+        "publish externally",
+        "go live"
+      ],
+      "required_fields": [
+        "target",
+        "payload_ref"
+      ]
+    },
+    {
+      "id": "deploy",
+      "label": "Deploy to an external environment",
+      "aliases": [
+        "deploy",
+        "deployment",
+        "deploy_production",
+        "release_deployment"
+      ],
+      "intent_phrases": [
+        "deploy",
+        "deploy to production",
+        "deploy to prod",
+        "production deployment"
+      ],
+      "required_fields": [
+        "target",
+        "payload_ref"
+      ]
+    },
+    {
+      "id": "spend_payment",
+      "label": "Spend money or execute a payment",
+      "aliases": [
+        "spend_payment",
+        "spend",
+        "payment",
+        "pay",
+        "charge",
+        "refund",
+        "transfer_funds"
+      ],
+      "intent_phrases": [
+        "spend",
+        "make payment",
+        "pay invoice",
+        "charge customer",
+        "issue refund",
+        "transfer funds",
+        "wire money"
+      ],
+      "required_fields": [
+        "target",
+        "payload_ref"
+      ]
+    },
+    {
+      "id": "delete_remote",
+      "label": "Delete or close a remote object",
+      "aliases": [
+        "delete_remote",
+        "remote_delete",
+        "delete_production",
+        "close_remote"
+      ],
+      "intent_phrases": [
+        "delete remote",
+        "remote delete",
+        "delete from production",
+        "delete github issue",
+        "close github issue",
+        "remove remote"
+      ],
+      "required_fields": [
+        "target",
+        "payload_ref"
+      ]
+    },
+    {
+      "id": "kill_promote",
+      "label": "Confirm a kill or promotion route",
+      "aliases": [
+        "kill_promote",
+        "kill_hypothesis",
+        "promote_candidate"
+      ],
+      "intent_phrases": [
+        "kill promote",
+        "kill hypothesis",
+        "killed hypothesis",
+        "promote candidate",
+        "promotion candidate"
+      ],
+      "required_fields": [
+        "target",
+        "payload_ref"
+      ]
+    }
+  ]
+}

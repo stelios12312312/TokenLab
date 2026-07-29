@@ -128,6 +128,7 @@ items:
   - id: reachability-audit-clean
     check: command_succeeds
     command: "node .agent/skills/iterative-planner/scripts/rule_engine.mjs reachability-audit"
+    timeout: 180000
     description: "State-space reachability analysis passes (no deadlocks, forbidden paths, gate bypasses, escalation routes)"
 
   # Retro 2026-03-22: catch cross-report status divergence

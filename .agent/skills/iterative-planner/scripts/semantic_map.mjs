@@ -12,6 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
+import { buildStoryEvidenceReport } from "./story_registry.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -745,13 +746,15 @@ function buildSemanticMap({ focus, outPath }) {
       evidence_refs: [relPath(storyRegistryPath)],
     });
 
-    if (story.status === "FULLY_COVERED" && (!Array.isArray(story.code_refs) || story.code_refs.length === 0 || !Array.isArray(story.test_refs) || story.test_refs.length === 0)) {
+    const storyEvidence = buildStoryEvidenceReport(story, storyRegistry, cwd);
+    if (story.status === "FULLY_COVERED" && !storyEvidence.evidence_ready) {
+      const issueSummary = storyEvidence.issues.map((issue) => issue.message).join("; ");
       addObligation(obligations, {
         id: toId("OBL", storyId, "TEST_LINK"),
         type: "test_link",
         status: "open",
         subject_ids: [storyId, "DOC_STORY_REGISTRY"],
-        gap: `${story.id} is marked FULLY_COVERED but is still missing concrete code_refs or test_refs in story_registry.json.`,
+        gap: `${story.id} is marked FULLY_COVERED but its canonical evidence contract fails: ${issueSummary}`,
         evidence_refs: [relPath(storyRegistryPath)],
         workflow_targets: [".agent/workflows/steward.md", ".agent/workflows/red-team-user-story-audit.md"].filter((target) => existsSync(join(cwd, target))),
       });
@@ -760,7 +763,7 @@ function buildSemanticMap({ focus, outPath }) {
         category: "coverage_drift",
         severity: "high",
         subject_ids: [storyId, "DOC_STORY_REGISTRY"],
-        detail: `${story.id} is marked FULLY_COVERED even though the registry still lacks a complete evidence chain.`,
+        detail: `${story.id} is marked FULLY_COVERED even though canonical registry validation rejects its evidence chain: ${issueSummary}`,
         evidence_refs: [relPath(storyRegistryPath)],
       });
     }

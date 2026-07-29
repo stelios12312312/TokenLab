@@ -1,0 +1,114 @@
+{
+  "version": 1,
+  "schema_version": "2026-06-24.incident-preflight.v1",
+  "plugins": [
+    {
+      "id": "quant_run_manifest",
+      "title": "Quant run manifest before rerun",
+      "applies_to": ["quant_wfo", "optimizer_artifact_mismatch"],
+      "phase": "before_rerun",
+      "required": true,
+      "fail_closed": true,
+      "state_mutated": false,
+      "command_or_action": "Record the exact rerun command, strategies, Optuna budget, study storage, prediction provider, artifact paths, and excluded work before execution.",
+      "pass_means": "The incident contract names the intended run and prevents 'maybe it optimized' ambiguity.",
+      "evidence_terms": ["command", "strategy", "optuna", "study", "prediction provider", "artifact"]
+    },
+    {
+      "id": "prediction_provider_not_none",
+      "title": "Prediction provider is active",
+      "applies_to": ["quant_wfo", "dead_signal_or_prediction_fallback"],
+      "phase": "before_result_interpretation",
+      "required": true,
+      "fail_closed": true,
+      "state_mutated": false,
+      "command_or_action": "Assert prediction_provider is present and not none before ROI, alpha, or report output is interpreted.",
+      "pass_means": "ML-backed strategies cannot silently fall back to no prediction signal.",
+      "evidence_terms": ["prediction_provider", "not none", "provider"]
+    },
+    {
+      "id": "ml_missing_prediction_zero",
+      "title": "No missing predictions for ML-backed strategies",
+      "applies_to": ["quant_wfo", "dead_signal_or_prediction_fallback"],
+      "phase": "before_result_interpretation",
+      "required": true,
+      "fail_closed": true,
+      "state_mutated": false,
+      "command_or_action": "Prove missing_prediction is zero for ML-backed strategies in the rerun artifact.",
+      "pass_means": "The backtest/report did not complete around a dead model signal.",
+      "evidence_terms": ["missing_prediction", "0", "zero"]
+    },
+    {
+      "id": "optuna_study_trial_count",
+      "title": "Optuna study and trial count lineage",
+      "applies_to": ["quant_wfo", "optimizer_artifact_mismatch"],
+      "phase": "before_close",
+      "required": true,
+      "fail_closed": true,
+      "state_mutated": false,
+      "command_or_action": "Record study storage, study id/name, expected budget, actual trial count, and best trial provenance.",
+      "pass_means": "The optimizer ran at the intended scale and the reported best parameters have a study lineage.",
+      "evidence_terms": ["optuna", "study", "trial", "budget", "best"]
+    },
+    {
+      "id": "best_params_consumed_by_report",
+      "title": "Best parameters are consumed by canonical report/backtest",
+      "applies_to": ["quant_wfo", "optimizer_artifact_mismatch", "report_artifact_lineage"],
+      "phase": "before_close",
+      "required": true,
+      "fail_closed": true,
+      "state_mutated": false,
+      "command_or_action": "Prove nested best params are read by the canonical report/backtest path rather than only written as an optimizer artifact.",
+      "pass_means": "Default parameters cannot masquerade as optimized parameters in the final report.",
+      "evidence_terms": ["best params", "consumed", "canonical report", "backtest"]
+    },
+    {
+      "id": "temporal_leakage_proof",
+      "title": "Temporal and leakage proof",
+      "applies_to": ["quant_wfo", "temporal_leakage_risk"],
+      "phase": "before_close",
+      "required": true,
+      "fail_closed": true,
+      "state_mutated": false,
+      "command_or_action": "Record known-at-time boundaries, walk-forward split, leakage checks, and controls before promoting results.",
+      "pass_means": "The incident closeout does not accept a result that may be future-leaking.",
+      "evidence_terms": ["temporal", "leakage", "walk-forward", "known-at-time"]
+    },
+    {
+      "id": "artifact_freshness_lineage",
+      "title": "Artifact freshness and report lineage",
+      "applies_to": ["quant_wfo", "report_artifact_lineage", "service_boundary_wiring"],
+      "phase": "before_close",
+      "required": true,
+      "fail_closed": true,
+      "state_mutated": false,
+      "command_or_action": "Record artifact paths, timestamps, report generator input, and the canonical output consumed by the user.",
+      "pass_means": "A stale or report-only artifact cannot close the incident.",
+      "evidence_terms": ["artifact", "fresh", "lineage", "report"]
+    },
+    {
+      "id": "report_semantic_acceptance_review",
+      "title": "Report semantic acceptance review",
+      "applies_to": ["report_artifact_lineage"],
+      "phase": "before_close",
+      "required": true,
+      "fail_closed": true,
+      "state_mutated": false,
+      "command_or_action": "Review the report against the operator question: identify report family, source lineage, relevant diagnostic rows including blocked/non-actionable evidence, recommendations or stop conditions, and claims not promoted.",
+      "pass_means": "A fresh report cannot close the incident unless it is semantically useful for the requested decision.",
+      "evidence_terms": ["operator question", "semantic acceptance", "diagnostic", "recommendation", "stop condition", "lineage"]
+    },
+    {
+      "id": "connector_boundary_smoke",
+      "title": "Connector or backend boundary smoke",
+      "applies_to": ["service_boundary_wiring", "connector_or_backend_boundary"],
+      "phase": "before_close",
+      "required": true,
+      "fail_closed": true,
+      "state_mutated": false,
+      "command_or_action": "Exercise the real connector/backend boundary or a faithful dry-run and record partial-failure behavior.",
+      "pass_means": "The incident did not close on wrapper-only proof while a real boundary remained unexercised.",
+      "evidence_terms": ["connector", "boundary", "smoke", "dry-run"]
+    }
+  ]
+}

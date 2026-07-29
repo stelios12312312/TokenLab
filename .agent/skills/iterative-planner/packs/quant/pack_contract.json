@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "pack_id": "quant",
+  "rubrics": [
+    {
+      "id": "temporal_leakage",
+      "question": "Does the plan prove temporal split and leakage controls before reporting performance?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no"]
+    },
+    {
+      "id": "calibration_uncertainty",
+      "question": "Does the result claim include calibration or uncertainty evidence appropriate to the target?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no"]
+    }
+  ],
+  "checkers": [
+    {
+      "id": "quant_temporal_leakage_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/packs/quant/leakage_proof.mjs",
+      "seeded_defect_ids": ["quant-seeded-leakage-missing-temporal-split"]
+    },
+    {
+      "id": "quant_calibration_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/scripts/lib/quant_results_validation.mjs",
+      "seeded_defect_ids": ["quant-seeded-calibration-missing"]
+    }
+  ],
+  "calibration_ref": ".agent/skills/iterative-planner/packs/quant/calibration.json",
+  "goldens_ref": ".agent/skills/iterative-planner/tests/fixtures/pack_contract/goldens.json",
+  "seeded_defects_ref": ".agent/skills/iterative-planner/tests/fixtures/pack_contract/seeded_defects.json",
+  "serves_projects": [
+    {
+      "id": "portable-agent-kit",
+      "evidence_ref": "reports/user_story_audit/story_registry.json#US-PM-AUTO-095"
+    },
+    {
+      "id": "evolution-trading",
+      "evidence_ref": "docs/quant-pack-extraction-map.md"
+    }
+  ]
+}

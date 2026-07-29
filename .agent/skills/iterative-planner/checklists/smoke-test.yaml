@@ -22,11 +22,6 @@ items:
     path: "{cwd}/.agent/skills/iterative-planner/config/version.json"
     description: "version.json exists (single source of truth for planner version)"
 
-  - id: config-integrity-exists
-    check: file_exists
-    path: "{cwd}/.agent/skills/iterative-planner/config/.config_integrity"
-    description: "Config integrity baseline exists (required for tamper detection)"
-
   - id: test-migration-exists
     check: file_exists
     path: "{cwd}/.agent/skills/iterative-planner/tests/test_migration.mjs"

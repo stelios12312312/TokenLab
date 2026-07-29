@@ -12,12 +12,7 @@ import {
   resolveProgramPacketPath,
   validateProgramPacket,
 } from "./lib/program_packet.mjs";
-import {
-  callOpenAiCompatibleJson,
-  loadDriftLlmConfig,
-  publicDriftConfig,
-  redactSecrets,
-} from "./lib/llm_drift_client.mjs";
+import { redactSecrets } from "./lib/provider_client.mjs";
 import {
   evaluateRetroRecurrenceCheck,
   recurrenceCheckToBlockers,
@@ -27,12 +22,17 @@ import {
   quantPersonaGateToBlockers,
 } from "./lib/quant_persona_gate.mjs";
 import {
-  buildDeepSeekAdvisoryBlock,
-  DEEPSEEK_ADVISORY_NOT_RUN_STATUS,
-  DEEPSEEK_ADVISORY_NOT_RUN_SUMMARY,
-  DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT,
-} from "./lib/deepseek_advisory_block.mjs";
-
+  assertRemoteReadAllowed,
+  assertRemoteWriteAllowed,
+  resolveRemoteMode,
+} from "./lib/remote_mode.mjs";
+import {
+  buildIssueSyncContract,
+} from "./lib/issue_sync_contract.mjs";
+import {
+  buildKnowledgeReceipt,
+} from "./lib/knowledge_receipt.mjs";
+import { normalizeVerificationStatus, verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const scriptDir = __dirname;
@@ -89,11 +89,6 @@ function truncate(value, max = 1200) {
   return text.length <= max ? text : `${text.slice(0, max)}…[truncated ${text.length - max} chars]`;
 }
 
-function oneLine(value, max = 240) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
-}
-
 function redactText(value, env = process.env) {
   return redactSecrets(String(value || ""), env);
 }
@@ -105,11 +100,6 @@ function redactObject(value, env = process.env) {
   } catch {
     return { redaction_error: "redacted payload was not valid JSON", raw_excerpt: truncate(text, 2000) };
   }
-}
-
-function normalizeStatus(value, fallback = "unavailable") {
-  const normalized = String(value || "").trim().toLowerCase();
-  return TICKET_REVIEW_STATUSES.includes(normalized) ? normalized : fallback;
 }
 
 function normalizeToken(value) {
@@ -130,10 +120,11 @@ function parseArgs(argv = []) {
     ticket: null,
     repo: null,
     project: null,
+    remoteMode: null,
     write: false,
     json: false,
     closeGithubIssue: false,
-    showDeepSeekBlock: false,
+    acceptRemoteClose: false,
   };
 
   for (let i = 0; i < args.length; i += 1) {
@@ -144,11 +135,15 @@ function parseArgs(argv = []) {
     else if (arg === "--ticket") parsed.ticket = args[++i] || null;
     else if (arg === "--repo") parsed.repo = args[++i] || null;
     else if (arg === "--project") parsed.project = args[++i] || null;
+    else if (arg === "--remote-mode") parsed.remoteMode = args[++i] || null;
     else if (arg === "--write") parsed.write = true;
     else if (arg === "--json") parsed.json = true;
     else if (arg === "--close-github-issue") parsed.closeGithubIssue = true;
-    else if (arg === "--show-deepseek-block") parsed.showDeepSeekBlock = true;
+    else if (arg === "--accept-remote-close") parsed.acceptRemoteClose = true;
     else if (arg === "--help" || arg === "-h") parsed.command = "help";
+    else if (arg.startsWith("--")) {
+      throw new Error(`Unknown argument: ${arg}`);
+    }
     else throw new Error(`Unknown argument: ${arg}`);
   }
 
@@ -159,16 +154,19 @@ function usage() {
   return `github_ticket_review.mjs — Review GitHub tickets against planner evidence
 
 Usage:
-  node github_ticket_review.mjs review --issue <n> --program <program-id-or-path> --ticket <ticket-id> [--repo <owner/repo>] [--write] [--show-deepseek-block] [--json]
-  node github_ticket_review.mjs review --project-item <node-id-or-url> --program <program-id-or-path> --ticket <ticket-id> [--repo <owner/repo>] [--write] [--show-deepseek-block] [--json]
-  node github_ticket_review.mjs publish --program <program-id-or-path> --ticket <ticket-id> --repo <owner/repo> [--project <id/url>] [--write] [--json]
+  node github_ticket_review.mjs review --issue <n> --program <program-id-or-path> --ticket <ticket-id> [--repo <owner/repo>] [--remote-mode local-only|remote-read|remote-sync] [--write] [--accept-remote-close] [--json]
+  node github_ticket_review.mjs review --project-item <node-id-or-url> --program <program-id-or-path> --ticket <ticket-id> [--repo <owner/repo>] [--remote-mode local-only|remote-read|remote-sync] [--write] [--accept-remote-close] [--json]
+  node github_ticket_review.mjs publish --program <program-id-or-path> --ticket <ticket-id> --repo <owner/repo> [--project <id/url>] [--remote-mode local-only|remote-read|remote-sync] [--write] [--json]
 
 Safety:
   Dry-run is the default. --write is required for Program Packet edits, review artifacts,
   GitHub comments, labels, project status updates, or issue close attempts.
   GitHub issues are never closed unless --close-github-issue is also passed.
-  DeepSeek output is compact by default; use --show-deepseek-block for the full
-  fenced advisory verdict in text/GitHub review comments.`;
+  A closed remote issue advances local ticket lifecycle only with --write --accept-remote-close
+  and passing deterministic review checks.
+  PLANNER_REMOTE_MODE defaults remote access when --remote-mode is omitted.
+  Modes: local-only blocks GitHub reads/writes, remote-read permits reads only,
+  and remote-sync permits explicit --write mirror updates.`;
 }
 
 function parseRepoFromRemote(remote) {
@@ -248,12 +246,17 @@ function parseProjectItemId(value) {
 
 function normalizeIssue(raw, { repo, source = "issue", projectItem = null } = {}) {
   const labels = asArray(raw?.labels).map((label) => typeof label === "string" ? label : label?.name).filter(Boolean);
-  const comments = asArray(raw?.comments).map((comment) => ({
-    id: comment?.id || comment?.databaseId || null,
-    url: comment?.url || null,
-    body: comment?.body || "",
-    author: comment?.author?.login || comment?.author || null,
-  }));
+  const comments = asArray(raw?.comments).map((comment) => {
+    const databaseId = comment?.databaseId ?? comment?.database_id ?? null;
+    const graphId = comment?.node_id || comment?.nodeId || comment?.graphqlId || comment?.id || null;
+    return {
+      id: databaseId ?? comment?.id ?? null,
+      node_id: graphId && String(graphId) !== String(databaseId ?? "") ? graphId : null,
+      url: comment?.url || null,
+      body: comment?.body || "",
+      author: comment?.author?.login || comment?.author || null,
+    };
+  });
   return {
     source,
     repo,
@@ -393,11 +396,51 @@ function collectStoryIds(cwd) {
   }
 }
 
+function readStoryRegistryIndex(cwd) {
+  const registryPath = join(cwd, "reports", "user_story_audit", "story_registry.json");
+  if (!existsSync(registryPath)) return new Map();
+  try {
+    const registry = JSON.parse(readFileSync(registryPath, "utf-8"));
+    const stories = [
+      ...asArray(registry?.stories),
+      ...asArray(registry?.infrastructure_stories),
+    ];
+    return new Map(stories.map((story) => [asString(story?.id), story]).filter(([id]) => id));
+  } catch {
+    return new Map();
+  }
+}
+
+function storyTitle(story) {
+  return asString(story?.title || story?.name || story?.summary || story?.narrative?.need) || null;
+}
+
+function storyStatus(story) {
+  return asString(story?.status || story?.state || story?.review_status) || null;
+}
+
+function collectStoryContext({ ticket, storyRefs, cwd }) {
+  const registry = cwd ? readStoryRegistryIndex(cwd) : new Map();
+  const explicit = new Map(asArray(ticket?.story_context)
+    .map((entry) => [asString(entry?.id || entry?.story_ref || entry?.storyRef), entry])
+    .filter(([id]) => id));
+  return uniqueStrings(storyRefs).map((storyRef) => {
+    const provided = explicit.get(storyRef) || null;
+    const story = registry.get(storyRef) || null;
+    return {
+      id: storyRef,
+      title: asString(provided?.title) || storyTitle(story),
+      status: asString(provided?.status) || storyStatus(story),
+      relevance: asString(provided?.relevance || provided?.context || provided?.reason) || "Linked through Program Packet ticket or acceptance criteria.",
+    };
+  });
+}
+
 function findTicket(packet, ticketId) {
   return asArray(packet?.tickets).find((ticket) => asString(ticket?.id) === ticketId) || null;
 }
 
-function collectTicketEvidence(packet, ticket) {
+function collectTicketEvidence(packet, ticket, { cwd = null } = {}) {
   const acceptanceIds = new Set(asArray(ticket?.acceptance_criteria).map(asString).filter(Boolean));
   const verificationIds = new Set(asArray(ticket?.verification_refs).map(asString).filter(Boolean));
   const acceptance = asArray(packet?.acceptance_criteria)
@@ -416,6 +459,7 @@ function collectTicketEvidence(packet, ticket) {
   ]);
   return {
     story_refs: storyRefs,
+    story_context: collectStoryContext({ ticket, storyRefs, cwd }),
     defect_refs: uniqueStrings(ticket?.defect_refs),
     gap_refs: uniqueStrings(ticket?.gap_refs),
     acceptance_criteria: acceptance,
@@ -471,7 +515,22 @@ function intakeDescriptionFromPacket(intakePacket, ticketTitle) {
   ]);
   const body = stripDuplicateLeadingTitle(text, ticketTitle || title);
   if (!body) return null;
-  return { title, body };
+  const structured = intakePacket.source?.structured || intakePacket.structured || {};
+  return {
+    title,
+    body,
+    problem: firstMarkdownBlock([
+      intakePacket.candidate_ticket?.problem,
+      structured.problem,
+      intakePacket.problem,
+    ]),
+    proposed_change: firstMarkdownBlock([
+      intakePacket.candidate_ticket?.proposed_change,
+      structured.proposed_change,
+      intakePacket.proposed_change,
+    ]),
+    story_context: asArray(intakePacket.story_context || intakePacket.candidate_ticket?.story_context || structured.story_context),
+  };
 }
 
 function resolveArtifactCandidates({ cwd, packetPath, artifactPath }) {
@@ -513,18 +572,49 @@ function buildTicketIntakeReceipt({
   evidence,
   deterministicStatus,
   deterministicBlockers,
-  deepseekAdvisoryStatus,
-  deepseekAdvisory,
   github,
   reviewArtifactPath,
   retroRecurrenceCheck,
   quantPersonaGate,
+  sourceText,
+  programContext,
 }) {
   const blockers = asArray(deterministicBlockers);
   const recurrence = retroRecurrenceCheck || null;
   const quantGate = quantPersonaGate || null;
-  const advisoryStatus = deepseekAdvisory?.status || deepseekAdvisoryStatus || DEEPSEEK_ADVISORY_NOT_RUN_STATUS;
-  const advisoryBlock = deepseekAdvisory ? buildDeepSeekAdvisoryBlock(deepseekAdvisory) : null;
+  const personaReview = ticket?.persona_review || null;
+  const personaPacks = uniqueStrings([
+    ...asArray(ticket?.persona_packs),
+    ...asArray(personaReview?.persona_packs),
+  ]);
+  const knowledgeReceipt = buildKnowledgeReceipt({
+    source: {
+      surface: `github_ticket_${action || "review"}`,
+      kind: source || null,
+      title: github?.title || ticket?.title || null,
+      ticket_id: ticket?.id || null,
+      path: reviewArtifactPath || null,
+      text: sourceText || null,
+    },
+    ticket,
+    personaReview,
+    personaPacks,
+    sourceText: sourceText || "",
+    retroRecurrenceCheck: recurrence,
+    quantPersonaGate: quantGate,
+    deterministicStatus: deterministicStatus || "not_run_publish_only",
+    deterministicBlockers: blockers,
+    evidenceRefs: [
+      ...asArray(ticket?.story_refs),
+      ...asArray(ticket?.verification_refs),
+      ...asArray(evidence?.verification_rows).map((entry) => entry?.id),
+    ],
+    remainingUnverifiedRisk: [],
+    artifactRefs: [
+      { kind: "program_packet", path: programPacketPath },
+      reviewArtifactPath ? { kind: "ticket_review_packet", path: reviewArtifactPath } : null,
+    ].filter(Boolean),
+  });
   return {
     name: "Ticket Intake Receipt",
     version: 1,
@@ -543,6 +633,7 @@ function buildTicketIntakeReceipt({
     ticket_id: ticket?.id || null,
     ticket_title: ticket?.title || null,
     ticket_lifecycle: ticket?.lifecycle || null,
+    persona_packs: personaPacks,
     story_refs: uniqueStrings([...asArray(ticket?.story_refs), ...asArray(evidence?.story_refs)]),
     gap_refs: uniqueStrings([...asArray(ticket?.gap_refs), ...asArray(evidence?.gap_refs)]),
     defect_refs: uniqueStrings([...asArray(ticket?.defect_refs), ...asArray(evidence?.defect_refs)]),
@@ -557,17 +648,18 @@ function buildTicketIntakeReceipt({
     deterministic_status: deterministicStatus || "not_run_publish_only",
     deterministic_blocker_count: blockers.length,
     deterministic_blockers: blockers.slice(0, 8),
+    program_context_status: programContext?.status || null,
+    program_context_blocker_count: asArray(programContext?.blockers).length,
+    program_context_blockers: asArray(programContext?.blockers).slice(0, 8),
+    knowledge_receipt: knowledgeReceipt,
     retro_recurrence_status: recurrence?.status || "not_run",
     retro_recurrence_blocking_count: recurrence?.summary?.blocking_count || 0,
     retro_recurrence_advisory_count: recurrence?.summary?.advisory_count || 0,
     quant_persona_gate_status: quantGate?.status || "not_run",
     quant_persona_gate_required: quantGate?.required === true,
+    quant_persona_gate_reason: quantGate?.reason || null,
+    quant_persona_gate_declared_scope: quantGate?.declared_scope || null,
     quant_persona_gate_missing_count: quantGate?.summary?.missing_guard_count || 0,
-    deepseek_advisory_status: advisoryStatus,
-    deepseek_advisory_summary: oneLine(deepseekAdvisory?.summary || (!deepseekAdvisory ? DEEPSEEK_ADVISORY_NOT_RUN_SUMMARY : "")),
-    deepseek_advisory_artifact_path: reviewArtifactPath || null,
-    deepseek_advisory_block: advisoryBlock,
-    verbatim_reproduction_contract: advisoryBlock ? DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT : null,
     direct_github_creation_allowed: false,
     github_publication: action === "publish" ? "explicit_publish" : "mirror_sync_only",
     next_required_command: `node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program ${programPacketPath} --json`,
@@ -673,59 +765,65 @@ function collectDeterministicBlockers({ validation, gateResults, commandResults 
   return blockers;
 }
 
-function normalizeAdvisoryPayload(parsed) {
-  const payload = parsed && typeof parsed === "object" ? parsed : {};
-  return {
-    status: normalizeStatus(payload.status || payload.classification, "unavailable"),
-    summary: typeof payload.summary === "string" ? payload.summary : "",
-    findings: asArray(payload.findings).map((finding, index) => ({
-      id: asString(finding?.id) || `DS-${String(index + 1).padStart(3, "0")}`,
-      status: normalizeStatus(finding?.status || finding?.classification, "fresh"),
-      message: asString(finding?.message || finding?.reason || finding?.summary),
-      evidence_refs: asArray(finding?.evidence_refs).map(asString).filter(Boolean),
-    })),
-    recommended_actions: asArray(payload.recommended_actions || payload.recommended_follow_up).map(asString).filter(Boolean),
-  };
+function targetReferenceIds(ticket, ticketEvidence) {
+  return uniqueStrings([
+    ticket?.id,
+    ...asArray(ticket?.acceptance_criteria),
+    ...asArray(ticket?.verification_refs),
+    ...asArray(ticket?.compatibility_contract_refs),
+    ...asArray(ticket?.migration_boundary_refs),
+    ...asArray(ticket?.deletion_move_census_refs),
+    ...asArray(ticketEvidence?.acceptance_criteria).map((entry) => entry?.id),
+    ...asArray(ticketEvidence?.verification_rows).map((entry) => entry?.id),
+  ]);
 }
 
-async function runDeepSeekAdvisory({ reviewPacket, cwd, env, fetchImpl }) {
-  const config = loadDriftLlmConfig(env, { cwd });
-  const publicConfig = publicDriftConfig(config);
-  const system = [
-    "You are an advisory reviewer for a planner ticket review packet.",
-    "Return JSON only with: status, summary, findings, recommended_actions.",
-    `Allowed status values: ${TICKET_REVIEW_STATUSES.filter((status) => status !== "unavailable").join(", ")}.`,
-    "Deterministic checks are authoritative; do not claim verified or closed.",
-    "If quant_persona_gate is required and blocked, classify the ticket as blocked or needs_verification; never call it review_ready.",
-  ].join(" ");
-  try {
-    const response = await callOpenAiCompatibleJson({
-      config,
-      env,
-      fetchImpl,
-      maxTokens: 1400,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: JSON.stringify(redactObject(reviewPacket, env)) },
-      ],
+function tokenAppears(value, token) {
+  const text = String(value || "");
+  const escaped = String(token || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (!escaped) return false;
+  return new RegExp(`(^|[^A-Za-z0-9_-])${escaped}([^A-Za-z0-9_-]|$)`).test(text);
+}
+
+function targetOwnsValidationError(error, ticket, ticketEvidence) {
+  const code = asString(error?.code);
+  const path = asString(error?.path);
+  const message = asString(error?.message);
+  if (
+    code === "program_packet_not_object"
+    || code === "program_packet_version"
+    || code === "program_remote_mode_invalid"
+    || code === "program_invalid_status"
+    || code.startsWith("program_missing_")
+    || code.endsWith("_not_array")
+  ) return true;
+  return targetReferenceIds(ticket, ticketEvidence).some((id) => (
+    path.includes(`[${id}]`)
+    || tokenAppears(message, id)
+  ));
+}
+
+function collectTicketAcceptanceBlockers({ validation, commandResults, ticket, ticketEvidence }) {
+  const blockers = [];
+  for (const error of asArray(validation?.errors)) {
+    if (!targetOwnsValidationError(error, ticket, ticketEvidence)) continue;
+    blockers.push({
+      source: "ticket_contract",
+      code: error.code || "ticket_contract_error",
+      path: error.path || null,
+      message: error.message || "Reviewed ticket contract validation failed",
     });
-    return {
-      available: true,
-      config: publicConfig,
-      source: response.source || "provider",
-      raw_excerpt: response.raw_excerpt || "",
-      ...normalizeAdvisoryPayload(response.parsed),
-    };
-  } catch (error) {
-    return {
-      available: false,
-      status: "unavailable",
-      summary: `DeepSeek advisory unavailable: ${error?.message || "unknown error"}`,
-      findings: [],
-      recommended_actions: [],
-      config: publicConfig,
-    };
   }
+  for (const result of asArray(commandResults)) {
+    if (result.exit_code === 0 || !String(result.id || "").startsWith("story_registry_evidence")) continue;
+    blockers.push({
+      source: result.id,
+      code: `${result.id}_failed`,
+      path: result.command,
+      message: result.stderr_excerpt || result.stdout_excerpt || "Reviewed ticket story evidence failed",
+    });
+  }
+  return blockers;
 }
 
 function reviewArtifactPath(packetPath, ticketId) {
@@ -782,7 +880,17 @@ function updateProgramPacket({ packet, ticketId, issue, artifactRelPath, finalSt
   const next = JSON.parse(JSON.stringify(packet));
   const ticket = findTicket(next, ticketId);
   if (!ticket) throw new Error(`Ticket not found while updating packet: ${ticketId}`);
-  const externalRef = externalRefForIssue(issue, timestamp);
+  const remoteDecision = sync?.sync_contract?.remote_to_local || null;
+  const acceptedRemoteClose = finalStatus === "review_ready"
+    && remoteDecision?.action === "candidate_remote_close"
+    && remoteDecision?.candidate_lifecycle;
+  if (acceptedRemoteClose) {
+    ticket.lifecycle = remoteDecision.candidate_lifecycle;
+  }
+  const issueForPacket = sync?.close?.action === "closed"
+    ? { ...issue, state: "CLOSED" }
+    : issue;
+  const externalRef = externalRefForIssue(issueForPacket, timestamp);
   ticket.external_refs = upsertBy(ticket.external_refs, externalRef, sameExternalRef);
   const artifact = {
     path: artifactRelPath,
@@ -797,53 +905,51 @@ function updateProgramPacket({ packet, ticketId, issue, artifactRelPath, finalSt
     last_review_status: finalStatus,
     last_issue_url: issue.url || ticket.github_sync?.last_issue_url || null,
     last_comment_url: sync?.comment_url || ticket.github_sync?.last_comment_url || null,
+    last_sync_contract_version: sync?.sync_contract?.version || ticket.github_sync?.last_sync_contract_version || null,
+    last_sync_conflicts: sync?.sync_contract?.conflicts || [],
+    last_remote_to_local: remoteDecision
+      ? {
+          action: acceptedRemoteClose ? "accepted_remote_close" : remoteDecision.action,
+          candidate_lifecycle: remoteDecision.candidate_lifecycle || null,
+          accepted_lifecycle: acceptedRemoteClose ? remoteDecision.candidate_lifecycle : null,
+          reason: remoteDecision.reason || null,
+          accepted_at: acceptedRemoteClose ? timestamp : null,
+        }
+      : ticket.github_sync?.last_remote_to_local || null,
     labels_applied: sync?.labels_applied || [],
+    labels_removed: sync?.labels_removed || [],
     project_status: sync?.project_status || null,
+    close: sync?.close || null,
   };
   ticket.last_review_status = finalStatus;
   ticket.review_status = finalStatus;
   return next;
 }
 
-function lifecycleLabels(finalStatus, ticket) {
-  const labels = new Set();
-  labels.add(finalStatus === "blocked" ? "planner:blocked" : "planner:review-ready");
-  const lifecycle = normalizeToken(ticket?.lifecycle);
-  if (lifecycle) labels.add(`planner:ticket-${lifecycle.replaceAll("_", "-")}`);
-  return [...labels];
-}
-
 function markerFor(ticketId) {
   return `<!-- planner-ticket-review:${ticketId} -->`;
 }
 
-function renderReviewComment(reviewPacket, { env = process.env, showDeepSeekBlock = false } = {}) {
+function renderReviewComment(reviewPacket, { env = process.env } = {}) {
   const blockers = asArray(reviewPacket.deterministic?.blockers);
+  const programContext = reviewPacket.deterministic?.program_context || null;
+  const programBlockers = asArray(programContext?.blockers);
   const recurrence = reviewPacket.retro_recurrence_check || reviewPacket.deterministic?.retro_recurrence_check || null;
   const recurrenceMatches = asArray(recurrence?.matches);
   const quantGate = reviewPacket.quant_persona_gate || reviewPacket.deterministic?.quant_persona_gate || null;
-  const advisoryBlock = reviewPacket.ticket_intake_receipt?.deepseek_advisory_block || null;
-  const advisoryStatus = reviewPacket.deepseek_advisory?.status || "unavailable";
-  const advisorySummary = oneLine(reviewPacket.deepseek_advisory?.summary || "");
-  const advisoryArtifact = reviewPacket.artifact?.path || reviewPacket.ticket_intake_receipt?.review_artifact_path || "dry-run";
   const lines = [
     markerFor(reviewPacket.ticket?.id || "unknown"),
     "### Planner Ticket Review",
     "",
     `Status: **${reviewPacket.final_status}**`,
+    `Program context: **${programContext?.status || "unknown"}**`,
     `Program: \`${reviewPacket.program?.id || "unknown"}\``,
     `Ticket: \`${reviewPacket.ticket?.id || "unknown"}\``,
-    `DeepSeek advisory: \`${advisoryStatus}\`; summary: ${advisorySummary || "n/a"}; artifact: \`${advisoryArtifact}\``,
+    `Review packet: \`${reviewPacket.artifact?.path || "dry-run"}\``,
     "",
-    "Deterministic checks are authoritative. DeepSeek is advisory only.",
+    "Deterministic checks are authoritative.",
     "",
   ];
-  if (showDeepSeekBlock && advisoryBlock) {
-    lines.push("DeepSeek advisory verdict:");
-    lines.push("");
-    lines.push(advisoryBlock);
-    lines.push("");
-  }
   if (recurrence) {
     lines.push("Retro Recurrence Check:");
     lines.push(`- Status: \`${recurrence.status || "not_run"}\``);
@@ -874,6 +980,18 @@ function renderReviewComment(reviewPacket, { env = process.env, showDeepSeekBloc
   } else {
     lines.push("Blocking evidence: none found by deterministic checks.");
   }
+  if (programContext) {
+    lines.push("", "Program-wide context (separate from ticket review acceptance):");
+    if (programBlockers.length > 0) {
+      for (const blocker of programBlockers.slice(0, 5)) {
+        lines.push(`- ${blocker.source}: ${blocker.code} — ${blocker.message}`);
+      }
+      if (programBlockers.length > 5) lines.push(`- ... ${programBlockers.length - 5} more Program blocker(s)`);
+      lines.push("- These blockers remain authoritative at publish and Program-close gates.");
+    } else {
+      lines.push("- Whole-Program validation, gates, and commands reported no blocker.");
+    }
+  }
   if (reviewPacket.artifact?.path) {
     lines.push("", `Review packet: \`${reviewPacket.artifact.path}\``);
   }
@@ -893,27 +1011,84 @@ function ghWrite(args, { cwd, ghRunner }) {
   return result;
 }
 
+function isRestCommentId(value) {
+  return /^\d+$/.test(String(value || ""));
+}
+
+function updateIssueComment({ repo, comment, body, cwd, ghRunner }) {
+  const { owner, name } = splitRepo(repo);
+  if (!owner || !name) return { action: "skipped", reason: "Cannot update comment without owner/repo" };
+  if (isRestCommentId(comment?.id)) {
+    ghWrite(["api", `repos/${owner}/${name}/issues/comments/${comment.id}`, "-X", "PATCH", "-f", `body=${body}`], { cwd, ghRunner });
+    return { action: "updated", method: "rest", comment_url: comment.url || null };
+  }
+  const nodeId = asString(comment?.node_id || comment?.id);
+  if (!nodeId) return { action: "skipped", reason: "Existing comment has no updateable id" };
+  const mutation = `mutation($id: ID!, $body: String!) {
+    updateIssueComment(input: { id: $id, body: $body }) {
+      issueComment { url }
+    }
+  }`;
+  const json = runGhJson(["api", "graphql", "-f", `query=${mutation}`, "-F", `id=${nodeId}`, "-f", `body=${body}`], { cwd, ghRunner });
+  return {
+    action: "updated",
+    method: "graphql",
+    comment_url: json?.data?.updateIssueComment?.issueComment?.url || comment.url || null,
+  };
+}
+
 function syncIssueComment({ issue, ticketId, body, cwd, repo, ghRunner }) {
   if (!issue?.number) return { action: "skipped", reason: "No linked issue number" };
   const existing = findExistingReviewComment(issue, ticketId);
   if (existing?.id) {
-    const { owner, name } = splitRepo(repo);
-    if (!owner || !name) return { action: "skipped", reason: "Cannot update comment without owner/repo" };
-    ghWrite(["api", `repos/${owner}/${name}/issues/comments/${existing.id}`, "-X", "PATCH", "-f", `body=${body}`], { cwd, ghRunner });
-    return { action: "updated", comment_url: existing.url || null };
+    return updateIssueComment({ repo, comment: existing, body, cwd, ghRunner });
   }
   const result = ghWrite(["issue", "comment", String(issue.number), "--repo", repo, "--body", body], { cwd, ghRunner });
   return { action: "created", comment_url: asString(result.stdout) || null };
 }
 
-function syncLabels({ issue, labels, cwd, repo, ghRunner }) {
-  if (!issue?.number || labels.length === 0) return { action: "skipped", labels: [] };
-  ghWrite(["issue", "edit", String(issue.number), "--repo", repo, "--add-label", labels.join(",")], { cwd, ghRunner });
-  return { action: "updated", labels };
+function listRepoLabels({ cwd, repo, ghRunner }) {
+  const json = runGhJson(["label", "list", "--repo", repo, "--json", "name", "--limit", "1000"], { cwd, ghRunner });
+  return new Set(asArray(json).map((entry) => asString(entry?.name || entry)).filter(Boolean));
+}
+
+function createRepoLabel({ cwd, repo, label, ghRunner }) {
+  ghWrite([
+    "label",
+    "create",
+    label,
+    "--repo",
+    repo,
+    "--color",
+    "6f42c1",
+    "--description",
+    "Planner Program Packet mirror label",
+  ], { cwd, ghRunner });
+}
+
+function preflightLabels({ issue, labels, cwd, repo, ghRunner }) {
+  if (!issue?.number || labels.length === 0) return { action: "skipped", labels: [], created: [] };
+  const existing = listRepoLabels({ cwd, repo, ghRunner });
+  const missing = labels.filter((label) => !existing.has(label));
+  for (const label of missing) createRepoLabel({ cwd, repo, label, ghRunner });
+  return { action: missing.length > 0 ? "created_missing" : "ok", labels, created: missing };
+}
+
+function syncLabels({ issue, labels, removeLabels = [], cwd, repo, ghRunner }) {
+  const addLabels = uniqueStrings(labels);
+  const remove = uniqueStrings(removeLabels).filter((label) => !addLabels.includes(label));
+  if (!issue?.number || (addLabels.length === 0 && remove.length === 0)) return { action: "skipped", labels: [], removed: [] };
+  const args = ["issue", "edit", String(issue.number), "--repo", repo];
+  if (addLabels.length > 0) args.push("--add-label", addLabels.join(","));
+  if (remove.length > 0) args.push("--remove-label", remove.join(","));
+  ghWrite(args, { cwd, ghRunner });
+  return { action: "updated", labels: addLabels, removed: remove };
 }
 
 function desiredProjectStatus(finalStatus) {
-  return finalStatus === "blocked" ? ["Blocked", "Planner Blocked"] : ["Review Ready", "Ready for Review", "Planner Review Ready"];
+  return normalizeVerificationStatus(finalStatus, "execution").kind === "fail"
+    ? ["Blocked", "Planner Blocked"]
+    : ["Review Ready", "Ready for Review", "Planner Review Ready"];
 }
 
 function discoverProjectStatusMapping({ projectId, finalStatus, cwd, ghRunner }) {
@@ -956,11 +1131,61 @@ function maybeCloseIssue({ issue, cwd, repo, ghRunner, closeGithubIssue, body })
   return { action: "closed" };
 }
 
+function remoteCloseAcceptanceStatus({ requested, finalStatus, syncContract, write = false }) {
+  const decision = syncContract?.remote_to_local || {};
+  if (!requested) {
+    return { requested: false, accepted: false, action: "not_requested", reason: "--accept-remote-close not set" };
+  }
+  if (finalStatus !== "review_ready") {
+    return {
+      requested: true,
+      accepted: false,
+      action: "blocked_by_review",
+      reason: "Deterministic review did not reach review_ready.",
+    };
+  }
+  if (decision.action !== "candidate_remote_close") {
+    return {
+      requested: true,
+      accepted: false,
+      action: decision.action || "not_applicable",
+      reason: decision.reason || "Remote close is not a local advancement candidate.",
+    };
+  }
+  if (!write) {
+    return {
+      requested: true,
+      accepted: false,
+      would_accept: true,
+      action: "candidate_remote_close",
+      candidate_lifecycle: decision.candidate_lifecycle || null,
+      reason: "Dry-run only; use --write --accept-remote-close to advance local lifecycle.",
+    };
+  }
+  return {
+    requested: true,
+    accepted: true,
+    action: "accepted_remote_close",
+    accepted_lifecycle: decision.candidate_lifecycle || null,
+    reason: "Remote close accepted through deterministic review-ready Program Manager gate.",
+  };
+}
+
 function syncGithub({ issue, ticket, reviewPacket, args, cwd, repo, ghRunner, env }) {
-  const body = renderReviewComment(reviewPacket, { env, showDeepSeekBlock: args.showDeepSeekBlock });
-  const labels = lifecycleLabels(reviewPacket.final_status, ticket);
+  const body = renderReviewComment(reviewPacket, { env });
+  const acceptRemoteClose = Boolean(args.acceptRemoteClose && reviewPacket.final_status === "review_ready");
+  const syncContract = buildIssueSyncContract({
+    ticket,
+    issue,
+    reviewStatus: reviewPacket.final_status,
+    closeGithubIssue: args.closeGithubIssue,
+    acceptRemoteClose,
+  });
+  const labels = syncContract.local_to_remote.desired_labels;
+  const removeLabels = syncContract.local_to_remote.remove_labels;
+  const labelPreflight = preflightLabels({ issue, labels, cwd, repo, ghRunner });
   const comment = syncIssueComment({ issue, ticketId: ticket.id, body, cwd, repo, ghRunner });
-  const labelResult = syncLabels({ issue, labels, cwd, repo, ghRunner });
+  const labelResult = syncLabels({ issue, labels, removeLabels, cwd, repo, ghRunner });
   const projectStatus = syncProjectStatus({ issue, finalStatus: reviewPacket.final_status, cwd, ghRunner });
   const close = maybeCloseIssue({
     issue,
@@ -972,15 +1197,25 @@ function syncGithub({ issue, ticket, reviewPacket, args, cwd, repo, ghRunner, en
   });
   return {
     comment,
+    comment_url: comment.comment_url || null,
+    label_preflight: labelPreflight,
     labels: labelResult,
     labels_applied: labelResult.labels || [],
+    labels_removed: labelResult.removed || [],
     project_status: projectStatus,
     close,
+    sync_contract: syncContract,
+    remote_close_acceptance: remoteCloseAcceptanceStatus({
+      requested: args.acceptRemoteClose,
+      finalStatus: reviewPacket.final_status,
+      syncContract,
+      write: true,
+    }),
     comment_body: body,
   };
 }
 
-function buildInitialReviewPacket({ issue, packet, packetPath, ticket, ticketEvidence, validation, gateResults, commandResults, blockers, recurrenceCheck, quantPersonaGate, timestamp, artifactRelPath }) {
+function buildInitialReviewPacket({ issue, packet, packetPath, ticket, ticketEvidence, validation, gateResults, commandResults, blockers, programBlockers, recurrenceCheck, quantPersonaGate, timestamp, artifactRelPath }) {
   return {
     version: 1,
     generated_at: timestamp,
@@ -1010,15 +1245,14 @@ function buildInitialReviewPacket({ issue, packet, packetPath, ticket, ticketEvi
       blockers,
       retro_recurrence_check: recurrenceCheck,
       quant_persona_gate: quantPersonaGate,
+      program_context: {
+        status: programBlockers.length > 0 ? "blocked" : "pass",
+        blockers: programBlockers,
+        authority: "visible_in_review_authoritative_at_publish_and_program_close",
+      },
       program_packet_validation: validation,
       program_gates: gateResults,
       command_results: commandResults,
-    },
-    deepseek_advisory: {
-      status: "unavailable",
-      summary: "not_run",
-      findings: [],
-      recommended_actions: [],
     },
     final_status: blockers.length > 0 ? "blocked" : "review_ready",
     artifact: {
@@ -1027,10 +1261,13 @@ function buildInitialReviewPacket({ issue, packet, packetPath, ticket, ticketEvi
   };
 }
 
-function writeReviewOutputs({ cwd, packetPath, packet, reviewPacket, artifactPath, ticketId, issue, sync, timestamp, env }) {
+function writeReviewArtifact({ artifactPath, reviewPacket, env }) {
   mkdirSync(dirname(artifactPath), { recursive: true });
   const redactedPacket = redactObject(reviewPacket, env);
   writeFileSync(artifactPath, `${JSON.stringify(redactedPacket, null, 2)}\n`, "utf-8");
+}
+
+function writeReviewOutputs({ cwd, packetPath, packet, reviewPacket, artifactPath, ticketId, issue, sync, timestamp, env }) {
   const updatedPacket = updateProgramPacket({
     packet,
     ticketId,
@@ -1051,13 +1288,22 @@ export async function runReview(inputArgs, options = {}) {
   const ghRunner = options.ghRunner || defaultGhRunner;
   const gitRunner = options.gitRunner || defaultGitRunner;
   const commandRunner = options.commandRunner || defaultCommandRunner;
-  const fetchImpl = options.fetchImpl || globalThis.fetch;
   const args = Array.isArray(inputArgs) ? parseArgs(inputArgs) : { ...inputArgs };
 
   if (args.command !== "review") throw new Error(`Unknown command: ${args.command || "(missing)"}`);
   if (!args.program) throw new Error("Missing --program");
   if (!args.ticket) throw new Error("Missing --ticket");
   if (!!args.issue === !!args.projectItem) throw new Error("Pass exactly one of --issue or --project-item");
+  const remoteMode = resolveRemoteMode({
+    explicit: args.remoteMode,
+    env,
+    defaultMode: args.write ? "remote-sync" : "remote-read",
+  });
+  if (args.write) {
+    assertRemoteWriteAllowed(remoteMode, "github_ticket_review review --write");
+  } else {
+    assertRemoteReadAllowed(remoteMode, "github_ticket_review review");
+  }
 
   const repo = resolveRepo(cwd, args.repo, gitRunner);
   if (!repo) throw new Error("Cannot determine GitHub repo; pass --repo <owner/repo>");
@@ -1068,14 +1314,31 @@ export async function runReview(inputArgs, options = {}) {
   const target = loadTarget(cwd, args.program);
   const ticket = findTicket(target.packet, args.ticket);
   if (!ticket) throw new Error(`Ticket not found in Program Packet: ${args.ticket}`);
+  const packetForReview = JSON.parse(JSON.stringify(target.packet));
+  const ticketForReview = findTicket(packetForReview, args.ticket);
+  if (ticketForReview) {
+    ticketForReview.external_refs = upsertBy(
+      ticketForReview.external_refs,
+      externalRefForIssue(issue, timestamp),
+      sameExternalRef,
+    );
+  }
 
   const storyIds = collectStoryIds(cwd);
-  const validation = validateProgramPacket(target.packet, { cwd, storyIds });
-  const gateResults = relevantProgramGates(target.packet.status).map((gate) => evaluateProgramGate(target.packet, gate, { cwd, storyIds }));
-  const ticketEvidence = collectTicketEvidence(target.packet, ticket);
+  const validation = validateProgramPacket(packetForReview, {
+    cwd,
+    storyIds,
+    programPacketPath: target.path,
+  });
+  const gateResults = relevantProgramGates(packetForReview.status).map((gate) => evaluateProgramGate(packetForReview, gate, {
+    cwd,
+    storyIds,
+    programPacketPath: target.path,
+  }));
+  const ticketEvidence = collectTicketEvidence(packetForReview, ticketForReview || ticket, { cwd });
   const commandResults = runDeterministicCommands({
     cwd,
-    packet: target.packet,
+    packet: packetForReview,
     programPath: target.path,
     storyRefs: ticketEvidence.story_refs,
     commandRunner,
@@ -1084,25 +1347,31 @@ export async function runReview(inputArgs, options = {}) {
   const recurrenceCheck = evaluateRetroRecurrenceCheck({
     cwd,
     sourceText: [issue.title, issue.body].filter(Boolean).join("\n\n"),
-    packet: target.packet,
-    ticket,
+    packet: packetForReview,
+    ticket: ticketForReview || ticket,
     acceptanceCriteria: ticketEvidence.acceptance_criteria,
     verificationRows: ticketEvidence.verification_rows,
     commandResults,
-    reviewArtifacts: ticket.review_artifacts,
+    reviewArtifacts: (ticketForReview || ticket).review_artifacts,
     env,
   });
   const quantPersonaGate = evaluateQuantPersonaGate({
     sourceText: [issue.title, issue.body].filter(Boolean).join("\n\n"),
-    packet: target.packet,
-    ticket,
+    packet: packetForReview,
+    ticket: ticketForReview || ticket,
     acceptanceCriteria: ticketEvidence.acceptance_criteria,
     verificationRows: ticketEvidence.verification_rows,
     changedFiles: ticketEvidence.changed_files,
-    reviewArtifacts: ticket.review_artifacts,
+    reviewArtifacts: (ticketForReview || ticket).review_artifacts,
   });
+  const programBlockers = collectDeterministicBlockers({ validation, gateResults, commandResults });
   const blockers = [
-    ...collectDeterministicBlockers({ validation, gateResults, commandResults }),
+    ...collectTicketAcceptanceBlockers({
+      validation,
+      commandResults,
+      ticket: ticketForReview || ticket,
+      ticketEvidence,
+    }),
     ...recurrenceCheckToBlockers(recurrenceCheck),
     ...quantPersonaGateToBlockers(quantPersonaGate),
   ];
@@ -1110,36 +1379,33 @@ export async function runReview(inputArgs, options = {}) {
   const artifactRelPath = relativePath(cwd, artifactPath);
   let reviewPacket = buildInitialReviewPacket({
     issue,
-    packet: target.packet,
+    packet: packetForReview,
     packetPath: relativePath(cwd, target.path),
-    ticket,
+    ticket: ticketForReview || ticket,
     ticketEvidence,
     validation,
     gateResults,
     commandResults,
     blockers,
+    programBlockers,
     recurrenceCheck,
     quantPersonaGate,
     timestamp,
     artifactRelPath,
   });
 
-  const advisory = await runDeepSeekAdvisory({ reviewPacket, cwd, env, fetchImpl });
   reviewPacket = {
     ...reviewPacket,
-    deepseek_advisory: advisory,
     final_status: reviewPacket.deterministic.status,
   };
   reviewPacket.ticket_intake_receipt = buildTicketIntakeReceipt({
     action: "review",
     source: issue.project_item?.id ? "github_project_item" : "github_issue",
     programPacketPath: relativePath(cwd, target.path),
-    ticket,
+    ticket: ticketForReview || ticket,
     evidence: ticketEvidence,
     deterministicStatus: reviewPacket.final_status,
     deterministicBlockers: reviewPacket.deterministic.blockers,
-    deepseekAdvisoryStatus: advisory.status,
-    deepseekAdvisory: advisory,
     retroRecurrenceCheck: recurrenceCheck,
     quantPersonaGate,
     github: {
@@ -1149,18 +1415,40 @@ export async function runReview(inputArgs, options = {}) {
       url: issue.url,
       title: issue.title,
     },
+    sourceText: [issue.title, issue.body].filter(Boolean).join("\n\n"),
     reviewArtifactPath: artifactRelPath,
+    programContext: reviewPacket.deterministic.program_context,
   });
 
+  const dryRunSyncContract = buildIssueSyncContract({
+    ticket: ticketForReview || ticket,
+    issue,
+    reviewStatus: reviewPacket.final_status,
+    closeGithubIssue: args.closeGithubIssue,
+    acceptRemoteClose: Boolean(args.acceptRemoteClose && reviewPacket.final_status === "review_ready"),
+  });
   let githubSync = {
     mode: args.write ? "write" : "dry_run",
-    planned_comment: renderReviewComment(reviewPacket, { env, showDeepSeekBlock: args.showDeepSeekBlock }),
-    labels_applied: [],
+    remote_mode: remoteMode,
+    planned_comment: renderReviewComment(reviewPacket, { env }),
+    labels_applied: dryRunSyncContract.local_to_remote.desired_labels,
+    labels_removed: dryRunSyncContract.local_to_remote.remove_labels,
+    sync_contract: dryRunSyncContract,
+    remote_close_acceptance: remoteCloseAcceptanceStatus({
+      requested: args.acceptRemoteClose,
+      finalStatus: reviewPacket.final_status,
+      syncContract: dryRunSyncContract,
+      write: args.write,
+    }),
     project_status: null,
   };
   let updatedPacket = null;
   if (args.write) {
-    githubSync = syncGithub({ issue, ticket, reviewPacket, args, cwd, repo, ghRunner, env });
+    writeReviewArtifact({ artifactPath, reviewPacket, env });
+    githubSync = {
+      remote_mode: remoteMode,
+      ...syncGithub({ issue, ticket, reviewPacket, args, cwd, repo, ghRunner, env }),
+    };
     updatedPacket = writeReviewOutputs({
       cwd,
       packetPath: target.path,
@@ -1180,7 +1468,9 @@ export async function runReview(inputArgs, options = {}) {
     review_status: reviewPacket.final_status,
     dry_run: !args.write,
     write: !!args.write,
+    remote_mode: remoteMode,
     close_github_issue: !!args.closeGithubIssue,
+    accept_remote_close: !!args.acceptRemoteClose,
     repo,
     issue: {
       source: issue.source,
@@ -1202,37 +1492,95 @@ function publishMarker(ticketId) {
   return `<!-- planner-ticket-publish:${ticketId} -->`;
 }
 
+function firstBodyParagraph(value) {
+  return markdownBlock(value).split(/\n\s*\n/).map((part) => part.trim()).find(Boolean) || "";
+}
+
+function publishProblem({ ticket, intakeDescription }) {
+  return firstMarkdownBlock([
+    ticket?.problem,
+    intakeDescription?.problem,
+    firstBodyParagraph(intakeDescription?.body),
+    "This Program Packet ticket needs implementation with explicit story, acceptance, and verification evidence.",
+  ]);
+}
+
+function publishProposedChange({ ticket, intakeDescription, title }) {
+  return firstMarkdownBlock([
+    ticket?.proposed_change,
+    intakeDescription?.proposed_change,
+    firstBodyParagraph(intakeDescription?.body),
+    `Implement ${title} according to the linked Program Packet ticket and verification rows.`,
+  ]);
+}
+
+function renderStoryContext(evidence, intakeDescription) {
+  const explicit = asArray(evidence.story_context).length > 0
+    ? evidence.story_context
+    : asArray(intakeDescription?.story_context);
+  if (explicit.length > 0) {
+    return explicit.slice(0, 10).map((entry) => {
+      const id = asString(entry?.id || entry?.story_ref || entry?.storyRef);
+      const title = asString(entry?.title);
+      const status = asString(entry?.status);
+      const relevance = asString(entry?.relevance || entry?.context || entry?.reason);
+      const head = id ? `\`${id}\`` : "Story context";
+      const label = title ? `${head}: ${title}` : head;
+      const details = [
+        status ? `status ${status}` : null,
+        relevance || null,
+      ].filter(Boolean).join("; ");
+      return details ? `- ${label} - ${details}` : `- ${label}`;
+    });
+  }
+  const storyRefs = uniqueStrings(evidence.story_refs);
+  if (storyRefs.length === 0) return ["- No story refs are linked yet; this blocks readiness until story or gap traceability is added."];
+  return storyRefs.slice(0, 10).map((id) => `- \`${id}\`: Linked through Program Packet ticket or acceptance criteria.`);
+}
+
 function renderPublishIssueBody({ packet, ticket, evidence, intakeDescription = null, env = process.env }) {
   const title = asString(ticket.title) || "Program ticket";
   const lines = [
     publishMarker(ticket.id || "unknown"),
-    `## ${title}`,
+    `# ${title}`,
     "",
   ];
-  const descriptionBody = markdownBlock(intakeDescription?.body);
-  if (descriptionBody) lines.push(descriptionBody, "");
   lines.push(
-    "---",
+    "## Problem",
+    publishProblem({ ticket, intakeDescription }),
     "",
-    `*Planner: Program \`${packet.id || "unknown"}\` | Ticket \`${ticket.id || "unknown"}\` | Lifecycle \`${ticket.lifecycle || "proposed"}\`*`,
-    "*Deterministic Program Packet evidence remains authoritative. GitHub is a collaboration mirror.*",
+    "## Proposed Change",
+    publishProposedChange({ ticket, intakeDescription, title }),
+    "",
+    "## Story Context",
+    ...renderStoryContext(evidence, intakeDescription),
   );
-  const storyRefs = uniqueStrings(evidence.story_refs);
   const gapRefs = uniqueStrings(evidence.gap_refs);
-  if (storyRefs.length > 0) lines.push(`*Story refs: ${storyRefs.map((id) => `\`${id}\``).join(", ")}*`);
-  if (gapRefs.length > 0) lines.push(`*Gap refs: ${gapRefs.map((id) => `\`${id}\``).join(", ")}*`);
+  const defectRefs = uniqueStrings(evidence.defect_refs);
+  if (gapRefs.length > 0) lines.push(`- Gap refs: ${gapRefs.map((id) => `\`${id}\``).join(", ")}`);
+  if (defectRefs.length > 0) lines.push(`- Defect refs: ${defectRefs.map((id) => `\`${id}\``).join(", ")}`);
   if (evidence.acceptance_criteria.length > 0) {
-    lines.push("", "### Acceptance Criteria");
+    lines.push("", "## Acceptance Criteria");
     for (const criterion of evidence.acceptance_criteria.slice(0, 8)) {
       lines.push(`- \`${criterion.id}\`: ${criterion.text || criterion.summary || "Acceptance criterion"}`);
     }
   }
   if (evidence.verification_rows.length > 0) {
-    lines.push("", "### Verification Rows");
+    lines.push("", "## Verification");
     for (const row of evidence.verification_rows.slice(0, 8)) {
-      lines.push(`- \`${row.id}\`: ${row.command_or_action || row.proof_type || "Verification row"}`);
+      const proof = row.proof_type ? `${row.proof_type} - ` : "";
+      const passMeans = row.pass_means ? ` Pass means: ${row.pass_means}` : "";
+      lines.push(`- \`${row.id}\`: ${proof}${row.command_or_action || "Verification row"}.${passMeans}`);
     }
   }
+  lines.push(
+    "",
+    "## Planner Metadata",
+    `- Program: \`${packet.id || "unknown"}\``,
+    `- Ticket: \`${ticket.id || "unknown"}\``,
+    `- Lifecycle: \`${ticket.lifecycle || "proposed"}\``,
+    "- Source of truth: deterministic Program Packet evidence; this GitHub issue is a collaboration mirror.",
+  );
   return redactText(lines.join("\n"), env);
 }
 
@@ -1340,24 +1688,47 @@ export async function runPublish(inputArgs, options = {}) {
   if (!args.program) throw new Error("Missing --program");
   if (!args.ticket) throw new Error("Missing --ticket");
   if (!args.repo) throw new Error("Missing --repo");
+  const remoteMode = resolveRemoteMode({
+    explicit: args.remoteMode,
+    env,
+    defaultMode: args.write ? "remote-sync" : "local-only",
+  });
+  if (args.write) {
+    assertRemoteWriteAllowed(remoteMode, "github_ticket_review publish --write");
+  }
 
   const timestamp = nowIso(clock);
   const target = loadTarget(cwd, args.program);
   const ticket = findTicket(target.packet, args.ticket);
   if (!ticket) throw new Error(`Ticket not found in Program Packet: ${args.ticket}`);
-  const evidence = collectTicketEvidence(target.packet, ticket);
+  const evidence = collectTicketEvidence(target.packet, ticket, { cwd });
   const title = redactText(ticket.title || `${target.packet.id || "Program"} ${ticket.id}`, env);
   const intakeDescription = loadIntakeDescription({ cwd, packetPath: target.path, ticket });
   const body = renderPublishIssueBody({ packet: target.packet, ticket, evidence, intakeDescription, env });
   const existing = existingPublishedIssue(ticket, args.repo);
   const programPacketPath = relativePath(cwd, target.path);
+  const validation = validateProgramPacket(target.packet, {
+    cwd,
+    storyIds: collectStoryIds(cwd),
+    programPacketPath: target.path,
+  });
+  const publishBlockers = collectDeterministicBlockers({
+    validation,
+    gateResults: [],
+    commandResults: [],
+  });
+  const programContext = {
+    status: publishBlockers.length > 0 ? "blocked" : "pass",
+    blockers: publishBlockers,
+    authority: "authoritative_at_publish",
+  };
 
   let issue = existing ? issueFromPublishedRef(existing, args.repo) : null;
   let projectLink = { action: "skipped", reason: args.project ? "dry-run" : "No project requested" };
   let updatedPacket = null;
-  let createAction = existing ? "existing" : "planned";
+  let createAction = publishBlockers.length > 0 ? "blocked" : (existing ? "existing" : "planned");
 
-  if (args.write) {
+  if (args.write && publishBlockers.length === 0) {
     if (!issue) {
       issue = createGithubIssue({ repo: args.repo, title, body, cwd, ghRunner });
       createAction = "created";
@@ -1376,18 +1747,22 @@ export async function runPublish(inputArgs, options = {}) {
   }
 
   const result = {
-    status: "PASS",
-    dry_run: !args.write,
-    write: !!args.write,
+    status: publishBlockers.length > 0 ? "BLOCKED" : "PASS",
+    dry_run: !args.write || publishBlockers.length > 0,
+    write: !!args.write && publishBlockers.length === 0,
+    write_requested: !!args.write,
+    remote_mode: remoteMode,
     repo: args.repo,
     program_packet_path: programPacketPath,
+    program_packet_validation: validation,
+    program_context: programContext,
     ticket_id: args.ticket,
     issue: issue ? {
       action: createAction,
       number: issue.number ?? null,
       url: issue.url || null,
     } : {
-      action: "planned",
+      action: createAction,
       number: null,
       url: null,
     },
@@ -1402,9 +1777,8 @@ export async function runPublish(inputArgs, options = {}) {
       programPacketPath,
       ticket,
       evidence,
-      deterministicStatus: "not_run_publish_only",
-      deterministicBlockers: [],
-      deepseekAdvisoryStatus: "not_run",
+      deterministicStatus: publishBlockers.length > 0 ? "blocked" : "publish_ready",
+      deterministicBlockers: publishBlockers,
       retroRecurrenceCheck: null,
       github: {
         repo: args.repo,
@@ -1413,52 +1787,91 @@ export async function runPublish(inputArgs, options = {}) {
         url: issue?.url || null,
         title,
       },
+      sourceText: [
+        ticket.title,
+        ticket.problem,
+        ticket.proposed_change,
+        intakeDescription?.problem,
+        intakeDescription?.proposed_change,
+      ].filter(Boolean).join("\n\n"),
+      programContext,
     }),
     packet_updated: !!updatedPacket,
   };
   return redactObject(result, env);
 }
 
-function renderText(result, { showDeepSeekBlock = false } = {}) {
+function compactText(value, max = 180) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 3))}...`;
+}
+
+function githubReviewBlockers(result) {
+  return asArray(result?.review_packet?.deterministic?.blockers).length > 0
+    ? asArray(result.review_packet.deterministic.blockers)
+    : asArray(result?.ticket_intake_receipt?.deterministic_blockers);
+}
+
+function pushTopBlockers(lines, blockers, limit = 3) {
+  for (const blocker of blockers.slice(0, limit)) {
+    const source = blocker?.source ? `${blocker.source}: ` : "";
+    const code = blocker?.code || "blocker";
+    const message = blocker?.message || String(blocker || "");
+    lines.push(`- ${compactText(`${source}${code} - ${message}`)}`);
+  }
+  if (blockers.length > limit) lines.push(`More blockers: ${blockers.length - limit} (see artifact)`);
+}
+
+function reviewArtifactLine(result) {
+  if (result?.review_artifact_path) {
+    const suffix = result?.dry_run ? " (planned; dry-run not written)" : "";
+    return `Artifact: ${result.review_artifact_path}${suffix}`;
+  }
+  return `Artifact: ${result?.program_packet_path || "not written"}${result?.dry_run ? " (dry-run)" : ""}`;
+}
+
+function renderText(result) {
+  const blockers = githubReviewBlockers(result);
   if (result.ticket_id) {
-    return [
+    const lines = [
       `Planner ticket publish: ${result.issue?.action || "planned"}`,
-      `Mode: ${result.dry_run ? "dry-run" : "write"}`,
-      `Program packet: ${result.program_packet_path}`,
+      `Blockers: ${blockers.length}`,
       `Ticket: ${result.ticket_id}`,
-      `Ticket Intake Receipt: ${result.ticket_intake_receipt?.deterministic_status || "not_run_publish_only"}`,
-      result.issue?.url ? `GitHub issue: ${result.issue.url}` : null,
-    ].filter(Boolean).join("\n");
+    ];
+    if (result.issue?.url) lines.push(`GitHub issue: ${result.issue.url}`);
+    pushTopBlockers(lines, blockers, 3);
+    lines.push(reviewArtifactLine(result));
+    lines.push(`Next: ${result.ticket_intake_receipt?.review_command || result.ticket_intake_receipt?.next_required_command || "run planner ticket review"}`);
+    return lines.join("\n");
   }
   const lines = [
     `Planner ticket review: ${result.review_status}`,
-    `Mode: ${result.dry_run ? "dry-run" : "write"}`,
-    `Program packet: ${result.program_packet_path}`,
-    `Review packet: ${result.review_artifact_path}`,
-    `Ticket Intake Receipt: ${result.ticket_intake_receipt?.deterministic_status || "unknown"}`,
+    `Blockers: ${blockers.length}`,
+    `Program packet: ${result.program_packet_path || "unknown"}`,
   ];
-  const blockers = asArray(result.review_packet?.deterministic?.blockers);
-  const receipt = result.ticket_intake_receipt || null;
-  if (receipt) {
-    lines.push("");
-    lines.push(`DeepSeek advisory: ${receipt.deepseek_advisory_status || DEEPSEEK_ADVISORY_NOT_RUN_STATUS}; summary: ${receipt.deepseek_advisory_summary || "n/a"}; artifact: ${receipt.deepseek_advisory_artifact_path || result.review_artifact_path || "dry-run"}`);
+  const programContext = result?.review_packet?.deterministic?.program_context;
+  if (programContext) {
+    lines.push(`Program context: ${programContext.status || "unknown"} (${asArray(programContext.blockers).length} blocker(s))`);
   }
-  if (showDeepSeekBlock && receipt?.deepseek_advisory_block) {
-    lines.push("");
-    lines.push("DeepSeek advisory verdict:");
-    lines.push(receipt.deepseek_advisory_block);
-    if (receipt.verbatim_reproduction_contract) {
-      lines.push("");
-      lines.push(`Contract: ${receipt.verbatim_reproduction_contract}`);
-    }
-  }
-  if (blockers.length > 0) {
-    lines.push("Blockers:");
-    for (const blocker of blockers.slice(0, 8)) {
-      lines.push(`- ${blocker.source}: ${blocker.code} — ${blocker.message}`);
-    }
-  }
+  pushTopBlockers(lines, blockers, 3);
+  lines.push(reviewArtifactLine(result));
+  lines.push(`Next: ${result.ticket_intake_receipt?.next_required_command || "inspect artifact or rerun with --json"}`);
   return lines.join("\n");
+}
+
+function writeTerminal(stream, text) {
+  return new Promise((resolveWrite, rejectWrite) => {
+    const onError = (error) => {
+      stream.off("error", onError);
+      rejectWrite(error);
+    };
+    stream.once("error", onError);
+    stream.write(text, () => {
+      stream.off("error", onError);
+      resolveWrite();
+    });
+  });
 }
 
 async function main(argv = process.argv.slice(2)) {
@@ -1466,12 +1879,11 @@ async function main(argv = process.argv.slice(2)) {
   try {
     args = parseArgs(argv);
   } catch (error) {
-    console.error(error.message);
-    console.error(usage());
+    await writeTerminal(process.stderr, `${error.message}\n${usage()}\n`);
     return 2;
   }
   if (["help", "--help", "-h"].includes(args.command)) {
-    console.log(usage());
+    await writeTerminal(process.stdout, `${usage()}\n`);
     return 0;
   }
   try {
@@ -1481,17 +1893,24 @@ async function main(argv = process.argv.slice(2)) {
     const result = args.command === "publish"
       ? await runPublish(args)
       : await runReview(args);
-    console.log(args.json ? JSON.stringify(result, null, 2) : renderText(result, { showDeepSeekBlock: args.showDeepSeekBlock }));
-    return 0;
+    await writeTerminal(
+      process.stdout,
+      `${args.json ? JSON.stringify(result, null, 2) : renderText(result)}\n`,
+    );
+    return verificationStatusIsPass(result.status, "execution") ? 0 : 1;
   } catch (error) {
     const payload = { status: "FAIL", error: error?.message || String(error) };
-    if (args?.json) console.log(JSON.stringify(payload, null, 2));
-    else console.error(`${payload.error}\n\n${usage()}`);
+    await writeTerminal(
+      args?.json ? process.stdout : process.stderr,
+      `${args?.json ? JSON.stringify(payload, null, 2) : `${payload.error}\n\n${usage()}`}\n`,
+    );
     return 1;
   }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  // Await terminal stream callbacks so large --json review packets are complete
+  // before explicit exit, including through nonblocking bounded pipes.
   main().then((code) => process.exit(code));
 }
 

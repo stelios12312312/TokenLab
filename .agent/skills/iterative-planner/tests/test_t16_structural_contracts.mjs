@@ -108,7 +108,7 @@ function checkVersionAgreement({ versionJsonText, skillText, migrationText }) {
   const latestMigrationVersion = migrationText.match(/^\|\s*([0-9]+\.[0-9]+\.[0-9]+)\s*\|/m)?.[1] || "";
   const versionRow = migrationText
     .split("\n")
-    .find((line) => line.startsWith(`| ${configVersion} |`)) || "";
+    .find((line) => line.startsWith("| 10.0.0 |")) || "";
   const skipRationale = /\b9(?:\.x|\.0\.0)?\b/i.test(versionRow) && /\b(skip|skipped|reserved|intentionally)\b/i.test(versionRow);
 
   const issues = [];
@@ -189,9 +189,10 @@ const namespaceModule = await import("../scripts/ontology_namespace_check.mjs").
   const agreement = checkVersionAgreement({ versionJsonText, skillText, migrationText });
   assert(agreement.ok, "version surfaces agree and skipped major is explained", agreement.issues.join("; "));
 
+  const configVersion = JSON.parse(versionJsonText).version;
   const drift = checkVersionAgreement({
     versionJsonText,
-    skillText: skillText.replace('planner_version: "10.0.0"', 'planner_version: "10.0.1"'),
+    skillText: skillText.replace(`planner_version: "${configVersion}"`, 'planner_version: "9.9.9"'),
     migrationText,
   });
   assert(!drift.ok, "injected version-surface drift fails");

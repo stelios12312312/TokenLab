@@ -63,7 +63,7 @@
       "v6_purpose": "N/A — new in v7",
       "v7_action": "Updated",
       "v7_owner": "Agent A + Human",
-      "notes": "v7.6.39 adds PASS-only verify --write status advancement, ticket review_status separation, submitted/review_ready lifecycle aliases, and compact DeepSeek status/summary/artifact proof by default."
+      "notes": "v7.6.39 adds PASS-only verify --write status advancement, ticket review_status separation, submitted/review_ready lifecycle aliases, and deterministic ticket receipt proof by default."
     },
     {
       "workflow": "/ontology",
@@ -106,6 +106,13 @@
       "v7_action": "Restored",
       "v7_owner": "Agent A",
       "notes": "Restored by ADR 0042; consolidates ad-hoc operational scripts into project-owned recipe contracts."
+    },
+    {
+      "workflow": "/register-user-story",
+      "v6_purpose": "N/A — new in v7",
+      "v7_action": "New",
+      "v7_owner": "Human + Agent A",
+      "notes": "Elicit and register a new user story from a user request."
     },
     {
       "workflow": "/full-review-and-fix",

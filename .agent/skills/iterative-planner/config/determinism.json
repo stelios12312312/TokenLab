@@ -2,6 +2,15 @@
   "version": "1.0.0",
   "description": "Determinism hardening configuration. Feature flags control rollout of new behaviors.",
 
+  "quant_gates": {
+    "serious_search_min_trial_budget": 500,
+    "promotion_candidate_min_trial_budget": 2000,
+    "compatibility_window_policy_version": 1,
+    "compatibility_window_warn_through_policy_version": 1,
+    "compatibility_window_enforce_from_policy_version": 2,
+    "description": "Minimum discovered trial budgets for interpretive quant run classes. A quick:true artifact blocks serious_search and promotion_candidate regardless of these thresholds. Quant gate compatibility windows warn through policy version 1 and block from policy version 2."
+  },
+
   "features": {
     "state_json": {
       "enabled": true,
@@ -56,6 +65,16 @@
       "enabled": true,
       "description": "Advisory-first proof telemetry: capture compact trusted work signals under plans/<plan>/telemetry/ so planner_findings can detect missing proof from actual work."
     },
+    "llm_run_telemetry": {
+      "enabled": true,
+      "store_raw_prompt": false,
+      "store_raw_response": false,
+      "prompt_excerpt_chars": 500,
+      "response_excerpt_chars": 1000,
+      "require_raw_storage_acknowledgement": true,
+      "raw_storage_acknowledgement": "",
+      "description": "Append-only per-plan LLM run ledger. Defaults to hashes plus redacted excerpts; full redacted prompt/response text requires raw_storage_acknowledgement=I_UNDERSTAND_RAW_LLM_TELEMETRY_STORAGE."
+    },
     "suggestion_engine": {
       "enabled": true,
       "description": "Prolog-driven skill suggestions, completeness scoring, and auto-approve decisions"
@@ -67,6 +86,10 @@
     "reachability_audit": {
       "enabled": true,
       "description": "RT-HARDENING-007: Exhaustive state-space reachability analysis at gate transitions. Detects deadlocks, forbidden paths, gate bypasses, and privilege escalation routes."
+    },
+    "compact_low_risk_verification_matrix": {
+      "enabled": true,
+      "description": "Allow docs/chore/analysis/static-artifact plans to satisfy context-sensitive verification with one explicit low-risk obligation while integration, quant, security, backend, migration, and data-loss shapes keep the full matrix."
     }
   },
 

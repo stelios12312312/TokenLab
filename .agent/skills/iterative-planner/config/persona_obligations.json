@@ -119,9 +119,9 @@
         "vesting",
         "emissions",
         "treasury",
-        "governance",
+        "governance token",
         "staking",
-        "dao"
+        "dao governance"
       ],
       "deps": [],
       "obligations": []

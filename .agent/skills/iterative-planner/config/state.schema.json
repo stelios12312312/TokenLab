@@ -102,64 +102,6 @@
       },
       "description": "Tool trace audit summary from last gate transition"
     },
-    "transition_nonce": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{16}$",
-      "description": "Nonce proving state.json was written by transition.mjs (RT-001)"
-    },
-    "approval_nonce_hash": {
-      "type": "string",
-      "description": "SHA-256 hash of user approval nonce (RT-002)"
-    },
-    "approved_plan_hash": {
-      "type": "string",
-      "pattern": "^[0-9a-f]{32}$",
-      "description": "SHA-256 hash of the approved plan integrity surface"
-    },
-    "approved_plan_hash_version": {
-      "type": "string",
-      "description": "Version of the approved plan hash algorithm"
-    },
-    "approved_plan_hash_artifacts": {
-      "type": "array",
-      "items": { "type": "string" },
-      "description": "Plan artifact names included in approved_plan_hash"
-    },
-    "approved_plan_hash_artifact_hashes": {
-      "type": "object",
-      "additionalProperties": {
-        "type": "string",
-        "pattern": "^[0-9a-f]{32}$"
-      },
-      "description": "Per-artifact hashes included in the approved plan integrity bundle"
-    },
-    "tamper_fingerprint": {
-      "type": "object",
-      "description": "Versioned tamper-evidence snapshot for sensitive planner artifacts at the last successful gate boundary",
-      "properties": {
-        "version": { "type": "string" },
-        "hash": {
-          "type": ["string", "null"],
-          "pattern": "^[0-9a-f]{32}$"
-        },
-        "gate": { "type": "string" },
-        "generated_at": { "type": "string", "format": "date-time" },
-        "artifacts": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "name": { "type": "string" },
-              "hash": {
-                "type": "string",
-                "pattern": "^[0-9a-f]{32}$"
-              },
-              "bytes": { "type": "integer", "minimum": 0 }
-            }
-          }
-        }
-      }
-    },
     "kb_digest_hash": {
       "type": "string",
       "description": "SHA-256 hash of KB content + salt (RT-003)"
@@ -666,12 +608,138 @@
             "satisfied": { "type": "boolean" },
             "status": {
               "type": "string",
-              "enum": ["missing_artifact", "diagnostic_only", "blocked_alarm", "promotion_blocked", "satisfied", "not_required"]
+              "enum": ["missing_artifact", "diagnostic_only", "blocked_alarm", "promotion_blocked", "environment_invalid", "satisfied", "not_required", "evidence_rerun_executor_error", "evidence_rerun_invalid_contract", "evidence_rerun_missing_runnable_evidence", "evidence_rerun_diverged"]
             },
             "required_artifact": { "type": "string" },
             "artifact_present": { "type": "boolean" },
             "artifact_valid": { "type": "boolean" },
             "applicable": { "type": "boolean" },
+            "evidence_validity": {
+              "type": ["string", "null"],
+              "enum": ["valid", "invalid", "environment_invalid", "degraded_coverage", null]
+            },
+            "claim_support_allowed": { "type": "boolean" },
+            "numeric_output_reportable": { "type": "boolean" },
+            "adversarial_evidence_rerun_receipt": {
+              "type": "object",
+              "required": ["schema_version", "required", "performed", "status", "executor_kind", "author_context_reused", "candidate_evidence_ids", "critical_evidence_ids", "selected_evidence_ids", "command_receipts", "blockers"],
+              "properties": {
+                "schema_version": { "const": "planner.adversarial_evidence_close.v1" },
+                "required": { "type": "boolean" },
+                "performed": { "type": "boolean" },
+                "status": {
+                  "type": "string",
+                  "enum": ["not_required", "deferred_until_close", "satisfied", "missing_runnable_evidence", "invalid_contract", "executor_error", "diverged"]
+                },
+                "plan_id": { "type": "string" },
+                "executor_kind": { "const": "fresh_local_process" },
+                "author_pid": { "type": "integer", "minimum": 1 },
+                "author_context_reused": { "type": "boolean" },
+                "selection_algorithm": { "type": ["string", "null"] },
+                "candidate_evidence_ids": { "type": "array", "items": { "type": "string" } },
+                "critical_evidence_ids": { "type": "array", "items": { "type": "string" } },
+                "selected_evidence_ids": { "type": "array", "items": { "type": "string" } },
+                "blockers": { "type": "array", "items": { "type": "string" } },
+                "command_receipts": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": ["schema_version", "evidence_id", "command", "status", "satisfied", "performed", "executor_kind", "executor_pid", "executor_parent_pid", "expected_exit_code", "timeout_ms", "timed_out", "duration_ms", "comparisons", "blockers"],
+                    "properties": {
+                      "schema_version": { "const": "planner.adversarial_evidence_rerun.v1" },
+                      "evidence_id": { "type": "string" },
+                      "command": { "type": "string" },
+                      "cwd": { "type": "string" },
+                      "status": { "enum": ["satisfied", "diverged", "executor_error", "invalid_contract"] },
+                      "satisfied": { "type": "boolean" },
+                      "performed": { "type": "boolean" },
+                      "executor_kind": { "const": "fresh_local_process" },
+                      "executor_pid": { "type": "integer", "minimum": 1 },
+                      "executor_parent_pid": { "type": "integer", "minimum": 1 },
+                      "command_pid": { "type": ["integer", "null"], "minimum": 1 },
+                      "expected_exit_code": { "type": "integer" },
+                      "observed_exit_code": { "type": ["integer", "null"] },
+                      "timeout_ms": { "type": "integer", "minimum": 1, "maximum": 300000 },
+                      "timed_out": { "type": "boolean" },
+                      "duration_ms": { "type": "integer", "minimum": 0 },
+                      "started_at": { "type": "string" },
+                      "finished_at": { "type": "string" },
+                      "comparisons": {
+                        "type": "array",
+                        "items": {
+                          "type": "object",
+                          "required": ["path", "comparator", "expected", "found", "satisfied"],
+                          "properties": {
+                            "path": { "type": "string" },
+                            "comparator": { "enum": ["exact", "numeric"] },
+                            "expected": {},
+                            "observed": {},
+                            "found": { "type": "boolean" },
+                            "absolute_tolerance": { "type": "number", "minimum": 0 },
+                            "relative_tolerance": { "type": "number", "minimum": 0 },
+                            "applied_tolerance": { "type": "number", "minimum": 0 },
+                            "delta": { "type": ["number", "null"], "minimum": 0 },
+                            "satisfied": { "type": "boolean" },
+                            "blocker": { "type": ["string", "null"] }
+                          }
+                        }
+                      },
+                      "blockers": { "type": "array", "items": { "type": "string" } }
+                    }
+                  }
+                }
+              }
+            },
+            "environment_preflight_receipt": {
+              "type": ["object", "null"],
+              "properties": {
+                "schema_version": { "type": "integer" },
+                "required": { "type": "boolean" },
+                "performed": { "type": "boolean" },
+                "status": {
+                  "type": "string",
+                  "enum": ["not_required", "valid", "environment_invalid"]
+                },
+                "evidence_validity": {
+                  "type": ["string", "null"],
+                  "enum": ["valid", "environment_invalid", null]
+                },
+                "evaluated_at": { "type": "string" },
+                "expected_worktree_root": { "type": ["string", "null"] },
+                "observed_worktree_root": { "type": ["string", "null"] },
+                "probe_count": { "type": "integer", "minimum": 0 },
+                "claim_support_allowed": { "type": "boolean" },
+                "numeric_output_reportable": { "type": "boolean" },
+                "blocking_issues": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                },
+                "sources": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": { "type": "string" },
+                      "declared_path": { "type": ["string", "null"] },
+                      "declared_expected_worktree_root": { "type": ["string", "null"] },
+                      "canonical_path": { "type": ["string", "null"] },
+                      "canonical_expected_worktree_root": { "type": ["string", "null"] },
+                      "exists": { "type": "boolean" },
+                      "regular_file": { "type": "boolean" },
+                      "bytes": { "type": ["integer", "null"], "minimum": 0 },
+                      "mtime": { "type": ["string", "null"] },
+                      "age_seconds": { "type": ["number", "null"] },
+                      "max_age_seconds": { "type": ["number", "null"], "minimum": 0 },
+                      "sha256": { "type": ["string", "null"] },
+                      "blockers": {
+                        "type": "array",
+                        "items": { "type": "string" }
+                      }
+                    }
+                  }
+                }
+              }
+            },
             "run_class": {
               "type": ["string", "null"],
               "enum": ["smoke", "wiring_proof", "exploratory", "serious_search", "promotion_candidate", null]

@@ -38,8 +38,14 @@ function parseArgs(argv = []) {
 function printText(report) {
   console.log(`IVE knowledge packs: ${report.status}`);
   console.log(`Loaded packs: ${report.loaded_pack_count || 0}/${report.selected_pack_count || 0}`);
+  if (report.obligation_count) {
+    console.log(`Active obligations: ${report.active_obligation_count || 0}/${report.obligation_count}`);
+  }
   for (const pack of report.pack_results || []) {
-    const suffix = pack.entry_count !== undefined ? ` (${pack.entry_count} entries)` : "";
+    const parts = [];
+    if (pack.entry_count !== undefined) parts.push(`${pack.entry_count} entries`);
+    if (pack.obligation_count !== undefined) parts.push(`${pack.active_obligation_count || 0}/${pack.obligation_count} active obligations`);
+    const suffix = parts.length > 0 ? ` (${parts.join(", ")})` : "";
     console.log(`- ${pack.pack_id}: ${pack.status}${suffix}`);
   }
 }

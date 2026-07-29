@@ -60,21 +60,13 @@ When present, `plan.md` should include a `## Program Context` section with the s
 human-readable linkage. The Program Manager validates parent packet truth; the child
 plan still follows the normal iterative planner gates.
 
-### Optional `state.json.tamper_fingerprint`
+### Legacy Integrity Fields
 
-Successful gate transitions may store a signed tamper-evidence snapshot in
-`state.json.tamper_fingerprint`. The snapshot is versioned and covers sensitive
-planner artifacts such as `state.json`, `plan.md`, `findings.md`, `decisions.md`,
-`verification.md`, `progress.md`, red-team/reflection artifacts, and structured
-plan files when present.
-
-The `state.json` component uses the shared `computeStateHash()` path with volatile
-or self-referential fields excluded (`_state_hash`, `tamper_fingerprint`,
-`updated_at`, generated summaries). Gate checks warn with `GATE-TMP-001` when no
-snapshot exists yet and `GATE-TMP-002` when the stored snapshot differs from the
-current artifact set. These warnings do not replace existing hard blockers such as
-state integrity mismatch, approved-plan integrity, registry tamper, or config
-integrity. A successful transition refreshes the fingerprint for legitimate edits.
+Older plans may contain `_state_hash`, approval nonce fields, transition nonces,
+approval envelopes, or tamper fingerprints. E8-1 retired those in-process
+integrity artifacts. Current runtime gates ignore the legacy fields and rely on
+deterministic artifact checks, Prolog semantics, decision-log hash chaining, git
+history, and fresh-context review/CI instead.
 
 **Fix Attempts**: tracks autonomous fixes on current step. After 2 fails → STOP. Resets on: user direction, new step, RE-PLAN. Leash hit example:
 
@@ -160,8 +152,16 @@ approaches v1 (in-place migration) and v2 (dual-write) were abandoned.
 **Failure Modes** table is mandatory when external dependencies exist. No dependencies → write "None identified".
 **Verification Strategy** is mandatory. For each success criterion, define what check to run and what "pass" means. No testable criteria → write "N/A — manual review only".
 When `reports/user_story_audit/story_registry.json` exists, use a table with `Criterion | Story linkage | Check | Pass means`, and map every criterion to at least one story ID. Do not rely on `Files To Modify` overlap as your primary proof path.
+When `compact_low_risk_verification_matrix` is enabled, docs/chore/analysis scaffolds with no integration, quant, backend, migration, security, credential, external-service, or data-loss signals start with a compact placeholder instead of the table:
+
+```markdown
+## Verification Strategy
+Low-risk verification obligation: For US-### and sc_1, review `<artifact>`, record `<pass signal>`, and name `<remaining gap>` before close.
+```
+
+Use that compact form only when it names the active story or criterion, the artifact being reviewed, the proof action, the pass signal, and the residual gap. Static-artifact plans may use the same compact form after planned `.html`/`.css`-style files make the low-risk boundary explicit. If high-risk signals are present, keep the full matrix with `Criterion | Story linkage | Repo/system context | Required proof type | Concrete command or action | Pass means | What remains unverified`.
 Story linkage in `plan.md` tells the ontology which story proves a criterion.
-**Traceability model**: Story linkage in `plan.md` tells the ontology which story proves a criterion. `story_registry.json` supplies `code_refs`, `test_refs`, and `validation_refs` for that story. `@planner:` annotations help coverage and ontology hints, but they do not replace the story-registry evidence refs.
+**Traceability model**: Story linkage in `plan.md` tells the ontology which story proves a criterion. `story_registry.json` supplies `code_refs`, `test_refs`, and `validation_refs` for that story. `@planner:` annotations help coverage and ontology hints, but they do not replace the story-registry evidence refs. Evidence refs must be durable artifact paths, not shell commands. To inspect stale evidence refs, run `node .agent/skills/iterative-planner/scripts/story_registry.mjs prune --safe`; after reviewing the dry-run output, `--safe --write` may normalize command-shaped refs to existing artifact paths or remove missing refs with prune notes.
 **Active Mistake Response** is conditional. When `close_signals.mistake_registry` or discovery surfaces report active mistakes, record one row per required guard using `Mistake | Guard | Planned handling | Planned evidence`. Planner tooling converts this section into explicit facts such as `mistake_guard_declared/2`; vague prose elsewhere does not satisfy the contract.
 For WordPress/CMS missing-content incidents, `## Active Mistake Response` should explicitly cover `site_turbulence`, `raw_html_dom_probe`, and `entity_preservation`. The expected operator question is: `Are there any active migrations, recent plugin uninstalls, or major structural changes active on the site right now?`
 **Files To Modify** is mandatory. Can't list them → go back to EXPLORE.
@@ -329,11 +329,11 @@ Rules:
 - `review_status` records deterministic or advisory review state separately from dispatch lifecycle. Valid values include `not_run`, `submitted`, `fresh`, `needs_story`, `needs_annotation`, `needs_verification`, `ontology_conflict`, `blocked`, `review_ready`, and `unavailable`. A ticket with `lifecycle: "closed"` must not carry explicit `review_status: "not_run"`.
 - `review_artifacts` points to local Review Packet JSON files such as `plans/programs/<program-id>/reviews/<ticket-id>_review_packet.json`.
 - `github_sync` records the last reflected GitHub comment, labels, and Project Status update.
-- `last_review_status` uses the same review-status enum for compatibility. Advisory DeepSeek output must not mark tickets `verified`. Persona review metadata is also advisory, but explicit `needs_evidence` blocks final ticket closure until evidence is attached or the status is updated.
+- `last_review_status` uses the same review-status enum for compatibility. Advisory review output must not mark tickets `verified`. Persona review metadata is also advisory, but explicit `needs_evidence` blocks final ticket closure until evidence is attached or the status is updated.
 - Ticket lifecycle values `submitted` and `review_ready` are accepted as review-facing aliases, but gates normalize them to effective lifecycle semantics so execution dispatch remains deterministic.
 - Intake Packets, Review Packets, and Ticket Intake Receipts include `retro_recurrence_check` / `retro_recurrence_status` so trusted active mistakes and retro-promoted obligations can block tickets until required guards or evidence are present.
-- Quant-shaped Intake Packets, Review Packets, GitHub comments, and Ticket Intake Receipts include `quant_persona_gate` / `quant_persona_gate_status`. Missing what-happened overview, quant persona obligation, target/outcome, data lineage or odds snapshot semantics, temporal/leakage handling, controls/baselines, or quant verification proof is a deterministic blocker even if DeepSeek reports `review_ready`.
-- Ticket Intake Receipts and default GitHub review comments surface DeepSeek as compact proof: advisory status, one-line summary, and local artifact path. Full fenced verdicts remain in JSON artifacts and only render in text when `--show-deepseek-block` is explicitly requested.
+- Quant-shaped Intake Packets, Review Packets, GitHub comments, and Ticket Intake Receipts include `quant_persona_gate` / `quant_persona_gate_status`. Missing what-happened overview, quant persona obligation, target/outcome, data lineage or odds snapshot semantics, temporal/leakage handling, controls/baselines, or quant verification proof is a deterministic blocker even if advisory review reports `review_ready`.
+- Ticket Intake Receipts and default GitHub review comments surface deterministic status, recurrence status/counts, quant persona gate status when applicable, and the next required command.
 
 Idea/backlog intake:
 

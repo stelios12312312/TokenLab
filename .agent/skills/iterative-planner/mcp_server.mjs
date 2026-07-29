@@ -17,6 +17,10 @@ import { execSync, spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { createHash } from "crypto";
 import { createInterface } from "readline";
+import {
+  canonicalVerificationStatus,
+  normalizeVerificationStatus,
+} from "./scripts/lib/verification_status_vocabulary.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -367,7 +371,7 @@ const handlers = {
     writePlanFile(plan.planDir, "verification.md", content);
 
     return {
-      content: [{ type: "text", text: `${params.criteria.length} verification criteria defined. Next: request_approval` }],
+      content: [{ type: "text", text: `${params.criteria.length} verification criteria defined. Next: run transition.mjs plan-to-execute` }],
       ...getStatusSuffix(),
     };
   },
@@ -397,13 +401,12 @@ const handlers = {
     return {
       content: [{
         type: "text",
-        text: `## Plan Ready for Approval\n\n${params.summary}\n\n` +
+        text: `## Plan Ready for PLAN → EXECUTE\n\n${params.summary}\n\n` +
           `The plan has:\n` +
           `- Problem statement defined\n` +
           `- Files to modify listed\n` +
           `- Verification strategy defined\n\n` +
-          `**Awaiting user approval.** Once approved, EXECUTE-phase tools will become available.\n\n` +
-          `To approve via CLI: run \`node .agent/skills/iterative-planner/scripts/transition.mjs plan-to-execute\``
+          `Run \`node .agent/skills/iterative-planner/scripts/transition.mjs plan-to-execute\` to execute the gate.`
       }],
       ...getStatusSuffix(),
     };
@@ -423,7 +426,8 @@ const handlers = {
       return errorResult(`Step ${params.step} not found in progress.md`);
     }
 
-    const checkbox = params.status === "completed" ? "[x]" : "[ ]";
+    const progressLifecycle = params.status;
+    const checkbox = progressLifecycle === "completed" ? "[x]" : "[ ]";
     const notes = params.notes ? ` — ${params.notes}` : "";
     const updated = progressContent.replace(
       stepPattern,
@@ -522,12 +526,18 @@ const handlers = {
     const { plan } = getCurrentPhase();
     if (!plan) return errorResult("No active plan");
 
+    const normalizedStatus = normalizeVerificationStatus(params.status, "presentation");
+    if (!normalizedStatus.valid) {
+      return errorResult(`Invalid verification status '${String(params.status ?? "")}'. Use a canonical presentation result.`);
+    }
+    const authoredStatus = canonicalVerificationStatus(params.status, "presentation");
+
     const verContent = readPlanFile(plan.planDir, "verification.md") || "";
-    const entry = `\n## ${params.criterion}\n- **Status**: ${params.status}\n- **Evidence**: ${params.evidence}\n`;
+    const entry = `\n## ${params.criterion}\n- **Status**: ${authoredStatus}\n- **Evidence**: ${params.evidence}\n`;
     writePlanFile(plan.planDir, "verification.md", verContent + entry);
 
     return {
-      content: [{ type: "text", text: `Verification result recorded: ${params.criterion} = ${params.status}` }],
+      content: [{ type: "text", text: `Verification result recorded: ${params.criterion} = ${authoredStatus}` }],
       ...getStatusSuffix(),
     };
   },
@@ -629,8 +639,8 @@ const handlers = {
       return { content: [{ type: "text", text: `Phase: ${phase}. No forward gate from this phase.` }] };
     }
 
-    // Run gate check (dry run — doesn't transition, just reports)
-    const result = runScript("verify_gate.mjs", [nextGate]);
+    // Authoritative gate preflight: the actual transition evaluator with persistence disabled.
+    const result = runScript("transition.mjs", [nextGate, "--dry-run"]);
 
     const nextActions = getNextActions(phase, plan.planDir);
 
@@ -717,11 +727,6 @@ const handlers = {
         fix: "Call `define_verification` with criteria [{name, command, pass_means}].",
         tool: "define_verification",
       },
-      not_approved: {
-        explanation: "The user has not approved the plan. Approval is required before execution begins.",
-        fix: "Call `request_approval` with a summary. The user must then approve via CLI.",
-        tool: "request_approval",
-      },
       no_red_team_notes: {
         explanation: "Red-team documentation is missing. At least 3 attack vectors must be documented before reflecting.",
         fix: "Call `add_red_team_vector` with attack, impact, and mitigation. Repeat for 3+ vectors.",
@@ -754,15 +759,11 @@ const handlers = {
       },
     };
 
-    // Run semantic checks via rule_engine
-    const result = runScript("rule_engine.mjs", ["check-transition", gate, "--json"]);
-    let semanticResult = null;
-    try {
-      semanticResult = JSON.parse(result.stdout);
-    } catch { /* fallback to text output */ }
-
-    // Run verify_gate for file-level checks
-    const gateResult = runScript("verify_gate.mjs", [gate]);
+    // One authoritative diagnosis surface: the complete transition evaluator,
+    // with all persistence disabled.
+    const result = runScript("transition.mjs", [gate, "--dry-run"]);
+    const semanticResult = null;
+    const gateResult = result;
 
     // Also run invariant check
     const invariantResult = runScript("rule_engine.mjs", ["check-invariants", "--json"]);
@@ -889,7 +890,7 @@ function getNextActions(phase, planDir) {
     if (verContent.includes("*To be defined") || !verContent.includes("| Criterion")) {
       actions.push("define_verification — Set success criteria");
     }
-    actions.push("request_approval — When all above are done");
+    actions.push("transition.mjs plan-to-execute — When all above are done");
   } else if (phase === "execute") {
     actions.push("update_progress — Mark steps as you complete them");
     const rtContent = readPlanFile(planDir, "red_team_notes.md") || "";
@@ -1070,7 +1071,11 @@ process.stdin.on("data", (chunk) => {
   }
 });
 
-process.stdin.on("end", () => process.exit(0));
+process.stdin.on("end", () => {
+  // Let the event loop drain stdout/stderr instead of forcing exit, which can
+  // truncate buffered MCP responses in fast test/stdio scenarios.
+  process.exitCode = 0;
+});
 
 // Prevent unhandled rejection crashes
 process.on("unhandledRejection", (e) => {

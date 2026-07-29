@@ -6,15 +6,19 @@
       ".agent/skills/iterative-planner/scripts/planner_preflight.mjs",
       ".agent/skills/iterative-planner/scripts/verify_gate.mjs",
       ".agent/skills/iterative-planner/scripts/transition.mjs",
+      ".agent/skills/iterative-planner/scripts/migrate.mjs",
+      ".agent/skills/iterative-planner/scripts/pre_commit_policy.mjs",
       ".agent/skills/iterative-planner/scripts/lib/plan_utils.mjs",
+      ".agent/skills/iterative-planner/scripts/lib/bootstrap_self_heal.mjs",
+      ".agent/skills/iterative-planner/scripts/lib/migration_source_pin.mjs",
+      ".agent/skills/iterative-planner/scripts/lib/managed_upgrade_transaction.mjs",
       ".agent/skills/iterative-planner/scripts/knowledge_resolver.mjs"
     ],
     "required_commands": [
-      "node .agent/skills/iterative-planner/tests/test_migration.mjs",
-      "node .agent/skills/iterative-planner/tests/test_bootstrap_state_surface.mjs",
-      "node .agent/skills/iterative-planner/tests/test_archetype_preflight_scenarios.mjs",
-      "node .agent/skills/iterative-planner/tests/test_transition_gate_flows.mjs",
-      "node .agent/skills/iterative-planner/tests/test_archetype_gate_canonicalization.mjs"
+      "node .agent/skills/iterative-planner/tests/ive/run.mjs --only migration-bootstrap --json --no-manifest",
+      "node .agent/skills/iterative-planner/tests/ive/run.mjs --only preplanning-scaffolding --json --no-manifest",
+      "node .agent/skills/iterative-planner/tests/ive/run.mjs --only transition-gate-flows --json --no-manifest",
+      "node .agent/skills/iterative-planner/tests/ive/run.mjs --only gate-or-delete-census --json --no-manifest"
     ]
   },
   "preflight_scenarios": [
@@ -316,7 +320,7 @@
       "story_registry_ids": ["US-001"],
       "expected_exit": 0,
       "expect_fragment": "1 success criterion row(s) map explicitly to story_registry.json entries",
-      "plan_content": "# Plan\n\n## Goal\nRetrofit explicit criterion traceability\n\n## Problem Statement\nStory-aware plans should accept a deterministic section alias for execution steps.\n\n## Files To Modify\n- src/traceability.js\n\n## Execution Steps\n1. Add the gate.\n2. Update the docs.\n3. Verify the regression coverage.\n\n## Verification Strategy\n| Criterion | Story linkage | Check | Pass means |\n|---|---|---|---|\n| The plan gate accepts explicit story linkage. | US-001 | Run verify_gate.mjs plan-to-execute | The gate accepts the explicit mapping |\n\n## Success Criteria\n1. The plan gate accepts explicit story linkage.\n\n## Fix Classification\nRoot-cause fix\n"
+      "plan_content": "# Plan\n\n## Goal\nRetrofit explicit criterion traceability\n\n## Problem Statement\nStory-aware plans should accept a deterministic section alias for execution steps.\n\n## Files To Modify\n- src/traceability.js\n\n## Knowledge Application\n[KB_APPLIED:M-041] Closeout blocked by traceability bookkeeping instead of experimental validation; this fixture keeps explicit story linkage proof visible before gate acceptance.\n\n## Execution Steps\n1. Add the gate.\n2. Update the docs.\n3. Verify the regression coverage.\n\n## Verification Strategy\n| Criterion | Story linkage | Check | Pass means |\n|---|---|---|---|\n| The plan gate accepts explicit story linkage. | US-001 | Run verify_gate.mjs plan-to-execute | The gate accepts the explicit mapping |\n\n## Success Criteria\n1. The plan gate accepts explicit story linkage.\n\n## Fix Classification\nRoot-cause fix\n"
     },
     {
       "id": "header_aliases_and_proof_aliases_pass",
@@ -324,7 +328,7 @@
       "files": ["src/dashboard.tsx", "src/dashboard.css"],
       "expected_exit": 0,
       "expect_fragment": "1 success criterion row(s) include context-sensitive verification proof planning",
-      "plan_content": "# Plan\n\n## Goal\nStabilize browser UI verification proof aliases\n\n## Problem Statement\nBrowser-facing plans should accept deterministic header aliases and whitelisted proof aliases.\n\n## Files To Modify\n- src/dashboard.tsx\n- src/dashboard.css\n\n## Steps\n1. Add the verification contract.\n2. Document the proof strategy.\n3. Run the planner gate.\n\n## Verification Obligation Synthesis\n- Repo/system context: Browser UI change touching the rendered dashboard flow\n- Task shape: Planner contract hardening for browser verification labels\n- Ontology signals: N/A — no ontology signals\n- Persona signals: N/A — no persona signals\n- System boundaries touched: rendered dashboard flow and browser inspection path\n- Derived verification obligations: Require browser-aware proof rather than wrapper-only checks\n\n## Verification Strategy\n| Criterion | Story | System context | Proof | Command | Pass | Residual risk |\n|---|---|---|---|---|---|---|\n| Browser proof aliases are accepted deterministically. | N/A | Browser UI change touching the rendered dashboard flow | Visual verification with browser trace | Run the browser journey against the local dashboard page and capture the rendered state | The rendered dashboard journey matches expectations without CTA or layout regressions | Live stakeholder approval remains out of scope |\n\n## Success Criteria\n1. Browser proof aliases are accepted deterministically.\n\n## Fix Classification\nDefense in depth\n"
+      "plan_content": "# Plan\n\n## Goal\nStabilize browser UI verification proof aliases\n\n## Problem Statement\nBrowser-facing plans should accept deterministic header aliases and whitelisted proof aliases.\n\n## Files To Modify\n- src/dashboard.tsx\n- src/dashboard.css\n\n## Steps\n1. Add the verification contract.\n2. Document the proof strategy.\n3. Run the planner gate.\n\n## Knowledge Application\n[KB_APPLIED:M-UI-001] Browser/UI proof alias work must keep explicit rendered viewport evidence in the verification plan.\n\n## Verification Obligation Synthesis\n- Repo/system context: Browser UI change touching the rendered dashboard flow\n- Task shape: Planner contract hardening for browser verification labels\n- Ontology signals: N/A — no ontology signals\n- Persona signals: N/A — no persona signals\n- System boundaries touched: rendered dashboard flow and browser inspection path\n- Derived verification obligations: Require browser-aware proof rather than wrapper-only checks\n\n## Verification Strategy\n| Criterion | Story | System context | Proof | Command | Pass | Residual risk |\n|---|---|---|---|---|---|---|\n| Browser proof aliases are accepted deterministically. | N/A | Browser UI change touching the rendered dashboard flow | Visual verification with browser trace | Run the browser journey against the local dashboard page and capture the rendered state | The rendered dashboard journey matches expectations without CTA or layout regressions | Live stakeholder approval remains out of scope |\n\n## Success Criteria\n1. Browser proof aliases are accepted deterministically.\n\n## Fix Classification\nDefense in depth\n"
     },
     {
       "id": "story_linkage_still_fails_without_mapping",

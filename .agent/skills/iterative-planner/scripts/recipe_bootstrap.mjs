@@ -223,6 +223,7 @@ function buildSeedFromDiscovery(discovery) {
     aliases: uniqueList(review.aliases || (candidate.entity_title_guess ? [candidate.entity_title_guess] : [])),
     skills: uniqueList(candidate.skills),
     systems: uniqueList(candidate.systems),
+    workflows: uniqueList(candidate.workflows),
     scripts: normalizeScriptEntries((candidate.scripts || []).map((script) => `${script.path || ""}::${script.purpose || ""}`)),
     triggers: normalizeTriggerEntries(triggerHints),
     runner: normalizeRunnerSpec(review.runner),
@@ -285,6 +286,11 @@ function buildScaffold({ cwd, goalText, resolution, options, seed }) {
     ...(seed?.systems || []),
     ...(bestRecipe?.systems || []),
   ]);
+  const workflows = uniqueList([
+    ...readFlagValues("--workflow"),
+    ...(seed?.workflows || []),
+    ...(bestRecipe?.workflows || []),
+  ]);
   const scripts = normalizeScriptEntries([
     ...readFlagValues("--script"),
     ...((seed?.scripts || []).map((entry) => `${entry.path || ""}::${entry.purpose || ""}`)),
@@ -319,6 +325,7 @@ function buildScaffold({ cwd, goalText, resolution, options, seed }) {
     requiredParams,
     skills,
     systems,
+    workflows,
     scripts,
     triggers,
     runner,
@@ -344,6 +351,7 @@ function applyScaffold(scaffold) {
     requiredParams,
     skills,
     systems,
+    workflows,
     scripts,
     triggers,
     runner,
@@ -437,6 +445,7 @@ function applyScaffold(scaffold) {
     entity_ids: uniqueList([...(existingRecipe.entity_ids || []), ...(ids.entityId ? [ids.entityId] : [])]),
     required_params: uniqueList([...(existingRecipe.required_params || []), ...requiredParams]),
     systems: uniqueList([...(existingRecipe.systems || []), ...systems]),
+    workflows: uniqueList([...(existingRecipe.workflows || []), ...workflows]),
     scripts: Array.isArray(existingRecipe.scripts) && existingRecipe.scripts.length > 0
       ? existingRecipe.scripts
       : scripts,
@@ -471,6 +480,9 @@ ${mergedRecipe.runner ? `- Type: \`${mergedRecipe.runner.type}\`
 
 ## Skills
 ${mergedRecipe.skills.length > 0 ? mergedRecipe.skills.map((skill) => `- \`${skill}\``).join("\n") : "- Add related skills here"}
+
+## Workflows
+${mergedRecipe.workflows.length > 0 ? mergedRecipe.workflows.map((workflow) => `- \`${workflow}\``).join("\n") : "- None recorded yet"}
 `);
     actions.push(`created:${paths.readmePath}`);
   }
@@ -516,6 +528,7 @@ Optional repeatable flags:
   --required-param <name>
   --skill <name>
   --system <name>
+  --workflow <path>
   --script <path::purpose>
   --runner-bin <bin>
   --runner-arg <token>
@@ -579,6 +592,7 @@ const payload = {
     requiredParams: scaffold.requiredParams,
     skills: scaffold.skills,
     systems: scaffold.systems,
+    workflows: scaffold.workflows,
     scripts: scaffold.scripts,
     route: scaffold.route,
   },

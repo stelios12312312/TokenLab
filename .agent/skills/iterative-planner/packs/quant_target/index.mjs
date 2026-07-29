@@ -6,7 +6,8 @@
 // checks whether the target, label, prediction horizon, and odds snapshot
 // support the claim being made.
 
-import { makeConstraint, makeFinding, SEVERITY } from "../../scripts/lib/audit_types.mjs";
+import { makeConstraint, SEVERITY } from "../../scripts/lib/audit_types.mjs";
+import { formatPhaseGuidance, normalizePackFinding } from "../../scripts/lib/auditor_pack_engine.mjs";
 
 const RULE_DEFS = [
   {
@@ -433,8 +434,7 @@ const quantTargetPack = {
         "Block CLV-based claims while entry/reference/book/timestamp provenance remains unrouted.",
       ],
     };
-    const lines = guidance[phase];
-    return lines ? lines.map((line, index) => `${index + 1}. ${line}`).join("\n") : null;
+    return formatPhaseGuidance(guidance, phase);
   },
 
   getPlanConstraints(context) {
@@ -522,24 +522,24 @@ const quantTargetPack = {
   },
 
   normalizeFinding(raw) {
-    const rule = RULE_DEFS.find((entry) => entry.id === raw.ruleId) || {};
-    return makeFinding({
-      id: raw.ruleId || "QT-UNKNOWN",
-      role: "quant_target",
-      severity: raw.severity || SEVERITY.HIGH,
-      category: raw.ruleId === "QT-003" ? "market_microstructure" : "target_semantics",
-      story_refs: raw.story_refs || [],
-      evidence: raw.detail || `${raw.ruleId || "QT"} target-semantics finding`,
-      recommendation: raw.recommendation || rule.remediation || "Add the missing quant target semantics to the plan.",
-      meta: {
+    return normalizePackFinding(raw, undefined, {
+      packId: "quant_target",
+      rules: RULE_DEFS,
+      defaultSeverity: SEVERITY.HIGH,
+      id: (finding) => finding.ruleId || "QT-UNKNOWN",
+      category: (finding) => finding.ruleId === "QT-003" ? "market_microstructure" : "target_semantics",
+      storyRefs: (finding) => finding.story_refs || [],
+      fallbackEvidence: (finding) => finding.detail || `${finding.ruleId || "QT"} target-semantics finding`,
+      fallbackRecommendation: "Add the missing quant target semantics to the plan.",
+      meta: (finding, _context, rule) => ({
         quant_target: {
-          rule_id: raw.ruleId,
-          missing_target_groups: raw.missing_target_groups || [],
-          missing_odds_groups: raw.missing_odds_groups || [],
-          missing_clv_provenance_groups: raw.missing_clv_provenance_groups || [],
+          rule_id: finding.ruleId,
+          missing_target_groups: finding.missing_target_groups || [],
+          missing_odds_groups: finding.missing_odds_groups || [],
+          missing_clv_provenance_groups: finding.missing_clv_provenance_groups || [],
           false_positive: rule.false_positive,
         },
-      },
+      }),
     });
   },
 };

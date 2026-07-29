@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "profiles": {
+    "core-release": {
+      "description": "Required, deterministic planner-core functional proof for a release candidate.",
+      "selection_rules": [
+        {
+          "test_class": "functional_proof_test",
+          "surface": "planner_core"
+        }
+      ],
+      "must_include_suite_ids": [
+        "planner-core-coverage-ratchet",
+        "clean-checkout-conformance",
+        "ontology-invariants",
+        "program-manager-tests",
+        "ripple-check",
+        "migration-bootstrap",
+        "cli-determinism",
+        "doc-contract-multi-ide",
+        "ive-conformance-runner-meta",
+        "planner-shell-wrapper-hooks"
+      ],
+      "exclusions": [
+        {
+          "suite_id": "findings-triage-intake",
+          "reason": "The findings-to-intake surface remains future work and is not part of the stable planner-core release contract.",
+          "owner": "plans/programs/findings-to-intake/program_packet.json",
+          "review_by": "2026-10-01"
+        }
+      ]
+    }
+  }
+}

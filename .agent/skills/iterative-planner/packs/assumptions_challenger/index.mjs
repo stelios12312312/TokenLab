@@ -14,15 +14,24 @@
 import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { createSession } from "../../scripts/lib/prolog.mjs";
-import { makeFinding, makeConstraint, SEVERITY } from "../../scripts/lib/audit_types.mjs";
+import { makeConstraint } from "../../scripts/lib/audit_types.mjs";
 import { sanitizeAtom as sanitize } from "../../scripts/lib/sanitize.mjs";
-import { downgradeForShape as shapeAwareSeverity } from "../../scripts/lib/pack_severity.mjs";
+import {
+  assertStoryFacts,
+  formatPhaseGuidance,
+  normalizePackFinding,
+  runPrologPackAudit,
+} from "../../scripts/lib/auditor_pack_engine.mjs";
 import { parseAnnotations, walkDir, toPrologFacts } from "../../scripts/annotation_parser.mjs";
+import {
+  compileVerificationStatusFacts,
+  normalizeVerificationStatus,
+} from "../../scripts/lib/verification_status_vocabulary.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = dirname(__filename);
 const RULES_FILE = join(__dirname, "rules.pl");
+const VERIFICATION_STATUS_RULES_FILE = join(__dirname, "..", "..", "prolog", "verification_statuses.pl");
 
 // ---------------------------------------------------------------------------
 // Domain keywords — signals this pack is relevant
@@ -87,6 +96,14 @@ const RULE_DEFS = [
     engine: "prolog",
   },
 ];
+
+const EVIDENCE_TEMPLATES = {
+  "AC-001": (s, d) => `Probability model ${s} has no calibration proof (Brier score, reliability diagram)`,
+  "AC-002": (s, d) => `Model ${s} is tagged for live deployment but has no edge proof over baseline`,
+  "AC-003": (s, d) => `Success criterion ${s} has no complete evidence chain (story->code->test->validation)`,
+  "AC-004": (s, d) => `HIGH story in output-critical domain: ${d} — no validation artifact proves output quality`,
+  "AC-005": (s, d) => `Subject ${s} produced zero activity but passed validation`,
+};
 
 // ---------------------------------------------------------------------------
 // Detect models and their evidence from project files
@@ -194,210 +211,110 @@ const assumptionsChallengerPack = {
   },
 
   async audit(context) {
-    const session = createSession();
-    const { cwd, storyRegistry } = context;
+    return runPrologPackAudit(context, {
+      packId: this.id,
+      rulesFile: RULES_FILE,
+      query: "assumptions_challenger_violation(RuleId, Subject, Detail, Severity)",
+      defaultRuleId: "AC-???",
+      defaultSeverity: "HIGH",
+      collectFacts: (ctx, session) => {
+        const { cwd, storyRegistry } = ctx;
+        session.consultFile(VERIFICATION_STATUS_RULES_FILE);
+        session.consult(compileVerificationStatusFacts());
+        assertStoryFacts(session, storyRegistry, {
+          sanitize,
+          include: ["tags", "code_refs", "test_refs", "validation_refs"],
+        });
 
-    // Re-assert base story facts
-    if (storyRegistry && Array.isArray(storyRegistry.stories)) {
-      for (const s of storyRegistry.stories) {
-        if (!s.id) continue;
-        const id = sanitize(s.id);
-        session.consult(`story(${id}, ${sanitize(s.title || "untitled")}, ${sanitize(s.priority || "medium")}, ${sanitize(s.status || "unknown")}).`);
-        if (Array.isArray(s.tags)) {
-          for (const t of s.tags) session.consult(`story_tag(${id}, ${sanitize(t)}).`);
-        }
-        if (Array.isArray(s.code_refs)) {
-          for (const c of s.code_refs) session.consult(`code_ref(${id}, ${sanitize(c)}).`);
-        }
-        if (Array.isArray(s.test_refs)) {
-          for (const t of s.test_refs) session.consult(`test_ref(${id}, ${sanitize(t)}).`);
-        }
-        if (Array.isArray(s.validation_refs)) {
-          for (const v of s.validation_refs) session.consult(`validation_ref(${id}, ${sanitize(v)}).`);
-        }
-      }
-    }
-
-    // Load @planner: annotations as deterministic facts
-    try {
-      const sourceFiles = walkDir(cwd, cwd);
-      const allAnnotations = [];
-      for (const f of sourceFiles) {
-        allAnnotations.push(...parseAnnotations(f, cwd));
-      }
-      const prologFacts = toPrologFacts(allAnnotations);
-      if (prologFacts) {
-        session.consult(prologFacts);
-      }
-    } catch (e) {
-      if (process.env.DEBUG) console.error(`[${this.id}] Annotation parse error: ${e.message}`);
-    }
-
-    // Detect and assert model facts
-    const models = detectModels(cwd, storyRegistry);
-    for (const m of models) {
-      const name = sanitize(m.model_name || m.name || "unknown_model");
-      const outputType = sanitize(m.output_type || "unknown");
-      session.consult(`model(${name}, ${outputType}).`);
-
-      if (m.used_for_decisions) session.consult(`model_used_for_decisions(${name}).`);
-      if (m.live_deployment) session.consult(`model_tag(${name}, live_deployment).`);
-      if (m.has_calibration) session.consult(`calibration_artifact(${name}, 'detected').`);
-      if (m.has_edge) session.consult(`edge_artifact(${name}, 'detected').`);
-
-      // AC-005: Assert result/validation_status from model metadata
-      if (m.activity_count !== undefined) {
-        session.consult(`result(${name}, activity_count, ${Number(m.activity_count) || 0}).`);
-      }
-      if (m.validation_status) {
-        session.consult(`validation_status(${name}, ${sanitize(m.validation_status)}).`);
-      }
-    }
-
-    // AC-005: Scan for result files that may contain activity counts
-    const resultFiles = [
-      "results.json", "model_results.json", "backtest_results.json",
-      "reports/results.json", ".agent/results.json",
-    ];
-    for (const f of resultFiles) {
-      const fullPath = join(cwd, f);
-      if (existsSync(fullPath)) {
         try {
-          const data = JSON.parse(readFileSync(fullPath, "utf-8"));
-          const subjects = Array.isArray(data) ? data : (data.results || data.strategies || [data]);
-          for (const entry of subjects) {
-            if (!entry.name && !entry.id) continue;
-            const subjName = sanitize(entry.name || entry.id);
-            if (entry.trade_count !== undefined || entry.activity_count !== undefined || entry.prediction_count !== undefined) {
-              const count = Number(entry.trade_count ?? entry.activity_count ?? entry.prediction_count ?? 0);
-              session.consult(`result(${subjName}, activity_count, ${count}).`);
-            }
-            if (entry.validation_status || entry.passed !== undefined) {
-              const status = entry.validation_status || (entry.passed ? "passed" : "failed");
-              session.consult(`validation_status(${subjName}, ${sanitize(status)}).`);
-            }
+          const sourceFiles = walkDir(cwd, cwd);
+          const allAnnotations = [];
+          for (const f of sourceFiles) allAnnotations.push(...parseAnnotations(f, cwd));
+          const prologFacts = toPrologFacts(allAnnotations);
+          if (prologFacts) session.consult(prologFacts);
+        } catch (e) {
+          if (process.env.DEBUG) console.error(`[${this.id}] Annotation parse error: ${e.message}`);
+        }
+
+        const models = detectModels(cwd, storyRegistry);
+        for (const m of models) {
+          const name = sanitize(m.model_name || m.name || "unknown_model");
+          const outputType = sanitize(m.output_type || "unknown");
+          session.consult(`model(${name}, ${outputType}).`);
+          if (m.used_for_decisions) session.consult(`model_used_for_decisions(${name}).`);
+          if (m.live_deployment) session.consult(`model_tag(${name}, live_deployment).`);
+          if (m.has_calibration) session.consult(`calibration_artifact(${name}, 'detected').`);
+          if (m.has_edge) session.consult(`edge_artifact(${name}, 'detected').`);
+          if (m.activity_count !== undefined) session.consult(`result(${name}, activity_count, ${Number(m.activity_count) || 0}).`);
+          if (m.validation_status) {
+            const status = normalizeVerificationStatus(m.validation_status, "execution");
+            session.consult(`validation_status(${name}, ${sanitize(status.valid ? status.canonical : "unknown")}).`);
           }
-        } catch { /* skip malformed */ }
-      }
-    }
+        }
 
-    // Assert success criteria from plan if available
-    if (context.planFiles && context.planFiles.plan) {
-      const planContent = context.planFiles.plan;
-      const criteriaMatch = planContent.match(/##\s*Success\s*Criteria[\s\S]*?(?=##|$)/i);
-      if (criteriaMatch) {
-        const lines = criteriaMatch[0].split("\n").filter(l => /^[-*]\s/.test(l.trim()));
-        for (let i = 0; i < lines.length; i++) {
-          const criterionId = sanitize(`sc_${i + 1}`);
-          session.consult(`success_criterion(${criterionId}).`);
+        const resultFiles = [
+          "results.json", "model_results.json", "backtest_results.json",
+          "reports/results.json", ".agent/results.json",
+        ];
+        for (const f of resultFiles) {
+          const fullPath = join(cwd, f);
+          if (!existsSync(fullPath)) continue;
+          try {
+            const data = JSON.parse(readFileSync(fullPath, "utf-8"));
+            const subjects = Array.isArray(data) ? data : (data.results || data.strategies || [data]);
+            for (const entry of subjects) {
+              if (!entry.name && !entry.id) continue;
+              const subjName = sanitize(entry.name || entry.id);
+              if (entry.trade_count !== undefined || entry.activity_count !== undefined || entry.prediction_count !== undefined) {
+                const count = Number(entry.trade_count ?? entry.activity_count ?? entry.prediction_count ?? 0);
+                session.consult(`result(${subjName}, activity_count, ${count}).`);
+              }
+              if (entry.validation_status || entry.passed !== undefined) {
+                const authoredStatus = entry.validation_status || (entry.passed ? "passed" : "failed");
+                const status = normalizeVerificationStatus(authoredStatus, "execution");
+                session.consult(`validation_status(${subjName}, ${sanitize(status.valid ? status.canonical : "unknown")}).`);
+              }
+            }
+          } catch { /* skip malformed */ }
+        }
 
-          // AC-003 needs criterion_story/2 to build evidence chains.
-          // Link criteria to stories that reference them via @planner:proves
-          // or that share keywords with the criterion text.
-          const criterionText = lines[i].replace(/^[-*]\s*/, "").toLowerCase();
-          if (storyRegistry && Array.isArray(storyRegistry.stories)) {
-            for (const s of storyRegistry.stories) {
-              if (!s.id) continue;
-              const storyId = sanitize(s.id);
-              // Link if story title overlaps with criterion keywords (3+ char words)
-              const storyTitle = (s.title || "").toLowerCase();
-              const keywords = criterionText.split(/\s+/).filter(w => w.length > 3);
-              const matched = keywords.some(kw => storyTitle.includes(kw));
-              if (matched) {
-                session.consult(`criterion_story(${criterionId}, ${storyId}).`);
+        if (ctx.planFiles && ctx.planFiles.plan) {
+          const criteriaMatch = ctx.planFiles.plan.match(/##\s*Success\s*Criteria[\s\S]*?(?=##|$)/i);
+          if (criteriaMatch) {
+            const lines = criteriaMatch[0].split("\n").filter(l => /^[-*]\s/.test(l.trim()));
+            for (let i = 0; i < lines.length; i++) {
+              const criterionId = sanitize(`sc_${i + 1}`);
+              session.consult(`success_criterion(${criterionId}).`);
+              const criterionText = lines[i].replace(/^[-*]\s*/, "").toLowerCase();
+              if (storyRegistry && Array.isArray(storyRegistry.stories)) {
+                for (const s of storyRegistry.stories) {
+                  if (!s.id) continue;
+                  const storyTitle = (s.title || "").toLowerCase();
+                  const keywords = criterionText.split(/\s+/).filter(w => w.length > 3);
+                  if (keywords.some(kw => storyTitle.includes(kw))) {
+                    session.consult(`criterion_story(${criterionId}, ${sanitize(s.id)}).`);
+                  }
+                }
               }
             }
           }
         }
-      }
-    }
-
-    // Load Prolog rules
-    let rulesText;
-    try {
-      rulesText = readFileSync(RULES_FILE, "utf-8");
-    } catch (e) {
-      return [{ _error: `Could not load ${this.id} rules.pl: ${e.message}` }];
-    }
-
-    try {
-      session.consult(rulesText);
-    } catch (e) {
-      return [{ _error: `Failed to load ${this.id} Prolog rules: ${e.message}` }];
-    }
-
-    // Query violations
-    const rawFindings = [];
-    try {
-      for (const ans of session.query("assumptions_challenger_violation(RuleId, Subject, Detail, Severity)")) {
-        rawFindings.push({
-          ruleId:   String(ans.RuleId   || "AC-???"),
-          subject:  String(ans.Subject  || "project"),
-          detail:   String(ans.Detail   || ""),
-          severity: String(ans.Severity || "HIGH"),
-        });
-      }
-    } catch (e) {
-      if (process.env.DEBUG) console.error(`[${this.id}] Prolog query error: ${e.message}`);
-    }
-
-    return rawFindings;
+      },
+    });
   },
 
   normalizeFinding(raw, context) {
-    if (raw._error) {
-      return makeFinding({
-        id:             `${this.id.toUpperCase()}-ERR`,
-        role:           this.id,
-        severity:       SEVERITY.MEDIUM,
-        category:       "pack_error",
-        story_refs:     [],
-        evidence:       raw._error,
-        recommendation: `Check that packs/${this.id}/rules.pl is present and valid Prolog.`,
-      });
-    }
-
-    const rule = RULE_DEFS.find(r => r.id === raw.ruleId) || {};
-    const isStoryRef = raw.subject !== "project" && raw.subject !== "unknown";
-    const subjectSlug = String(raw.subject ?? "unknown").replace(/\W/g, "_");
-
-    // v7.4.2: shape-conditional severity. AC-001 (calibration proof for
-    // probability model) was firing CRITICAL on refactor plans that didn't
-    // change probability output. AC-004 (HIGH output-critical story without
-    // validation_ref) was firing on docs plans adding paragraphs to model
-    // documentation. AC-002/AC-003/AC-005 (real edge / evidence chain /
-    // dead-output bugs) stay CRITICAL across all shapes.
-    const severity = shapeAwareSeverity({
-      ruleId: raw.ruleId,
-      defaultSeverity: raw.severity || SEVERITY.HIGH,
-      planShape: context?.planShape,
-      downgrades: {
+    return normalizePackFinding(raw, context, {
+      packId: this.id,
+      rules: RULE_DEFS,
+      defaultSeverity: "HIGH",
+      category: "output_trustworthiness",
+      severityDowngrades: {
         "AC-001": ["refactor", "docs"],
         "AC-004": ["docs", "integration"],
       },
-    });
-
-    // Build evidence message (Prolog returns subject/detail, JS composes message)
-    const EVIDENCE_TEMPLATES = {
-      "AC-001": (s, d) => `Probability model ${s} has no calibration proof (Brier score, reliability diagram)`,
-      "AC-002": (s, d) => `Model ${s} is tagged for live deployment but has no edge proof over baseline`,
-      "AC-003": (s, d) => `Success criterion ${s} has no complete evidence chain (story->code->test->validation)`,
-      "AC-004": (s, d) => `HIGH story in output-critical domain: ${d} — no validation artifact proves output quality`,
-      "AC-005": (s, d) => `Subject ${s} produced zero activity but passed validation`,
-    };
-    const evidenceFn = EVIDENCE_TEMPLATES[raw.ruleId];
-    const evidence = evidenceFn
-      ? evidenceFn(raw.subject, raw.detail)
-      : `${raw.ruleId} violation for ${raw.subject}`;
-
-    return makeFinding({
-      id:             `${raw.ruleId}-${subjectSlug}`,
-      role:           this.id,
-      severity,
-      category:       "output_trustworthiness",
-      story_refs:     isStoryRef ? [raw.subject] : [],
-      evidence,
-      recommendation: rule.remediation || "Provide evidence that the output is trustworthy, not just that the code is correct.",
+      evidenceTemplates: EVIDENCE_TEMPLATES,
+      fallbackRecommendation: "Provide evidence that the output is trustworthy, not just that the code is correct.",
     });
   },
 
@@ -430,9 +347,7 @@ const assumptionsChallengerPack = {
         "Ask: 'What assumptions are we making that we haven't validated?'",
       ],
     };
-    const lines = guidance[phase];
-    if (!lines || lines.length === 0) return null;
-    return lines.map((l, i) => `${i + 1}. ${l}`).join("\n");
+    return formatPhaseGuidance(guidance, phase);
   },
 
   getPlanConstraints(context) {

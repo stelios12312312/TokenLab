@@ -115,9 +115,7 @@
             "thrashing_criterion_overbudget",
             "thrashing_session_overbudget",
             "thrashing_reflect_overdue",
-            "thrashing_plan_not_reread",
-            "thrashing_spot_check_severe",
-            "thrashing_spot_check_persistent"
+            "thrashing_plan_not_reread"
           ],
           "properties": {
             "thrashing_repeat_edit": {
@@ -554,63 +552,6 @@
                 },
                 "warn_before_block": {
                   "type": "boolean"
-                }
-              },
-              "additionalProperties": false
-            },
-            "thrashing_spot_check_severe": {
-              "type": "object",
-              "required": [
-                "enabled",
-                "severity",
-                "high_finding_count",
-                "lookback_tool_calls"
-              ],
-              "properties": {
-                "enabled": {
-                  "type": "boolean"
-                },
-                "severity": {
-                  "enum": [
-                    "low",
-                    "medium",
-                    "high",
-                    "critical"
-                  ]
-                },
-                "high_finding_count": {
-                  "type": "integer",
-                  "minimum": 1
-                },
-                "lookback_tool_calls": {
-                  "type": "integer",
-                  "minimum": 1
-                }
-              },
-              "additionalProperties": false
-            },
-            "thrashing_spot_check_persistent": {
-              "type": "object",
-              "required": [
-                "enabled",
-                "severity",
-                "recurrence_count"
-              ],
-              "properties": {
-                "enabled": {
-                  "type": "boolean"
-                },
-                "severity": {
-                  "enum": [
-                    "low",
-                    "medium",
-                    "high",
-                    "critical"
-                  ]
-                },
-                "recurrence_count": {
-                  "type": "integer",
-                  "minimum": 1
                 }
               },
               "additionalProperties": false

@@ -1,0 +1,30 @@
+[
+  {
+    "id": "APPDEV-CON-001",
+    "title": "Async state coverage",
+    "severity": "required",
+    "polarity": "guard",
+    "summary": "Any user-visible async/API flow must account for loading, error, and empty states or record a scoped waiver."
+  },
+  {
+    "id": "APPDEV-CON-002",
+    "title": "Single env owner",
+    "severity": "required",
+    "polarity": "guard",
+    "summary": "New configuration/env variables should be read from one owner module and passed inward."
+  },
+  {
+    "id": "APPDEV-CON-003",
+    "title": "Webhook delivery contract",
+    "severity": "required",
+    "polarity": "guard",
+    "summary": "Webhook handlers should prove signature/secret verification plus idempotency or retry semantics."
+  },
+  {
+    "id": "APPDEV-CON-004",
+    "title": "Migration journey proof",
+    "severity": "required",
+    "polarity": "guard",
+    "summary": "Migration/backfill/import paths should include a dry-run, rollback, checkpoint, or before/after journey test."
+  }
+]

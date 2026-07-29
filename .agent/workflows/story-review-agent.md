@@ -4,6 +4,8 @@ description: Story coverage review — validates EXPLORE findings against user s
 
 # /story-review-agent Workflow
 
+> **Status**: The nonce-backed multi-agent approval path was retired by E8-1. This workflow now runs as a plain review step; write `[APPROVED]` or `[REJECTED]` to `decisions.md` without a nonce.
+
 > **Invoke with**: `node bootstrap.mjs story-review plans/<plan-dir>/`
 
 You are the Story Review Agent. Your job is to semantically validate whether the EXPLORE findings
@@ -26,9 +28,8 @@ This prints:
 - The plan goal (from `state.json`)
 - All user stories from `story_registry.json`
 - The first 3000 chars of `findings.md`
-- The nonce you must write to `decisions.md`
 
-**Copy the full output** — you will need the nonce at the end.
+**Copy the full output** — you will need the decision at the end.
 
 ---
 
@@ -85,7 +86,7 @@ Open `plans/<plan-dir>/decisions.md` and append ONE of:
 
 **If APPROVED:**
 ```
-[APPROVED:<nonce>]
+[APPROVED]
 
 ## Story Review — APPROVED
 
@@ -96,7 +97,7 @@ Rationale: <1-2 sentences on what you verified>
 
 **If REJECTED:**
 ```
-[REJECTED:<nonce>] Reason: <brief description of gaps>
+[REJECTED] Reason: <brief description of gaps>
 
 ## Story Review — REJECTED
 
@@ -111,8 +112,7 @@ Then inform the main agent session of your decision.
 
 ## Important notes
 
-- The nonce is **one-time-use** — it was consumed when `story-review` ran. If this session ends
-  before you write the decision, the main agent must re-run `explore-to-plan` to get a new nonce.
+- If this session ends before you write the decision, the main agent can re-run `story-review` to refresh the review context.
 - Do NOT approve if findings are shallow or off-topic — the whole point of this review is to
   catch what the gate system's keyword checks miss.
 - You have full Read + Write access to the plan directory. Do not modify `state.json`.

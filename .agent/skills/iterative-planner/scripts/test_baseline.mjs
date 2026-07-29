@@ -2,6 +2,7 @@
 // test_baseline.mjs — Capture test suite baseline at plan start, verify delta at close.
 //
 // Usage:
+//   node test_baseline.mjs --self-test [basic|final-summary]              Run this script's local smoke check
 //   node test_baseline.mjs capture "<test-command>" [--plan <plan-dir>]   Run tests, save count to baseline.json
 //   node test_baseline.mjs verify "<test-command>" [--plan <plan-dir>]    Run tests, compare to baseline
 //   node test_baseline.mjs show [--plan <plan-dir>]                       Display current baseline
@@ -19,10 +20,33 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join } from "path";
 import { spawnSync } from "child_process";
+import { captureEnvValues, restoreEnvValues } from "./lib/env_scope.mjs";
 import { getPaths, resolvePlanTarget } from "./lib/plan_utils.mjs";
+import { normalizeVerificationStatus } from "./lib/verification_status_vocabulary.mjs";
+import {
+  assertSelfTest,
+  cleanupSelfTestTemp,
+  makeSelfTestTemp,
+  printSelfTestPass,
+  runNodeScript,
+  seedActivePlan,
+  selfPath,
+} from "./lib/script_self_test.mjs";
 
 const cwd = process.cwd();
 const { plansDir } = getPaths(cwd);
+const TEST_RUN_TIMEOUT_MS = 600000;
+const TRANSITION_SCOPE_ENV_KEYS = Object.freeze([
+  "_PLANNER_GATE_TRANSITION",
+  "_PLANNER_DRY_RUN",
+  "_PLANNER_PLAN_TARGET",
+]);
+
+function isolatedTestCommandEnv(baseEnv = process.env) {
+  const env = { ...(baseEnv || {}) };
+  for (const key of TRANSITION_SCOPE_ENV_KEYS) delete env[key];
+  return env;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,8 +58,18 @@ function getPlanContext(planOverride = null) {
     console.error("ERROR: No target plan. Create one with bootstrap.mjs first or pass --plan.");
     process.exit(1);
   }
-  process.env._PLANNER_PLAN_TARGET = target.planDirName;
   return target;
+}
+
+function withPlanEnv(planOverride, fn) {
+  const target = getPlanContext(planOverride);
+  const plannerEnvScope = captureEnvValues(["_PLANNER_PLAN_TARGET"]);
+  process.env._PLANNER_PLAN_TARGET = target.planDirName;
+  try {
+    return fn(target);
+  } finally {
+    restoreEnvValues(plannerEnvScope);
+  }
 }
 
 function lastCaptureInt(output, pattern) {
@@ -149,13 +183,22 @@ function parseGoTest(output) {
 }
 
 function parseGeneric(output) {
-  // Fallback: count lines with common pass/fail markers
+  // Generic output is proof-bearing only when the producer emits a bounded
+  // status field: an exact status line, `[status] detail`, or `status: detail`.
+  // Prose words, check marks, and quoted output are not verification results.
   const lines = output.split("\n");
   let passed = 0;
   let failed = 0;
   for (const line of lines) {
-    if (/\bPASS\b/i.test(line) || /\bok\b/i.test(line) || /✓/.test(line) || /✅/.test(line)) passed++;
-    if (/\bFAIL\b/i.test(line) || /✗/.test(line) || /❌/.test(line) || /\bERROR\b/i.test(line)) failed++;
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const bracketed = trimmed.match(/^\[([^\]]+)\](?:\s|$)/);
+    const labelled = trimmed.match(/^([^:]{1,32}):(?:\s|$)/);
+    const token = bracketed?.[1] ?? labelled?.[1] ?? trimmed;
+    const normalized = normalizeVerificationStatus(token, "execution");
+    if (!normalized.valid) continue;
+    if (normalized.kind === "pass") passed += 1;
+    if (normalized.kind === "fail") failed += 1;
   }
   return {
     format: "generic",
@@ -244,19 +287,27 @@ function validateTestCommand(cmd) {
 }
 
 function cmdCapture(testCommand, planOverride = null) {
-  const { planDir } = getPlanContext(planOverride);
+  return withPlanEnv(planOverride, ({ planDir }) => {
   const baselinePath = join(planDir, "baseline.json");
 
   // RT7-H1: Validate runner before execution
   validateTestCommand(testCommand);
 
   console.log(`Running: ${testCommand}`);
+  console.log(`Timeout: ${TEST_RUN_TIMEOUT_MS}ms`);
   let output = "";
   let exitCode = 0;
 
   // SECURITY NOTE: testCommand is operator-supplied (CLI arg), not from untrusted files.
   // shell:true is required because test commands legitimately use shell features (pipes, &&, etc.).
-  const captureProc = spawnSync(testCommand, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 300000, shell: true });
+  const captureProc = spawnSync(testCommand, {
+    cwd,
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "pipe"],
+    timeout: TEST_RUN_TIMEOUT_MS,
+    shell: true,
+    env: isolatedTestCommandEnv(),
+  });
   output = (captureProc.stdout || "") + "\n" + (captureProc.stderr || "");
   exitCode = captureProc.status ?? 1;
 
@@ -294,10 +345,11 @@ function cmdCapture(testCommand, planOverride = null) {
   console.log(`  Total:   ${results.total}`);
   console.log(`  Saved:   ${baselinePath}`);
   console.log();
+  });
 }
 
 function cmdVerify(testCommand, planOverride = null) {
-  const { planDir } = getPlanContext(planOverride);
+  return withPlanEnv(planOverride, ({ planDir }) => {
   const baselinePath = join(planDir, "baseline.json");
 
   if (!existsSync(baselinePath)) {
@@ -311,11 +363,19 @@ function cmdVerify(testCommand, planOverride = null) {
   validateTestCommand(cmd);
 
   console.log(`Running: ${cmd}`);
+  console.log(`Timeout: ${TEST_RUN_TIMEOUT_MS}ms`);
   let output = "";
   let exitCode = 0;
 
   // SECURITY NOTE: cmd is operator-supplied (CLI arg or saved baseline), not from untrusted files.
-  const verifyProc = spawnSync(cmd, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], timeout: 300000, shell: true });
+  const verifyProc = spawnSync(cmd, {
+    cwd,
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "pipe"],
+    timeout: TEST_RUN_TIMEOUT_MS,
+    shell: true,
+    env: isolatedTestCommandEnv(),
+  });
   output = (verifyProc.stdout || "") + "\n" + (verifyProc.stderr || "");
   exitCode = verifyProc.status ?? 1;
 
@@ -384,10 +444,11 @@ function cmdVerify(testCommand, planOverride = null) {
     console.log(`  ══ RESULT: ✅ TEST BASELINE VERIFIED ══`);
     process.exit(0);
   }
+  });
 }
 
 function cmdShow(planOverride = null) {
-  const { planDir } = getPlanContext(planOverride);
+  return withPlanEnv(planOverride, ({ planDir }) => {
   const baselinePath = join(planDir, "baseline.json");
 
   if (!existsSync(baselinePath)) {
@@ -402,6 +463,87 @@ function cmdShow(planOverride = null) {
   console.log(`Passed: ${baseline.results.passed}`);
   console.log(`Failed: ${baseline.results.failed}`);
   console.log(`Total: ${baseline.results.total}`);
+  });
+}
+
+function runBasicSelfTest(scriptPath) {
+  const tmp = makeSelfTestTemp("test-baseline-basic");
+  try {
+    const planDir = seedActivePlan(tmp, "plan_baseline_self_test");
+    const testCommand = `node -e "console.log('1 passed in 0.01s')"`;
+
+    const capture = runNodeScript([scriptPath, "capture", testCommand], tmp);
+    assertSelfTest(capture.ok, "test_baseline capture exits cleanly", capture.stderr || capture.stdout);
+    assertSelfTest(capture.stdout.includes("Timeout: 600000ms"), "test_baseline exposes the ten-minute full-battery timeout", capture.stdout);
+    assertSelfTest(existsSync(join(planDir, "baseline.json")), "test_baseline capture writes baseline.json");
+
+    const show = runNodeScript([scriptPath, "show"], tmp);
+    assertSelfTest(show.ok, "test_baseline show exits cleanly", show.stderr || show.stdout);
+    assertSelfTest(show.stdout.includes("Format: pytest"), "test_baseline show reports the parsed format", show.stdout);
+
+    const verify = runNodeScript([scriptPath, "verify", testCommand], tmp);
+    assertSelfTest(verify.ok, "test_baseline verify exits cleanly", verify.stderr || verify.stdout);
+    assertSelfTest(verify.stdout.includes("Timeout: 600000ms"), "test_baseline verify uses the ten-minute full-battery timeout", verify.stdout);
+    assertSelfTest(verify.stdout.includes("TEST BASELINE VERIFIED"), "test_baseline verify reports a successful baseline check", verify.stdout);
+
+    const envProbePath = join(tmp, "transition_env_probe.mjs");
+    writeFileSync(envProbePath, `
+const keys = ["_PLANNER_GATE_TRANSITION", "_PLANNER_DRY_RUN", "_PLANNER_PLAN_TARGET"];
+const leaked = keys.filter((key) => Object.prototype.hasOwnProperty.call(process.env, key));
+console.log(leaked.length === 0 ? "1 passed in 0.01s" : "1 failed in 0.01s");
+process.exit(leaked.length === 0 ? 0 : 1);
+`);
+    const envProbe = runNodeScript(
+      [scriptPath, "verify", `node "${envProbePath}"`],
+      tmp,
+      {
+        _PLANNER_GATE_TRANSITION: "1",
+        _PLANNER_DRY_RUN: "1",
+        _PLANNER_PLAN_TARGET: "plan_baseline_self_test",
+      },
+    );
+    assertSelfTest(envProbe.ok, "test_baseline test commands do not inherit transition-scoped environment", envProbe.stderr || envProbe.stdout);
+
+    printSelfTestPass("test_baseline:basic");
+  } finally {
+    cleanupSelfTestTemp(tmp);
+  }
+}
+
+function runFinalSummarySelfTest(scriptPath) {
+  const tmp = makeSelfTestTemp("test-baseline-final-summary");
+  try {
+    const planDir = seedActivePlan(tmp, "plan_baseline_final_summary_self_test");
+    const runnerPath = join(tmp, "nested_summary.mjs");
+    writeFileSync(runnerPath, `console.log("139 passed, 8 failed in 0.01s");\nconsole.log("147 passed, 0 failed in 0.02s");\n`);
+    const testCommand = `node "${runnerPath}"`;
+
+    const capture = runNodeScript([scriptPath, "capture", testCommand], tmp);
+    assertSelfTest(capture.ok, "test_baseline capture exits cleanly for nested suite summaries", capture.stderr || capture.stdout);
+
+    const baselineJson = JSON.parse(readFileSync(join(planDir, "baseline.json"), "utf-8"));
+    assertSelfTest(baselineJson?.results?.passed === 147, "test_baseline capture prefers the final passed count", JSON.stringify(baselineJson, null, 2));
+    assertSelfTest(baselineJson?.results?.failed === 0, "test_baseline capture prefers the final failed count", JSON.stringify(baselineJson, null, 2));
+
+    const show = runNodeScript([scriptPath, "show"], tmp);
+    assertSelfTest(show.ok, "test_baseline show exits cleanly for nested suite summaries", show.stderr || show.stdout);
+    assertSelfTest(show.stdout.includes("Passed: 147"), "test_baseline show reports the final nested-summary pass count", show.stdout);
+    assertSelfTest(show.stdout.includes("Failed: 0"), "test_baseline show reports the final nested-summary fail count", show.stdout);
+
+    printSelfTestPass("test_baseline:final-summary");
+  } finally {
+    cleanupSelfTestTemp(tmp);
+  }
+}
+
+function runSelfTest(mode = "all") {
+  const scriptPath = selfPath(import.meta.url);
+  if (mode === "all" || mode === "basic") runBasicSelfTest(scriptPath);
+  if (mode === "all" || mode === "final-summary") runFinalSummarySelfTest(scriptPath);
+  if (!["all", "basic", "final-summary"].includes(mode)) {
+    throw new Error(`SELF-TEST FAIL: unknown test_baseline mode ${mode}`);
+  }
+  if (mode === "all") printSelfTestPass("test_baseline");
 }
 
 // ---------------------------------------------------------------------------
@@ -421,6 +563,11 @@ Exit code 0 = verification passed, 1 = failed.`);
 }
 
 const rawArgs = process.argv.slice(2);
+if (rawArgs[0] === "--self-test") {
+  runSelfTest(rawArgs[1] || "all");
+  process.exit(0);
+}
+
 const args = [];
 let planOverride = null;
 for (let i = 0; i < rawArgs.length; i++) {

@@ -65,4 +65,5 @@ ac_output_critical_tag(output_critical).
 %% AC-005: Degenerate output passed validation.
 assumptions_challenger_violation('AC-005', Subject, Subject, 'CRITICAL') :-
     result(Subject, activity_count, 0),
-    validation_status(Subject, passed).
+    validation_status(Subject, Status),
+    verification_status_accepts('execution', Status).

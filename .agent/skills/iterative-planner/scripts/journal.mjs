@@ -22,6 +22,9 @@ function parseArgs(argv = []) {
       promoted_to: [],
       tags: [],
       linked_ids: [],
+      superseded_by: [],
+      source_entries: [],
+      keys: [],
     },
     unknown: [],
   };
@@ -42,10 +45,19 @@ function parseArgs(argv = []) {
     else if (arg === "--summary") args.entry.summary = argv[++index] || "";
     else if (arg === "--actor") args.entry.actor = argv[++index] || "";
     else if (arg === "--ts") args.entry.ts = argv[++index] || "";
+    else if (arg === "--created-at") args.entry.created_at = argv[++index] || "";
+    else if (arg === "--valid-at") args.entry.valid_at = argv[++index] || "";
+    else if (arg === "--invalid-at") args.entry.invalid_at = argv[++index] || "";
+    else if (arg === "--expired-at") args.entry.expired_at = argv[++index] || "";
+    else if (arg === "--project-key") args.entry.project_key = argv[++index] || "";
     else if (arg === "--ref") args.entry.refs.push(argv[++index] || "");
     else if (arg === "--promoted-to") args.entry.promoted_to.push(argv[++index] || "");
     else if (arg === "--tag") args.entry.tags.push(argv[++index] || "");
     else if (arg === "--linked-id") args.entry.linked_ids.push(argv[++index] || "");
+    else if (arg === "--superseded-by") args.entry.superseded_by.push(argv[++index] || "");
+    else if (arg === "--source-entry") args.entry.source_entries.push(argv[++index] || "");
+    else if (arg === "--key") args.entry.keys.push(argv[++index] || "");
+    else if (arg === "--verdict") args.entry.verdict = argv[++index] || "";
     else if (arg === "-h" || arg === "--help") args.command = "help";
     else args.unknown.push(arg);
   }
@@ -56,7 +68,7 @@ function parseArgs(argv = []) {
 
 function usage() {
   return `Usage:
-  node .agent/skills/iterative-planner/scripts/journal.mjs append --type <type> --summary <text> [--topic <topic>] [--ref <ref>] [--promoted-to <ref>] [--tag <tag>] [--json]
+  node .agent/skills/iterative-planner/scripts/journal.mjs append --type <type> --summary <text> [--topic <topic>] [--created-at <iso>] [--valid-at <iso>] [--project-key <key>] [--ref <ref>] [--promoted-to <ref>] [--superseded-by <id>] [--source-entry <id>] [--key <key>] [--verdict <verdict>] [--tag <tag>] [--json]
   node .agent/skills/iterative-planner/scripts/journal.mjs list [--json]
   node .agent/skills/iterative-planner/scripts/journal.mjs facts [--json]
 
@@ -117,6 +129,7 @@ function main(argv = process.argv.slice(2)) {
   const report = run(argv);
   if (args.json) emitJson(report);
   else printText(report);
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Locally built journal-validation report enum is derived from issue collection.
   return report.status === "FAIL" ? 1 : 0;
 }
 

@@ -1,0 +1,349 @@
+{
+  "schema_version": 1,
+  "corpus_id": "autocoder_outcome_real_history_replay",
+  "privacy_contract": {
+    "read_only_harvest": true,
+    "source_excerpt_included": false,
+    "path_policy": "project_relative_only",
+    "private_content_policy": "provenance refs only; no raw transcripts"
+  },
+  "cases": [
+    {
+      "id": "successful_clean_autonomy_close",
+      "case_type": "success",
+      "description": "Successful planner close with explicit autonomous close evidence and no manual intervention.",
+      "source_refs": [
+        {
+          "kind": "plan",
+          "path": "plans/plan_2026-06-22_b7b0c8f62d36b11d/summary.md"
+        },
+        {
+          "kind": "program_packet",
+          "path": "plans/programs/ive-real-episode-autocode-replay/program_packet.json"
+        }
+      ],
+      "proof_source": "executed",
+      "fixture": {
+        "plan_name": "plan_success_clean_autonomy",
+        "state": {
+          "state": "CLOSE",
+          "completion_mode": "autonomous",
+          "transitions": [
+            {
+              "from": "VALIDATE",
+              "to": "CLOSE",
+              "gate_result": "PASS",
+              "failure_codes": []
+            }
+          ],
+          "close_signals": {
+            "proof": {
+              "required": true,
+              "satisfied": true
+            }
+          }
+        },
+        "metrics": {
+          "duration_seconds": 120,
+          "cost_usd": 2,
+          "gate_transitions": [
+            {
+              "gate": "validate-to-close",
+              "retries": 0
+            }
+          ]
+        },
+        "decisions": ""
+      },
+      "expected_metrics": {
+        "category": "right_action",
+        "closed": true,
+        "verified_close": true,
+        "close_evidence": "autonomous",
+        "human_interventions": 0,
+        "retries": 0
+      }
+    },
+    {
+      "id": "ritual_stall_with_manual_recovery",
+      "case_type": "ritual_stall",
+      "description": "Repeated ceremony/hybrid gate friction before eventual close with manual recovery evidence.",
+      "source_refs": [
+        {
+          "kind": "telemetry",
+          "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-PLN-017.jsonl"
+        }
+      ],
+      "proof_source": "executed",
+      "fixture": {
+        "plan_name": "plan_ritual_stall_manual_recovery",
+        "state": {
+          "state": "CLOSE",
+          "fix_attempts": 1,
+          "transitions": [
+            {
+              "from": "PLAN",
+              "to": "PLAN",
+              "gate_result": "FAIL",
+              "failure_codes": [
+                "GATE-EXP-004"
+              ]
+            },
+            {
+              "from": "PLAN",
+              "to": "PLAN",
+              "gate_result": "FAIL",
+              "failure_codes": [
+                "GATE-PLN-017"
+              ]
+            },
+            {
+              "from": "REFLECT",
+              "to": "REFLECT",
+              "gate_result": "FAIL",
+              "failure_codes": [
+                "GATE-REF-004"
+              ]
+            },
+            {
+              "from": "VALIDATE",
+              "to": "CLOSE",
+              "gate_result": "PASS",
+              "failure_codes": []
+            }
+          ],
+          "close_signals": {
+            "proof": {
+              "required": true,
+              "satisfied": true
+            }
+          }
+        },
+        "metrics": {
+          "duration_seconds": 360,
+          "cost_usd": 5,
+          "human_interventions": [
+            "operator approved recovery after repeated gate bounce"
+          ],
+          "gate_transitions": [
+            {
+              "gate": "plan-to-execute",
+              "retries": 3
+            }
+          ],
+          "close_evidence": {
+            "mode": "manual"
+          }
+        },
+        "decisions": "[MANUAL_APPROVAL]\n"
+      },
+      "expected_metrics": {
+        "category": "ritual_stall",
+        "closed": true,
+        "verified_close": true,
+        "close_evidence": "manual",
+        "human_interventions": 2,
+        "retries": 3
+      }
+    },
+    {
+      "id": "false_red_gate_loop_recovered",
+      "case_type": "false_red_gate_loop",
+      "description": "False-red gate loop that is recovered without turning into a ritual stall or clean autonomy claim.",
+      "source_refs": [
+        {
+          "kind": "telemetry",
+          "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-REF-003.jsonl"
+        }
+      ],
+      "proof_source": "inferred",
+      "fixture": {
+        "plan_name": "plan_false_red_loop_recovered",
+        "state": {
+          "state": "CLOSE",
+          "transitions": [
+            {
+              "from": "REFLECT",
+              "to": "REFLECT",
+              "gate_result": "FAIL",
+              "failure_codes": [
+                "GATE-REF-003"
+              ]
+            },
+            {
+              "from": "PLAN",
+              "to": "PLAN",
+              "gate_result": "FAIL",
+              "failure_codes": [
+                "GATE-PLN-016"
+              ]
+            },
+            {
+              "from": "VALIDATE",
+              "to": "CLOSE",
+              "gate_result": "PASS",
+              "failure_codes": []
+            }
+          ],
+          "close_signals": {
+            "proof": {
+              "required": true,
+              "satisfied": true
+            }
+          },
+          "close_evidence": {
+            "mode": "human_assisted"
+          }
+        },
+        "metrics": {
+          "duration_seconds": 240,
+          "cost_usd": 3,
+          "gate_transitions": [
+            {
+              "gate": "reflect-to-validate",
+              "retries": 2
+            }
+          ]
+        },
+        "decisions": ""
+      },
+      "expected_metrics": {
+        "category": "right_action",
+        "closed": true,
+        "verified_close": true,
+        "close_evidence": "manual",
+        "human_interventions": 0,
+        "retries": 2
+      }
+    },
+    {
+      "id": "genuine_blocker_catch",
+      "case_type": "blocker_catch",
+      "description": "A genuine required-proof blocker prevents close instead of becoming a false-green completion.",
+      "source_refs": [
+        {
+          "kind": "telemetry",
+          "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-VAL-012.jsonl"
+        },
+        {
+          "kind": "program_packet",
+          "path": "plans/programs/ive-real-episode-autocode-replay/program_packet.json"
+        }
+      ],
+      "proof_source": "executed",
+      "fixture": {
+        "plan_name": "plan_genuine_blocker_catch",
+        "state": {
+          "state": "VALIDATE",
+          "transitions": [
+            {
+              "from": "VALIDATE",
+              "to": "VALIDATE",
+              "gate_result": "FAIL",
+              "failure_codes": [
+                "GATE-VAL-012"
+              ]
+            }
+          ],
+          "close_signals": {
+            "proof": {
+              "required": true,
+              "satisfied": false
+            }
+          }
+        },
+        "metrics": {
+          "duration_seconds": 180,
+          "cost_usd": 1,
+          "gate_transitions": [
+            {
+              "gate": "validate-to-close",
+              "retries": 1
+            }
+          ]
+        },
+        "decisions": ""
+      },
+      "expected_metrics": {
+        "category": "abandoned",
+        "closed": false,
+        "verified_close": false,
+        "close_evidence": null,
+        "human_interventions": 0,
+        "retries": 1
+      }
+    },
+    {
+      "id": "autonomy_unknown_residual",
+      "case_type": "autonomy_outcome",
+      "description": "Closed plan with insufficient explicit autonomy/manual evidence remains unknown instead of being inferred as clean autonomy.",
+      "source_refs": [
+        {
+          "kind": "plan",
+          "path": "plans/plan_2026-06-22_4e42706663e2f1ff/plan.md"
+        },
+        {
+          "kind": "program_packet",
+          "path": "plans/programs/ive-real-episode-autocode-replay/program_packet.json"
+        }
+      ],
+      "proof_source": "missing",
+      "fixture": {
+        "plan_name": "plan_autonomy_unknown_residual",
+        "state": {
+          "state": "CLOSE",
+          "transitions": [
+            {
+              "from": "VALIDATE",
+              "to": "CLOSE",
+              "gate_result": "PASS",
+              "failure_codes": []
+            }
+          ],
+          "close_signals": {
+            "proof": {
+              "required": true,
+              "satisfied": true
+            }
+          }
+        },
+        "metrics": {
+          "duration_seconds": 90,
+          "cost_usd": 1,
+          "gate_transitions": [
+            {
+              "gate": "validate-to-close",
+              "retries": 0
+            }
+          ]
+        },
+        "decisions": ""
+      },
+      "expected_metrics": {
+        "category": "right_action",
+        "closed": true,
+        "verified_close": true,
+        "close_evidence": "unknown_unrecorded",
+        "human_interventions": 0,
+        "retries": 0
+      }
+    }
+  ],
+  "expected_aggregate": {
+    "total_plans": 5,
+    "closed_plans": 4,
+    "verified_closes": 4,
+    "ritual_stall": 1,
+    "false_green": 0,
+    "clean_autonomy_closes": 1,
+    "unknown_unrecorded_close_evidence": 1,
+    "human_interventions_per_close": 0.5,
+    "retries_per_close": 1.5,
+    "false_green_escape_rate": 0,
+    "clean_autonomy_close_rate": 0.2,
+    "autonomous_close_evidence_rate": 0.25,
+    "manual_close_evidence_rate": 0.5,
+    "mixed_close_evidence_rate": 0,
+    "close_telemetry_unknown_rate": 0.25
+  }
+}

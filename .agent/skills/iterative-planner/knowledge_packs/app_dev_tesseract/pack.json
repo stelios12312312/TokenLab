@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "id": "app_dev_tesseract",
+  "pack": "app_dev_tesseract",
+  "title": "App-Dev Tesseract Family Knowledge Pack",
+  "version": 1,
+  "trust_tier": "bundled",
+  "dependencies": [
+    "software_engineering_methodology",
+    "ux_ui_experience"
+  ],
+  "applies_when": {
+    "file_glob_any": [
+      "tesseract_operator/**/*.py",
+      "assets/*.js",
+      "assets/**/*.js",
+      "src/**/*.js",
+      "src/**/*.jsx",
+      "src/**/*.tsx",
+      "**/*tesseract*.php",
+      "**/*webhook*.py",
+      "**/*webhook*.js"
+    ]
+  },
+  "phase_guidance": {
+    "max_words": 500,
+    "text": "Explore the app as a user journey plus integration boundary, not as scattered files. In PLAN, turn app-dev risk into closed questions: do async fetches expose loading, error, and empty states; is each environment variable read through one owner; do webhooks prove signature, idempotency, and retry behavior; does a migration/backfill path have a dry-run or journey test; and are route declarations wired to handlers with failure responses? In EXECUTE, use deterministic checks first and record repo-specific findings, then add narrow fixtures for any false red or false green. In VALIDATE, run the checker on at least one real app surface and keep findings advisory unless seeded-defect catch behavior regresses."
+  },
+  "provenance": {
+    "writer": "knowledge_pack",
+    "source": "knowledge_pack:app_dev_tesseract@v1"
+  },
+  "entry_files": [
+    "pitfalls.json",
+    "constraints.json"
+  ],
+  "obligation_files": [
+    "obligations.json"
+  ]
+}

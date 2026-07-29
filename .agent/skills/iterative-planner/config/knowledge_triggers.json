@@ -38,6 +38,49 @@
       },
       "apply": { "mode": "inject", "surface": "phase:explore" },
       "provenance": { "source": "operator", "trust_level": "trusted", "created": "2026-06-05" }
+    },
+    {
+      "id": "KT-PLANNER-DOGFOOD-FALSE-GREEN-001",
+      "kind": "obligation",
+      "title": "Planner dogfood incidents require a truth packet first",
+      "summary": "When operator language says the planner failed to use advisor, steward, ontology, invariant verification, user stories, North Star, or other dogfood surfaces, measure the disagreement before normal continuation.",
+      "when": {
+        "plan_terms": [
+          "dogfood",
+          "false green",
+          "false-green",
+          "planner false green",
+          "advisor not used",
+          "advisor being used",
+          "advisor not being used",
+          "steward not used",
+          "ontology not used",
+          "iv not used",
+          "invariant verification not used",
+          "health audit missed",
+          "health audit using gemini missed",
+          "user stories missing",
+          "lack of user stories",
+          "north star missing",
+          "north star not mentioned",
+          "not eating its own dogfood",
+          "not eating own dogfood"
+        ],
+        "minimum_trigger_families": 1
+      },
+      "knowledge": {
+        "directive": "Before normal continuation, run the deterministic planner truth packet (`planner_truth_packet.mjs --json` or equivalent), record structured `planner_truth_packet` evidence, and carry advisor/steward, ontology/IV, story traceability, and North Star findings into the plan.",
+        "prompt_ref": "plans/programs/planner-dogfood-false-green-remediation/program_packet.json",
+        "required_evidence": ["verification_ledger:planner_truth_packet"]
+      },
+      "apply": { "mode": "inject-or-block", "surface": "gate:plan-to-execute" },
+      "provenance": {
+        "source": "operator",
+        "trust_level": "trusted",
+        "created": "2026-06-25",
+        "program": "PGM-PLANNER-DOGFOOD-FALSE-GREEN-REMEDIATION",
+        "ticket": "T-INTAKE-66D12FB7"
+      }
     }
   ]
 }

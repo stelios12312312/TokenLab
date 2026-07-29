@@ -13,7 +13,9 @@ import {
   detectQuantArchetype,
   evaluateAccompliceObligations,
   evaluateResidualScopeGap,
+  pearsonCorrelation,
   renderArchetypeAccomplicePlanSection,
+  studentTPValueTwoTailed,
 } from "../packs/quant/archetype_accomplices.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,6 +25,9 @@ const SKILL_DIR = dirname(TEST_DIR);
 let passed = 0;
 let failed = 0;
 
+const CORRELATION_TOLERANCE = 1e-12;
+const P_VALUE_TOLERANCE = 1e-6;
+
 function assert(condition, label) {
   if (condition) {
     passed++;
@@ -31,6 +36,68 @@ function assert(condition, label) {
     failed++;
     console.log(`  FAIL: ${label}`);
   }
+}
+
+function assertClose(actual, expected, tolerance, label) {
+  assert(Number.isFinite(actual) && Math.abs(actual - expected) <= tolerance, `${label} (${actual} ~= ${expected})`);
+}
+
+function referencePearsonCorrelation(a, b) {
+  const n = Math.min(a.length, b.length);
+  if (n < 2) return null;
+  let sumX = 0;
+  let sumY = 0;
+  let sumXX = 0;
+  let sumYY = 0;
+  let sumXY = 0;
+  for (let index = 0; index < n; index++) {
+    const x = Number(a[index]);
+    const y = Number(b[index]);
+    sumX += x;
+    sumY += y;
+    sumXX += x * x;
+    sumYY += y * y;
+    sumXY += x * y;
+  }
+  const numerator = n * sumXY - sumX * sumY;
+  const xDen = n * sumXX - sumX * sumX;
+  const yDen = n * sumYY - sumY * sumY;
+  if (xDen <= 0 || yDen <= 0) return null;
+  return numerator / Math.sqrt(xDen * yDen);
+}
+
+function referenceGammaHalfInteger(value) {
+  if (Math.abs(value - 0.5) <= 1e-12) return Math.sqrt(Math.PI);
+  if (Math.abs(value - 1) <= 1e-12) return 1;
+  if (value <= 0) throw new Error(`unsupported gamma input: ${value}`);
+  return (value - 1) * referenceGammaHalfInteger(value - 1);
+}
+
+function referenceStudentTDensity(t, df) {
+  const numerator = referenceGammaHalfInteger((df + 1) / 2);
+  const denominator = Math.sqrt(df * Math.PI) * referenceGammaHalfInteger(df / 2);
+  return (numerator / denominator) * (1 + (t * t) / df) ** (-(df + 1) / 2);
+}
+
+function referenceIntegrateSimpson(fn, lower, upper, intervals = 32768) {
+  if (upper === lower) return 0;
+  const evenIntervals = intervals % 2 === 0 ? intervals : intervals + 1;
+  const step = (upper - lower) / evenIntervals;
+  let sum = fn(lower) + fn(upper);
+  for (let index = 1; index < evenIntervals; index++) {
+    sum += (index % 2 === 0 ? 2 : 4) * fn(lower + index * step);
+  }
+  return (sum * step) / 3;
+}
+
+function referenceStudentTPValueTwoTailed(r, sampleSize) {
+  const n = Number(sampleSize);
+  if (!Number.isFinite(r) || !Number.isFinite(n) || n < 3) return null;
+  const bounded = Math.max(-0.999999999999, Math.min(0.999999999999, r));
+  const df = n - 2;
+  const t = Math.abs(bounded) * Math.sqrt(df / Math.max(1e-15, 1 - bounded * bounded));
+  const area = referenceIntegrateSimpson((value) => referenceStudentTDensity(value, df), 0, t);
+  return Math.max(0, Math.min(1, 1 - 2 * area));
 }
 
 function scenarioRegistryCoversQuantArchetypes() {
@@ -77,7 +144,10 @@ function scenarioMissingLineMovementIsBlocked() {
 
 function scenarioFundingRateResidualReopensPlan() {
   const residuals = Array.from({ length: 40 }, (_, index) => index + 1);
-  const fundingRate = residuals.map((value, index) => value * 0.8 + (index % 3) * 0.01);
+  const periodicNoise = [3, -2, 1, -4, 5, -1, 2, -3];
+  const fundingRate = residuals.map((value, index) => value * 0.15 + periodicNoise[index % periodicNoise.length]);
+  const expectedR = referencePearsonCorrelation(residuals, fundingRate);
+  const expectedP = referenceStudentTPValueTwoTailed(expectedR, residuals.length);
   const verdict = evaluateResidualScopeGap({
     archetype: "crypto_perp_market",
     residuals,
@@ -90,6 +160,70 @@ function scenarioFundingRateResidualReopensPlan() {
   assert(verdict.reopen_phase === "PLAN", "scope-gap blocker reopens PLAN rather than EXECUTE");
   assert(verdict.rerun_leakage_required === true, "scope-gap blocker requires rerunning leakage on the expanded scope");
   assert(match && Math.abs(match.r) >= 0.30 && match.p_value < 0.05, "funding-rate match crosses |r| >= 0.30 and p < 0.05");
+  assertClose(match?.r, expectedR, CORRELATION_TOLERANCE, "funding-rate match Pearson r equals reference golden");
+  assertClose(match?.p_value, expectedP, P_VALUE_TOLERANCE, "funding-rate match p-value equals reference golden");
+}
+
+function scenarioNumericGoldensPinStatisticalHelpers() {
+  const pearsonGoldens = [
+    {
+      id: "perfect_positive_linear",
+      x: [1, 2, 3, 4, 5],
+      y: [2, 4, 6, 8, 10],
+    },
+    {
+      id: "perfect_negative_linear",
+      x: [1, 2, 3, 4, 5],
+      y: [10, 8, 6, 4, 2],
+    },
+    {
+      id: "mixed_scale_nonperfect",
+      x: [1, 2, 3, 4, 5, 6, 7, 8],
+      y: [1, 1.5, 2, 3.5, 5, 8, 13, 21],
+    },
+  ];
+
+  const pValueGoldens = [
+    { id: "zero_correlation_n12", r: 0, n: 12 },
+    { id: "moderate_positive_n10", r: 0.5, n: 10 },
+    { id: "strong_positive_n12", r: 0.75, n: 12 },
+    { id: "moderate_negative_n14", r: -0.66, n: 14 },
+  ];
+
+  assert(pearsonGoldens.length >= 3, "Pearson numeric golden cases are populated");
+  assert(pValueGoldens.length >= 4, "Student-t p-value numeric golden cases are populated");
+
+  for (const goldenCase of pearsonGoldens) {
+    const expectedR = referencePearsonCorrelation(goldenCase.x, goldenCase.y);
+    const actualR = pearsonCorrelation(goldenCase.x, goldenCase.y);
+    assertClose(actualR, expectedR, CORRELATION_TOLERANCE, `${goldenCase.id} Pearson r matches reference`);
+  }
+
+  for (const goldenCase of pValueGoldens) {
+    const expectedP = referenceStudentTPValueTwoTailed(goldenCase.r, goldenCase.n);
+    const actualP = studentTPValueTwoTailed(goldenCase.r, goldenCase.n);
+    assertClose(actualP, expectedP, P_VALUE_TOLERANCE, `${goldenCase.id} Student-t p-value matches reference`);
+  }
+}
+
+function scenarioResidualScopeGapNegativeControls() {
+  const residuals = Array.from({ length: 24 }, (_, index) => index + 1);
+  const weakSeries = residuals.map((_, index) => (index % 2 === 0 ? 1 : -1));
+  const weakVerdict = evaluateResidualScopeGap({
+    archetype: "crypto_perp_market",
+    residuals,
+    accomplice_series: { funding_rate: weakSeries },
+  });
+  assert(weakVerdict.blocked === false, "weak alternating series does not fabricate a scope-gap blocker");
+  assert(weakVerdict.matches.length === 0, "weak alternating series emits no numeric matches");
+
+  const shortVerdict = evaluateResidualScopeGap({
+    archetype: "crypto_perp_market",
+    residuals: [1, 2, 3, 4, 5, 6, 7],
+    accomplice_series: { funding_rate: [1, 2, 3, 4, 5, 6, 7] },
+  });
+  assert(shortVerdict.blocked === false, "insufficient residual samples do not block");
+  assert(shortVerdict.warnings.includes("insufficient_residual_samples:7"), "insufficient residual samples are reported as a warning");
 }
 
 function scenarioWeakOrConstantSeriesDoesNotBlock() {
@@ -169,6 +303,8 @@ scenarioRegistryCoversQuantArchetypes();
 scenarioSportsBettingPlanSeedsLineMovementObligation();
 scenarioMissingLineMovementIsBlocked();
 scenarioFundingRateResidualReopensPlan();
+scenarioNumericGoldensPinStatisticalHelpers();
+scenarioResidualScopeGapNegativeControls();
 scenarioWeakOrConstantSeriesDoesNotBlock();
 scenarioLivePayloadSurfacesScopeGapFact();
 

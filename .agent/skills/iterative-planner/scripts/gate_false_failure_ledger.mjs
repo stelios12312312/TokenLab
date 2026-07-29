@@ -26,6 +26,8 @@
 
 import { existsSync, readdirSync, readFileSync } from "fs";
 import { join } from "path";
+import { emitJson } from "./lib/emit_json.mjs";
+import { normalizeVerificationStatus } from "./lib/verification_status_vocabulary.mjs";
 
 const SELF_CLEAR_WINDOW_SEC_DEFAULT = 120;
 // A gate must have blocked at least this many times before we are willing to call
@@ -66,7 +68,10 @@ function listPlanDirs(plansDir) {
 // (which is chronological — appendDecisionLog only appends).
 function normalizeDecision(entry) {
   if (entry.decision === "BLOCKED" || entry.decision === "ALLOWED") return entry.decision;
-  if (Array.isArray(entry.checks) && entry.checks.some((c) => c.status === "FAIL")) return "BLOCKED";
+  if (Array.isArray(entry.checks) && entry.checks.some((check) => {
+    const status = normalizeVerificationStatus(check?.status, "gate");
+    return !status.valid || status.kind === "fail";
+  })) return "BLOCKED";
   return "UNKNOWN";
 }
 
@@ -247,7 +252,7 @@ function main() {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) {
     console.log("Usage: node gate_false_failure_ledger.mjs [--plan <plan_dir>] [--cwd <path>] [--window-sec N] [--json]");
-    process.exit(0);
+    return 0;
   }
   const plansDir = join(opts.cwd, "plans");
   const planNames = opts.plan ? [opts.plan] : listPlanDirs(plansDir);
@@ -268,11 +273,11 @@ function main() {
     suspect_codes: codes.filter((c) => c.systemic_suspect).map((c) => c.code),
   };
   if (opts.json) {
-    console.log(JSON.stringify(result, null, 2));
+    emitJson(result);
   } else {
     console.log(humanSummary(gates, codes, opts, result.plan_count));
   }
-  process.exit(0);
+  return 0;
 }
 
-main();
+process.exitCode = main();

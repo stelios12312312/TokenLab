@@ -11,15 +11,6 @@
       "plans/programs/**/program_packet.json",
       "plans/**/*.md",
       "docs/**/*token*.md"
-    ],
-    "text_any": [
-      "tokenomics",
-      "token economics",
-      "token launch",
-      "vesting",
-      "emissions",
-      "fdv",
-      "staking apy"
     ]
   },
   "provenance": {

@@ -6,6 +6,7 @@ import {
   deriveCaptureAbsentRisk,
   ensureTelemetryHookInstalled,
   getActivePlanId,
+  getLlmRunTelemetrySnapshot,
   getPlanTelemetrySnapshot,
   getProofObservabilitySummary,
   getProjectGateTimings,
@@ -20,6 +21,7 @@ function usage() {
     "",
     "Usage:",
     "  node telemetry.mjs summary [--json] [--plan <plan-id>] [--project <path>]",
+    "  node telemetry.mjs llm-runs [--json] [--plan <plan-id>] [--project <path>]",
     "  node telemetry.mjs capture-status [--json] [--project <path>]",
     "  node telemetry.mjs workflow-intelligence [--json] [--project <path>]",
     "  node telemetry.mjs project-gate-timings [--json] [--project <path>]",
@@ -28,6 +30,7 @@ function usage() {
     "",
     "Notes:",
     "  - summary aggregates current plan telemetry plus project readiness/history views",
+    "  - llm-runs reports the canonical planner-owned LLM run ledger and IDE adapter gaps",
     "  - capture-status is the focused Phase 7 readiness surface",
     "  - install-hooks only updates host IDE telemetry hook config",
   ].join("\n");
@@ -102,6 +105,8 @@ try {
     };
   } else if (command === "capture-status") {
     result = getTelemetryCaptureStatus(projectRoot);
+  } else if (command === "llm-runs") {
+    result = getLlmRunTelemetrySnapshot(projectRoot, options.plan || getActivePlanId(projectRoot));
   } else if (command === "workflow-intelligence") {
     result = getWorkflowIntelligence(projectRoot);
   } else if (command === "project-gate-timings") {

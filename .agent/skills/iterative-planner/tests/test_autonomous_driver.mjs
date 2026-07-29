@@ -154,7 +154,6 @@ Mitigation: The driver only invokes transition.mjs.
 
   const state = createInitialStateJson(planName, "Autonomous driver failing-suite fixture");
   state.state = stateName;
-  state.transition_nonce = "0123456789abcdef";
   state.close_signals = {
     test_evidence: {
       required: true,
@@ -194,10 +193,13 @@ function scenarioFailingSavedSuiteBlocksClose() {
       const gateEvidence = evidence?.gates?.["validate-to-close"];
       assert(gateEvidence?.exit_code !== 0, "validate-to-close evidence records the non-zero exit code");
       assert(gateEvidence?.status === "blocked", "validate-to-close evidence status is blocking");
-      // Tolerate optional shell-quoting around the path: when the repo path contains spaces,
-      // displayCommand() JSON-quotes it, yielding `...test_baseline.mjs" verify`. The literal
-      // command differs by an injected quote but the recorded verb is the same.
-      assert(/test_baseline\.mjs"? verify/.test(gateEvidence?.command || ""), "evidence records test_baseline.mjs verify command");
+      assert(gateEvidence?.timeout_ms === 600000, "validate-to-close evidence records the ten-minute outer gate budget");
+      const argv = gateEvidence?.command_argv || [];
+      const baselineIndex = argv.findIndex((arg) => String(arg || "").endsWith("test_baseline.mjs"));
+      assert(Array.isArray(argv), "validate-to-close evidence records command argv");
+      assert(argv[0] === NODE, "command argv records the node executable used for the spawn");
+      assert(baselineIndex >= 0 && argv[baselineIndex + 1] === "verify", "command argv records test_baseline.mjs verify");
+      assert(argv.includes("--plan") && argv[argv.indexOf("--plan") + 1] === planName, "command argv records the targeted plan name");
     }
 
     const output = `${result.stdout}\n${result.stderr}`;
@@ -264,6 +266,49 @@ function scenarioManualMissingBaselineStaysAdvisory() {
   }
 }
 
+function scenarioCurrentExecutedEvidenceOverridesStaleSnapshot() {
+  const tmp = makeTemp("fresh-evidence");
+  try {
+    const planName = "plan_current_executed_evidence";
+    const planDir = join(tmp, "plans", planName);
+    mkdirSync(planDir, { recursive: true });
+    writeFileSync(join(planDir, "executed_test_gates.json"), JSON.stringify({
+      schema_version: 1,
+      gates: {
+        "validate-to-close": {
+          gate: "validate-to-close",
+          status: "blocked",
+          required: true,
+          blocking: true,
+          exit_code: 1,
+          detail: "stale failed attempt",
+        },
+      },
+    }, null, 2) + "\n");
+
+    const currentEvidence = {
+      gate: "validate-to-close",
+      status: "passed",
+      required: true,
+      blocking: false,
+      exit_code: 0,
+      detail: "current same-invocation baseline passed",
+    };
+    const currentSignal = resolveExecutedTestEvidenceSignal(
+      planDir,
+      "validate-to-close",
+      currentEvidence,
+    );
+    assert(currentSignal.present === true, "current executed-test evidence is authoritative for the same invocation");
+    assert(currentSignal.satisfied === true, "current passing evidence overrides a stale failed snapshot in memory");
+
+    const persistedSignal = resolveExecutedTestEvidenceSignal(planDir, "validate-to-close");
+    assert(persistedSignal.satisfied === false, "persisted failed evidence remains unchanged outside the invocation");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
 function scenarioLivePayloadSurfacesExecutedFailure() {
   const tmp = makeTemp("payload-surface");
   try {
@@ -299,6 +344,7 @@ console.log("\nAutonomous driver executed-test gates (t13)\n");
 scenarioFailingSavedSuiteBlocksClose();
 scenarioExecuteToReflectAlsoRunsSavedSuite();
 scenarioManualMissingBaselineStaysAdvisory();
+scenarioCurrentExecutedEvidenceOverridesStaleSnapshot();
 scenarioLivePayloadSurfacesExecutedFailure();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);

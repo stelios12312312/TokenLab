@@ -2,6 +2,7 @@
 // blast_radius.mjs — Deterministic dependency & similarity mapper
 //
 // Usage:
+//   node blast_radius.mjs --self-test             Run this script's local smoke check
 //   node blast_radius.mjs <file> [symbol]         Map dependencies for a file (optionally focused on a symbol)
 //   node blast_radius.mjs --multi <f1> <f2> ...   Map dependencies for multiple files
 //   node blast_radius.mjs --diff                   Map dependencies for all files in the last git diff
@@ -16,10 +17,18 @@
 //
 // Zero dependencies — Node 18+. Uses grep internally.
 
-import { readFileSync, existsSync, readdirSync, statSync } from "fs";
+import { readFileSync, existsSync, readdirSync, statSync, mkdirSync, writeFileSync } from "fs";
 import { join, dirname, basename, extname, relative } from "path";
 import { spawnSync } from "child_process";
 import { debugLog } from "./lib/plan_utils.mjs";
+import {
+  assertSelfTest,
+  cleanupSelfTestTemp,
+  makeSelfTestTemp,
+  printSelfTestPass,
+  runNodeScript,
+  selfPath,
+} from "./lib/script_self_test.mjs";
 
 const cwd = process.cwd();
 
@@ -430,6 +439,34 @@ function printReport(analyses, symbolAnalysis = null) {
 // ---------------------------------------------------------------------------
 
 const args = process.argv.slice(2);
+if (args[0] === "--self-test") {
+  const scriptPath = selfPath(import.meta.url);
+  const tmp = makeSelfTestTemp("blast-radius");
+  try {
+    mkdirSync(join(tmp, "src"), { recursive: true });
+    writeFileSync(join(tmp, "src", "a.mjs"), `import { helper } from "./b.mjs";
+export function alpha() { return helper(); }
+`);
+    writeFileSync(join(tmp, "src", "b.mjs"), `export function helper() { return 1; }\n`);
+    writeFileSync(join(tmp, "src", "c.mjs"), `import { alpha } from "./a.mjs";
+console.log(alpha());
+`);
+
+    const result = runNodeScript([scriptPath, "--json", "src/a.mjs"], tmp);
+    assertSelfTest(result.ok, "blast_radius JSON output exits cleanly", result.stderr || result.stdout);
+    let parsed = null;
+    try { parsed = JSON.parse(result.stdout); } catch { /* asserted below */ }
+    assertSelfTest(!!parsed, "blast_radius emits valid JSON", result.stdout);
+    assertSelfTest(parsed?.analyses?.[0]?.dependencies?.includes("./b.mjs"), "blast_radius reports outbound dependencies", result.stdout);
+    assertSelfTest(parsed?.analyses?.[0]?.dependents?.includes("src/c.mjs"), "blast_radius reports inbound dependents", result.stdout);
+
+    printSelfTestPass("blast_radius");
+  } finally {
+    cleanupSelfTestTemp(tmp);
+  }
+  process.exit(0);
+}
+
 const jsonMode = args.includes("--json");
 const diffMode = args.includes("--diff");
 const multiMode = args.includes("--multi");

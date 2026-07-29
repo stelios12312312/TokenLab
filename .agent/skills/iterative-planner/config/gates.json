@@ -1,6 +1,17 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "description": "Gate registry — single source of truth for all transition gates. Scripts read from here instead of hardcoding gate names.",
+  "guide_first_contract": {
+    "attempted_gate_preparation": "required_before_evaluation",
+    "hard_block_classes": [
+      "semantic_incorrectness",
+      "proof_integrity",
+      "irreversible_or_shared_surface_damage"
+    ],
+    "advisory_policy": "visible_and_persisted",
+    "uncoded_fail_policy": "contract_defect",
+    "terminal_verdict_source": "transition_receipt"
+  },
   "gates": {
     "explore-to-plan": {
       "from": "explore",

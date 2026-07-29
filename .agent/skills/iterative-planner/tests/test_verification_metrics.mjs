@@ -12,6 +12,7 @@ import { tmpdir } from "os";
 import {
   collectVerificationMetrics,
   deadLoadLibs,
+  directlyGatedTestNames,
   genuineCloseRate,
   gatedTests,
   realDataGroundedTests,
@@ -33,6 +34,12 @@ for (const k of ["dead_load_ratio", "gated_test_ratio", "real_data_grounded_rati
   assert(typeof v === "number" && v >= 0 && v <= 1, `${k} is a ratio in [0,1] (${v})`);
 }
 assert(report.definitions && Object.keys(report.definitions).length >= 4, "each metric documents its definition");
+const directFixture = directlyGatedTestNames(`
+  command: ["node", join(TESTS_ROOT, "test_direct.mjs")],
+  fixtures: [skillRel("tests/test_fixture_only.mjs")],
+`);
+assert(directFixture.has("test_direct.mjs"), "gated-test metric counts a direct suite command");
+assert(!directFixture.has("test_fixture_only.mjs"), "gated-test metric rejects fixture-only references");
 
 // ── dead-load: parsed import graph, NOT regex over-count ──
 const dl = deadLoadLibs();

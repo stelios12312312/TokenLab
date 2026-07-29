@@ -1,18 +1,28 @@
 #!/usr/bin/env node
 // test_program_manager.mjs — Program Packet validator and gate contracts.
 
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { createHash } from "crypto";
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
 import { execFileSync } from "child_process";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
 const repoRoot = resolve(testDir, "..", "..", "..", "..");
 const cli = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "program_manager.mjs");
+const githubCli = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "github_ticket_review.mjs");
 const fixturesDir = join(testDir, "fixtures", "programs");
+const visualizerPayloadModule = join(repoRoot, "apps", "ive-visualizer", "scripts", "generate-live-payload.mjs");
+const programDispositionModule = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "lib", "program_disposition.mjs");
+const gateSatisfiabilityModule = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "lib", "gate_satisfiability.mjs");
+const verificationStatusVocabularyModule = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "lib", "verification_status_vocabulary.mjs");
+const githubReviewModule = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "github_ticket_review.mjs");
 const NODE = process.execPath;
+const { buildProgramDisposition } = await import(pathToFileURL(programDispositionModule).href);
+const { getVerificationStatusVocabulary } = await import(pathToFileURL(verificationStatusVocabularyModule).href);
+const { renderText: renderGithubReviewText, runPublish, runReview } = await import(pathToFileURL(githubReviewModule).href);
 
 let passed = 0;
 let failed = 0;
@@ -45,13 +55,91 @@ function run(args, cwd = repoRoot, env = process.env) {
   }
 }
 
+function runGithub(args, cwd = repoRoot, env = process.env) {
+  try {
+    const stdout = execFileSync(NODE, [githubCli, ...args], { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...env } });
+    let parsed = null;
+    try { parsed = JSON.parse(stdout); } catch { /* non-JSON command */ }
+    return { ok: true, stdout, parsed };
+  } catch (error) {
+    const stdout = error.stdout || "";
+    let parsed = null;
+    try { parsed = JSON.parse(stdout); } catch { /* ignore */ }
+    return { ok: false, stdout, stderr: error.stderr || "", parsed };
+  }
+}
+
 function hasError(result, code) {
   return (result.parsed?.errors || []).some((entry) => entry.code === code);
+}
+
+function errorMessages(result) {
+  return [
+    result.parsed?.error,
+    ...(result.parsed?.errors || []).map((entry) => entry?.message),
+  ].filter(Boolean).join("\n");
 }
 
 console.log("\nProgram Manager Contracts\n");
 
 assert(existsSync(cli), "program_manager.mjs exists");
+
+assert(existsSync(gateSatisfiabilityModule), "provider-neutral gate satisfiability module exists");
+if (existsSync(gateSatisfiabilityModule)) {
+  const { evaluateGateSatisfiability } = await import(pathToFileURL(gateSatisfiabilityModule).href);
+  const genericRequirement = {
+    id: "artifact.store_configuration",
+    description: "Artifact storage needs a configured destination.",
+    applicable: true,
+    satisfied: false,
+    reason: "No artifact store destination is configured.",
+    resolution_options: [
+      { id: "configure", action: "Configure an artifact store destination." },
+      { id: "waive", action: "Record a governed waiver." },
+    ],
+  };
+  const unresolved = evaluateGateSatisfiability({ requirements: [genericRequirement], waivers: [], decisions: [] });
+  assert(!unresolved.ok && unresolved.requirements[0]?.status === "resolution_required", "provider-neutral evaluator blocks a non-GitHub structural requirement");
+  assert(unresolved.requirements[0]?.resolution_options?.length === 2, "provider-neutral evaluator preserves concrete resolution options");
+
+  const waived = evaluateGateSatisfiability({
+    requirements: [genericRequirement],
+    waivers: [{ requirement_id: genericRequirement.id, decision_ref: "DEC-STORE-WAIVER", reason: "Temporary local artifact review." }],
+    decisions: [{
+      id: "DEC-STORE-WAIVER",
+      type: "gate_requirement_waiver",
+      subject_ref: genericRequirement.id,
+      rationale: "Temporary local artifact review while storage is unavailable.",
+    }],
+  });
+  assert(waived.ok && waived.requirements[0]?.status === "waived", "provider-neutral evaluator accepts a matching decision-backed waiver");
+
+  const invalidWaiver = evaluateGateSatisfiability({
+    requirements: [genericRequirement],
+    waivers: [{ requirement_id: genericRequirement.id, decision_ref: "DEC-MISSING", reason: "Unbacked." }],
+    decisions: [],
+  });
+  assert(!invalidWaiver.ok && invalidWaiver.requirements[0]?.status === "invalid_waiver", "provider-neutral evaluator rejects an unbacked waiver");
+
+  const invalidRedundantWaiver = evaluateGateSatisfiability({
+    requirements: [{ ...genericRequirement, satisfied: true }],
+    waivers: [{ requirement_id: genericRequirement.id, decision_ref: "DEC-MISSING", reason: "Unbacked." }],
+    decisions: [],
+  });
+  assert(!invalidRedundantWaiver.ok && invalidRedundantWaiver.requirements[0]?.status === "invalid_waiver", "provider-neutral evaluator validates waiver governance even when the requirement is otherwise satisfied");
+
+  const unknownRequirementWaiver = evaluateGateSatisfiability({
+    requirements: [{ ...genericRequirement, satisfied: true }],
+    waivers: [{ requirement_id: "artifact.unknown_requirement", decision_ref: "DEC-UNKNOWN", reason: "Unknown requirement." }],
+    decisions: [{
+      id: "DEC-UNKNOWN",
+      type: "gate_requirement_waiver",
+      subject_ref: "artifact.unknown_requirement",
+      rationale: "Attempt to waive an unregistered requirement.",
+    }],
+  });
+  assert(!unknownRequirementWaiver.ok && unknownRequirementWaiver.requirements.some((entry) => entry.id === "artifact.unknown_requirement" && entry.status === "invalid_waiver"), "provider-neutral evaluator rejects waivers for unregistered requirements");
+}
 
 let result = run(["check", "--program", fixture("valid_ready.json"), "--json"]);
 assert(result.ok && result.parsed.status === "PASS", "valid Program Packet passes check");
@@ -62,6 +150,285 @@ assert(result.ok && result.parsed.status === "PASS", "design-to-ready accepts a 
 
 result = run(["verify", "ready-to-execution", "--program", fixture("valid_ready.json"), "--json"]);
 assert(result.ok && result.parsed.status === "PASS", "ready-to-execution accepts ready ticket evidence");
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-github-policy-"));
+  try {
+    const packetPath = join(tmp, "program_packet.json");
+    const packet = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    delete packet.tickets[0].external_refs;
+    packet.remote_mode = "local-only";
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", packetPath, "--json"], tmp);
+    assert(result.ok && result.parsed.status === "PASS", "local-only ready ticket without GitHub issue passes validation");
+    const localFacts = run(["facts", "--program", packetPath], tmp);
+    assert(localFacts.ok && localFacts.stdout.includes("program_remote_mode('PGM-TEST', 'local_only')"), "facts command emits local-only remote mode");
+    assert(localFacts.ok && !localFacts.stdout.includes("program_github_issue_mirror_required('PGM-TEST')"), "local-only facts do not require GitHub issue mirrors");
+
+    delete packet.remote_mode;
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", packetPath, "--remote-mode", "remote-sync", "--json"], tmp);
+    assert(!result.ok && hasError(result, "ready_ticket_missing_github_issue"), "remote-sync ready ticket without GitHub issue fails JS validation");
+    assert(!result.ok && hasError(result, "program_ready_ticket_missing_github_issue"), "remote-sync ready ticket without GitHub issue fails ontology validation");
+    const text = run(["check", "--program", packetPath, "--remote-mode", "remote-sync"], tmp);
+    const lines = text.stdout.trim().split(/\n/).filter(Boolean);
+    assert(!text.ok && lines.length <= 10, "blocked check default output is capped at 10 lines");
+    assert(lines.slice(0, 3).some((line) => /^Blockers: \d+/.test(line)), "blocked check default output shows blocker count in first three lines");
+    assert(lines.some((line) => line.includes("ready_ticket_missing_github_issue")), "blocked check default output shows a top blocker");
+    const artifactLine = lines.find((line) => line.startsWith("Artifact: "));
+    const artifactRel = artifactLine?.replace(/^Artifact:\s*/, "");
+    assert(Boolean(artifactRel) && existsSync(join(tmp, artifactRel)), "blocked check default output references a result artifact");
+    const artifact = JSON.parse(readFileSync(join(tmp, artifactRel), "utf-8"));
+    assert(artifact.status === "FAIL" && Array.isArray(artifact.errors), "blocked check artifact contains full JSON result");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-gate-satisfiability-"));
+  const emptyRemoteEnv = {
+    PLANNER_REMOTE_MODE: "",
+    PLANNER_REPOSITORY: "",
+    GITHUB_REPOSITORY: "",
+  };
+  try {
+    const unresolvedPath = join(tmp, "plans", "programs", "unresolved", "program_packet.json");
+    result = run(["init", "--program", "unresolved", "--json"], tmp, emptyRemoteEnv);
+    assert(!result.ok && !existsSync(unresolvedPath), "init without mode or repository blocks before writing a Program Packet");
+    assert(hasError(result, "program_gate_requirement_resolution_required"), "unresolved init emits the canonical structural requirement code");
+    const initRequirement = result.parsed?.gate_satisfiability?.requirements?.find((entry) => entry.id === "program.remote_policy_resolution");
+    assert(initRequirement?.status === "resolution_required", "unresolved init exposes structured resolution-required status");
+    assert(initRequirement?.resolution_options?.map((entry) => entry.id).join(",") === "set_local_only,provide_repository,record_governed_waiver", "unresolved init exposes all three operator resolution classes");
+
+    const textRoot = join(tmp, "text");
+    mkdirSync(textRoot, { recursive: true });
+    const textResult = run(["init", "--program", "unresolved-text"], textRoot, emptyRemoteEnv);
+    assert(!textResult.ok && `${textResult.stdout}\n${textResult.stderr}`.includes("Resolution:"), "unresolved init human output surfaces the forced decision loudly");
+
+    const legacyPath = join(tmp, "legacy-unresolved.json");
+    const legacyPacket = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    delete legacyPacket.remote_mode;
+    delete legacyPacket.remote_policy;
+    delete legacyPacket.repository_slug;
+    delete legacyPacket.tickets[0].external_refs;
+    writeFileSync(legacyPath, `${JSON.stringify(legacyPacket, null, 2)}\n`, "utf-8");
+    const legacyBefore = readFileSync(legacyPath);
+    result = run(["check", "--program", legacyPath, "--json"], tmp, emptyRemoteEnv);
+    const legacyAfter = readFileSync(legacyPath);
+    assert(!result.ok && hasError(result, "program_gate_requirement_resolution_required"), "first check touch blocks an unresolved legacy Program Packet");
+    assert(hasError(result, "program_gate_requirement_unsatisfied"), "Program Prolog ontology mirrors the unresolved JavaScript requirement");
+    assert(legacyBefore.equals(legacyAfter), "blocked first-touch check does not mutate the legacy packet");
+
+    const localPath = join(tmp, "explicit-local.json");
+    const localPacket = structuredClone(legacyPacket);
+    localPacket.remote_mode = "local-only";
+    writeFileSync(localPath, `${JSON.stringify(localPacket, null, 2)}\n`, "utf-8");
+    const localBefore = readFileSync(localPath);
+    const localHash = createHash("sha256").update(localBefore).digest("hex");
+    result = run(["check", "--program", localPath, "--json"], tmp, emptyRemoteEnv);
+    const localAfter = readFileSync(localPath);
+    assert(result.ok && result.parsed?.gate_satisfiability?.requirements?.find((entry) => entry.id === "program.remote_policy_resolution")?.status === "satisfied", "explicit local-only passes without a repository and exposes satisfied provenance");
+    assert(localBefore.equals(localAfter) && createHash("sha256").update(localAfter).digest("hex") === localHash, "satisfiable local-only check preserves packet bytes and SHA-256");
+    const localFacts = run(["facts", "--program", localPath], tmp, emptyRemoteEnv);
+    assert(localFacts.stdout.includes("program_gate_requirement_satisfied('PGM-TEST', 'program.remote_policy_resolution')"), "facts expose the satisfied Program policy requirement");
+
+    const repoPath = join(tmp, "repository-backed.json");
+    const repoPacket = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    delete repoPacket.remote_mode;
+    delete repoPacket.remote_policy;
+    writeFileSync(repoPath, `${JSON.stringify(repoPacket, null, 2)}\n`, "utf-8");
+    const repoBefore = readFileSync(repoPath);
+    result = run(["check", "--program", repoPath, "--json"], tmp, emptyRemoteEnv);
+    assert(result.ok && result.parsed?.remote_policy?.effective_mode === "remote-sync", "one persisted repository identity resolves an absent mode to remote-sync");
+    assert(repoBefore.equals(readFileSync(repoPath)), "repository-backed satisfiable check leaves the packet untouched");
+
+    const cliRepoPath = join(tmp, "cli-repository-backed.json");
+    writeFileSync(cliRepoPath, `${JSON.stringify(legacyPacket, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", cliRepoPath, "--repo", "owner/repo", "--json"], tmp, emptyRemoteEnv);
+    assert(result.parsed?.remote_policy?.repository?.slug === "owner/repo" && !hasError(result, "program_gate_requirement_unsatisfied"), "CLI repository identity is shared by JavaScript validation and ontology fact generation");
+
+    const missingRepoPath = join(tmp, "remote-missing-repository.json");
+    const missingRepoPacket = structuredClone(legacyPacket);
+    missingRepoPacket.remote_mode = "remote-sync";
+    writeFileSync(missingRepoPath, `${JSON.stringify(missingRepoPacket, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", missingRepoPath, "--json"], tmp, emptyRemoteEnv);
+    assert(!result.ok && result.parsed?.gate_satisfiability?.requirements?.find((entry) => entry.id === "program.remote_repository_identity")?.status === "resolution_required", "remote-sync without repository identity is structurally blocked");
+
+    const ambiguousPath = join(tmp, "remote-ambiguous-repository.json");
+    const ambiguousPacket = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    delete ambiguousPacket.remote_mode;
+    ambiguousPacket.tickets[0].external_refs.push({ kind: "github_issue", repo: "other/repo", issue_number: 99, url: "https://github.com/other/repo/issues/99" });
+    writeFileSync(ambiguousPath, `${JSON.stringify(ambiguousPacket, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", ambiguousPath, "--json"], tmp, emptyRemoteEnv);
+    assert(!result.ok && result.parsed?.remote_policy?.repository?.status === "ambiguous", "conflicting repository identities fail instead of selecting one silently");
+
+    const conflictingPacketRepositoryPath = join(tmp, "remote-conflicting-packet-repository.json");
+    const conflictingPacketRepository = structuredClone(legacyPacket);
+    conflictingPacketRepository.remote_mode = "remote-sync";
+    conflictingPacketRepository.remote_policy = { repository_slug: "owner/primary" };
+    conflictingPacketRepository.repository_slug = "owner/secondary";
+    writeFileSync(conflictingPacketRepositoryPath, `${JSON.stringify(conflictingPacketRepository, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", conflictingPacketRepositoryPath, "--json"], tmp, emptyRemoteEnv);
+    assert(!result.ok && result.parsed?.remote_policy?.repository?.status === "ambiguous", "conflicting packet-level repository aliases fail instead of selecting by field order");
+
+    const conflictingPacketModePath = join(tmp, "remote-conflicting-packet-mode.json");
+    const conflictingPacketMode = structuredClone(legacyPacket);
+    conflictingPacketMode.remote_mode = "local-only";
+    conflictingPacketMode.remote_policy = { mode: "remote-sync", repository_slug: "owner/repo" };
+    writeFileSync(conflictingPacketModePath, `${JSON.stringify(conflictingPacketMode, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", conflictingPacketModePath, "--json"], tmp, emptyRemoteEnv);
+    assert(!result.ok && hasError(result, "program_remote_mode_invalid") && /conflicting/i.test(errorMessages(result)), "conflicting packet-level remote-mode aliases fail instead of selecting by field order");
+
+    const waiverPath = join(tmp, "waived-policy.json");
+    const waiverPacket = structuredClone(legacyPacket);
+    waiverPacket.decisions = [{
+      id: "DEC-POLICY-WAIVER",
+      type: "gate_requirement_waiver",
+      subject_ref: "program.remote_policy_resolution",
+      rationale: "Retain the compatibility fallback for this local Program until policy review.",
+    }];
+    waiverPacket.gate_requirement_waivers = [{
+      requirement_id: "program.remote_policy_resolution",
+      decision_ref: "DEC-POLICY-WAIVER",
+      reason: "Policy review is scheduled; local-only compatibility is accepted meanwhile.",
+    }];
+    writeFileSync(waiverPath, `${JSON.stringify(waiverPacket, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", waiverPath, "--json"], tmp, emptyRemoteEnv);
+    assert(result.ok && result.parsed?.gate_satisfiability?.requirements?.find((entry) => entry.id === "program.remote_policy_resolution")?.status === "waived", "matching Program decision governs an unresolved-policy waiver");
+    const waiverFacts = run(["facts", "--program", waiverPath], tmp, emptyRemoteEnv);
+    assert(waiverFacts.stdout.includes("program_gate_requirement_waived('PGM-TEST', 'program.remote_policy_resolution')"), "facts expose governed waiver provenance");
+
+    const invalidWaiverPath = join(tmp, "invalid-waiver.json");
+    const invalidWaiverPacket = structuredClone(waiverPacket);
+    invalidWaiverPacket.decisions = [];
+    writeFileSync(invalidWaiverPath, `${JSON.stringify(invalidWaiverPacket, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", invalidWaiverPath, "--json"], tmp, emptyRemoteEnv);
+    assert(!result.ok && hasError(result, "program_gate_requirement_waiver_invalid"), "unbacked Program waiver fails loudly");
+
+    const dispositionPath = join(tmp, "unresolved-disposition.json");
+    const dispositionPacket = structuredClone(legacyPacket);
+    dispositionPacket.tickets[0].lifecycle = "deferred";
+    writeFileSync(dispositionPath, `${JSON.stringify(dispositionPacket, null, 2)}\n`, "utf-8");
+    const dispositionBefore = readFileSync(dispositionPath);
+    const disposition = buildProgramDisposition({
+      cwd: tmp,
+      deferredPrograms: [dispositionPath],
+      write: true,
+      clock: () => new Date("2026-07-17T00:00:00.000Z"),
+    });
+    assert(disposition.status === "BLOCKED" && disposition.blockers.some((entry) => entry.code === "packet_gate_requirement_unresolved"), "first disposition touch cannot grandfather an unresolved structural gate requirement");
+    assert(dispositionBefore.equals(readFileSync(dispositionPath)), "blocked disposition leaves the unresolved Program Packet byte-for-byte unchanged");
+
+    const localInit = run(["init", "--program", "explicit-local-init", "--remote-mode", "local-only", "--json"], tmp, emptyRemoteEnv);
+    const localInitPacket = JSON.parse(readFileSync(join(tmp, "plans", "programs", "explicit-local-init", "program_packet.json"), "utf-8"));
+    assert(localInit.ok && localInitPacket.remote_mode === "local-only", "init persists an explicit local-only decision");
+
+    const repoInit = run(["init", "--program", "repository-init", "--repo", "owner/repo", "--json"], tmp, emptyRemoteEnv);
+    const repoInitPacket = JSON.parse(readFileSync(join(tmp, "plans", "programs", "repository-init", "program_packet.json"), "utf-8"));
+    assert(repoInit.ok && repoInitPacket.remote_mode === "remote-sync" && repoInitPacket.remote_policy?.repository_slug === "owner/repo", "init repository identity persists the remote-sync resolution");
+
+    const canonicalRepoInit = run(["init", "--program", "canonical-repository-init", "--repo", "https://github.com/owner/repo.git", "--json"], tmp, emptyRemoteEnv);
+    const canonicalRepoInitPacket = JSON.parse(readFileSync(join(tmp, "plans", "programs", "canonical-repository-init", "program_packet.json"), "utf-8"));
+    assert(canonicalRepoInit.ok && canonicalRepoInitPacket.remote_policy?.repository_slug === "owner/repo", "init persists normalized owner/name repository identity after accepting a canonical GitHub URL");
+
+    const conflictInit = run(["init", "--program", "conflict-init", "--remote-mode", "local-only", "--repo", "owner/repo", "--json"], tmp, emptyRemoteEnv);
+    assert(!conflictInit.ok && /mutually exclusive/.test(conflictInit.parsed?.error || ""), "init rejects local-only plus repository identity as conflicting resolution paths");
+
+    const waiverInit = run([
+      "init", "--program", "waiver-init",
+      "--waive-gate-requirement", "program.remote_policy_resolution",
+      "--waiver-decision", "DEC-INIT-WAIVER",
+      "--waiver-reason", "Governed compatibility period.",
+      "--json",
+    ], tmp, emptyRemoteEnv);
+    const waiverInitPacket = JSON.parse(readFileSync(join(tmp, "plans", "programs", "waiver-init", "program_packet.json"), "utf-8"));
+    assert(waiverInit.ok && waiverInitPacket.gate_requirement_waivers?.[0]?.decision_ref === "DEC-INIT-WAIVER", "init can record a complete governed waiver resolution");
+
+    const partialWaiver = run(["init", "--program", "partial-waiver", "--waive-gate-requirement", "program.remote_policy_resolution", "--json"], tmp, emptyRemoteEnv);
+    assert(!partialWaiver.ok && /must be provided together/.test(partialWaiver.parsed?.error || ""), "init rejects partial governed waiver flags");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-github-required-research-"));
+  try {
+    const packetPath = join(tmp, "program_packet.json");
+    const packet = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    packet.tickets[0].type = "research";
+    delete packet.tickets[0].external_refs;
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", packetPath, "--remote-mode", "remote-sync", "--json"], tmp);
+    assert(!result.ok && hasError(result, "ready_ticket_missing_github_issue"), "remote-sync ready research ticket without GitHub issue fails JS validation");
+    assert(!result.ok && hasError(result, "program_ready_ticket_missing_github_issue"), "remote-sync ready research ticket without GitHub issue fails ontology validation");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-remote-mode-policy-"));
+  try {
+    const packetPath = join(tmp, "program_packet.json");
+    const packet = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    delete packet.tickets[0].external_refs;
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+
+    result = run(["check", "--program", packetPath, "--json"], tmp, { PLANNER_REMOTE_MODE: "remote-sync" });
+    assert(!result.ok && hasError(result, "ready_ticket_missing_github_issue"), "PLANNER_REMOTE_MODE=remote-sync requires GitHub issue mirrors");
+
+    packet.remote_mode = "remote-sync";
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", packetPath, "--json"], tmp, { PLANNER_REMOTE_MODE: "local-only" });
+    assert(!result.ok && hasError(result, "ready_ticket_missing_github_issue"), "packet remote_mode=remote-sync keeps GitHub issue mirror requirement");
+    const syncFacts = run(["facts", "--program", packetPath], tmp, { PLANNER_REMOTE_MODE: "local-only" });
+    assert(syncFacts.ok && syncFacts.stdout.includes("program_github_issue_mirror_required('PGM-TEST')"), "remote-sync packet facts require GitHub issue mirrors");
+
+    packet.remote_mode = "local-only";
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", packetPath, "--remote-mode", "remote-sync", "--json"], tmp);
+    assert(result.ok && result.parsed.status === "PASS", "packet remote_mode=local-only remains local-only even when CLI requests remote-sync");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-project-item-linked-"));
+  try {
+    const packetPath = join(tmp, "program_packet.json");
+    const packet = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    packet.tickets[0].external_refs = [{
+      kind: "github_project_item",
+      repo: "owner/repo",
+      issue_number: 42,
+      project_item_id: "PVTI_item",
+      url: "https://github.com/owner/repo/issues/42",
+    }];
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", packetPath, "--json"], tmp);
+    assert(result.ok && result.parsed.status === "PASS", "linked GitHub Project item satisfies ready ticket issue mirror requirement");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-generic-ac-"));
+  try {
+    const packetPath = join(tmp, "program_packet.json");
+    const packet = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    packet.acceptance_criteria[0].text = "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.";
+    packet.tickets[0].acceptance_quality_required = true;
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", packetPath, "--json"], tmp);
+    assert(!result.ok && hasError(result, "ready_ticket_generic_acceptance"), "ready ticket with placeholder acceptance text fails validation");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
 {
   const tmp = mkdtempSync(join(tmpdir(), "program-manager-transition-"));
@@ -136,7 +503,10 @@ assert(result.ok && result.parsed.status === "PASS", "ready-to-execution accepts
 
 result = run(["facts", "--program", fixture("valid_ready.json")]);
 assert(result.ok && result.stdout.includes("program('PGM-TEST'"), "facts command emits program facts");
+assert(result.stdout.includes("program_remote_mode('PGM-TEST', 'remote_sync')"), "facts command infers remote-sync from the fixture repository identity");
 assert(result.stdout.includes("ticket('T-001'"), "facts command emits ticket facts");
+assert(result.stdout.includes("ticket_github_issue('T-001')"), "facts command emits GitHub issue mirror facts");
+assert(result.stdout.includes("ticket_github_issue_ref('T-001', 'owner/repo', 9016)"), "facts command emits detailed GitHub issue mirror refs");
 
 result = run(["check", "--program", fixture("missing_epic_story.json"), "--json"]);
 assert(!result.ok && hasError(result, "epic_without_story"), "missing epic story fails");
@@ -164,6 +534,65 @@ result = run(["verify", "execution-to-program-validate", "--program", fixture("c
 assert(!result.ok && hasError(result, "required_child_plan_dir_required"), "verified ticket with null plan_dir fails validation (F-001)");
 assert(!result.ok && !hasError(result, "required_child_plan_dir_missing"), "null-path failure is distinct from missing-path failure");
 assert(!result.ok && !hasError(result, "required_child_plan_not_closed"), "null-path failure does not fall through to not_closed");
+
+{
+  function quantPacket({ cited = false, withLedger = cited } = {}) {
+    const packet = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    packet.id = "PGM-QUANT-SCOPE";
+    packet.title = "Quant optimizer negative verdict fixture";
+    packet.status = "executing";
+    packet.goal = "Run quant optimizer search and avoid overclaiming negative no_go strategy verdicts.";
+    packet.persona_packs = ["quant", "assumptions_challenger", "traceability"];
+    packet.tickets[0].ticket_type = "quant_exploration";
+    packet.tickets[0].title = "Evaluate bounded quant optimizer region";
+    packet.tickets[0].lifecycle = "done";
+    packet.verification_matrix[0].result = "pass";
+    packet.verification_matrix[0].result_source = "manual";
+    if (withLedger) {
+      packet.hypothesis_space = {
+        dimensions: {
+          families: { tested: ["ta_momentum"], untested: ["ml", "order_flow"] },
+          intervals: { tested: ["1h"], untested: ["15m", "4h"] },
+          directions: { tested: ["long_only"], untested: ["short", "long_short"] },
+        },
+      };
+    }
+    packet.findings_ledger = [{
+      id: "F-NEG-001",
+      grade: "negative",
+      summary: "No candidate met promotion criteria.",
+      ...(cited ? { tested_region_ref: "hypothesis_space.dimensions" } : {}),
+    }];
+    packet.program_verdict = {
+      verdict: "no_go",
+      rationale: "Bounded region did not pass.",
+      ...(cited ? { tested_region: "families=ta_momentum; intervals=1h; directions=long_only" } : {}),
+    };
+    return packet;
+  }
+
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-scope-citation-"));
+  try {
+    const packetPath = join(tmp, "program_packet.json");
+    writeFileSync(packetPath, `${JSON.stringify(quantPacket({ cited: false, withLedger: false }), null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", packetPath, "--json"], tmp);
+    assert(result.ok && result.parsed?.warnings?.some((entry) => entry.code === "hypothesis_space_ledger_missing"), "quant packet without hypothesis_space warns during compatibility window");
+
+    result = run(["verify", "execution-to-program-validate", "--program", packetPath, "--json"], tmp);
+    assert(!result.ok && hasError(result, "negative_finding_missing_tested_region"), "quant negative finding without tested region fails program validation");
+    assert(!result.ok && hasError(result, "program_no_go_missing_tested_region"), "quant no_go verdict without tested region fails program validation");
+
+    writeFileSync(packetPath, `${JSON.stringify(quantPacket({ cited: true, withLedger: true }), null, 2)}\n`, "utf-8");
+    result = run(["verify", "execution-to-program-validate", "--program", packetPath, "--json"], tmp);
+    assert(result.ok && result.parsed.status === "PASS", "quant negative/no_go packet with tested-region citations passes program validation");
+
+    const facts = run(["facts", "--program", packetPath], tmp);
+    assert(facts.ok && facts.stdout.includes("scope_citation_required('PGM-QUANT-SCOPE')"), "program facts emit scope citation requirement");
+    assert(facts.stdout.includes("finding_tested_region_cited('F-NEG-001')"), "program facts emit finding tested-region citation");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
 // F-010 closure: parameterized validator-invariant test.
 //
@@ -238,6 +667,131 @@ assert(!result.ok && !hasError(result, "required_child_plan_not_closed"), "null-
     assert(!r.ok && !hasError(r, "required_child_plan_dir_missing"), "real-dir + open-state path does not emit dir_missing");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  function writeChildPlan(tmp, name, stateJson) {
+    const dir = join(tmp, "plans", name);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "state.json"), `${JSON.stringify(stateJson, null, 2)}\n`, "utf-8");
+    return `plans/${name}`;
+  }
+
+  function childFailurePacket(tmp, childState, lifecycle = "in_progress") {
+    const packet = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    packet.status = "executing";
+    packet.tickets[0].lifecycle = lifecycle;
+    packet.tickets[0].child_plan = {
+      policy: "required",
+      plan_dir: childState ? writeChildPlan(tmp, "plan_child_failed", childState) : "plans/plan_child_missing",
+      reason: "Fixture child plan.",
+    };
+    return packet;
+  }
+
+  const cases = [
+    [
+      "blocked-state",
+      { state: "BLOCKED", transitions: [] },
+      "child plan blocked state fails until propagated",
+    ],
+    [
+      "poisoned-tail",
+      {
+        state: "EXECUTE",
+        transitions: [
+          { gate: "plan-to-execute", gate_result: "FAIL", failure_codes: ["GATE-PLN-X"] },
+          { gate: "plan-to-execute", gate_result: "FAIL", failure_codes: ["GATE-PLN-X"] },
+          { gate: "plan-to-execute", gate_result: "FAIL", failure_codes: ["GATE-PLN-X"] },
+        ],
+      },
+      "child plan poisoned gate tail fails until propagated",
+    ],
+    [
+      "replan-loop",
+      {
+        state: "EXECUTE",
+        transitions: [
+          { to: "RE_PLAN", gate_result: "PASS" },
+          { to: "RE_PLAN", gate_result: "PASS" },
+          { to: "RE_PLAN", gate_result: "PASS" },
+        ],
+      },
+      "child plan re-plan loop fails until propagated",
+    ],
+  ];
+
+  for (const [name, childState, label] of cases) {
+    const tmp = mkdtempSync(join(tmpdir(), `program-manager-child-failure-${name}-`));
+    try {
+      const packetPath = join(tmp, "program_packet.json");
+      writeFileSync(packetPath, `${JSON.stringify(childFailurePacket(tmp, childState), null, 2)}\n`, "utf-8");
+      const r = run(["check", "--program", packetPath, "--json"], tmp);
+      assert(!r.ok && hasError(r, "child_plan_failure_not_propagated"), label);
+
+      const propagated = childFailurePacket(tmp, childState, "blocked");
+      writeFileSync(packetPath, `${JSON.stringify(propagated, null, 2)}\n`, "utf-8");
+      const propagatedCheck = run(["check", "--program", packetPath, "--json"], tmp);
+      assert(propagatedCheck.ok && propagatedCheck.parsed?.status === "PASS", `${label}: blocked lifecycle is accepted propagation`);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  const awaitingTmp = mkdtempSync(join(tmpdir(), "program-manager-child-failure-awaiting-"));
+  try {
+    const packetPath = join(awaitingTmp, "program_packet.json");
+    const awaiting = childFailurePacket(awaitingTmp, cases[1][1]);
+    awaiting.tickets[0].awaiting_external_action = {
+      kind: "operator_run",
+      reason: "The child repair is recovering locally while terminal acceptance waits on an operator receipt.",
+      expected_evidence: {
+        type: "json_match",
+        root: "reports/ive/autonomous_dogfood_runs",
+        match: { outcome: "PASS" },
+      },
+      recorded_at: "2026-07-11T14:40:00.000Z",
+    };
+    writeFileSync(packetPath, `${JSON.stringify(awaiting, null, 2)}\n`, "utf-8");
+    const r = run(["check", "--program", packetPath, "--json"], awaitingTmp);
+    assert(r.ok && !hasError(r, "child_plan_failure_not_propagated"), "valid awaiting_external_action explicitly propagates a child-plan failure while the ticket remains in_progress");
+  } finally {
+    rmSync(awaitingTmp, { recursive: true, force: true });
+  }
+
+  const closedAfterValidateRetriesTmp = mkdtempSync(join(tmpdir(), "program-manager-child-closed-after-validate-retries-"));
+  try {
+    const packetPath = join(closedAfterValidateRetriesTmp, "program_packet.json");
+    const closedAfterValidateRetries = {
+      state: "CLOSE",
+      transitions: [
+        { from: "VALIDATE", to: "VALIDATE", gate_result: "FAIL", failure_codes: ["GATE-SEM-002"] },
+        { from: "VALIDATE", to: "VALIDATE", gate_result: "FAIL", failure_codes: ["GATE-SEM-002"] },
+        { from: "VALIDATE", to: "VALIDATE", gate_result: "FAIL", failure_codes: ["GATE-SEM-002"] },
+        { from: "VALIDATE", to: "CLOSE", gate_result: "PASS", failure_codes: [] },
+      ],
+    };
+    writeFileSync(packetPath, `${JSON.stringify(childFailurePacket(closedAfterValidateRetriesTmp, closedAfterValidateRetries), null, 2)}\n`, "utf-8");
+    const r = run(["check", "--program", packetPath, "--json"], closedAfterValidateRetriesTmp);
+    assert(r.ok && r.parsed?.status === "PASS", "closed child plan after successful validate-to-close pass does not remain history-poisoned");
+  } finally {
+    rmSync(closedAfterValidateRetriesTmp, { recursive: true, force: true });
+  }
+
+  const missingTmp = mkdtempSync(join(tmpdir(), "program-manager-child-failure-missing-"));
+  try {
+    const packetPath = join(missingTmp, "program_packet.json");
+    writeFileSync(packetPath, `${JSON.stringify(childFailurePacket(missingTmp, null, "ready"), null, 2)}\n`, "utf-8");
+    const r = run(["check", "--program", packetPath, "--json"], missingTmp);
+    assert(!r.ok && hasError(r, "child_plan_failure_not_propagated"), "missing child plan directory fails until propagated");
+
+    const packet = childFailurePacket(missingTmp, null, "blocked");
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    const nextReady = run(["next-ready", "--program", packetPath, "--json"], missingTmp);
+    assert(nextReady.ok && (nextReady.parsed?.tickets || []).length === 0, "propagated blocked child failure is excluded from next-ready");
+  } finally {
+    rmSync(missingTmp, { recursive: true, force: true });
   }
 }
 
@@ -319,6 +873,250 @@ assert(!result.ok && hasError(result, "program_child_plan_not_closed"), "closed 
     rmSync(reviewReadyTmp, { recursive: true, force: true });
   }
 
+  function administrativeClosurePacket({ disposition = true, reviewStatus = "unavailable" } = {}) {
+    return {
+      version: 1,
+      id: "PGM-ADMIN-CLOSE",
+      title: "Administrative closure fixture",
+      status: "executing",
+      goal: "Close obsolete backlog without delivery evidence.",
+      remote_mode: "local-only",
+      story_refs: ["US-001"],
+      epics: [{
+        id: "EP-ADMIN",
+        title: "Administration",
+        story_refs: ["US-001"],
+        ticket_refs: ["T-ADMIN"],
+      }],
+      tickets: [{
+        id: "T-ADMIN",
+        epic_id: "EP-ADMIN",
+        title: "Obsolete backlog ticket",
+        type: "feature",
+        lifecycle: "closed",
+        review_status: reviewStatus,
+        gap_refs: ["GAP-ADMIN"],
+        acceptance_criteria: [],
+        verification_refs: [],
+        external_refs: [],
+        ...(disposition ? {
+          backlog_disposition: {
+            classification: "fold_into_existing_ticket",
+            decision_ref: "D-ADMIN",
+            receipt_ref: "reports/ive/lifecycle_dispositions/admin.json",
+            source: "program_manager_disposition",
+          },
+        } : {}),
+      }],
+      acceptance_criteria: [],
+      dependencies: [],
+      compatibility_contracts: [],
+      migration_boundaries: [],
+      deletion_move_census: [],
+      verification_matrix: [],
+      decisions: [{
+        id: "D-ADMIN",
+        type: "backlog_disposition",
+        subject_ref: "T-ADMIN",
+        status: "accepted",
+        decision: "Fold this obsolete ticket into an existing Program Packet ticket.",
+      }],
+    };
+  }
+
+  const adminTmp = mkdtempSync(join(tmpdir(), "program-manager-admin-close-"));
+  try {
+    const packetPath = join(adminTmp, "program_packet.json");
+    writeFileSync(packetPath, `${JSON.stringify(administrativeClosurePacket(), null, 2)}\n`, "utf-8");
+    const r = run(["check", "--program", packetPath, "--json"], adminTmp);
+    assert(r.ok && r.parsed?.status === "PASS", "administrative backlog closure passes Program Manager check without delivery evidence");
+    const facts = run(["facts", "--program", packetPath], adminTmp);
+    assert(facts.ok && facts.stdout.includes("ticket_administrative_closure('T-ADMIN')"), "administrative backlog closure emits Prolog parity fact");
+
+    writeFileSync(packetPath, `${JSON.stringify(administrativeClosurePacket({ disposition: false }), null, 2)}\n`, "utf-8");
+    const seeded = run(["check", "--program", packetPath, "--json"], adminTmp);
+    assert(!seeded.ok && hasError(seeded, "ready_ticket_missing_acceptance"), "ordinary evidence-free closed ticket still fails JS acceptance evidence");
+    assert(!seeded.ok && hasError(seeded, "program_ready_ticket_missing_acceptance"), "ordinary evidence-free closed ticket still fails ontology acceptance evidence");
+  } finally {
+    rmSync(adminTmp, { recursive: true, force: true });
+  }
+
+  if (existsSync(visualizerPayloadModule)) {
+    const { generateLiveGraphPayload } = await import(pathToFileURL(visualizerPayloadModule).href);
+    const visualizerTmp = mkdtempSync(join(tmpdir(), "program-manager-admin-visualizer-"));
+    try {
+      const planDir = join(visualizerTmp, "plans", "plan_visualizer");
+      const packetPath = join(visualizerTmp, "plans", "programs", "admin", "program_packet.json");
+      const storyPath = join(visualizerTmp, "reports", "user_story_audit", "story_registry.json");
+      mkdirSync(planDir, { recursive: true });
+      mkdirSync(dirname(packetPath), { recursive: true });
+      mkdirSync(dirname(storyPath), { recursive: true });
+      writeFileSync(join(planDir, "state.json"), `${JSON.stringify({ state: "EXECUTE", goal: "Visualizer fixture" }, null, 2)}\n`, "utf-8");
+      writeFileSync(packetPath, `${JSON.stringify({
+        ...administrativeClosurePacket(),
+        tickets: [{
+          ...administrativeClosurePacket().tickets[0],
+          lifecycle: "deferred",
+        }],
+      }, null, 2)}\n`, "utf-8");
+      writeFileSync(storyPath, `${JSON.stringify({ version: 1, stories: [], infrastructure_stories: [] }, null, 2)}\n`, "utf-8");
+      const payload = generateLiveGraphPayload({
+        repoRoot: visualizerTmp,
+        planDir,
+        programPacketPath: packetPath,
+        storyRegistryPath: storyPath,
+        generatedAt: "2026-07-09T00:00:00.000Z",
+      });
+      const ticketNode = payload.graph?.nodes?.find((entry) => entry.id === "T-ADMIN");
+      assert(ticketNode?.className?.includes("flow-node-closed"), "visualizer payload treats dispositioned deferred ticket as resolved");
+      assert(payload.program?.health_summary?.checks?.some((check) => check.id === "ticket-lifecycle" && check.detail.includes("1 ticket")), "visualizer payload keeps disposition-resolved ticket in health summary");
+    } finally {
+      rmSync(visualizerTmp, { recursive: true, force: true });
+    }
+  } else {
+    assert(true, "visualizer payload test skipped when app tree is not installed");
+  }
+
+  function deferredDispositionPacket({
+    programId = "PGM-DEFERRED-DISPOSITION",
+    ticketId = "T-DEFERRED",
+    decisionId = "D-ADMIN",
+  } = {}) {
+    return {
+      version: 1,
+      id: programId,
+      title: "Deferred disposition fixture",
+      status: "executing",
+      goal: "Promote already-dispositioned deferred backlog tickets only on explicit --close.",
+      remote_mode: "local-only",
+      story_refs: ["US-001"],
+      epics: [{
+        id: "EP-ADMIN",
+        title: "Administration",
+        story_refs: ["US-001"],
+        ticket_refs: [ticketId],
+      }],
+      tickets: [{
+        id: ticketId,
+        epic_id: "EP-ADMIN",
+        title: "Superseded deferred ticket",
+        type: "feature",
+        lifecycle: "deferred",
+        gap_refs: ["GAP-ADMIN"],
+        deferral_decision_ref: decisionId,
+        close_reason: `Superseded by the consolidated repair lane (decision ${decisionId}).`,
+      }],
+      acceptance_criteria: [],
+      dependencies: [],
+      compatibility_contracts: [],
+      migration_boundaries: [],
+      deletion_move_census: [],
+      verification_matrix: [],
+      decisions: [{
+        id: decisionId,
+        type: "backlog_disposition",
+        subject_ref: ticketId,
+        status: "accepted",
+        decision: "Close obsolete deferred backlog because it was superseded by the consolidated repair lane.",
+      }],
+    };
+  }
+
+  const dispositionTmp = mkdtempSync(join(tmpdir(), "program-manager-disposition-admin-close-"));
+  try {
+    const packetPath = join(dispositionTmp, "program_packet.json");
+    const classifyReceipt = join(dispositionTmp, "classify-receipt.json");
+    const closeReceipt = join(dispositionTmp, "close-receipt.json");
+    writeFileSync(packetPath, `${JSON.stringify(deferredDispositionPacket(), null, 2)}\n`, "utf-8");
+
+    const classified = run([
+      "disposition",
+      "--deferred-program", packetPath,
+      "--output", classifyReceipt,
+      "--write",
+      "--json",
+    ], dispositionTmp);
+    const afterClassify = JSON.parse(readFileSync(packetPath, "utf-8"));
+    assert(classified.ok && classified.parsed?.deferred?.[0]?.action === "classified_written", "disposition --write stamps classification only");
+    assert(afterClassify.tickets[0].lifecycle === "deferred", "disposition --write leaves deferred lifecycle unchanged");
+    assert(afterClassify.tickets[0].backlog_disposition?.decision_ref === "D-ADMIN", "classification stamp carries decision_ref");
+
+    const closed = run([
+      "disposition",
+      "--deferred-program", packetPath,
+      "--output", closeReceipt,
+      "--close",
+      "--write",
+      "--json",
+    ], dispositionTmp);
+    const afterClose = JSON.parse(readFileSync(packetPath, "utf-8"));
+    assert(closed.ok && closed.parsed?.deferred?.[0]?.action === "admin_closed", "disposition --close --write promotes already-dispositioned deferred ticket");
+    assert(afterClose.tickets[0].lifecycle === "closed", "administrative close persists closed lifecycle");
+    assert(afterClose.tickets[0].review_status === "unavailable", "administrative close records review_status unavailable instead of review_ready");
+    assert(!afterClose.tickets[0].persona_review, "administrative close does not fabricate persona review evidence");
+    assert(String(afterClose.tickets[0].close_reason || "").includes("close_obsolete") && String(afterClose.tickets[0].close_reason || "").includes("D-ADMIN"), "administrative close reason names classification and decision");
+
+    const repeated = run([
+      "disposition",
+      "--deferred-program", packetPath,
+      "--close",
+      "--write",
+      "--json",
+    ], dispositionTmp);
+    assert(repeated.ok && repeated.parsed?.deferred?.[0]?.action === "already_closed", "disposition --close is idempotent for already administratively closed tickets");
+  } finally {
+    rmSync(dispositionTmp, { recursive: true, force: true });
+  }
+
+  const sameSecondTmp = mkdtempSync(join(tmpdir(), "program-manager-disposition-same-second-"));
+  try {
+    const packetAPath = join(sameSecondTmp, "program-a", "program_packet.json");
+    const packetBPath = join(sameSecondTmp, "program-b", "program_packet.json");
+    mkdirSync(dirname(packetAPath), { recursive: true });
+    mkdirSync(dirname(packetBPath), { recursive: true });
+    writeFileSync(packetAPath, `${JSON.stringify(deferredDispositionPacket({
+      programId: "PGM-DEFERRED-A",
+      ticketId: "T-DEFERRED-A",
+      decisionId: "D-ADMIN-A",
+    }), null, 2)}\n`, "utf-8");
+    writeFileSync(packetBPath, `${JSON.stringify(deferredDispositionPacket({
+      programId: "PGM-DEFERRED-B",
+      ticketId: "T-DEFERRED-B",
+      decisionId: "D-ADMIN-B",
+    }), null, 2)}\n`, "utf-8");
+
+    const fixedClock = () => new Date("2026-07-09T09:13:03.456Z");
+    const first = buildProgramDisposition({
+      cwd: sameSecondTmp,
+      deferredPrograms: [packetAPath],
+      write: true,
+      clock: fixedClock,
+    });
+    const second = buildProgramDisposition({
+      cwd: sameSecondTmp,
+      deferredPrograms: [packetBPath],
+      write: true,
+      clock: fixedClock,
+    });
+    const firstReceiptPath = join(sameSecondTmp, first.output_path);
+    const secondReceiptPath = join(sameSecondTmp, second.output_path);
+    const writtenA = JSON.parse(readFileSync(packetAPath, "utf-8"));
+    const writtenB = JSON.parse(readFileSync(packetBPath, "utf-8"));
+    const receiptA = JSON.parse(readFileSync(firstReceiptPath, "utf-8"));
+    const receiptB = JSON.parse(readFileSync(secondReceiptPath, "utf-8"));
+
+    assert(first.output_path !== second.output_path, "default disposition receipt paths are unique for same-second writes");
+    assert(first.output_path.includes("20260709T091303456Z") && second.output_path.includes("20260709T091303456Z"), "default disposition receipt paths preserve millisecond precision");
+    assert(first.output_path.includes("pgm-deferred-a") && second.output_path.includes("pgm-deferred-b"), "default disposition receipt paths include program identity slug");
+    assert(existsSync(firstReceiptPath) && existsSync(secondReceiptPath), "same-second dispositions write both receipt files");
+    assert(writtenA.tickets[0].backlog_disposition?.receipt_ref === first.output_path, "first ticket points to its own disposition receipt");
+    assert(writtenB.tickets[0].backlog_disposition?.receipt_ref === second.output_path, "second ticket points to its own disposition receipt");
+    assert(receiptA.deferred.some((entry) => entry.ticket_id === "T-DEFERRED-A") && !receiptA.deferred.some((entry) => entry.ticket_id === "T-DEFERRED-B"), "first receipt contains only first ticket disposition");
+    assert(receiptB.deferred.some((entry) => entry.ticket_id === "T-DEFERRED-B") && !receiptB.deferred.some((entry) => entry.ticket_id === "T-DEFERRED-A"), "second receipt contains only second ticket disposition");
+  } finally {
+    rmSync(sameSecondTmp, { recursive: true, force: true });
+  }
+
   const writeFailTmp = mkdtempSync(join(tmpdir(), "program-manager-close-write-fail-"));
   try {
     const packetPath = join(writeFailTmp, "program_packet.json");
@@ -390,6 +1188,128 @@ assert(!result.ok && hasError(result, "program_child_plan_not_closed"), "closed 
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
+
+  for (const status of getVerificationStatusVocabulary().contexts.program.statuses) {
+    for (const form of status.forms) {
+      const tmp = mkdtempSync(join(tmpdir(), `program-manager-ticket-vm-vocabulary-${status.kind}-`));
+      try {
+        const packetPath = join(tmp, "program_packet.json");
+        writeFileSync(packetPath, `${JSON.stringify(closedPacketWithTicketResult(form), null, 2)}\n`, "utf-8");
+        const r = run(["verify", "validate-to-program-close", "--program", packetPath, "--json"], tmp);
+        if (status.satisfies) {
+          assert(r.ok && r.parsed?.status === "PASS", `program verification form ${form} passes in JavaScript and Prolog`);
+        } else {
+          assert(!r.ok && hasError(r, "ticket_verification_not_passed"), `program verification form ${form} fails JavaScript validation`);
+          assert(!r.ok && hasError(r, "program_ticket_verification_not_passed"), `program verification form ${form} fails Prolog validation`);
+        }
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    }
+  }
+}
+
+// Ticket close annotation gate: opt-in Program Packet tickets can require
+// code-level @planner:proves links before done/verified/closed lifecycle.
+{
+  function writeFileUnder(tmp, relPath, content) {
+    const abs = join(tmp, relPath);
+    mkdirSync(dirname(abs), { recursive: true });
+    writeFileSync(abs, content, "utf-8");
+  }
+
+  function annotationPacket(tmp, relPath, content, mutator = () => {}) {
+    writeFileUnder(tmp, relPath, content);
+    const packet = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    packet.status = "executing";
+    packet.tickets[0].lifecycle = "done";
+    packet.tickets[0].child_plan = { policy: "not_required", plan_dir: null, reason: "Annotation close fixture." };
+    packet.tickets[0].annotation_close_required = true;
+    packet.tickets[0].code_refs = [relPath];
+    packet.verification_matrix[0].result = "pass";
+    mutator(packet);
+    return packet;
+  }
+
+  const cases = [
+    [
+      "missing",
+      "src/impl.mjs",
+      "export const value = 1;\n",
+      "ticket_close_annotation_missing",
+      "missing @planner:proves blocks close annotation gate",
+    ],
+    [
+      "wrong-story",
+      "src/impl.mjs",
+      "// @planner:proves = crit:AC-WRONG\nexport const value = 1;\n",
+      "ticket_close_annotation_wrong_story",
+      "wrong @planner:proves linkage blocks close annotation gate",
+    ],
+  ];
+
+  for (const [name, relPath, content, code, label] of cases) {
+    const tmp = mkdtempSync(join(tmpdir(), `program-manager-annotation-${name}-`));
+    try {
+      const packetPath = join(tmp, "program_packet.json");
+      writeFileSync(packetPath, `${JSON.stringify(annotationPacket(tmp, relPath, content), null, 2)}\n`, "utf-8");
+      const r = run(["check", "--program", packetPath, "--json"], tmp);
+      assert(!r.ok && hasError(r, code), label);
+    } finally {
+      rmSync(tmp, { recursive: true, force: true });
+    }
+  }
+
+  const passTmp = mkdtempSync(join(tmpdir(), "program-manager-annotation-pass-"));
+  try {
+    const packetPath = join(passTmp, "program_packet.json");
+    writeFileSync(packetPath, `${JSON.stringify(annotationPacket(
+      passTmp,
+      "src/impl.mjs",
+      "// @planner:proves = crit:AC-001\nexport const value = 1;\n",
+    ), null, 2)}\n`, "utf-8");
+    const r = run(["check", "--program", packetPath, "--json"], passTmp);
+    assert(r.ok && r.parsed?.status === "PASS", "matching @planner:proves satisfies close annotation gate");
+  } finally {
+    rmSync(passTmp, { recursive: true, force: true });
+  }
+
+  const nonCodeTmp = mkdtempSync(join(tmpdir(), "program-manager-annotation-non-code-"));
+  try {
+    const packetPath = join(nonCodeTmp, "program_packet.json");
+    writeFileSync(packetPath, `${JSON.stringify(annotationPacket(nonCodeTmp, "docs/readme.md", "# Docs only\n"), null, 2)}\n`, "utf-8");
+    const r = run(["check", "--program", packetPath, "--json"], nonCodeTmp);
+    assert(r.ok && r.parsed?.status === "PASS", "non-code file scope is exempt from close annotation gate");
+  } finally {
+    rmSync(nonCodeTmp, { recursive: true, force: true });
+  }
+
+  const fixtureTmp = mkdtempSync(join(tmpdir(), "program-manager-annotation-fixture-"));
+  try {
+    const packetPath = join(fixtureTmp, "program_packet.json");
+    writeFileSync(packetPath, `${JSON.stringify(annotationPacket(fixtureTmp, "fixtures/impl.mjs", "export const fixture = true;\n"), null, 2)}\n`, "utf-8");
+    const r = run(["check", "--program", packetPath, "--json"], fixtureTmp);
+    assert(r.ok && r.parsed?.status === "PASS", "fixture file scope does not pollute close annotation proof");
+  } finally {
+    rmSync(fixtureTmp, { recursive: true, force: true });
+  }
+
+  const waiverTmp = mkdtempSync(join(tmpdir(), "program-manager-annotation-waiver-"));
+  try {
+    const packetPath = join(waiverTmp, "program_packet.json");
+    writeFileSync(packetPath, `${JSON.stringify(annotationPacket(
+      waiverTmp,
+      "src/generated.mjs",
+      "export const generated = true;\n",
+      (packet) => {
+        packet.tickets[0].annotation_waivers = [{ path: "src/generated.mjs", reason: "generated code is regenerated from canonical templates" }];
+      },
+    ), null, 2)}\n`, "utf-8");
+    const r = run(["check", "--program", packetPath, "--json"], waiverTmp);
+    assert(r.ok && r.parsed?.status === "PASS", "substantive annotation waiver satisfies close annotation gate");
+  } finally {
+    rmSync(waiverTmp, { recursive: true, force: true });
+  }
 }
 
 const tmp = mkdtempSync(join(tmpdir(), "program-manager-skip-"));
@@ -403,7 +1323,7 @@ try {
 {
   const tmp = mkdtempSync(join(tmpdir(), "program-manager-init-"));
   try {
-    result = run(["init", "--program", "z1-m3", "--title", "Z1 M3", "--goal", "Coordinate Z1 M3 work.", "--json"], tmp);
+    result = run(["init", "--program", "z1-m3", "--title", "Z1 M3", "--goal", "Coordinate Z1 M3 work.", "--remote-mode", "local-only", "--json"], tmp);
     const packetPath = join(tmp, "plans", "programs", "z1-m3", "program_packet.json");
     const packet = JSON.parse(readFileSync(packetPath, "utf-8"));
     assert(result.ok && result.parsed.status === "PASS", "init creates a Program Packet");
@@ -411,6 +1331,7 @@ try {
     assert(Array.isArray(packet.tickets) && Array.isArray(packet.verification_matrix), "init writes required empty arrays");
     const check = run(["check", "--program", packetPath, "--json"], tmp);
     assert(check.ok && check.parsed.status === "PASS", "init output passes Program Manager check");
+    assert(check.parsed?.lifecycle_reconciliation?.status !== "UNAVAILABLE", "Program Manager check exercises lifecycle reconciliation without reader errors");
     const overwrite = run(["init", "--program", "z1-m3", "--json"], tmp);
     assert(!overwrite.ok && /already exists/.test(overwrite.parsed?.error || overwrite.stderr), "init refuses accidental overwrite");
   } finally {
@@ -419,33 +1340,38 @@ try {
 }
 
 {
-  const tmp = mkdtempSync(join(tmpdir(), "program-manager-remediate-"));
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-remote-mode-"));
   try {
-    const init = run(["init", "--program", "remediate", "--json"], tmp);
-    const packetPath = join(tmp, "plans", "programs", "remediate", "program_packet.json");
-    assert(init.ok && existsSync(packetPath), "remediation fixture initializes a packet");
-    const mock = JSON.stringify({
-      status: "blocked",
-      summary: "Needs a story link",
-      findings: [{ id: "DS-001", status: "needs_story", message: "No story linked" }],
-      recommended_actions: ["Link one or more stories to the ticket using /story-bootstrap"],
-    });
-    const intake = run([
+    const init = run(["init", "--program", "remote-mode", "--remote-mode", "local-only", "--json"], tmp);
+    const packetPath = join(tmp, "plans", "programs", "remote-mode", "program_packet.json");
+    assert(init.ok && existsSync(packetPath), "remote-mode fixture initializes a packet");
+
+    const local = run([
       "intake",
-      "--program",
-      packetPath,
-      "--from-text",
-      "Add a Program Manager remediation feature without a story ref",
+      "--program", packetPath,
+      "--from-text", "Local-only draft intake remains offline.",
       "--write",
-      "--llm-review",
       "--json",
-    ], tmp, { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock });
-    assert(intake.ok, "remediation fixture writes a blocked advisory intake artifact");
-    const dryRun = run(["check", "--program", packetPath, "--remediate", "--json"], tmp);
-    assert(dryRun.ok && dryRun.parsed?.remediation?.task_count >= 1, "--remediate dry-run emits task packets");
-    assert((dryRun.parsed?.remediation?.tasks || []).some((task) => task.workflow === "/story-bootstrap"), "--remediate maps story recommendations to story-bootstrap");
-    const write = run(["check", "--program", packetPath, "--remediate", "--write", "--json"], tmp);
-    assert(write.ok && existsSync(join(tmp, write.parsed?.remediation?.artifact_path || "")), "--remediate --write writes a remediation artifact");
+    ], tmp, { PLANNER_REMOTE_MODE: "local-only" });
+    assert(local.ok && local.parsed?.remote_mode === "local-only", "local-only mode permits local text intake");
+
+    const remoteIssue = run([
+      "intake",
+      "--program", packetPath,
+      "--issue", "42",
+      "--repo", "owner/repo",
+      "--json",
+    ], tmp, { PLANNER_REMOTE_MODE: "local-only" });
+    assert(!remoteIssue.ok && /requires remote-read or remote-sync/.test(remoteIssue.parsed?.error || ""), "local-only mode blocks GitHub issue intake before remote access");
+
+    const remoteProject = run([
+      "intake",
+      "--program", packetPath,
+      "--project-item", "PVTI_item",
+      "--repo", "owner/repo",
+      "--json",
+    ], tmp, { PLANNER_REMOTE_MODE: "local-only" });
+    assert(!remoteProject.ok && /requires remote-read or remote-sync/.test(remoteProject.parsed?.error || ""), "local-only mode blocks GitHub Project item intake before remote access");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -454,7 +1380,7 @@ try {
 {
   const tmp = mkdtempSync(join(tmpdir(), "program-manager-intake-preserve-"));
   try {
-    const init = run(["init", "--program", "preserve", "--json"], tmp);
+    const init = run(["init", "--program", "preserve", "--remote-mode", "local-only", "--json"], tmp);
     const packetPath = join(tmp, "plans", "programs", "preserve", "program_packet.json");
     assert(init.ok && existsSync(packetPath), "preserve fixture initializes a packet");
     const sourceText = "Update planner workflow migration in .agent/skills/iterative-planner/scripts/program_manager.mjs with US-077 traceability.";
@@ -471,19 +1397,21 @@ try {
       "--title", "Preserve custom proof rows",
       "--write",
       "--json",
-    ], tmp, { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock });
+    ], tmp, { PLANNER_SUPERVISOR_MOCK_RESPONSE: mock });
     const ticketId = first.parsed?.candidate_ticket?.id;
     const acceptanceId = first.parsed?.candidate_ticket?.acceptance_criteria?.[0];
     const verificationId = first.parsed?.candidate_ticket?.verification_refs?.[0];
     assert(first.ok && ticketId && acceptanceId && verificationId, "preserve fixture creates intake ticket");
+    assert(first.parsed?.ticket_intake_receipt?.github_publication === "required_before_ready", "local intake receipt requires GitHub publication before readiness");
+    assert(first.parsed?.ticket_intake_receipt?.next_required_command?.includes("github_ticket_review.mjs publish"), "local intake next command points to GitHub publish");
 
     const packet = JSON.parse(readFileSync(packetPath, "utf-8"));
     const acceptance = packet.acceptance_criteria.find((entry) => entry.id === acceptanceId);
     const verification = packet.verification_matrix.find((entry) => entry.id === verificationId);
-    acceptance.text = "Custom preserved acceptance row requires ripple_check and test_migration evidence.";
+    acceptance.text = "Custom preserved acceptance row requires ripple_check and governed migration-bootstrap evidence.";
     verification.proof_type = "proof:test";
-    verification.command_or_action = "node .agent/skills/iterative-planner/scripts/ripple_check.mjs && node .agent/skills/iterative-planner/tests/test_migration.mjs";
-    verification.pass_means = "ripple_check and test_migration pass before the ticket can become ready.";
+    verification.command_or_action = "node .agent/skills/iterative-planner/scripts/ripple_check.mjs && node .agent/skills/iterative-planner/tests/ive/run.mjs --only migration-bootstrap --json --no-manifest";
+    verification.pass_means = "ripple_check and governed migration-bootstrap pass before the ticket can become ready.";
     writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
 
     const repeat = run([
@@ -493,7 +1421,7 @@ try {
       "--title", "Preserve custom proof rows",
       "--write",
       "--json",
-    ], tmp, { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mock });
+    ], tmp, { PLANNER_SUPERVISOR_MOCK_RESPONSE: mock });
     assert(repeat.ok && repeat.parsed?.candidate_ticket?.id === ticketId, "repeat intake updates the same ticket");
     assert(repeat.parsed?.verification_rows?.[0]?.command_or_action?.includes("ripple_check.mjs"), "repeat intake preserves custom verification command");
     assert(repeat.parsed?.ticket_intake_receipt?.retro_recurrence_status === "pass", "preserved proof row satisfies recurrence guard");
@@ -502,13 +1430,127 @@ try {
   }
 }
 
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-intake-substantive-"));
+  try {
+    const init = run(["init", "--program", "substantive", "--remote-mode", "local-only", "--json"], tmp);
+    const packetPath = join(tmp, "plans", "programs", "substantive", "program_packet.json");
+    assert(init.ok && existsSync(packetPath), "substantive fixture initializes a packet");
+    const fsLib = await import("fs");
+    const registryPath = join(tmp, "reports", "user_story_audit", "story_registry.json");
+    fsLib.mkdirSync(dirname(registryPath), { recursive: true });
+    fsLib.writeFileSync(registryPath, JSON.stringify({
+      updated: "2026-06-22T00:00:00.000Z",
+      stories: [],
+      infrastructure_stories: [
+        {
+          id: "US-079",
+          title: "Program Manager workflow traceability",
+          status: "IMPLEMENTED",
+        },
+      ],
+      consolidations: [],
+    }, null, 2));
+
+    const source = JSON.stringify([
+      {
+        id: "readable-body",
+        title: "Render readable GitHub ticket bodies",
+        text: "US-079 GitHub mirrors are currently published as a dense block that hides the user story, acceptance criteria, and proof path.",
+        problem: "GitHub issue mirrors are hard to scan because planner evidence is rendered as an unstructured block.",
+        proposed_change: "Render stable Markdown sections for problem, proposed change, story context, acceptance criteria, verification, and metadata.",
+        acceptance_bullets: [
+          "Published GitHub issue bodies use stable Markdown sections for problem, proposed change, story context, acceptance criteria, verification, and metadata.",
+        ],
+        verification_plan: [
+          "node .agent/skills/iterative-planner/tests/test_program_manager.mjs",
+        ],
+        story_context: [
+          {
+            id: "US-079",
+            relevance: "Planner operators need readable GitHub mirrors to understand why the ticket exists and how it will be accepted.",
+          },
+        ],
+        quant_scope: "planner_core",
+      },
+    ]);
+
+    const intake = run([
+      "intake",
+      "--program", packetPath,
+      "--from-json-array", source,
+      "--write",
+      "--json",
+    ], tmp);
+    const ticket = intake.parsed?.candidate_ticket || intake.parsed?.candidate_tickets?.[0];
+    const acceptance = intake.parsed?.acceptance_criteria?.[0];
+    const receipt = intake.parsed?.ticket_intake_receipt || intake.parsed?.ticket_intake_receipts?.[0];
+    assert(intake.ok && ticket?.id, "JSON intake creates a candidate ticket");
+    assert(ticket.acceptance_quality_required === true, "JSON intake opts new tickets into strict acceptance quality");
+    assert(ticket.problem.includes("hard to scan"), "intake ticket records source-backed problem context");
+    assert(ticket.proposed_change.includes("stable Markdown sections"), "intake ticket records source-backed proposed change");
+    assert(acceptance?.text?.includes("stable Markdown sections"), "intake acceptance criteria use substantive source-backed text");
+    assert(!acceptance?.text?.includes("traceable scope, acceptance criteria, and verification evidence"), "intake acceptance criteria avoid generic placeholder text");
+    assert(ticket.story_context?.[0]?.title === "Program Manager workflow traceability", "intake story context includes registry story title");
+    assert(ticket.story_context?.[0]?.relevance?.includes("readable GitHub mirrors"), "intake story context includes relevance explanation");
+    assert(receipt?.story_context_refs?.includes("US-079"), "Ticket Intake Receipt lists story context refs");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// T-INTAKE-7920A5B7 closure: --remediate converts blocked advisory actions
+// into explicit dry-run/write task packets without overriding deterministic gates.
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-remediate-"));
+  try {
+    const packetPath = join(tmp, "program_packet.json");
+    const packet = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    packet.tickets[0].review_artifacts = [{ path: "intake/blocked_ticket.json", kind: "program_intake_packet" }];
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+
+    const intakeDir = join(tmp, "intake");
+    const fsLib = await import("fs");
+    fsLib.mkdirSync(intakeDir, { recursive: true });
+    fsLib.writeFileSync(join(intakeDir, "blocked_ticket.json"), JSON.stringify({
+      ticket_intake_receipt: {
+        deterministic_status: "blocked",
+        deepseek_advisory_status: "blocked",
+        deepseek_advisory_block: [
+          "<<<DEEPSEEK_VERDICT_BEGIN>>>",
+          "Status: blocked",
+          "Recommended actions:",
+          "- Link stories to the ticket with story-bootstrap.",
+          "- Add verification evidence for ripple_check, migration-bootstrap, and transition-gate-flows.",
+          "<<<DEEPSEEK_VERDICT_END>>>",
+        ].join("\n"),
+      },
+    }, null, 2));
+
+    const dryRun = run(["check", "--program", packetPath, "--remediate", "--json"], tmp);
+    const dryTasks = dryRun.parsed?.remediation?.tasks || [];
+    assert(dryRun.ok && dryRun.parsed?.remediation?.task_count === 2, "--remediate dry-run extracts blocked advisory actions");
+    assert(dryTasks.some((task) => task.workflow === "/story-bootstrap" && task.spawn_status === "dry_run_only"), "--remediate classifies story action as story-bootstrap dry-run");
+    assert(dryTasks.some((task) => task.workflow === "/safe-change-power" && task.kind === "planner_core_proof"), "--remediate classifies proof action as planner-core proof");
+
+    const write = run(["check", "--program", packetPath, "--remediate", "--write", "--json"], tmp);
+    const artifactPath = write.parsed?.remediation?.artifact_path;
+    const fullArtifactPath = artifactPath ? join(tmp, artifactPath) : null;
+    assert(write.ok && artifactPath && existsSync(fullArtifactPath), "--remediate --write records a remediation task packet");
+    const written = JSON.parse(readFileSync(fullArtifactPath, "utf-8"));
+    assert(written.tasks.every((task) => task.spawn_status === "task_packet_written"), "--remediate --write marks tasks as written packets");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 // T-INTAKE-D451770E closure: --auto-story dry-run + dedup behavior.
-// Uses PLANNER_DRIFT_LLM_MOCK_RESPONSE / PLANNER_DRIFT_LLM_MOCK_ERROR to
+// Uses PLANNER_SUPERVISOR_MOCK_RESPONSE / PLANNER_SUPERVISOR_MOCK_ERROR to
 // control the LLM advisory deterministically — no live API calls.
 {
   const tmp = mkdtempSync(join(tmpdir(), "program-manager-auto-story-"));
   try {
-    const init = run(["init", "--program", "auto-story", "--json"], tmp);
+    const init = run(["init", "--program", "auto-story", "--remote-mode", "local-only", "--json"], tmp);
     const packetPath = join(tmp, "plans", "programs", "auto-story", "program_packet.json");
     assert(init.ok && existsSync(packetPath), "auto-story fixture initializes a packet");
     const registryPath = join(tmp, "reports", "user_story_audit", "story_registry.json");
@@ -524,7 +1566,7 @@ try {
       "--auto-story",
       "--write",
       "--json",
-    ], tmp, { PLANNER_DRIFT_LLM_MOCK_ERROR: "timeout" });
+    ], tmp, { PLANNER_SUPERVISOR_MOCK_ERROR: "timeout" });
     assert(failOpen.ok && failOpen.parsed?.auto_story?.enabled === true, "--auto-story emits auto_story.enabled=true");
     assert(failOpen.parsed?.auto_story?.advisory?.available === false, "--auto-story fails open when LLM unreachable (mocked error)");
     assert(Array.isArray(failOpen.parsed?.auto_story?.stories), "--auto-story produces a stories array even on fail-open");
@@ -550,12 +1592,13 @@ try {
       "--auto-story",
       "--write",
       "--json",
-    ], tmp, { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mockStories });
+    ], tmp, { PLANNER_SUPERVISOR_MOCK_RESPONSE: mockStories });
     assert(happyPath.ok && (happyPath.parsed?.auto_story?.story_refs || []).length >= 1, "--auto-story mock LLM produces at least one story ref");
     const updatedRegistry = JSON.parse(fsLib.readFileSync(registryPath, "utf-8"));
     assert(updatedRegistry.stories.length >= 1, "--auto-story writes draft story into story_registry.json");
     const draftStory = updatedRegistry.stories[0];
     assert(draftStory?.status === "NOT_IMPLEMENTED" && (draftStory?.tags || []).includes("draft"), "--auto-story marks drafts as NOT_IMPLEMENTED + draft tag");
+    assert(/^US-PM-AUTO-H[0-9A-F]{16}$/.test(draftStory?.id || ""), "--auto-story writes content-hash story ids");
 
     // Scenario C: re-run with identical text + mock should NOT duplicate
     const beforeCount = updatedRegistry.stories.length;
@@ -566,7 +1609,7 @@ try {
       "--auto-story",
       "--write",
       "--json",
-    ], tmp, { PLANNER_DRIFT_LLM_MOCK_RESPONSE: mockStories });
+    ], tmp, { PLANNER_SUPERVISOR_MOCK_RESPONSE: mockStories });
     assert(repeat.ok, "--auto-story repeat invocation succeeds");
     const finalRegistry = JSON.parse(fsLib.readFileSync(registryPath, "utf-8"));
     assert(finalRegistry.stories.length === beforeCount, "--auto-story dedups via source_hash on repeat invocation");
@@ -575,11 +1618,91 @@ try {
   }
 }
 
+// R4 collision guard: two isolated roots with the same registry snapshot must not
+// allocate the same new auto-story id.
+{
+  const rootA = mkdtempSync(join(tmpdir(), "program-manager-story-collision-a-"));
+  const rootB = mkdtempSync(join(tmpdir(), "program-manager-story-collision-b-"));
+  const roots = [rootA, rootB];
+  try {
+    for (const root of roots) {
+      const init = run(["init", "--program", "collision-proof", "--remote-mode", "local-only", "--json"], root);
+      assert(init.ok, "collision fixture initializes a Program Packet root");
+      const registryPath = join(root, "reports", "user_story_audit", "story_registry.json");
+      mkdirSync(dirname(registryPath), { recursive: true });
+      writeFileSync(registryPath, JSON.stringify({
+        version: 1,
+        updated: "2026-07-04T00:00:00.000Z",
+        stories: [
+          {
+            id: "US-PM-AUTO-231",
+            title: "Legacy numeric R4 story",
+            status: "NOT_IMPLEMENTED",
+            tags: ["program_manager"],
+          },
+        ],
+        consolidations: [],
+      }, null, 2));
+    }
+
+    const packetA = join(rootA, "plans", "programs", "collision-proof", "program_packet.json");
+    const packetB = join(rootB, "plans", "programs", "collision-proof", "program_packet.json");
+    const mockA = JSON.stringify({
+      story_candidates: [{
+        title: "Parallel branch alpha story",
+        user: "program operator",
+        need: "allocate story ids without branch-local collision",
+        outcome: "alpha intake gets a stable id",
+        acceptance_criteria: ["alpha id is stable"],
+        tags: ["program_manager"],
+      }],
+    });
+    const mockB = JSON.stringify({
+      story_candidates: [{
+        title: "Parallel branch beta story",
+        user: "program operator",
+        need: "allocate story ids without branch-local collision",
+        outcome: "beta intake gets a stable id",
+        acceptance_criteria: ["beta id is stable"],
+        tags: ["program_manager"],
+      }],
+    });
+
+    const intakeA = run([
+      "intake",
+      "--program", packetA,
+      "--from-text", "Parallel branch alpha intake allocates an R4 story",
+      "--auto-story",
+      "--write",
+      "--json",
+    ], rootA, { PLANNER_SUPERVISOR_MOCK_RESPONSE: mockA });
+    const intakeB = run([
+      "intake",
+      "--program", packetB,
+      "--from-text", "Parallel branch beta intake allocates an R4 story",
+      "--auto-story",
+      "--write",
+      "--json",
+    ], rootB, { PLANNER_SUPERVISOR_MOCK_RESPONSE: mockB });
+
+    const idA = intakeA.parsed?.auto_story?.story_refs?.[0];
+    const idB = intakeB.parsed?.auto_story?.story_refs?.[0];
+    assert(intakeA.ok && intakeB.ok, "parallel isolated auto-story intakes succeed");
+    assert(/^US-PM-AUTO-H[0-9A-F]{16}$/.test(idA || ""), "first isolated intake uses hash story id");
+    assert(/^US-PM-AUTO-H[0-9A-F]{16}$/.test(idB || ""), "second isolated intake uses hash story id");
+    assert(idA && idB && idA !== idB, "parallel isolated intakes do not collide");
+    const registryA = JSON.parse(readFileSync(join(rootA, "reports", "user_story_audit", "story_registry.json"), "utf-8"));
+    assert(registryA.stories.some((story) => story.id === "US-PM-AUTO-231"), "legacy numeric auto-story id remains valid in registry");
+  } finally {
+    for (const root of roots) rmSync(root, { recursive: true, force: true });
+  }
+}
+
 // T-INTAKE-7132C8C3 closure: summarizeLongTitle threshold + override + deterministic fallback.
 {
   const tmp = mkdtempSync(join(tmpdir(), "program-manager-title-summary-"));
   try {
-    const init = run(["init", "--program", "title-summary", "--json"], tmp);
+    const init = run(["init", "--program", "title-summary", "--remote-mode", "local-only", "--json"], tmp);
     const packetPath = join(tmp, "plans", "programs", "title-summary", "program_packet.json");
     assert(init.ok && existsSync(packetPath), "title-summary fixture initializes a packet");
     const fsLib = await import("fs");
@@ -604,7 +1727,7 @@ try {
       "--from-text", longText,
       "--write",
       "--json",
-    ], tmp, { PLANNER_DRIFT_LLM_MOCK_ERROR: "timeout" });
+    ], tmp, { PLANNER_SUPERVISOR_MOCK_ERROR: "timeout" });
     const fallbackTitleSource = longFallback.parsed?.intake_packet?.source?.title_source;
     const fallbackTitle = longFallback.parsed?.intake_packet?.source?.title;
     assert(longFallback.ok && fallbackTitleSource === "deterministic_summary", "long title without LLM uses deterministic_summary fallback");
@@ -623,6 +1746,1034 @@ try {
     const overrideTitle = override.parsed?.intake_packet?.source?.title;
     assert(override.ok && overrideTitle === "Explicit Override Title", "--title explicit override is preserved");
     assert(overrideTitleSource !== "llm_summary" && overrideTitleSource !== "deterministic_summary", "--title override skips summarization entirely");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// T-INTAKE-35113C56 closure: disposition is dry-run by default, evidence-gated,
+// partial-write safe, and idempotent for already applied packet state.
+{
+  function runGit(tmp, args) {
+    return execFileSync("git", args, { cwd: tmp, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  }
+
+  function writeJson(path, value) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
+  }
+
+  function ticket(id, lifecycle, { title = id, externalRefs = true, childPlan = "plans/plan_valid", deferred = false, awaitingExternalAction } = {}) {
+    return {
+      id,
+      epic_id: "EP-DISP",
+      title,
+      type: "refactor",
+      ticket_type: "code_refactor",
+      lifecycle,
+      review_status: "not_run",
+      story_refs: ["US-DISP"],
+      defect_refs: [],
+      gap_refs: [],
+      depends_on: [],
+      acceptance_criteria: [`AC-${id}`],
+      child_plan: {
+        policy: "required",
+        plan_dir: childPlan,
+        reason: "Disposition fixture child plan.",
+      },
+      compatibility_contract_refs: [],
+      migration_boundary_refs: [],
+      deletion_move_census_refs: [],
+      verification_refs: [`VM-${id}`],
+      ...(externalRefs ? {
+        external_refs: [{
+          kind: "github_issue",
+          repo: "owner/repo",
+          issue_number: id.endsWith("VALID") ? 101 : 102,
+          url: `https://github.com/owner/repo/issues/${id.endsWith("VALID") ? 101 : 102}`,
+        }],
+      } : { external_refs: [] }),
+      ...(deferred ? {
+        close_reason: "Superseded by fixture portfolio decision.",
+        deferral_decision_ref: "D-DISP",
+      } : {}),
+      ...(awaitingExternalAction !== undefined ? { awaiting_external_action: awaitingExternalAction } : {}),
+      persona_review: {
+        version: 1,
+        status: "needs_evidence",
+        findings: [{ id: "PR-001", status: "needs_verification", evidence_refs: [] }],
+      },
+    };
+  }
+
+  function row(id) {
+    return {
+      id: `VM-${id}`,
+      scope: "ticket",
+      subject_ref: id,
+      acceptance_criterion_ref: `AC-${id}`,
+      proof_type: "proof:artifact_review",
+      command_or_action: "Review fixture receipt.",
+      pass_means: "Disposition fixture passes.",
+    };
+  }
+
+  function criterion(id) {
+    return {
+      id: `AC-${id}`,
+      scope: "ticket",
+      subject_ref: id,
+      text: `Disposition fixture acceptance for ${id}.`,
+      story_refs: ["US-DISP"],
+      maintenance_rationale: null,
+    };
+  }
+
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-disposition-"));
+  try {
+    runGit(tmp, ["init"]);
+    writeFileSync(join(tmp, "evidence.txt"), "fixture evidence\n", "utf-8");
+    runGit(tmp, ["add", "evidence.txt"]);
+    runGit(tmp, ["-c", "user.name=Planner Test", "-c", "user.email=planner-test@example.com", "commit", "-m", "T-DISP-VALID T-DISP-LEGACY T-DISP-NESTED T-DISP-BAD T-DISP-MALFORMED T-DISP-MARKDOWN disposition fixture evidence"]);
+    const commitHash = runGit(tmp, ["rev-parse", "HEAD"]);
+
+    const planDir = join(tmp, "plans", "plan_valid");
+    mkdirSync(planDir, { recursive: true });
+    writeJson(join(planDir, "state.json"), { state: "CLOSE", goal: "T-DISP-VALID T-DISP-BAD disposition fixture child plan" });
+    writeJson(join(planDir, "scope.json"), {
+      declared_files: ["src/disposition_delivery.mjs", "tests/disposition_delivery.test.mjs"],
+      owned_files: ["src/disposition_delivery.mjs", "tests/disposition_delivery.test.mjs"],
+    });
+    writeFileSync(join(planDir, "summary.md"), "T-DISP-MARKDOWN appears only in canonical Markdown, not state.goal.\n", "utf-8");
+    mkdirSync(join(tmp, "src"), { recursive: true });
+    mkdirSync(join(tmp, "tests"), { recursive: true });
+    writeFileSync(join(tmp, "src", "disposition_delivery.mjs"), "export const dispositionDelivery = true;\n", "utf-8");
+    writeFileSync(join(tmp, "tests", "disposition_delivery.test.mjs"), "export const dispositionProof = true;\n", "utf-8");
+    runGit(tmp, ["add", "plans/plan_valid", "src/disposition_delivery.mjs", "tests/disposition_delivery.test.mjs"]);
+    runGit(tmp, ["-c", "user.name=Planner Test", "-c", "user.email=planner-test@example.com", "commit", "-m", "ship complete disposition delivery scope"]);
+    const scopeCommitHash = runGit(tmp, ["rev-parse", "HEAD"]);
+
+    const nestedPlanRel = "plans/programs/disp/child_plans/nested_supported";
+    const nestedPlanDir = join(tmp, nestedPlanRel);
+    mkdirSync(nestedPlanDir, { recursive: true });
+    writeJson(join(nestedPlanDir, "state.json"), { state: "CLOSE", goal: "Supported nested Program child plan" });
+    writeJson(join(nestedPlanDir, "scope.json"), {
+      declared_files: ["src/disposition_delivery.mjs"],
+      owned_files: ["src/disposition_delivery.mjs"],
+    });
+
+    const unsupportedDeclaredDir = join(tmp, "plans", "nested", "plan_declared");
+    mkdirSync(unsupportedDeclaredDir, { recursive: true });
+    writeJson(join(unsupportedDeclaredDir, "state.json"), { state: "CLOSE", goal: "Existing but unsupported nested plan" });
+    writeJson(join(unsupportedDeclaredDir, "scope.json"), { declared_files: ["src/disposition_delivery.mjs"] });
+
+    const malformedPlanDir = join(tmp, "plans", "plan_malformed");
+    mkdirSync(malformedPlanDir, { recursive: true });
+    writeFileSync(join(malformedPlanDir, "state.json"), "{ malformed state\n", "utf-8");
+    writeFileSync(join(malformedPlanDir, "summary.md"), "T-DISP-MALFORMED is closed according to an untrusted packet summary.\n", "utf-8");
+
+    const matchedReceiptRel = "reports/ive/push_receipts/t-disp-valid.json";
+    const matchedReceiptPath = join(tmp, matchedReceiptRel);
+    const matchedReceipt = {
+      schema_version: "ive.push_receipt.v1",
+      ticket_id: "T-DISP-VALID",
+      status: "PASS",
+    };
+    const validAwaitingExternalAction = {
+      kind: "operator_run",
+      reason: "Wait for the governed fixture receipt before closing.",
+      expected_evidence: {
+        type: "json_match",
+        root: "reports/ive/push_receipts",
+        match: { ...matchedReceipt },
+      },
+      recorded_at: "2026-07-18T10:15:05.000Z",
+    };
+    writeJson(matchedReceiptPath, matchedReceipt);
+
+    const packetPath = join(tmp, "plans", "programs", "disp", "program_packet.json");
+    const packet = {
+      version: 1,
+      id: "PGM-DISP",
+      title: "Disposition fixture",
+      status: "executing",
+      goal: "Exercise deterministic backlog disposition.",
+      remote_mode: "local-only",
+      story_refs: ["US-DISP"],
+      epics: [{
+        id: "EP-DISP",
+        title: "Disposition",
+        story_refs: ["US-DISP"],
+        ticket_refs: ["T-DISP-VALID", "T-DISP-LEGACY", "T-DISP-NESTED", "T-DISP-SCOPE", "T-DISP-BAD", "T-DISP-MALFORMED", "T-DISP-DEFER"],
+      }],
+      tickets: [
+        ticket("T-DISP-VALID", "in_progress", {
+          title: "Valid shipped-open closure",
+          awaitingExternalAction: validAwaitingExternalAction,
+        }),
+        ticket("T-DISP-LEGACY", "in_progress", { title: "Legacy shipped-open closure without external wait", childPlan: "plan_valid" }),
+        ticket("T-DISP-NESTED", "in_progress", { title: "Supported nested child-plan closure", childPlan: nestedPlanRel }),
+        ticket("T-DISP-SCOPE", "in_progress", { title: "No-ID full-scope shipped-open closure" }),
+        ticket("T-DISP-BAD", "proposed", { title: "Invalid shipped-open closure", childPlan: "plans/nested/plan_declared" }),
+        ticket("T-DISP-MALFORMED", "proposed", { title: "Malformed-state shipped-open closure", childPlan: "plans/plan_malformed" }),
+        ticket("T-DISP-DEFER", "deferred", { title: "Deferred obsolete fixture", deferred: true, externalRefs: false, childPlan: null }),
+      ],
+      acceptance_criteria: ["T-DISP-VALID", "T-DISP-LEGACY", "T-DISP-NESTED", "T-DISP-SCOPE", "T-DISP-BAD", "T-DISP-MALFORMED", "T-DISP-DEFER"].map(criterion),
+      dependencies: [],
+      compatibility_contracts: [],
+      migration_boundaries: [],
+      deletion_move_census: [],
+      verification_matrix: ["T-DISP-VALID", "T-DISP-LEGACY", "T-DISP-NESTED", "T-DISP-SCOPE", "T-DISP-BAD", "T-DISP-MALFORMED", "T-DISP-DEFER"].map(row),
+      decisions: [],
+    };
+    packet.tickets.find((entry) => entry.id === "T-DISP-VALID").external_refs = [];
+    writeJson(packetPath, packet);
+
+    const repairPath = join(tmp, "reports", "ive", "lifecycle_reconciliation", "fixture_repair.json");
+    writeJson(repairPath, {
+      findings: {
+        shipped_open: [
+          {
+            id: "lifecycle:T-DISP-VALID",
+            ticket_id: "T-DISP-VALID",
+            ticket_title: "Valid shipped-open closure",
+            program_id: "PGM-DISP",
+            packet_path: "plans/programs/disp/program_packet.json",
+            current_lifecycle: "in_progress",
+            proposed_lifecycle: "closed",
+            awaiting_external_action: {
+              status: "expired",
+              matched_path: matchedReceiptRel,
+            },
+            evidence_chain: [
+              {
+                kind: "expected_external_evidence",
+                status: "matched",
+                path: matchedReceiptRel,
+                detail: "Declared awaiting_external_action evidence now exists; exemption expired.",
+              },
+              {
+                kind: "declared_child_plan",
+                status: "closed",
+                path: "plans/plan_valid",
+                state_path: "plans/plan_valid/state.json",
+                detail: "Declared child_plan.plan_dir is close.",
+                closes_lifecycle: true,
+              },
+              {
+                kind: "git_commit",
+                status: "supporting",
+                commit: commitHash.slice(0, 8),
+                hash: commitHash,
+                subject: "Disposition fixture evidence",
+              },
+            ],
+          },
+          {
+            id: "lifecycle:T-DISP-LEGACY",
+            ticket_id: "T-DISP-LEGACY",
+            ticket_title: "Legacy shipped-open closure without external wait",
+            program_id: "PGM-DISP",
+            packet_path: "plans/programs/disp/program_packet.json",
+            current_lifecycle: "in_progress",
+            proposed_lifecycle: "closed",
+            evidence_chain: [
+              {
+                kind: "declared_child_plan",
+                status: "closed",
+                path: "plans/plan_valid",
+                state_path: "plans/plan_valid/state.json",
+                detail: "Declared child_plan.plan_dir is close.",
+                closes_lifecycle: true,
+              },
+              {
+                kind: "git_commit",
+                status: "supporting",
+                commit: commitHash.slice(0, 8),
+                hash: commitHash,
+                subject: "Disposition fixture evidence",
+              },
+            ],
+          },
+          {
+            id: "lifecycle:T-DISP-NESTED",
+            ticket_id: "T-DISP-NESTED",
+            ticket_title: "Supported nested child-plan closure",
+            program_id: "PGM-DISP",
+            packet_path: "plans/programs/disp/program_packet.json",
+            current_lifecycle: "in_progress",
+            proposed_lifecycle: "closed",
+            evidence_chain: [
+              {
+                kind: "declared_child_plan",
+                status: "closed",
+                path: nestedPlanRel,
+                state_path: `${nestedPlanRel}/state.json`,
+                detail: "Supported nested declared child plan is closed.",
+                closes_lifecycle: true,
+              },
+              {
+                kind: "git_commit",
+                status: "supporting",
+                commit: commitHash.slice(0, 8),
+                hash: commitHash,
+                subject: "Disposition fixture evidence",
+              },
+            ],
+          },
+          {
+            id: "lifecycle:T-DISP-SCOPE",
+            ticket_id: "T-DISP-SCOPE",
+            ticket_title: "No-ID full-scope shipped-open closure",
+            program_id: "PGM-DISP",
+            packet_path: "plans/programs/disp/program_packet.json",
+            current_lifecycle: "in_progress",
+            proposed_lifecycle: "closed",
+            evidence_chain: [
+              {
+                kind: "declared_child_plan",
+                status: "closed",
+                path: "plans/plan_valid",
+                state_path: "plans/plan_valid/state.json",
+                summary_path: "reports/forged-summary.md",
+                detail: "Packet claims the declared child plan is close.",
+                closes_lifecycle: true,
+              },
+              {
+                kind: "git_commit",
+                status: "supporting",
+                commit: scopeCommitHash.slice(0, 8),
+                hash: scopeCommitHash,
+                subject: "Packet claims a full-scope delivery commit.",
+              },
+            ],
+          },
+          {
+            id: "lifecycle:T-DISP-BAD",
+            ticket_id: "T-DISP-BAD",
+            ticket_title: "Invalid shipped-open closure",
+            program_id: "PGM-DISP",
+            packet_path: "plans/programs/disp/program_packet.json",
+            current_lifecycle: "proposed",
+            proposed_lifecycle: "closed",
+            evidence_chain: [
+              {
+                kind: "closed_plan_match",
+                status: "closed",
+                path: "plans/plan_valid",
+                state_path: "plans/plan_valid/state.json",
+                summary_path: "plans/plan_valid/summary.md",
+                detail: "Closed plan goal references T-DISP-BAD.",
+                closes_lifecycle: true,
+              },
+              {
+                kind: "git_commit",
+                status: "supporting",
+                commit: commitHash.slice(0, 8),
+                hash: commitHash,
+                subject: "Forged subject claims missing ticket evidence",
+              },
+            ],
+          },
+          {
+            id: "lifecycle:T-DISP-MALFORMED",
+            ticket_id: "T-DISP-MALFORMED",
+            ticket_title: "Malformed-state shipped-open closure",
+            program_id: "PGM-DISP",
+            packet_path: "plans/programs/disp/program_packet.json",
+            current_lifecycle: "proposed",
+            proposed_lifecycle: "closed",
+            evidence_chain: [
+              {
+                kind: "declared_child_plan",
+                status: "closed",
+                path: "plans/plan_malformed",
+                state_path: "plans/plan_valid/state.json",
+                summary_path: "plans/plan_malformed/summary.md",
+                detail: "Packet status and summary claim a close despite malformed canonical state.",
+                closes_lifecycle: true,
+              },
+              {
+                kind: "git_commit",
+                status: "supporting",
+                commit: commitHash.slice(0, 8),
+                hash: commitHash,
+                subject: "Packet claims exact-ID evidence.",
+              },
+            ],
+          },
+        ],
+        duplicate_scope: [{
+          ticket_id: "T-DISP-BAD",
+          ticket_title: "Invalid shipped-open closure",
+          program_id: "PGM-DISP",
+          packet_path: "plans/programs/disp/program_packet.json",
+          matched_scope: {
+            kind: "decision",
+            id: "D-DISP",
+            title: "Fixture consolidation decision",
+            program_id: "PGM-DISP",
+            packet_path: "plans/programs/disp/program_packet.json",
+          },
+        }],
+      },
+    });
+
+    const remoteSyncPacketPath = join(tmp, "plans", "programs", "disp-sync", "program_packet.json");
+    const remoteSyncPacket = {
+      ...packet,
+      id: "PGM-DISP-SYNC",
+      remote_mode: "remote-sync",
+      remote_policy: { repository_slug: "owner/repo" },
+      epics: [{
+        ...packet.epics[0],
+        ticket_refs: ["T-DISP-VALID"],
+      }],
+      tickets: [
+        ticket("T-DISP-VALID", "in_progress", { title: "Remote-sync mirrorless closure", externalRefs: false }),
+      ],
+      acceptance_criteria: ["T-DISP-VALID"].map(criterion),
+      verification_matrix: ["T-DISP-VALID"].map(row),
+    };
+    writeJson(remoteSyncPacketPath, remoteSyncPacket);
+    const remoteSyncRepairPath = join(tmp, "reports", "ive", "lifecycle_reconciliation", "fixture_repair_remote_sync.json");
+    writeJson(remoteSyncRepairPath, {
+      findings: {
+        shipped_open: [{
+          id: "lifecycle:T-DISP-VALID",
+          ticket_id: "T-DISP-VALID",
+          ticket_title: "Remote-sync mirrorless closure",
+          program_id: "PGM-DISP-SYNC",
+          packet_path: "plans/programs/disp-sync/program_packet.json",
+          current_lifecycle: "in_progress",
+          proposed_lifecycle: "closed",
+          evidence_chain: [
+            {
+              kind: "declared_child_plan",
+              status: "closed",
+              path: "plans/plan_valid",
+              state_path: "plans/plan_valid/state.json",
+              detail: "Declared child_plan.plan_dir is close.",
+              closes_lifecycle: true,
+            },
+            {
+              kind: "git_commit",
+              status: "supporting",
+              commit: commitHash.slice(0, 8),
+              hash: commitHash,
+              subject: "Disposition fixture evidence",
+            },
+          ],
+        }],
+      },
+    });
+    const remoteSyncDryRun = run([
+      "disposition",
+      "--from-repair-packet", remoteSyncRepairPath,
+      "--json",
+    ], tmp);
+    assert(!remoteSyncDryRun.ok && remoteSyncDryRun.parsed?.shipped_open?.[0]?.blockers?.includes("missing_github_issue_mirror"), "remote-sync shipped-open disposition still requires GitHub issue mirror");
+
+    const beforeDryRun = readFileSync(packetPath, "utf-8");
+    const dryRun = run([
+      "disposition",
+      "--from-repair-packet", repairPath,
+      "--deferred-program", packetPath,
+      "--json",
+    ], tmp);
+    assert(!dryRun.ok && dryRun.parsed?.status === "BLOCKED", "disposition dry-run returns BLOCKED when one shipped-open finding lacks evidence");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-VALID")?.action === "would_apply_closed", "dry-run reports valid shipped-open ticket would close");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-VALID")?.verification?.awaiting_external_action_resolution?.status === "pass", "dry-run validates the matched external-action resolution candidate");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-LEGACY")?.action === "would_apply_closed", "dry-run canonicalizes a supported bare declared child-plan reference");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-NESTED")?.action === "would_apply_closed", "dry-run accepts the supported nested Program child-plan shape");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-SCOPE")?.action === "would_apply_closed", "dry-run accepts a canonical no-ID full-scope commit through the writer path");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-SCOPE")?.verification?.commit_checks?.some((check) => check.linkage_reason === "full_delivery_scope"), "writer verification records the independent full-scope linkage mode");
+    assert(dryRun.parsed?.packet_writes?.find((entry) => entry.packet_path === "plans/programs/disp/program_packet.json")?.post_error_count === 0, "dry-run validates the same proposed Program Packet shape as write");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-VALID")?.verification?.checks?.find((check) => check.name === "github_issue_mirror")?.pass === true, "local-only shipped-open disposition does not require GitHub issue mirror");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-BAD")?.blockers?.includes("child_plan_closed"), "dry-run rejects a packet plan that differs from the canonicalized bare declared child path");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-BAD")?.blockers?.includes("scope_match"), "wrong-plan packet prose cannot override an unsupported nonempty declaration");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-BAD")?.verification?.plan_checks?.some((check) => check.diagnostics?.includes("canonical_declared_plan_path_invalid")), "writer surfaces an unsupported nonempty declared plan path diagnostic");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-MALFORMED")?.blockers?.includes("child_plan_closed"), "dry-run rejects packet-supplied status and summary when canonical state JSON is malformed");
+    assert(dryRun.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-MALFORMED")?.verification?.plan_checks?.some((check) => check.diagnostics?.includes("canonical_state_json_invalid")), "writer receipt surfaces malformed canonical state diagnostics");
+    assert(readFileSync(packetPath, "utf-8") === beforeDryRun, "disposition dry-run leaves Program Packet unchanged");
+
+    const receiptPath = join(tmp, "reports", "ive", "lifecycle_dispositions", "fixture_receipt.json");
+    const write = run([
+      "disposition",
+      "--from-repair-packet", repairPath,
+      "--deferred-program", packetPath,
+      "--output", receiptPath,
+      "--write",
+      "--json",
+    ], tmp);
+    const written = JSON.parse(readFileSync(packetPath, "utf-8"));
+    const validTicket = written.tickets.find((entry) => entry.id === "T-DISP-VALID");
+    const legacyTicket = written.tickets.find((entry) => entry.id === "T-DISP-LEGACY");
+    const nestedTicket = written.tickets.find((entry) => entry.id === "T-DISP-NESTED");
+    const scopeTicket = written.tickets.find((entry) => entry.id === "T-DISP-SCOPE");
+    const badTicket = written.tickets.find((entry) => entry.id === "T-DISP-BAD");
+    const malformedTicket = written.tickets.find((entry) => entry.id === "T-DISP-MALFORMED");
+    const deferredTicket = written.tickets.find((entry) => entry.id === "T-DISP-DEFER");
+    assert(!write.ok && write.parsed?.status === "BLOCKED", "disposition --write can write verified changes while preserving blockers in receipt");
+    assert(write.parsed?.receipt_written === true && existsSync(receiptPath), "disposition --write records a receipt artifact");
+    assert(validTicket.lifecycle === "closed" && validTicket.review_status === "review_ready", "write closes only the evidence-verified shipped-open ticket");
+    assert(!validTicket.awaiting_external_action, "write removes only the evidence-matched expired external-action contract");
+    assert(
+      JSON.stringify(validTicket.awaiting_external_action_resolved) === JSON.stringify({
+        ...validAwaitingExternalAction,
+        resolved_at: validTicket.lifecycle_disposition.applied_at,
+        resolving_evidence: matchedReceiptRel,
+      }),
+      "write archives the normalized contract with the exact resolving evidence",
+    );
+    assert(legacyTicket.lifecycle === "closed" && !legacyTicket.awaiting_external_action_resolved, "write preserves legacy no-wait closure without fabricating an archive");
+    assert(nestedTicket.lifecycle === "closed" && nestedTicket.child_plan?.plan_dir === nestedPlanRel, "write closes a supported nested Program child plan without rewriting its declaration");
+    assert(scopeTicket.lifecycle === "closed" && scopeTicket.lifecycle_disposition?.commit_linkage === "full_delivery_scope", "write closes the no-ID ticket only from canonical same-commit scope and state proof");
+    assert(write.parsed?.packet_writes?.find((entry) => entry.packet_path === "plans/programs/disp/program_packet.json")?.post_error_count === 0, "write persists a schema-valid closed packet after retiring the matched wait");
+    assert(validTicket.persona_review?.status === "accepted", "write clears closed-ticket persona evidence blocker");
+    assert(written.verification_matrix.find((entry) => entry.id === "VM-T-DISP-VALID")?.result === "pass", "write marks closed ticket verification row passing");
+    assert(badTicket.lifecycle === "proposed", "write keeps failed-evidence shipped-open ticket open");
+    assert(malformedTicket.lifecycle === "proposed", "write keeps malformed canonical-state ticket open despite forged packet status and summary");
+    assert(deferredTicket.backlog_disposition?.classification === "close_obsolete", "write records deterministic deferred ticket classification");
+
+    const isolatedPacketPath = join(tmp, "plans", "programs", "disp-isolated", "program_packet.json");
+    const isolatedTicket = ticket("T-DISP-MARKDOWN", "proposed", {
+      title: "Markdown-only undeclared-plan association",
+      childPlan: null,
+    });
+    const isolatedPacket = {
+      ...packet,
+      id: "PGM-DISP-ISOLATED",
+      epics: [{
+        ...packet.epics[0],
+        ticket_refs: [isolatedTicket.id],
+      }],
+      tickets: [isolatedTicket],
+      acceptance_criteria: [criterion(isolatedTicket.id)],
+      verification_matrix: [row(isolatedTicket.id)],
+    };
+    writeJson(isolatedPacketPath, isolatedPacket);
+    const isolatedRepairPath = join(tmp, "reports", "ive", "lifecycle_reconciliation", "fixture_repair_markdown_only.json");
+    writeJson(isolatedRepairPath, {
+      findings: {
+        shipped_open: [{
+          id: `lifecycle:${isolatedTicket.id}`,
+          ticket_id: isolatedTicket.id,
+          ticket_title: isolatedTicket.title,
+          program_id: isolatedPacket.id,
+          packet_path: "plans/programs/disp-isolated/program_packet.json",
+          current_lifecycle: "proposed",
+          proposed_lifecycle: "closed",
+          evidence_chain: [
+            {
+              kind: "closed_plan_match",
+              status: "closed",
+              path: "plans/plan_valid",
+              state_path: "plans/plan_valid/state.json",
+              summary_path: "plans/plan_valid/summary.md",
+              detail: "Packet nominates a plan whose Markdown mentions the ticket.",
+              closes_lifecycle: true,
+            },
+            {
+              kind: "git_commit",
+              status: "supporting",
+              commit: commitHash.slice(0, 8),
+              hash: commitHash,
+              subject: "Exact-ID commit exists independently of plan association.",
+            },
+          ],
+        }],
+      },
+    });
+    const isolatedPacketBefore = readFileSync(isolatedPacketPath, "utf-8");
+    const isolatedWrite = run([
+      "disposition",
+      "--from-repair-packet", isolatedRepairPath,
+      "--output", join(tmp, "reports", "ive", "lifecycle_dispositions", "fixture_markdown_only_receipt.json"),
+      "--write",
+      "--json",
+    ], tmp);
+    const isolatedResult = isolatedWrite.parsed?.shipped_open?.find((entry) => entry.ticket_id === isolatedTicket.id);
+    assert(!isolatedWrite.ok && isolatedResult?.blockers?.includes("scope_match"), "writer rejects undeclared-plan association found only in canonical Markdown");
+    assert(readFileSync(isolatedPacketPath, "utf-8") === isolatedPacketBefore, "isolated blocked write preserves Program Packet bytes exactly");
+
+    const outsideReceiptRel = "reports/ive/outside-root.json";
+    const malformedReceiptRel = "reports/ive/push_receipts/malformed.json";
+    const mismatchedReceiptRel = "reports/ive/push_receipts/mismatched.json";
+    writeJson(join(tmp, outsideReceiptRel), matchedReceipt);
+    writeFileSync(join(tmp, malformedReceiptRel), "{not-json\n", "utf-8");
+    writeJson(join(tmp, mismatchedReceiptRel), { ...matchedReceipt, status: "FAIL" });
+
+    const adversarialCases = [
+      {
+        id: "unexpired",
+        expectedBlocker: "awaiting_evidence_expired",
+        findingResolution: { status: "active", matched_path: matchedReceiptRel },
+      },
+      {
+        id: "malformed-contract",
+        expectedBlocker: "awaiting_contract_valid",
+        awaiting: { ...validAwaitingExternalAction, kind: "unsupported" },
+      },
+      {
+        id: "indeterminate",
+        expectedBlocker: "awaiting_evidence_expired",
+        findingResolution: { status: "indeterminate", warning: "scan_limit_reached" },
+        chainPath: null,
+      },
+      {
+        id: "unlinked",
+        expectedBlocker: "awaiting_evidence_path_linked",
+        chainPath: "reports/ive/push_receipts/unlinked.json",
+      },
+      {
+        id: "outside-root",
+        expectedBlocker: "awaiting_evidence_within_root",
+        matchedPath: outsideReceiptRel,
+      },
+      {
+        id: "missing",
+        expectedBlocker: "awaiting_evidence_file",
+        matchedPath: "reports/ive/push_receipts/missing.json",
+      },
+      {
+        id: "malformed-json",
+        expectedBlocker: "awaiting_evidence_json",
+        matchedPath: malformedReceiptRel,
+      },
+      {
+        id: "content-mismatch",
+        expectedBlocker: "awaiting_evidence_matches_contract",
+        matchedPath: mismatchedReceiptRel,
+      },
+      {
+        id: "existing-resolution-archive",
+        expectedBlocker: "awaiting_resolution_slot_available",
+        existingResolution: {
+          ...validAwaitingExternalAction,
+          resolved_at: "2026-07-18T11:00:00.000Z",
+          resolving_evidence: "reports/ive/push_receipts/older.json",
+        },
+      },
+    ];
+
+    for (const testCase of adversarialCases) {
+      const scenarioPacketRel = `plans/programs/disp-negative/${testCase.id}/program_packet.json`;
+      const scenarioPacketPath = join(tmp, scenarioPacketRel);
+      const scenarioRepairPath = join(tmp, `reports/ive/lifecycle_reconciliation/${testCase.id}.json`);
+      const scenarioReceiptPath = join(tmp, `reports/ive/lifecycle_dispositions/${testCase.id}.json`);
+      const awaiting = testCase.awaiting || validAwaitingExternalAction;
+      const scenarioTicket = ticket("T-DISP-VALID", "in_progress", {
+        title: `External wait negative ${testCase.id}`,
+        awaitingExternalAction: awaiting,
+      });
+      if (testCase.existingResolution) scenarioTicket.awaiting_external_action_resolved = testCase.existingResolution;
+      const scenarioPacket = {
+        version: 1,
+        id: `PGM-DISP-NEG-${testCase.id.toUpperCase()}`,
+        title: `Disposition negative ${testCase.id}`,
+        status: "executing",
+        goal: `Keep ${testCase.id} external-action evidence fail-closed.`,
+        remote_mode: "local-only",
+        story_refs: ["US-DISP"],
+        epics: [{
+          id: "EP-DISP",
+          title: "Disposition",
+          story_refs: ["US-DISP"],
+          ticket_refs: ["T-DISP-VALID"],
+        }],
+        tickets: [scenarioTicket],
+        acceptance_criteria: [criterion("T-DISP-VALID")],
+        dependencies: [],
+        compatibility_contracts: [],
+        migration_boundaries: [],
+        deletion_move_census: [],
+        verification_matrix: [row("T-DISP-VALID")],
+        decisions: [],
+      };
+      const matchedPath = testCase.matchedPath || matchedReceiptRel;
+      const findingResolution = testCase.findingResolution || { status: "expired", matched_path: matchedPath };
+      const chainPath = testCase.chainPath === null ? null : (testCase.chainPath || matchedPath);
+      const evidenceChain = [
+        ...(chainPath ? [{
+          kind: "expected_external_evidence",
+          status: "matched",
+          path: chainPath,
+          detail: "Adversarial external-action evidence candidate.",
+        }] : []),
+        {
+          kind: "declared_child_plan",
+          status: "closed",
+          path: "plans/plan_valid",
+          state_path: "plans/plan_valid/state.json",
+          detail: "Declared child_plan.plan_dir is close.",
+          closes_lifecycle: true,
+        },
+        {
+          kind: "git_commit",
+          status: "supporting",
+          commit: commitHash.slice(0, 8),
+          hash: commitHash,
+          subject: "Disposition fixture evidence",
+        },
+      ];
+      writeJson(scenarioPacketPath, scenarioPacket);
+      writeJson(scenarioRepairPath, {
+        findings: {
+          shipped_open: [{
+            id: "lifecycle:T-DISP-VALID",
+            ticket_id: "T-DISP-VALID",
+            ticket_title: scenarioTicket.title,
+            program_id: scenarioPacket.id,
+            packet_path: scenarioPacketRel,
+            current_lifecycle: "in_progress",
+            proposed_lifecycle: "closed",
+            awaiting_external_action: findingResolution,
+            evidence_chain: evidenceChain,
+          }],
+        },
+      });
+
+      const beforeAdversarial = readFileSync(scenarioPacketPath, "utf-8");
+      const adversarialDryRun = run([
+        "disposition",
+        "--from-repair-packet", scenarioRepairPath,
+        "--json",
+      ], tmp);
+      const dryEntry = adversarialDryRun.parsed?.shipped_open?.[0];
+      assert(!adversarialDryRun.ok && dryEntry?.action === "keep_open", `${testCase.id} dry-run remains fail-closed`);
+      assert(dryEntry?.blockers?.includes(testCase.expectedBlocker), `${testCase.id} dry-run names ${testCase.expectedBlocker}`);
+      assert(readFileSync(scenarioPacketPath, "utf-8") === beforeAdversarial, `${testCase.id} dry-run preserves Program Packet bytes`);
+
+      const adversarialWrite = run([
+        "disposition",
+        "--from-repair-packet", scenarioRepairPath,
+        "--output", scenarioReceiptPath,
+        "--write",
+        "--json",
+      ], tmp);
+      const writeEntry = adversarialWrite.parsed?.shipped_open?.[0];
+      assert(!adversarialWrite.ok && writeEntry?.action === "keep_open", `${testCase.id} write remains fail-closed`);
+      assert(writeEntry?.blockers?.includes(testCase.expectedBlocker), `${testCase.id} write names ${testCase.expectedBlocker}`);
+      assert(readFileSync(scenarioPacketPath, "utf-8") === beforeAdversarial, `${testCase.id} write preserves Program Packet bytes`);
+    }
+
+    const beforeRepeat = readFileSync(packetPath, "utf-8");
+    const repeat = run([
+      "disposition",
+      "--from-repair-packet", repairPath,
+      "--deferred-program", packetPath,
+      "--output", join(tmp, "reports", "ive", "lifecycle_dispositions", "fixture_receipt_repeat.json"),
+      "--write",
+      "--json",
+    ], tmp);
+    assert(!repeat.ok && repeat.parsed?.shipped_open?.find((entry) => entry.ticket_id === "T-DISP-VALID")?.action === "already_closed", "repeat disposition treats closed ticket as idempotent");
+    assert(readFileSync(packetPath, "utf-8") === beforeRepeat, "repeat disposition write leaves already applied packet state unchanged");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+// T-INTAKE-2BD84327: proposed/no-child administrative resolution is authorized
+// only by a clean committed request whose exact decision and every evidence ref
+// can be recomputed from HEAD.
+{
+  function runGit(tmp, args) {
+    return execFileSync("git", args, { cwd: tmp, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  }
+
+  function writeJson(path, value) {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, "utf-8");
+  }
+
+  function proposedTicket(id, { childPlan = null } = {}) {
+    return {
+      id,
+      epic_id: "EP-RESOLUTION",
+      title: `Resolution fixture ${id}`,
+      type: "administrative",
+      ticket_type: "administrative",
+      lifecycle: "proposed",
+      review_status: "not_run",
+      story_refs: ["US-RESOLUTION"],
+      defect_refs: [],
+      gap_refs: [],
+      depends_on: [],
+      acceptance_criteria: [`AC-${id}`],
+      child_plan: {
+        policy: "required",
+        plan_dir: childPlan,
+        reason: "Resolution fixture policy.",
+      },
+      compatibility_contract_refs: [],
+      migration_boundary_refs: [],
+      deletion_move_census_refs: [],
+      verification_refs: [`VM-${id}`],
+      external_refs: [],
+    };
+  }
+
+  function criterion(id) {
+    return {
+      id: `AC-${id}`,
+      scope: "ticket",
+      subject_ref: id,
+      text: `Evidence-backed administrative resolution for ${id}.`,
+      story_refs: ["US-RESOLUTION"],
+      maintenance_rationale: null,
+    };
+  }
+
+  function row(id) {
+    return {
+      id: `VM-${id}`,
+      scope: "ticket",
+      subject_ref: id,
+      acceptance_criterion_ref: `AC-${id}`,
+      proof_type: "proof:artifact_review",
+      command_or_action: "Review the committed resolution request and evidence.",
+      pass_means: "Every committed evidence reference passes.",
+    };
+  }
+
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-proposed-resolution-"));
+  try {
+    runGit(tmp, ["init"]);
+    const ticketIds = [
+      "T-RESOLUTION-VALID",
+      "T-RESOLUTION-NO-EVIDENCE",
+      "T-RESOLUTION-BAD-RECEIPT",
+      "T-RESOLUTION-MALFORMED-RECEIPT",
+      "T-RESOLUTION-UNREACHABLE",
+      "T-RESOLUTION-UNRELATED",
+      "T-RESOLUTION-PREFIX",
+      "T-RESOLUTION-UNSAFE",
+      "T-RESOLUTION-CHILD",
+    ];
+    const packetRel = "plans/programs/resolution/program_packet.json";
+    const packetPath = join(tmp, packetRel);
+    const decisionsRel = "plans/plan_resolution/decisions.md";
+    const passReceiptRel = "reports/ive/test_runs/pass/manifest.json";
+    const failReceiptRel = "reports/ive/test_runs/fail/manifest.json";
+    const malformedReceiptRel = "reports/ive/test_runs/malformed/manifest.json";
+    const requestRel = "plans/plan_resolution/artifacts/proposed_resolution_request.json";
+    const requestPath = join(tmp, requestRel);
+    const duplicateRequestRel = "plans/plan_resolution/artifacts/duplicate_resolution_request.json";
+    const outputPath = join(tmp, "reports/ive/lifecycle_dispositions/proposed_resolution_receipt.json");
+
+    const packet = {
+      version: 1,
+      id: "PGM-RESOLUTION",
+      title: "Proposed resolution fixture",
+      status: "design",
+      goal: "Exercise committed proposed-ticket administrative resolution.",
+      remote_mode: "local-only",
+      story_refs: ["US-RESOLUTION"],
+      epics: [{
+        id: "EP-RESOLUTION",
+        title: "Resolution",
+        story_refs: ["US-RESOLUTION"],
+        ticket_refs: ticketIds,
+      }],
+      tickets: ticketIds.map((id) => proposedTicket(id, {
+        childPlan: id === "T-RESOLUTION-CHILD" ? "plans/plan_child" : null,
+      })),
+      acceptance_criteria: ticketIds.map(criterion),
+      dependencies: [],
+      compatibility_contracts: [],
+      migration_boundaries: [],
+      deletion_move_census: [],
+      verification_matrix: ticketIds.map(row),
+      decisions: [],
+    };
+    writeJson(packetPath, packet);
+    mkdirSync(dirname(join(tmp, decisionsRel)), { recursive: true });
+    const decisionsText = [
+      "# Decision Log",
+      "",
+      "## D-VALID — Resolve the exact valid ticket",
+      "",
+      "Committed evidence resolves T-RESOLUTION-VALID without a child plan.",
+      "",
+      "## D-NO-EVIDENCE — Evidence is still mandatory",
+      "",
+      "T-RESOLUTION-NO-EVIDENCE is named but has no evidence refs.",
+      "",
+      "## D-BAD-RECEIPT — Non-passing receipt",
+      "",
+      "T-RESOLUTION-BAD-RECEIPT is bound to a non-passing receipt.",
+      "",
+      "## D-MALFORMED-RECEIPT — Malformed receipt",
+      "",
+      "T-RESOLUTION-MALFORMED-RECEIPT is bound to malformed JSON.",
+      "",
+      "## D-UNREACHABLE — Unreachable commit",
+      "",
+      "T-RESOLUTION-UNREACHABLE must reject an object outside HEAD ancestry.",
+      "",
+      "## D-UNRELATED — Wrong subject",
+      "",
+      "This section deliberately names T-SOME-OTHER-TICKET.",
+      "",
+      "## D-PREFIX — Prefix collision",
+      "",
+      "This section names only T-RESOLUTION-PREFIX-EXTRA, not the shorter target.",
+      "",
+      "## D-CHILD — Child plan refusal",
+      "",
+      "T-RESOLUTION-CHILD retains a required child plan and cannot use this lane.",
+      "",
+    ].join("\n");
+    writeFileSync(join(tmp, decisionsRel), decisionsText, "utf-8");
+    writeJson(join(tmp, passReceiptRel), { schema_version: "ive.test_manifest.v1", status: "PASS", total: 1, passed: 1, warned: 0, failed: 0 });
+    writeJson(join(tmp, failReceiptRel), { schema_version: "ive.test_manifest.v1", status: "FAIL", total: 1, passed: 0, warned: 0, failed: 1 });
+    mkdirSync(dirname(join(tmp, malformedReceiptRel)), { recursive: true });
+    writeFileSync(join(tmp, malformedReceiptRel), "{not-json\n", "utf-8");
+    runGit(tmp, ["add", packetRel, decisionsRel, passReceiptRel, failReceiptRel, malformedReceiptRel]);
+    runGit(tmp, ["-c", "user.name=Planner Test", "-c", "user.email=planner-test@example.com", "commit", "-m", "seed proposed resolution evidence"]);
+    const reachableCommit = runGit(tmp, ["rev-parse", "HEAD"]);
+    const unreachableCommit = runGit(tmp, ["commit-tree", `${reachableCommit}^{tree}`, "-m", "detached resolution evidence"]);
+
+    const decision = (id) => ({ path: decisionsRel, id });
+    const request = {
+      schema_version: "program_proposed_resolution_request.v1",
+      program_id: packet.id,
+      program_packet_path: packetRel,
+      resolutions: [
+        {
+          ticket_id: "T-RESOLUTION-VALID",
+          classification: "resolved_by_evidence",
+          decision_ref: decision("D-VALID"),
+          evidence_refs: [
+            { kind: "git_commit", commit: reachableCommit },
+            { kind: "json_receipt", path: passReceiptRel },
+          ],
+        },
+        {
+          ticket_id: "T-RESOLUTION-NO-EVIDENCE",
+          classification: "resolved_by_evidence",
+          decision_ref: decision("D-NO-EVIDENCE"),
+          evidence_refs: [],
+        },
+        {
+          ticket_id: "T-RESOLUTION-BAD-RECEIPT",
+          classification: "resolved_by_evidence",
+          decision_ref: decision("D-BAD-RECEIPT"),
+          evidence_refs: [{ kind: "json_receipt", path: failReceiptRel }],
+        },
+        {
+          ticket_id: "T-RESOLUTION-MALFORMED-RECEIPT",
+          classification: "resolved_by_evidence",
+          decision_ref: decision("D-MALFORMED-RECEIPT"),
+          evidence_refs: [{ kind: "json_receipt", path: malformedReceiptRel }],
+        },
+        {
+          ticket_id: "T-RESOLUTION-UNREACHABLE",
+          classification: "resolved_by_evidence",
+          decision_ref: decision("D-UNREACHABLE"),
+          evidence_refs: [{ kind: "git_commit", commit: unreachableCommit }],
+        },
+        {
+          ticket_id: "T-RESOLUTION-UNRELATED",
+          classification: "resolved_by_investigation",
+          decision_ref: decision("D-UNRELATED"),
+          evidence_refs: [{ kind: "git_commit", commit: reachableCommit }],
+        },
+        {
+          ticket_id: "T-RESOLUTION-PREFIX",
+          classification: "resolved_by_investigation",
+          decision_ref: decision("D-PREFIX"),
+          evidence_refs: [{ kind: "git_commit", commit: reachableCommit }],
+        },
+        {
+          ticket_id: "T-RESOLUTION-UNSAFE",
+          classification: "resolved_by_evidence",
+          decision_ref: { path: "../outside-decisions.md", id: "D-UNSAFE" },
+          evidence_refs: [{ kind: "git_commit", commit: reachableCommit }],
+        },
+        {
+          ticket_id: "T-RESOLUTION-CHILD",
+          classification: "resolved_by_evidence",
+          decision_ref: decision("D-CHILD"),
+          evidence_refs: [{ kind: "git_commit", commit: reachableCommit }],
+        },
+      ],
+    };
+    writeJson(requestPath, request);
+    writeJson(join(tmp, duplicateRequestRel), {
+      ...request,
+      resolutions: [request.resolutions[0], request.resolutions[0]],
+    });
+    runGit(tmp, ["add", requestRel, duplicateRequestRel]);
+    runGit(tmp, ["-c", "user.name=Planner Test", "-c", "user.email=planner-test@example.com", "commit", "-m", "commit proposed resolution request"]);
+
+    const packetBefore = readFileSync(packetPath, "utf-8");
+    const requestBefore = readFileSync(requestPath, "utf-8");
+    const dryRun = run(["disposition", "--from-resolution-request", requestRel, "--json"], tmp);
+    const validDry = dryRun.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-VALID");
+    assert(!dryRun.ok && dryRun.parsed?.status === "BLOCKED", "proposed resolution dry-run reports a mixed batch as BLOCKED");
+    assert(validDry?.action === "would_admin_resolve" && validDry?.verification?.status === "PASS", "proposed resolution dry-run independently verifies the valid entry");
+    assert(dryRun.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-NO-EVIDENCE")?.blockers?.includes("resolution_evidence_required"), "proposed resolution rejects evidence-free closure");
+    assert(dryRun.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-BAD-RECEIPT")?.blockers?.includes("resolution_receipt_not_passing"), "proposed resolution rejects a non-passing receipt");
+    assert(dryRun.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-MALFORMED-RECEIPT")?.blockers?.includes("resolution_receipt_json_invalid"), "proposed resolution rejects malformed receipt JSON");
+    assert(dryRun.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-UNREACHABLE")?.blockers?.includes("resolution_commit_not_head_reachable"), "proposed resolution rejects an unreachable Git object");
+    assert(dryRun.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-UNRELATED")?.blockers?.includes("resolution_decision_ticket_mismatch"), "proposed resolution rejects an unrelated decision section");
+    assert(dryRun.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-PREFIX")?.blockers?.includes("resolution_decision_ticket_mismatch"), "proposed resolution uses boundary-safe ticket matching");
+    assert(dryRun.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-UNSAFE")?.blockers?.includes("resolution_decision_path_unsafe"), "proposed resolution rejects an escaping decision path");
+    assert(dryRun.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-CHILD")?.blockers?.includes("resolution_ticket_has_child_plan"), "proposed resolution refuses tickets with child plans");
+    assert(readFileSync(packetPath, "utf-8") === packetBefore && readFileSync(requestPath, "utf-8") === requestBefore, "proposed resolution dry-run preserves Program and request bytes");
+
+    const write = run([
+      "disposition",
+      "--from-resolution-request", requestRel,
+      "--output", outputPath,
+      "--write",
+      "--json",
+    ], tmp);
+    const writtenPacket = JSON.parse(readFileSync(packetPath, "utf-8"));
+    const resolvedTicket = writtenPacket.tickets.find((entry) => entry.id === "T-RESOLUTION-VALID");
+    assert(!write.ok && write.parsed?.status === "BLOCKED" && write.parsed?.receipt_written === true, "proposed resolution write persists valid siblings and a BLOCKED mixed-batch receipt");
+    assert(resolvedTicket.lifecycle === "closed" && resolvedTicket.review_status === "unavailable", "proposed resolution records administrative close without review-ready fabrication");
+    assert(resolvedTicket.backlog_disposition?.classification === "resolved_by_evidence" && resolvedTicket.backlog_disposition?.resolution_evidence?.request_ref === requestRel, "proposed resolution persists normalized re-verifiable evidence");
+    assert(writtenPacket.tickets.find((entry) => entry.id === "T-RESOLUTION-NO-EVIDENCE")?.lifecycle === "proposed", "mixed-batch invalid sibling remains proposed");
+    assert(existsSync(outputPath), "proposed resolution write emits the requested receipt artifact");
+
+    const check = run(["check", "--program", packetPath, "--json"], tmp);
+    assert(check.ok && check.parsed?.status === "PASS", "Program check recomputes committed proposed-resolution evidence after write");
+    const facts = run(["facts", "--program", packetPath], tmp);
+    assert(facts.ok && facts.stdout.includes("ticket_administrative_closure('T-RESOLUTION-VALID')"), "Prolog facts recompute and classify the evidence-backed administrative closure");
+    const copiedPacketPath = join(tmp, "plans/programs/resolution-copy/program_packet.json");
+    writeJson(copiedPacketPath, writtenPacket);
+    const copiedCheck = run(["check", "--program", copiedPacketPath, "--json"], tmp);
+    assert(!copiedCheck.ok && copiedCheck.parsed?.errors?.some((entry) => entry.code === "ticket_verification_not_passed" && entry.path.includes("T-RESOLUTION-VALID")), "Program check rejects persisted resolution evidence copied to the wrong packet path");
+    const copiedFacts = run(["facts", "--program", copiedPacketPath], tmp);
+    assert(copiedFacts.ok && !copiedFacts.stdout.includes("ticket_administrative_closure('T-RESOLUTION-VALID')"), "Prolog facts reject proposed-resolution authority at the wrong packet path");
+    const beforeRepeat = readFileSync(packetPath, "utf-8");
+    const repeat = run([
+      "disposition",
+      "--from-resolution-request", requestRel,
+      "--output", join(tmp, "reports/ive/lifecycle_dispositions/proposed_resolution_repeat.json"),
+      "--write",
+      "--json",
+    ], tmp);
+    assert(repeat.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-VALID")?.action === "already_resolved", "proposed resolution write is idempotent for a re-verified closed ticket");
+    assert(readFileSync(packetPath, "utf-8") === beforeRepeat, "idempotent proposed resolution leaves Program bytes unchanged");
+
+    const duplicateRequest = run(["disposition", "--from-resolution-request", duplicateRequestRel, "--json"], tmp);
+    assert(!duplicateRequest.ok && duplicateRequest.parsed?.error?.includes("resolution_request_duplicate_ticket"), "proposed resolution rejects duplicate exact ticket rows before mutation");
+    writeFileSync(join(tmp, decisionsRel), `${decisionsText}\nmutable decision edit\n`, "utf-8");
+    const dirtyDecision = run(["disposition", "--from-resolution-request", requestRel, "--json"], tmp);
+    assert(dirtyDecision.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-VALID")?.blockers?.includes("resolution_decision_not_clean"), "mutable-only decision bytes cannot authorize proposed resolution");
+    writeFileSync(join(tmp, decisionsRel), decisionsText, "utf-8");
+    writeJson(join(tmp, passReceiptRel), { schema_version: "ive.test_manifest.v1", status: "PASS", total: 2, passed: 2, warned: 0, failed: 0 });
+    const dirtyReceipt = run(["disposition", "--from-resolution-request", requestRel, "--json"], tmp);
+    assert(dirtyReceipt.parsed?.proposed_resolutions?.find((entry) => entry.ticket_id === "T-RESOLUTION-VALID")?.blockers?.includes("resolution_receipt_not_clean"), "mutable-only receipt bytes cannot authorize proposed resolution");
+
+    writeFileSync(requestPath, `${requestBefore.trimEnd()}\n `, "utf-8");
+    const dirtyRequest = run(["disposition", "--from-resolution-request", requestRel, "--json"], tmp);
+    assert(!dirtyRequest.ok && dirtyRequest.parsed?.error?.includes("resolution_request_not_clean"), "mutable-only request bytes cannot authorize proposed resolution");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -795,6 +2946,265 @@ assert(result.ok && validNext.includes("T-001"), "next-ready works on the origin
 
 result = run(["blockers", "T-MISSING", "--program", dispatchChain, "--json"]);
 assert(result.ok && (result.parsed?.tickets || []).length === 0, "blockers on unknown ticket returns empty list, not error");
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-ticket-review-authority-"));
+  try {
+    const packetDir = join(tmp, "plans", "programs", "review-authority");
+    const packetPath = join(packetDir, "program_packet.json");
+    const registryPath = join(tmp, "reports", "user_story_audit", "story_registry.json");
+    mkdirSync(packetDir, { recursive: true });
+    mkdirSync(dirname(registryPath), { recursive: true });
+    writeFileSync(registryPath, `${JSON.stringify({
+      updated: "2026-07-14T00:00:00.000Z",
+      stories: [],
+      infrastructure_stories: [
+        { id: "US-079", title: "Program Manager workflow and Program Packet validation", status: "FULLY_COVERED" },
+        { id: "US-PM-AUTO-173", title: "Local and remote ticket sync contract", status: "FULLY_COVERED" },
+      ],
+      consolidations: [],
+    }, null, 2)}\n`, "utf-8");
+
+    const packet = {
+      version: 1,
+      id: "PGM-REVIEW-AUTHORITY",
+      title: "Ticket review authority fixture",
+      status: "executing",
+      goal: "Keep ticket review authority separate from Program-wide readiness.",
+      story_refs: ["US-079", "US-PM-AUTO-173"],
+      epics: [{
+        id: "EP-REVIEW",
+        title: "Review tickets",
+        story_refs: ["US-079", "US-PM-AUTO-173"],
+        ticket_refs: ["T-HEALTHY", "T-UNRELATED"],
+      }],
+      tickets: [
+        {
+          id: "T-HEALTHY",
+          epic_id: "EP-REVIEW",
+          title: "Healthy reviewed ticket",
+          type: "defect",
+          lifecycle: "closed",
+          review_status: "submitted",
+          story_refs: ["US-079", "US-PM-AUTO-173"],
+          defect_refs: [],
+          gap_refs: [],
+          depends_on: [],
+          acceptance_criteria: ["AC-HEALTHY"],
+          child_plan: { policy: "not_required", plan_dir: null, reason: "Self-contained review fixture" },
+          compatibility_contract_refs: [],
+          migration_boundary_refs: [],
+          deletion_move_census_refs: [],
+          verification_refs: ["VM-HEALTHY", "VM-HEALTHY-RECURRENCE"],
+          external_refs: [{ kind: "github_issue", repo: "owner/repo", issue_number: 42, state: "OPEN", url: "https://github.com/owner/repo/issues/42" }],
+          persona_packs: ["wiring_auditor", "config_integrity", "traceability", "assumptions_challenger"],
+          persona_review: {
+            status: "verified",
+            persona_packs: ["wiring_auditor", "config_integrity", "traceability", "assumptions_challenger"],
+            findings: [{ id: "PR-HEALTHY", status: "verified", evidence_refs: ["fixture:healthy"] }],
+            evidence_refs: ["fixture:healthy"],
+            authority: "advisory_only_deterministic_gates_remain_authoritative",
+          },
+        },
+        {
+          id: "T-UNRELATED",
+          epic_id: "EP-REVIEW",
+          title: "Unrelated broken ticket",
+          type: "defect",
+          lifecycle: "done",
+          review_status: "submitted",
+          story_refs: ["US-079"],
+          defect_refs: [],
+          gap_refs: [],
+          depends_on: [],
+          acceptance_criteria: ["AC-UNRELATED"],
+          child_plan: { policy: "not_required", plan_dir: null, reason: "Self-contained review fixture" },
+          compatibility_contract_refs: [],
+          migration_boundary_refs: [],
+          deletion_move_census_refs: [],
+          verification_refs: ["VM-UNRELATED"],
+        },
+      ],
+      acceptance_criteria: [
+        { id: "AC-HEALTHY", scope: "ticket", subject_ref: "T-HEALTHY", text: "The healthy ticket review separates its verdict from unrelated Program failures.", story_refs: ["US-079", "US-PM-AUTO-173"], maintenance_rationale: null },
+        { id: "AC-UNRELATED", scope: "ticket", subject_ref: "T-UNRELATED", text: "The unrelated ticket has its own deliberately failing verification control.", story_refs: ["US-079"], maintenance_rationale: null },
+      ],
+      dependencies: [],
+      compatibility_contracts: [],
+      migration_boundaries: [],
+      deletion_move_census: [],
+      verification_matrix: [
+        { id: "VM-HEALTHY", scope: "ticket", subject_ref: "T-HEALTHY", acceptance_criterion_ref: "AC-HEALTHY", proof_type: "proof:integration_smoke", command_or_action: "Exercise ticket-local runReview acceptance and Program-context output.", pass_means: "The healthy target is review_ready while Program context remains blocked.", result: "pass", evidence_refs: ["fixture:healthy"] },
+        { id: "VM-HEALTHY-RECURRENCE", scope: "ticket", subject_ref: "T-HEALTHY", acceptance_criterion_ref: "AC-HEALTHY", proof_type: "proof:migration_parity", command_or_action: "Run ripple_check migration-bootstrap transition-gate-flows planner_truth_packet test_knowledge_triggers rule_engine_check_invariants annotation_parser_validate and story_registry evidence.", pass_means: "Every active recurrence, routing, truth, migration, annotation, invariant, and story guard passes.", result: "pass", evidence_refs: ["ripple_check", "migration-bootstrap", "transition-gate-flows", "planner_truth_packet", "test_knowledge_triggers", "rule_engine_check_invariants", "annotation_parser_validate"] },
+        { id: "VM-UNRELATED", scope: "ticket", subject_ref: "T-UNRELATED", acceptance_criterion_ref: "AC-UNRELATED", proof_type: "proof:seeded_failure_control", command_or_action: "Seed an unrelated ticket verification failure.", pass_means: "Whole-Program validation reports the unrelated failure.", result: "fail", evidence_refs: ["fixture:unrelated-failure"] },
+      ],
+      decisions: [],
+    };
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+
+    const ghRunner = () => ({
+      status: 0,
+      stdout: JSON.stringify({
+        number: 42,
+        title: "Healthy reviewed ticket",
+        body: "Review the healthy ticket using its complete local contract and evidence.",
+        state: "OPEN",
+        url: "https://github.com/owner/repo/issues/42",
+        labels: [],
+        comments: [],
+      }),
+      stderr: "",
+    });
+    const commandRunner = (command) => ({
+      status: 0,
+      stdout: JSON.stringify({ status: "PASS", command: command.id }),
+      stderr: "",
+    });
+    const reviewArgs = {
+      command: "review",
+      issue: "42",
+      projectItem: null,
+      program: packetPath,
+      ticket: "T-HEALTHY",
+      repo: "owner/repo",
+      remoteMode: "remote-read",
+      write: false,
+      json: true,
+      closeGithubIssue: false,
+      acceptRemoteClose: false,
+    };
+    const reviewOptions = {
+      cwd: tmp,
+      ghRunner,
+      commandRunner,
+      clock: () => new Date("2026-07-14T00:00:00.000Z"),
+    };
+
+    const healthyReview = await runReview(reviewArgs, reviewOptions);
+    const healthyPacket = healthyReview.review_packet;
+    assert(healthyPacket?.final_status === "review_ready", "healthy ticket review is accepted while an unrelated Program ticket is broken");
+    assert((healthyPacket?.deterministic?.blockers || []).length === 0, "healthy ticket has zero ticket-authoritative blockers");
+    assert(healthyPacket?.deterministic?.program_context?.status === "blocked", "review artifact reports unrelated Program failure as separate blocked context");
+    assert((healthyPacket?.deterministic?.program_context?.blockers || []).some((entry) => entry.path?.includes("VM-UNRELATED")), "Program context retains the unrelated verification failure");
+    assert(healthyPacket?.deterministic?.program_packet_validation?.ok === false && Array.isArray(healthyPacket?.deterministic?.program_gates) && Array.isArray(healthyPacket?.deterministic?.command_results), "review artifact preserves detailed whole-Program validation, gates, and command results");
+    assert(healthyPacket?.ticket_intake_receipt?.deterministic_blocker_count === 0 && healthyPacket?.ticket_intake_receipt?.program_context_status === "blocked", "Ticket Intake Receipt distinguishes ticket acceptance from blocked Program context");
+    assert(/Program context: \*\*blocked\*\*/.test(healthyReview.github_sync?.planned_comment || ""), "GitHub dry-run comment keeps blocked Program context visible beside review_ready");
+    assert(/Program context: blocked/.test(renderGithubReviewText(healthyReview)), "compact review output keeps separate Program context visible");
+
+    packet.verification_matrix.find((entry) => entry.id === "VM-HEALTHY").result = "fail";
+    packet.verification_matrix.find((entry) => entry.id === "VM-UNRELATED").result = "pass";
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    const brokenReview = await runReview(reviewArgs, reviewOptions);
+    assert(brokenReview.review_packet?.final_status === "blocked", "broken reviewed ticket still fails its own review");
+    assert((brokenReview.review_packet?.deterministic?.blockers || []).some((entry) => entry.path?.includes("VM-HEALTHY")), "broken review exposes the target-owned verification blocker");
+
+    packet.verification_matrix.find((entry) => entry.id === "VM-HEALTHY").result = "pass";
+    packet.tickets.find((entry) => entry.id === "T-HEALTHY").persona_review.status = "needs_evidence";
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    const personaBlockedReview = await runReview(reviewArgs, reviewOptions);
+    assert((personaBlockedReview.review_packet?.deterministic?.blockers || []).some((entry) => entry.code === "ticket_closure_persona_review_needs_evidence"), "reviewed ticket persona evidence remains ticket-authoritative");
+
+    packet.tickets.find((entry) => entry.id === "T-HEALTHY").persona_review.status = "verified";
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    const storyBlockedReview = await runReview(reviewArgs, {
+      ...reviewOptions,
+      commandRunner: (command) => command.id === "story_registry_evidence_us_079"
+        ? { status: 7, stdout: "", stderr: "seeded target story evidence failure" }
+        : commandRunner(command),
+    });
+    assert((storyBlockedReview.review_packet?.deterministic?.blockers || []).some((entry) => entry.source === "story_registry_evidence_us_079"), "reviewed ticket story evidence remains ticket-authoritative");
+
+    packet.verification_matrix.find((entry) => entry.id === "VM-UNRELATED").result = "fail";
+    writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+    const programCheck = run(["check", "--program", packetPath, "--json"], tmp);
+    assert(!programCheck.ok && hasError(programCheck, "ticket_verification_not_passed"), "whole-Program check remains blocked by the unrelated ticket");
+    const programClose = run(["verify", "validate-to-program-close", "--program", packetPath, "--json"], tmp);
+    assert(!programClose.ok && hasError(programClose, "ticket_verification_not_passed"), "program-close gate retains whole-Program failure authority");
+    const publish = await runPublish({
+      command: "publish",
+      program: packetPath,
+      ticket: "T-HEALTHY",
+      repo: "owner/repo",
+      project: null,
+      remoteMode: "local-only",
+      write: false,
+      json: true,
+    }, { cwd: tmp, clock: () => new Date("2026-07-14T00:00:00.000Z") });
+    assert(publish.status === "BLOCKED" && publish.ticket_intake_receipt?.deterministic_blocker_count > 0, "publish dry-run remains blocked by whole-Program validation failure");
+    const publishCli = runGithub([
+      "publish", "--program", packetPath, "--ticket", "T-HEALTHY",
+      "--repo", "owner/repo", "--remote-mode", "local-only", "--json",
+    ], tmp);
+    assert(Buffer.byteLength(publishCli.stdout || "", "utf-8") > 8192, "blocked publish CLI exercises a payload larger than the bounded pipe floor");
+    assert(!publishCli.ok && publishCli.parsed?.status === "BLOCKED", "blocked publish CLI exits non-zero without remote action");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-canonical-id-"));
+  try {
+    const packetDir = join(tmp, "plans", "programs", "guidance-first");
+    const packetPath = join(packetDir, "program_packet.json");
+    mkdirSync(packetDir, { recursive: true });
+    writeFileSync(packetPath, readFileSync(fixture("valid_ready.json"), "utf-8"));
+
+    const byIdCheck = run(["check", "--program", "PGM-TEST", "--json"], tmp);
+    const byPathCheck = run(["check", "--program", packetPath, "--json"], tmp);
+    assert(byIdCheck.ok && byPathCheck.ok, "check accepts canonical Program ID and packet path");
+    assert(byIdCheck.parsed?.packet_path === byPathCheck.parsed?.packet_path, "check ID and path forms select the same packet");
+
+    const byIdVerify = run(["verify", "design-to-ready", "--program", "PGM-TEST", "--json"], tmp);
+    assert(byIdVerify.ok && byIdVerify.parsed?.packet_path === byPathCheck.parsed?.packet_path, "verify accepts canonical Program ID");
+
+    const byIdIntake = run([
+      "intake", "--program", "PGM-TEST", "--title", "Canonical resolution probe",
+      "--from-text", "US-001 defect. Prove canonical Program ID intake resolution.", "--json",
+    ], tmp);
+    assert(byIdIntake.ok && byIdIntake.parsed?.program_packet_path === "plans/programs/guidance-first/program_packet.json", "intake accepts canonical Program ID");
+
+    const publish = runGithub(["publish", "--program", "PGM-TEST", "--ticket", "T-001", "--repo", "owner/repo", "--json"], tmp);
+    assert(Buffer.byteLength(publish.stdout || "", "utf-8") > 8192, "publish CLI exercises a payload larger than the bounded pipe floor");
+    assert(publish.ok && publish.parsed?.program_packet_path === "plans/programs/guidance-first/program_packet.json", "publish accepts canonical Program ID in dry-run mode");
+
+    const binDir = join(tmp, "bin");
+    const ghPath = join(binDir, "gh");
+    mkdirSync(binDir, { recursive: true });
+    writeFileSync(ghPath, `#!/usr/bin/env node
+const args = process.argv.slice(2);
+if (args[0] === "issue" && args[1] === "view") {
+  console.log(JSON.stringify({number:42,title:"Canonical review",body:"Review canonical Program ID",state:"OPEN",url:"https://github.com/owner/repo/issues/42",labels:[],comments:[]}));
+  process.exit(0);
+}
+console.error("Unexpected gh call: " + args.join(" "));
+process.exit(1);
+`);
+    chmodSync(ghPath, 0o755);
+    const review = runGithub([
+      "review", "--issue", "42", "--program", "PGM-TEST", "--ticket", "T-001",
+      "--repo", "owner/repo", "--remote-mode", "remote-read", "--json",
+    ], tmp, { PATH: `${binDir}:${process.env.PATH || ""}` });
+    assert(Buffer.byteLength(review.stdout || "", "utf-8") > 8192, "review CLI exercises a payload larger than the bounded pipe floor");
+    assert(review.ok && review.parsed?.program_packet_path === "plans/programs/guidance-first/program_packet.json", "review accepts canonical Program ID with a stubbed remote read");
+
+    const unknown = run(["check", "--program", "PGM-UNKNOWN", "--json"], tmp);
+    assert(!unknown.ok && /Valid Program IDs: PGM-TEST/.test(errorMessages(unknown)), "unknown canonical ID fails and lists valid Program IDs");
+
+    const duplicateDir = join(tmp, "plans", "programs", "duplicate");
+    mkdirSync(duplicateDir, { recursive: true });
+    writeFileSync(join(duplicateDir, "program_packet.json"), readFileSync(packetPath, "utf-8"));
+    const ambiguous = run(["check", "--program", "PGM-TEST", "--json"], tmp);
+    assert(!ambiguous.ok && /ambiguous/i.test(errorMessages(ambiguous)), "duplicate canonical ID fails as ambiguous");
+    assert(/duplicate\/program_packet\.json/.test(errorMessages(ambiguous)) && /guidance-first\/program_packet\.json/.test(errorMessages(ambiguous)), "ambiguous canonical ID lists matching packet paths");
+    assert(/Valid Program IDs: PGM-TEST/.test(errorMessages(ambiguous)), "ambiguous canonical ID lists valid Program IDs");
+
+    const disambiguated = run(["check", "--program", packetPath, "--json"], tmp);
+    assert(disambiguated.ok && disambiguated.parsed?.status === "PASS", "explicit packet path disambiguates duplicate canonical IDs");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

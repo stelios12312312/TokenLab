@@ -14,10 +14,14 @@
 import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { createSession } from "../../scripts/lib/prolog.mjs";
-import { makeFinding, makeConstraint, SEVERITY } from "../../scripts/lib/audit_types.mjs";
-import { downgradeForShape as shapeAwareSeverity } from "../../scripts/lib/pack_severity.mjs";
+import { makeConstraint } from "../../scripts/lib/audit_types.mjs";
 import { sanitizeAtom as sanitize } from "../../scripts/lib/sanitize.mjs";
+import {
+  assertStoryFacts,
+  formatPhaseGuidance,
+  normalizePackFinding,
+  runPrologPackAudit,
+} from "../../scripts/lib/auditor_pack_engine.mjs";
 import { parseAnnotations, walkDir, toPrologFacts } from "../../scripts/annotation_parser.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -93,6 +97,13 @@ const RULE_DEFS = [
     engine: "prolog",
   },
 ];
+
+const EVIDENCE_TEMPLATES = {
+  "WR-001": (s, d) => `Validation module ${s} is built but not wired to any pipeline`,
+  "WR-002": (s, d) => `Validation module ${s} is disabled by default with no justification`,
+  "WR-003": (s, d) => `Disabled check ${s} has justification but no expiry date for review`,
+  "WR-004": (s, d) => `Output-critical story ${d} has no validation_ref artifact`,
+};
 
 // ---------------------------------------------------------------------------
 // Scan project for validation modules and their consumers
@@ -228,162 +239,63 @@ const wiringAuditorPack = {
   },
 
   async audit(context) {
-    const session = createSession();
-    const { cwd, storyRegistry } = context;
-    const sourceFiles = walkDir(cwd, cwd);
-    const codeFiles = sourceFiles.filter(isCodeFile);
-    const productionCodeFiles = sourceFiles.filter(isProductionCodeFile);
-    const allAnnotations = [];
+    return runPrologPackAudit(context, {
+      packId: this.id,
+      rulesFile: RULES_FILE,
+      query: "wiring_auditor_violation(RuleId, Subject, Detail, Severity)",
+      defaultRuleId: "WR-???",
+      defaultSeverity: "HIGH",
+      collectFacts: (ctx, session) => {
+        const { cwd, storyRegistry } = ctx;
+        const sourceFiles = walkDir(cwd, cwd);
+        const productionCodeFiles = sourceFiles.filter(isProductionCodeFile);
+        const allAnnotations = [];
 
-    // Re-assert base story facts
-    if (storyRegistry && Array.isArray(storyRegistry.stories)) {
-      for (const s of storyRegistry.stories) {
-        if (!s.id) continue;
-        const id = sanitize(s.id);
-        session.consult(`story(${id}, ${sanitize(s.title || "untitled")}, ${sanitize(s.priority || "medium")}, ${sanitize(s.status || "unknown")}).`);
-        if (Array.isArray(s.tags)) {
-          for (const t of s.tags) {
-            session.consult(`story_tag(${id}, ${sanitize(t)}).`);
-          }
-        }
-        if (Array.isArray(s.validation_refs)) {
-          for (const v of s.validation_refs) {
-            session.consult(`validation_ref(${id}, ${sanitize(v)}).`);
-          }
-        }
-        if (Array.isArray(s.code_refs)) {
-          for (const c of s.code_refs) {
-            session.consult(`code_ref(${id}, ${sanitize(c)}).`);
-          }
-        }
-        if (Array.isArray(s.test_refs)) {
-          for (const t of s.test_refs) {
-            session.consult(`test_ref(${id}, ${sanitize(t)}).`);
-          }
-        }
-      }
-    }
-
-    // Load @planner: annotations as deterministic facts (highest priority)
-    try {
-      for (const f of productionCodeFiles) {
-        allAnnotations.push(...parseAnnotations(f, cwd));
-      }
-      const prologFacts = toPrologFacts(allAnnotations);
-      if (prologFacts) {
-        session.consult(prologFacts);
-      }
-    } catch (e) {
-      if (process.env.DEBUG) console.error(`[${this.id}] Annotation parse error: ${e.message}`);
-    }
-
-    // Scan project for validation modules and assert facts (heuristic fallback)
-    // Annotations take precedence — heuristic scan fills gaps for unannotated files
-    const modules = new Set(scanValidationModules(productionCodeFiles));
-    const annotatedValidationModules = getAnnotatedValidationModules(allAnnotations);
-    for (const mod of annotatedValidationModules) {
-      modules.add(mod);
-    }
-    for (const mod of [...modules].sort()) {
-      if (!annotatedValidationModules.has(mod)) {
-        session.consult(`validation_module(${sanitize(mod)}).`);
-      }
-
-      if (scanForImports(cwd, mod, productionCodeFiles) || scanForCliEntrypoint(cwd, mod)) {
-        session.consult(`module_has_live_consumer(${sanitize(mod)}).`);
-      }
-
-      const isDisabled = scanForDisabledDefaults(cwd, mod);
-      if (isDisabled === true) {
-        session.consult(`module_default_enabled(${sanitize(mod)}, false).`);
-        // WR-003 needs validation_check(Module, disabled) to fire
-        session.consult(`validation_check(${sanitize(mod)}, disabled).`);
-      } else if (isDisabled === false) {
-        session.consult(`module_default_enabled(${sanitize(mod)}, true).`);
-      }
-    }
-
-    // Load Prolog rules
-    let rulesText;
-    try {
-      rulesText = readFileSync(RULES_FILE, "utf-8");
-    } catch (e) {
-      return [{ _error: `Could not load ${this.id} rules.pl: ${e.message}` }];
-    }
-
-    try {
-      session.consult(rulesText);
-    } catch (e) {
-      return [{ _error: `Failed to load ${this.id} Prolog rules: ${e.message}` }];
-    }
-
-    // Query violations
-    const rawFindings = [];
-    try {
-      for (const ans of session.query("wiring_auditor_violation(RuleId, Subject, Detail, Severity)")) {
-        rawFindings.push({
-          ruleId:   String(ans.RuleId   || "WR-???"),
-          subject:  String(ans.Subject  || "project"),
-          detail:   String(ans.Detail   || ""),
-          severity: String(ans.Severity || "HIGH"),
+        assertStoryFacts(session, storyRegistry, {
+          sanitize,
+          include: ["tags", "validation_refs", "code_refs", "test_refs"],
         });
-      }
-    } catch (e) {
-      if (process.env.DEBUG) console.error(`[${this.id}] Prolog query error: ${e.message}`);
-    }
 
-    return rawFindings;
+        try {
+          for (const f of productionCodeFiles) allAnnotations.push(...parseAnnotations(f, cwd));
+          const prologFacts = toPrologFacts(allAnnotations);
+          if (prologFacts) session.consult(prologFacts);
+        } catch (e) {
+          if (process.env.DEBUG) console.error(`[${this.id}] Annotation parse error: ${e.message}`);
+        }
+
+        const modules = new Set(scanValidationModules(productionCodeFiles));
+        const annotatedValidationModules = getAnnotatedValidationModules(allAnnotations);
+        for (const mod of annotatedValidationModules) modules.add(mod);
+        for (const mod of [...modules].sort()) {
+          if (!annotatedValidationModules.has(mod)) session.consult(`validation_module(${sanitize(mod)}).`);
+          if (scanForImports(cwd, mod, productionCodeFiles) || scanForCliEntrypoint(cwd, mod)) {
+            session.consult(`module_has_live_consumer(${sanitize(mod)}).`);
+          }
+
+          const isDisabled = scanForDisabledDefaults(cwd, mod);
+          if (isDisabled === true) {
+            session.consult(`module_default_enabled(${sanitize(mod)}, false).`);
+            session.consult(`validation_check(${sanitize(mod)}, disabled).`);
+          } else if (isDisabled === false) {
+            session.consult(`module_default_enabled(${sanitize(mod)}, true).`);
+          }
+        }
+      },
+    });
   },
 
   normalizeFinding(raw, context) {
-    if (raw._error) {
-      return makeFinding({
-        id:             `${this.id.toUpperCase()}-ERR`,
-        role:           this.id,
-        severity:       SEVERITY.MEDIUM,
-        category:       "pack_error",
-        story_refs:     [],
-        evidence:       raw._error,
-        recommendation: `Check that packs/${this.id}/rules.pl is present and valid Prolog.`,
-      });
-    }
-
-    const rule = RULE_DEFS.find(r => r.id === raw.ruleId) || {};
-
-    // v7.4.2: shape-conditional severity downgrade. WR-004 (output-critical
-    // story without validation_ref) shouldn't FAIL gate transitions on plans
-    // that aren't producing new outputs (refactor, docs).
-    const severity = shapeAwareSeverity({
-      ruleId: raw.ruleId,
-      defaultSeverity: raw.severity || SEVERITY.HIGH,
-      planShape: context?.planShape,
-      downgrades: {
+    return normalizePackFinding(raw, context, {
+      packId: this.id,
+      rules: RULE_DEFS,
+      defaultSeverity: "HIGH",
+      category: "infrastructure_wiring",
+      severityDowngrades: {
         "WR-004": ["refactor", "docs"],
       },
-    });
-    const isStoryRef = raw.subject !== "project" && raw.subject !== "unknown";
-    const subjectSlug = String(raw.subject ?? "unknown").replace(/\W/g, "_");
-
-    // Build evidence message (Prolog returns subject/detail, JS composes message)
-    const EVIDENCE_TEMPLATES = {
-      "WR-001": (s, d) => `Validation module ${s} is built but not wired to any pipeline`,
-      "WR-002": (s, d) => `Validation module ${s} is disabled by default with no justification`,
-      "WR-003": (s, d) => `Disabled check ${s} has justification but no expiry date for review`,
-      "WR-004": (s, d) => `Output-critical story ${d} has no validation_ref artifact`,
-    };
-    const evidenceFn = EVIDENCE_TEMPLATES[raw.ruleId];
-    const evidence = evidenceFn
-      ? evidenceFn(raw.subject, raw.detail)
-      : `${raw.ruleId} violation for ${raw.subject}`;
-
-    return makeFinding({
-      id:             `${raw.ruleId}-${subjectSlug}`,
-      role:           this.id,
-      severity,
-      category:       "infrastructure_wiring",
-      story_refs:     isStoryRef ? [raw.subject] : [],
-      evidence,
-      recommendation: rule.remediation || "Wire the module into the pipeline or document why it's intentionally disconnected.",
+      evidenceTemplates: EVIDENCE_TEMPLATES,
+      fallbackRecommendation: "Wire the module into the pipeline or document why it's intentionally disconnected.",
     });
   },
 
@@ -412,9 +324,7 @@ const wiringAuditorPack = {
         "Check that new modules added during execution have consumers.",
       ],
     };
-    const lines = guidance[phase];
-    if (!lines || lines.length === 0) return null;
-    return lines.map((l, i) => `${i + 1}. ${l}`).join("\n");
+    return formatPhaseGuidance(guidance, phase);
   },
 
   getPlanConstraints(context) {

@@ -34,7 +34,8 @@
         "ticket_completion_status",
         "ticket_verification_rows_passed",
         "required_child_plan_closed",
-        "deferred_ticket_decisions"
+        "deferred_ticket_decisions",
+        "tested_region_scope_citations_for_negative_verdicts"
       ]
     },
     "validate-to-program-close": {

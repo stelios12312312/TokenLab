@@ -7,6 +7,16 @@ program_ticket(Program, Ticket) :-
     program_epic(Program, Epic),
     epic_ticket(Epic, Ticket).
 
+% Provider-neutral structural requirement parity. JavaScript emits this fact
+% only when a requirement cannot pass under current policy/environment and no
+% governed waiver resolves it.
+invariant_violated(program_gate_requirement_unsatisfied, Requirement) :-
+    program_gate_requirement_unsatisfied(_, Requirement).
+
+ticket_github_issue_mirror_required(Ticket) :-
+    program_ticket(Program, Ticket),
+    program_github_issue_mirror_required(Program).
+
 non_executable_ticket_type('artifact').
 non_executable_ticket_type('administrative').
 non_executable_ticket_type('decision').
@@ -38,13 +48,8 @@ done_or_later_lifecycle('closed').
 verified_or_closed_lifecycle('verified').
 verified_or_closed_lifecycle('closed').
 
-acceptable_verification_result('pass').
-acceptable_verification_result('passed').
-acceptable_verification_result('verified').
-acceptable_verification_result('ok').
-acceptable_verification_result('success').
-acceptable_verification_result('waived').
-acceptable_verification_result('accepted_risk').
+acceptable_verification_result(Result) :-
+    verification_status_accepts('program', Result).
 
 verification_row_acceptable(Row) :-
     verification_row_result(Row, Result),
@@ -158,6 +163,45 @@ required_child_plan_open(Ticket) :-
     child_plan_policy(Ticket, 'required'),
     \+ child_plan_satisfied(Ticket).
 
+% GitHub issue-history cache joins. These predicates are inert unless both
+% Program Packet facts and verified issue-history cache facts are loaded.
+ticket_cached_issue_state(Ticket, State) :-
+    ticket_github_issue_ref(Ticket, Repo, Number),
+    issue_state(Repo, Number, State).
+
+ticket_cached_issue_decision(Ticket, Source) :-
+    ticket_github_issue_ref(Ticket, Repo, Number),
+    issue_decision(Repo, Number, Source).
+
+ticket_cached_blocker_resolved(Ticket) :-
+    ticket_cached_blocker_resolved(Ticket, _).
+
+ticket_cached_blocker_resolved(Ticket, Source) :-
+    ticket_github_issue_ref(Ticket, Repo, Number),
+    issue_blocker_resolved(Repo, Number, Source).
+
+program_ticket_open_blocking_issue(Ticket, Number) :-
+    ticket_lifecycle(Ticket, 'closed'),
+    ticket_github_issue_ref(Ticket, Repo, Number),
+    issue_state(Repo, Number, 'open'),
+    issue_blocker(Repo, Number, _).
+
+invariant_warning('hypothesis_space_ledger_missing', Program) :-
+    scope_citation_required(Program),
+    \+ hypothesis_space_ledger_present(Program).
+
+invariant_violated('negative_finding_missing_tested_region', Finding) :-
+    program_gate_context('execution_to_program_validate'),
+    scope_citation_required(_),
+    negative_finding(Finding),
+    \+ finding_tested_region_cited(Finding).
+
+invariant_violated('program_no_go_missing_tested_region', Program) :-
+    program_gate_context('execution_to_program_validate'),
+    scope_citation_required(Program),
+    program_no_go_verdict(Program),
+    \+ program_verdict_tested_region_cited(Program).
+
 invariant_violated('program_epic_without_story', Epic) :-
     epic(Epic, _, _),
     \+ epic_story(Epic, _).
@@ -178,16 +222,26 @@ invariant_violated('program_ticket_dependency_cycle', Ticket) :-
 invariant_violated('program_ready_ticket_missing_acceptance', Ticket) :-
     ticket(Ticket, _, _, Lifecycle),
     ready_or_later_lifecycle(Lifecycle),
+    \+ ticket_administrative_closure(Ticket),
     \+ ticket_acceptance_criterion(Ticket, _).
 
 invariant_violated('program_ready_ticket_missing_verification', Ticket) :-
     ticket(Ticket, _, _, Lifecycle),
     ready_or_later_lifecycle(Lifecycle),
+    \+ ticket_administrative_closure(Ticket),
     \+ verification_matrix_row(_, 'ticket', Ticket, _, _, _, _).
+
+invariant_violated('program_ready_ticket_missing_github_issue', Ticket) :-
+    ticket(Ticket, _, _, Lifecycle),
+    ready_or_later_lifecycle(Lifecycle),
+    \+ ticket_administrative_closure(Ticket),
+    ticket_github_issue_mirror_required(Ticket),
+    \+ ticket_github_issue(Ticket).
 
 invariant_violated('program_ticket_verification_not_passed', Ticket) :-
     ticket(Ticket, _, _, Lifecycle),
     done_or_later_lifecycle(Lifecycle),
+    \+ ticket_administrative_closure(Ticket),
     verification_matrix_row(Row, 'ticket', Ticket, _, _, _, _),
     \+ verification_row_acceptable(Row).
 
@@ -217,16 +271,19 @@ invariant_violated('program_capability_removed_without_story', Capability) :-
 invariant_violated('program_child_plan_not_closed', Ticket) :-
     ticket(Ticket, _, _, Lifecycle),
     verified_or_closed_lifecycle(Lifecycle),
+    \+ ticket_administrative_closure(Ticket),
     child_plan_policy(Ticket, 'required'),
     child_plan_ref(Ticket, _),
     \+ child_plan_satisfied(Ticket).
 
 invariant_violated('program_ticket_review_not_run', Ticket) :-
     ticket_lifecycle(Ticket, 'closed'),
+    \+ ticket_administrative_closure(Ticket),
     ticket_review_status(Ticket, 'not_run').
 
 invariant_violated('program_ticket_persona_review_needs_evidence', Ticket) :-
     ticket_lifecycle(Ticket, 'closed'),
+    \+ ticket_administrative_closure(Ticket),
     ticket_persona_review_status(Ticket, 'needs_evidence').
 
 invariant_violated('program_close_ticket_unresolved', Program) :-
@@ -237,6 +294,9 @@ invariant_violated('program_close_ticket_unresolved', Program) :-
 invariant_violated('program_close_without_program_verification', Program) :-
     program(Program, _, 'closed'),
     \+ program_verification_row(Program, _).
+
+invariant_warning('program_ticket_closed_with_open_blocking_issue', Ticket) :-
+    program_ticket_open_blocking_issue(Ticket, _).
 
 % Phase 3: an opt-in auto row that still has manual provenance is a claim, not
 % a proof. Surface this as a warning so the gate audit can distinguish.

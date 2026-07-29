@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "pack_id": "quant_target",
+  "rubrics": [
+    {
+      "id": "objective_defined",
+      "question": "Does the plan name the optimization target, controls, and result-claim boundary?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no"]
+    },
+    {
+      "id": "search_surface_defined",
+      "question": "Does the plan disclose the hyperparameter or search surface before execution?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no"]
+    }
+  ],
+  "checkers": [
+    {
+      "id": "quant_target_objective_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/packs/quant_target/index.mjs",
+      "seeded_defect_ids": ["quant-target-seeded-undefined-objective"]
+    },
+    {
+      "id": "quant_target_search_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/tests/test_quant_results_validation.mjs",
+      "seeded_defect_ids": ["quant-target-seeded-hyperparameter-surface"]
+    }
+  ],
+  "calibration_ref": ".agent/skills/iterative-planner/packs/quant/calibration.json",
+  "goldens_ref": ".agent/skills/iterative-planner/tests/fixtures/pack_contract/goldens.json",
+  "seeded_defects_ref": ".agent/skills/iterative-planner/tests/fixtures/pack_contract/seeded_defects.json",
+  "serves_projects": [
+    {
+      "id": "portable-agent-kit",
+      "evidence_ref": "reports/user_story_audit/story_registry.json#US-PM-AUTO-095"
+    },
+    {
+      "id": "ipbs",
+      "evidence_ref": "docs/quant-pack-extraction-map.md"
+    }
+  ]
+}

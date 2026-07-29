@@ -6,6 +6,10 @@ description: Goal-aligned SME opportunity discovery — use repo goals and perso
 
 > **Invoke with**: `/sme-improvement`
 
+## Ambient Persona Context
+
+At workflow start, use the ambient persona and IVE block from `bootstrap.mjs status` when `planner.policy.yaml` keeps `persona.ambient` or `ive.ambient` enabled (default). Seed the SME committee and opportunity scoring with relevant domain persona obligations, and preserve the boundary between expert recommendations and deterministic proof before any recommendation becomes executable work.
+
 Runs a subject-matter-expert improvement pass when the question is no longer
 "what is broken?" but "what would materially improve this project's odds of success?"
 

@@ -11,6 +11,7 @@ import { verifyObligations } from "../../story-verification/scripts/verify_oblig
 import { verifyAdequacy, verifyCoverage } from "../../story-verification/scripts/verify_coverage.mjs";
 import { normalizePlanDirName, resolvePlanTarget } from "./lib/plan_utils.mjs";
 import { readEffectiveVerificationStrategy, VERIFICATION_STRATEGY_FILENAME } from "./lib/verification_strategy.mjs";
+import { normalizeVerificationStatus, verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -581,8 +582,8 @@ function summarizeTestStatus(criterion, testResults) {
 
 function determineCriterionStatus({ records, acceptanceMet, obligation }) {
   if (records.length === 0) return "FAILED";
-  const allAcceptanceVerified = acceptanceMet.every((entry) => entry.status === "verified");
-  const anyAcceptanceVerified = acceptanceMet.some((entry) => entry.status === "verified");
+  const allAcceptanceVerified = acceptanceMet.every((entry) => verificationStatusIsPass(entry.status, "execution"));
+  const anyAcceptanceVerified = acceptanceMet.some((entry) => verificationStatusIsPass(entry.status, "execution"));
 
   if (obligation?.obligation_met === true && (acceptanceMet.length === 0 || allAcceptanceVerified)) {
     return "VERIFIED";
@@ -696,7 +697,7 @@ function buildLegacyWarning(skippedLegacyBundles, options) {
 }
 
 function classifyPlanStatus(findings, strategyBundles) {
-  const planStatuses = new Map(strategyBundles.map((bundle) => [bundle.planId, "VERIFIED"]));
+  const planStatuses = new Map(strategyBundles.map((bundle) => [bundle.planId, null]));
 
   for (const finding of findings) {
     const planIds = new Set();
@@ -709,15 +710,21 @@ function classifyPlanStatus(findings, strategyBundles) {
 
     for (const planId of planIds) {
       if (!planStatuses.has(planId)) continue;
-      const candidateStatus = finding.status === "FAILED"
-        ? "FAILED"
-        : finding.status === "PARTIAL"
-          ? "PARTIAL"
-          : finding.status === "ORPHANED"
-            ? "ORPHANED"
+      const normalizedFinding = normalizeVerificationStatus(finding.status, "execution");
+      const authoredStatus = String(finding.status || "").trim().toUpperCase();
+      const candidateStatus = normalizedFinding.kind === "pass"
+        ? "VERIFIED"
+        : normalizedFinding.kind === "fail"
+          ? "FAILED"
+          : Object.hasOwn(PLAN_STATUS_PRIORITY, authoredStatus)
+            ? authoredStatus
             : null;
       if (!candidateStatus) continue;
-      const currentStatus = planStatuses.get(planId) || "VERIFIED";
+      const currentStatus = planStatuses.get(planId);
+      if (!currentStatus) {
+        planStatuses.set(planId, candidateStatus);
+        continue;
+      }
       if (PLAN_STATUS_PRIORITY[candidateStatus] > PLAN_STATUS_PRIORITY[currentStatus]) {
         planStatuses.set(planId, candidateStatus);
       }
@@ -725,15 +732,15 @@ function classifyPlanStatus(findings, strategyBundles) {
   }
 
   const plans = [...planStatuses.entries()]
-    .map(([plan_id, status]) => ({ plan_id, status }))
+    .map(([plan_id, status]) => ({ plan_id, status: status || "FAILED" }))
     .sort((left, right) => left.plan_id.localeCompare(right.plan_id));
 
   return {
     total: plans.length,
-    verified: plans.filter((plan) => plan.status === "VERIFIED").length,
-    partial: plans.filter((plan) => plan.status === "PARTIAL").length,
-    failed: plans.filter((plan) => plan.status === "FAILED").length,
-    orphaned: plans.filter((plan) => plan.status === "ORPHANED").length,
+    verified: plans.filter((plan) => verificationStatusIsPass(plan.status, "execution")).length,
+    partial: plans.filter((plan) => String(plan.status).toUpperCase() === "PARTIAL").length,
+    failed: plans.filter((plan) => normalizeVerificationStatus(plan.status, "execution").kind === "fail").length,
+    orphaned: plans.filter((plan) => String(plan.status).toUpperCase() === "ORPHANED").length,
     plans,
   };
 }
@@ -802,10 +809,10 @@ function buildReportDocument({
   const syntheticCoverageFindings = buildSyntheticCoverageFindings(coverageFindings, storyPlanMap);
   findings.push(...syntheticCoverageFindings);
 
-  const verified = findings.filter((finding) => finding.status === "VERIFIED").length;
-  const partial = findings.filter((finding) => finding.status === "PARTIAL").length;
-  const failed = findings.filter((finding) => finding.status === "FAILED").length;
-  const orphaned = findings.filter((finding) => finding.status === "ORPHANED").length;
+  const verified = findings.filter((finding) => verificationStatusIsPass(finding.status, "execution")).length;
+  const partial = findings.filter((finding) => String(finding.status).toUpperCase() === "PARTIAL").length;
+  const failed = findings.filter((finding) => normalizeVerificationStatus(finding.status, "execution").kind === "fail").length;
+  const orphaned = findings.filter((finding) => String(finding.status).toUpperCase() === "ORPHANED").length;
   const totalCriteria = criteria.length;
   const coveragePct = totalCriteria === 0 ? 100 : Number(((verified / totalCriteria) * 100).toFixed(2));
 

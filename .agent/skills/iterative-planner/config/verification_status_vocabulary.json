@@ -1,0 +1,161 @@
+{
+  "schema_version": 1,
+  "contexts": {
+    "presentation": {
+      "normalization": "presentation",
+      "statuses": [
+        {
+          "canonical": "PASS",
+          "kind": "pass",
+          "satisfies": true,
+          "forms": ["PASS"]
+        },
+        {
+          "canonical": "FAIL",
+          "kind": "fail",
+          "satisfies": false,
+          "forms": ["FAIL"]
+        },
+        {
+          "canonical": "WAIVED",
+          "kind": "waived",
+          "satisfies": true,
+          "forms": ["WAIVED"]
+        },
+        {
+          "canonical": "N/A",
+          "kind": "not_applicable",
+          "satisfies": true,
+          "forms": ["N/A", "NA", "NOT APPLICABLE"]
+        }
+      ]
+    },
+    "evidence": {
+      "normalization": "identifier",
+      "statuses": [
+        {
+          "canonical": "pass",
+          "kind": "pass",
+          "satisfies": true,
+          "forms": ["pass", "passed", "ok", "success", "successful", "verified", "done", "completed"]
+        },
+        {
+          "canonical": "fail",
+          "kind": "fail",
+          "satisfies": false,
+          "forms": ["fail", "failed", "blocked", "error", "errors", "missing", "incomplete", "no"]
+        },
+        {
+          "canonical": "waived",
+          "kind": "waived",
+          "satisfies": true,
+          "forms": ["waiver", "waived"]
+        },
+        {
+          "canonical": "not_applicable",
+          "kind": "not_applicable",
+          "satisfies": true,
+          "forms": ["not_applicable", "n_a", "na"]
+        }
+      ]
+    },
+    "program": {
+      "normalization": "identifier",
+      "statuses": [
+        {
+          "canonical": "pass",
+          "kind": "pass",
+          "satisfies": true,
+          "forms": ["pass", "passed", "verified", "ok", "success"]
+        },
+        {
+          "canonical": "fail",
+          "kind": "fail",
+          "satisfies": false,
+          "forms": ["fail", "failed", "blocked", "error", "missing", "incomplete"]
+        },
+        {
+          "canonical": "waived",
+          "kind": "waived",
+          "satisfies": true,
+          "forms": ["waived", "accepted_risk"]
+        }
+      ]
+    },
+    "execution": {
+      "normalization": "identifier",
+      "statuses": [
+        {
+          "canonical": "pass",
+          "kind": "pass",
+          "satisfies": true,
+          "forms": ["pass", "passed", "ok", "success", "successful", "verified", "satisfied", "done", "completed", "recorded", "executed_pass", "clear", "clean", "no_findings", "addressed", "tested", "measured", "delivered", "implemented", "closed"]
+        },
+        {
+          "canonical": "fail",
+          "kind": "fail",
+          "satisfies": false,
+          "forms": ["fail", "failed", "blocked", "error", "errors", "missing", "incomplete", "no", "timeout", "timed_out", "executed_fail", "uncertain"]
+        },
+        {
+          "canonical": "pending",
+          "kind": "pending",
+          "satisfies": false,
+          "forms": ["pending", "skip", "skipped", "warn", "warning", "deferred", "unknown", "unvalidated", "not_run", "not_executed"]
+        },
+        {
+          "canonical": "waived",
+          "kind": "waived",
+          "satisfies": false,
+          "forms": ["waiver", "waived", "accepted_risk", "not_applicable", "n_a", "na", "excluded"]
+        }
+      ]
+    },
+    "gate": {
+      "normalization": "presentation",
+      "statuses": [
+        {
+          "canonical": "PASS",
+          "kind": "pass",
+          "satisfies": true,
+          "forms": ["PASS"]
+        },
+        {
+          "canonical": "FAIL",
+          "kind": "fail",
+          "satisfies": false,
+          "forms": ["FAIL", "BLOCKED", "ERROR"]
+        },
+        {
+          "canonical": "PENDING",
+          "kind": "pending",
+          "satisfies": false,
+          "forms": ["PENDING", "WARN", "WARNING", "SKIP", "SKIPPED", "TIMEOUT", "UNKNOWN"]
+        }
+      ]
+    },
+    "decision": {
+      "normalization": "identifier",
+      "statuses": [
+        {
+          "canonical": "pass",
+          "kind": "pass",
+          "satisfies": true,
+          "forms": ["pass", "passed", "ready", "complete", "completed", "allow", "allowed", "good", "success", "verified"]
+        },
+        {
+          "canonical": "fail",
+          "kind": "fail",
+          "satisfies": false,
+          "forms": ["fail", "failed", "block", "blocked", "not_ready", "incomplete", "deny", "denied"]
+        },
+        {
+          "canonical": "pending",
+          "kind": "pending",
+          "satisfies": false,
+          "forms": ["pending", "unknown", "deferred", "skip", "skipped", "warn", "warning"]
+        }
+      ]
+    }
+  }
+}

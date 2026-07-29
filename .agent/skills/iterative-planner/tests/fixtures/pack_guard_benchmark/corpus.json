@@ -1,0 +1,178 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "ive_autocoder_v2_pack_guard_benchmark",
+  "fixtures": [
+    {
+      "id": "quant_process_result_claim",
+      "scenario_class": "quant_process",
+      "title": "Quant process result claim receives all mandatory guards",
+      "engine": "ontology_quant",
+      "phase": "preflight",
+      "goal_text": "Evaluate an EXP-011 backtest promotion candidate with temporal split, OOS evidence, optimizer settings, and model target calibration.",
+      "planned_files": [
+        "research/backtests/exp011_promotion_candidate.mjs",
+        "models/exp011/calibration_report.md"
+      ],
+      "source_facts": [
+        "The task mentions backtest promotion and optimizer settings.",
+        "The score is a process proxy and must not be promoted without economics proof.",
+        "The operator needs a measurement artifact receipt before any result claim."
+      ],
+      "persona_packs": [
+        "quant",
+        "quant_research_protocol",
+        "quant_target",
+        "traceability"
+      ],
+      "expected_guard_ids": [
+        "quant_run_scope_contract",
+        "quant_temporal_oos_separation",
+        "quant_proxy_economics_boundary",
+        "quant_measurement_artifact_receipt"
+      ],
+      "expected_na_pack_ids": [],
+      "expected_stand_down": false,
+      "receipt_required": true,
+      "artifact_refs": [
+        {
+          "kind": "measurement_artifact",
+          "path": "reports/fixtures/quant/exp011_measurement.json",
+          "status": "fixture"
+        }
+      ]
+    },
+    {
+      "id": "report_artifact_receipt",
+      "scenario_class": "report_artifact",
+      "title": "Report artifact scenario carries a visible traceability receipt",
+      "engine": "fixture_records",
+      "goal_text": "Create an operator-facing scoreboard artifact and show which pack guard produced the proof obligation.",
+      "source_facts": [
+        "A report without a visible receipt can look green while hiding the proof chain."
+      ],
+      "persona_packs": [
+        "traceability",
+        "assumptions_challenger"
+      ],
+      "fixture_records": [
+        {
+          "id": "report_artifact_receipt_visible",
+          "type": "guard",
+          "phase": "validate",
+          "pack_id": "traceability",
+          "title": "Report artifact receipt visibility",
+          "summary": "Render a Knowledge Receipt on the report artifact path before marking the report green.",
+          "source_ids": [
+            "plans/knowledge/mistakes.md#M-041",
+            "knowledge_receipt_contract"
+          ],
+          "triggering_facts": [
+            "report_artifact",
+            "operator_visible_claim"
+          ],
+          "confidence": "high",
+          "evidence_expectation": "The report output lists the proof artifact and the applied pack guard.",
+          "blocking_eligible": false
+        }
+      ],
+      "expected_guard_ids": [
+        "report_artifact_receipt_visible"
+      ],
+      "expected_na_pack_ids": [],
+      "expected_stand_down": false,
+      "receipt_required": true,
+      "artifact_refs": [
+        {
+          "kind": "scoreboard_json",
+          "path": "reports/ive/scoreboard/sample-scoreboard/scoreboard.json",
+          "status": "fixture"
+        }
+      ]
+    },
+    {
+      "id": "planner_core_false_positive_stand_down",
+      "scenario_class": "planner_core_false_positive",
+      "title": "Planner-core work suppresses unrelated quant blocking guards",
+      "engine": "ontology_planner_core",
+      "phase": "preflight",
+      "goal_text": "Update planner bootstrap status and Program Packet traceability receipts for shared planner-core behavior.",
+      "planned_files": [
+        ".agent/skills/iterative-planner/scripts/bootstrap.mjs",
+        ".agent/skills/iterative-planner/scripts/program_manager.mjs"
+      ],
+      "plan_shape": {
+        "primary": "planner-core",
+        "source": "pack_guard_benchmark_fixture"
+      },
+      "source_facts": [
+        "The task is shared planner core work and contains no quant result claim."
+      ],
+      "persona_packs": [
+        "traceability",
+        "config_integrity",
+        "wiring_auditor"
+      ],
+      "expected_guard_ids": [],
+      "expected_na_pack_ids": [
+        "quant"
+      ],
+      "expected_stand_down": true,
+      "receipt_required": true,
+      "artifact_refs": [
+        {
+          "kind": "bootstrap_status",
+          "path": "reports/fixtures/planner_core/bootstrap_status.txt",
+          "status": "fixture"
+        }
+      ]
+    },
+    {
+      "id": "frontend_ui_visual_state_claim",
+      "scenario_class": "frontend_ui",
+      "title": "Frontend/UI claim receives visible UX proof guard without live browser claims",
+      "engine": "fixture_records",
+      "goal_text": "Review a UI visual-state report and require rendered-journey evidence before accepting browser behavior claims.",
+      "source_facts": [
+        "The fixture is a static benchmark row; it must not claim that a browser was launched."
+      ],
+      "persona_packs": [
+        "ux_ui",
+        "traceability"
+      ],
+      "fixture_records": [
+        {
+          "id": "ui_rendered_journey_receipt",
+          "type": "guard",
+          "phase": "validate",
+          "pack_id": "ux_ui",
+          "title": "Rendered journey proof receipt",
+          "summary": "Require screenshot or rendered journey proof before accepting UI visual-state claims.",
+          "source_ids": [
+            "persona:ux_ui",
+            "plans/knowledge/patterns.md#P-077"
+          ],
+          "triggering_facts": [
+            "frontend_ui",
+            "visual_state_claim"
+          ],
+          "confidence": "high",
+          "evidence_expectation": "Attach rendered journey evidence or explicitly mark browser behavior unverified.",
+          "blocking_eligible": false
+        }
+      ],
+      "expected_guard_ids": [
+        "ui_rendered_journey_receipt"
+      ],
+      "expected_na_pack_ids": [],
+      "expected_stand_down": false,
+      "receipt_required": true,
+      "artifact_refs": [
+        {
+          "kind": "ui_artifact",
+          "path": "reports/fixtures/ui/rendered_journey.png",
+          "status": "fixture"
+        }
+      ]
+    }
+  ]
+}

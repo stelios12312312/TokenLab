@@ -4,13 +4,22 @@
   "title": "Dispatch chain fixture",
   "status": "executing",
   "goal": "Exercise next-ready / blockers / unlocks-if-closed forward queries.",
-  "story_refs": ["US-001"],
+  "story_refs": [
+    "US-001"
+  ],
   "epics": [
     {
       "id": "EP-001",
       "title": "Sequential pipeline",
-      "story_refs": ["US-001"],
-      "ticket_refs": ["T-A", "T-B", "T-C", "T-D"]
+      "story_refs": [
+        "US-001"
+      ],
+      "ticket_refs": [
+        "T-A",
+        "T-B",
+        "T-C",
+        "T-D"
+      ]
     }
   ],
   "tickets": [
@@ -20,16 +29,37 @@
       "title": "Foundation work",
       "type": "feature",
       "lifecycle": "verified",
-      "story_refs": ["US-001"],
+      "story_refs": [
+        "US-001"
+      ],
       "defect_refs": [],
       "gap_refs": [],
       "depends_on": [],
-      "acceptance_criteria": ["AC-A"],
-      "child_plan": { "policy": "not_required", "plan_dir": null, "reason": "fixture" },
+      "acceptance_criteria": [
+        "AC-A"
+      ],
+      "child_plan": {
+        "policy": "not_required",
+        "plan_dir": null,
+        "reason": "fixture"
+      },
       "compatibility_contract_refs": [],
       "migration_boundary_refs": [],
       "deletion_move_census_refs": [],
-      "verification_refs": ["VM-A"]
+      "verification_refs": [
+        "VM-A"
+      ],
+      "external_refs": [
+        {
+          "kind": "github_issue",
+          "repo": "owner/repo",
+          "issue_number": 9009,
+          "title": "Foundation work",
+          "state": "OPEN",
+          "url": "https://github.com/owner/repo/issues/9009",
+          "synced_at": "2026-07-01T00:00:00.000Z"
+        }
+      ]
     },
     {
       "id": "T-B",
@@ -37,16 +67,39 @@
       "title": "Depends on A — should be next-ready",
       "type": "feature",
       "lifecycle": "ready",
-      "story_refs": ["US-001"],
+      "story_refs": [
+        "US-001"
+      ],
       "defect_refs": [],
       "gap_refs": [],
-      "depends_on": ["T-A"],
-      "acceptance_criteria": ["AC-B"],
-      "child_plan": { "policy": "not_required", "plan_dir": null, "reason": "fixture" },
+      "depends_on": [
+        "T-A"
+      ],
+      "acceptance_criteria": [
+        "AC-B"
+      ],
+      "child_plan": {
+        "policy": "not_required",
+        "plan_dir": null,
+        "reason": "fixture"
+      },
       "compatibility_contract_refs": [],
       "migration_boundary_refs": [],
       "deletion_move_census_refs": [],
-      "verification_refs": ["VM-B"]
+      "verification_refs": [
+        "VM-B"
+      ],
+      "external_refs": [
+        {
+          "kind": "github_issue",
+          "repo": "owner/repo",
+          "issue_number": 9010,
+          "title": "Depends on A — should be next-ready",
+          "state": "OPEN",
+          "url": "https://github.com/owner/repo/issues/9010",
+          "synced_at": "2026-07-01T00:00:00.000Z"
+        }
+      ]
     },
     {
       "id": "T-C",
@@ -54,16 +107,39 @@
       "title": "Depends on B — blocked",
       "type": "feature",
       "lifecycle": "ready",
-      "story_refs": ["US-001"],
+      "story_refs": [
+        "US-001"
+      ],
       "defect_refs": [],
       "gap_refs": [],
-      "depends_on": ["T-B"],
-      "acceptance_criteria": ["AC-C"],
-      "child_plan": { "policy": "not_required", "plan_dir": null, "reason": "fixture" },
+      "depends_on": [
+        "T-B"
+      ],
+      "acceptance_criteria": [
+        "AC-C"
+      ],
+      "child_plan": {
+        "policy": "not_required",
+        "plan_dir": null,
+        "reason": "fixture"
+      },
       "compatibility_contract_refs": [],
       "migration_boundary_refs": [],
       "deletion_move_census_refs": [],
-      "verification_refs": ["VM-C"]
+      "verification_refs": [
+        "VM-C"
+      ],
+      "external_refs": [
+        {
+          "kind": "github_issue",
+          "repo": "owner/repo",
+          "issue_number": 9011,
+          "title": "Depends on B — blocked",
+          "state": "OPEN",
+          "url": "https://github.com/owner/repo/issues/9011",
+          "synced_at": "2026-07-01T00:00:00.000Z"
+        }
+      ]
     },
     {
       "id": "T-D",
@@ -71,33 +147,126 @@
       "title": "Independent — also next-ready",
       "type": "feature",
       "lifecycle": "ready",
-      "story_refs": ["US-001"],
+      "story_refs": [
+        "US-001"
+      ],
       "defect_refs": [],
       "gap_refs": [],
       "depends_on": [],
-      "acceptance_criteria": ["AC-D"],
-      "child_plan": { "policy": "not_required", "plan_dir": null, "reason": "fixture" },
+      "acceptance_criteria": [
+        "AC-D"
+      ],
+      "child_plan": {
+        "policy": "not_required",
+        "plan_dir": null,
+        "reason": "fixture"
+      },
       "compatibility_contract_refs": [],
       "migration_boundary_refs": [],
       "deletion_move_census_refs": [],
-      "verification_refs": ["VM-D"]
+      "verification_refs": [
+        "VM-D"
+      ],
+      "external_refs": [
+        {
+          "kind": "github_issue",
+          "repo": "owner/repo",
+          "issue_number": 9012,
+          "title": "Independent — also next-ready",
+          "state": "OPEN",
+          "url": "https://github.com/owner/repo/issues/9012",
+          "synced_at": "2026-07-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "acceptance_criteria": [
-    { "id": "AC-A", "scope": "ticket", "subject_ref": "T-A", "text": "A is done.", "story_refs": ["US-001"], "maintenance_rationale": null },
-    { "id": "AC-B", "scope": "ticket", "subject_ref": "T-B", "text": "B is unblocked when A is done.", "story_refs": ["US-001"], "maintenance_rationale": null },
-    { "id": "AC-C", "scope": "ticket", "subject_ref": "T-C", "text": "C unblocks when B is done.", "story_refs": ["US-001"], "maintenance_rationale": null },
-    { "id": "AC-D", "scope": "ticket", "subject_ref": "T-D", "text": "D is independent.", "story_refs": ["US-001"], "maintenance_rationale": null }
+    {
+      "id": "AC-A",
+      "scope": "ticket",
+      "subject_ref": "T-A",
+      "text": "A is done.",
+      "story_refs": [
+        "US-001"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-B",
+      "scope": "ticket",
+      "subject_ref": "T-B",
+      "text": "B is unblocked when A is done.",
+      "story_refs": [
+        "US-001"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-C",
+      "scope": "ticket",
+      "subject_ref": "T-C",
+      "text": "C unblocks when B is done.",
+      "story_refs": [
+        "US-001"
+      ],
+      "maintenance_rationale": null
+    },
+    {
+      "id": "AC-D",
+      "scope": "ticket",
+      "subject_ref": "T-D",
+      "text": "D is independent.",
+      "story_refs": [
+        "US-001"
+      ],
+      "maintenance_rationale": null
+    }
   ],
   "dependencies": [],
   "compatibility_contracts": [],
   "migration_boundaries": [],
   "deletion_move_census": [],
   "verification_matrix": [
-    { "id": "VM-A", "scope": "ticket", "subject_ref": "T-A", "acceptance_criterion_ref": "AC-A", "proof_type": "proof:artifact_review", "command_or_action": "review", "pass_means": "ok", "residual_risk": "none" },
-    { "id": "VM-B", "scope": "ticket", "subject_ref": "T-B", "acceptance_criterion_ref": "AC-B", "proof_type": "proof:artifact_review", "command_or_action": "review", "pass_means": "ok", "residual_risk": "none" },
-    { "id": "VM-C", "scope": "ticket", "subject_ref": "T-C", "acceptance_criterion_ref": "AC-C", "proof_type": "proof:artifact_review", "command_or_action": "review", "pass_means": "ok", "residual_risk": "none" },
-    { "id": "VM-D", "scope": "ticket", "subject_ref": "T-D", "acceptance_criterion_ref": "AC-D", "proof_type": "proof:artifact_review", "command_or_action": "review", "pass_means": "ok", "residual_risk": "none" }
+    {
+      "id": "VM-A",
+      "scope": "ticket",
+      "subject_ref": "T-A",
+      "acceptance_criterion_ref": "AC-A",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "review",
+      "pass_means": "ok",
+      "residual_risk": "none"
+    },
+    {
+      "id": "VM-B",
+      "scope": "ticket",
+      "subject_ref": "T-B",
+      "acceptance_criterion_ref": "AC-B",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "review",
+      "pass_means": "ok",
+      "residual_risk": "none"
+    },
+    {
+      "id": "VM-C",
+      "scope": "ticket",
+      "subject_ref": "T-C",
+      "acceptance_criterion_ref": "AC-C",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "review",
+      "pass_means": "ok",
+      "residual_risk": "none"
+    },
+    {
+      "id": "VM-D",
+      "scope": "ticket",
+      "subject_ref": "T-D",
+      "acceptance_criterion_ref": "AC-D",
+      "proof_type": "proof:artifact_review",
+      "command_or_action": "review",
+      "pass_means": "ok",
+      "residual_risk": "none"
+    }
   ],
   "decisions": []
 }

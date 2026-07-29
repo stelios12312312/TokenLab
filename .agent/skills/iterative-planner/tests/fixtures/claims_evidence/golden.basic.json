@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "return_type": "claims_evidence",
+  "bounce": {
+    "attempt": 0,
+    "max_bounces": 2
+  },
+  "claims": [
+    {
+      "id": "claim_contract_validated",
+      "statement": "The claims/evidence validator rejects unstructured cheap-agent deliverables before downstream judgment.",
+      "type": "implementation",
+      "evidence_refs": [
+        ".agent/skills/iterative-planner/tests/test_claims_evidence_contract.mjs",
+        ".agent/skills/iterative-planner/scripts/lib/claims_evidence_contract.mjs"
+      ],
+      "verification_method": "executed",
+      "cost": {
+        "tokens": 220,
+        "usd": 0,
+        "wall_clock_ms": 42
+      }
+    },
+    {
+      "id": "claim_receipt_stable",
+      "statement": "Validated claims project into timestamp-free receipt JSON with an explicit cost ledger.",
+      "type": "receipt",
+      "evidence_refs": [
+        ".agent/skills/iterative-planner/tests/fixtures/claims_evidence/golden.basic.json"
+      ],
+      "verification_method": "deterministic",
+      "cost": {
+        "tokens": 100,
+        "usd": 0,
+        "wall_clock_ms": 5
+      }
+    }
+  ]
+}

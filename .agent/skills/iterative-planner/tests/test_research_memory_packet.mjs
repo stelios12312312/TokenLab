@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Research Memory Packet validity seam conformance.
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
@@ -61,6 +61,26 @@ function cleanLeakageArtifact() {
       status: "pass",
       findings: [],
     },
+    computed_assertions: [
+      {
+        id: "temporal_order",
+        status: "pass",
+        computed: true,
+        provenance: {
+          source_artifact: "reports/quant/leakage_proof.json",
+          algorithm: "compare train, validation, and final_oos window boundaries",
+        },
+      },
+      {
+        id: "known_at_time_boundary",
+        status: "pass",
+        computed: true,
+        provenance: {
+          source_artifact: "reports/quant/leakage_proof.json",
+          algorithm: "verify feature availability boundary exists for each split",
+        },
+      },
+    ],
   };
 }
 
@@ -136,6 +156,14 @@ function diagnosticQrv(packet, overrides = {}) {
     promotion_verdict: "diagnostic_only",
     controls: [],
     evidence: {
+      claimed_data_sources: [
+        {
+          id: "research_fixture",
+          path: "research-fixture.db",
+          expected_worktree_root: ".",
+          freshness: { max_age_seconds: 86400 },
+        },
+      ],
       strongest_counterargument: "The research claim may be unsupported by temporal evidence.",
       falsification_criteria: "Block if the bound validity gate fails or evidence is absent.",
       presentation_stamp: "diagnostic_only",
@@ -152,6 +180,10 @@ function diagnosticQrv(packet, overrides = {}) {
 }
 
 function writePlanWithQrv(planDir, qrv) {
+  const fixturePath = join(planDir, "research-fixture.db");
+  writeFileSync(fixturePath, "non-empty research fixture\n");
+  const stableTime = new Date(Date.now() - 5000);
+  utimesSync(fixturePath, stableTime, stableTime);
   writeFileSync(join(planDir, "plan.md"), "# Plan\nResearch Memory Packet validity seam proof.\n");
   writeFileSync(join(planDir, "verification.md"), "# Verification\n");
   writeFileSync(join(planDir, "reflection.md"), "# Reflection\n");
@@ -291,7 +323,7 @@ assert(RESERVED_VALIDITY_CLASSES.includes("multiple_testing"), "reserved classes
       material: false,
       approved: true,
       persona_review: { approved: true },
-      deepseek_advisory_status: "pass",
+      advisory_review_status: "pass",
     },
   }));
   assert(verdict.blocking_issues.includes("material_false_validity_bearing_claim:claim_render_performance"), "material:false cannot escape a validity-bearing claim");
@@ -346,7 +378,7 @@ assert(RESERVED_VALIDITY_CLASSES.includes("multiple_testing"), "reserved classes
     actions: [{ type: "mutate_ontology" }],
     approved: true,
     persona_review: { approved: true },
-    deepseek_advisory_status: "pass",
+    advisory_review_status: "pass",
     ...dirtyAcceptedPacket(),
   }, { baseOntologyDigest: "new-digest" });
   assert(verdict.blocking_issues.includes("stale_base_ontology_digest"), "researcher candidate rejects stale ontology digest");

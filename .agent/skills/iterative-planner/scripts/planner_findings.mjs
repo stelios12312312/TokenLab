@@ -8,6 +8,7 @@
 
 import { existsSync, readFileSync } from "fs";
 import { join, resolve } from "path";
+import { execFileSync } from "child_process";
 
 import {
   analyzeIntentContract,
@@ -22,6 +23,11 @@ import {
 } from "./lib/plan_utils.mjs";
 import { collectPlannerCanonicalization } from "./lib/planner_canonicalizer.mjs";
 import { deriveManifestoAlignmentSignals, loadPlannerManifesto } from "./lib/planner_manifesto.mjs";
+import {
+  buildNorthStarDecisionSurface,
+  renderNorthStarDecisionSurface,
+  shouldRenderNorthStarDecisionSurface,
+} from "./lib/north_star_decision_surface.mjs";
 import {
   buildPhaseContract,
   computeRecommendedPath,
@@ -41,6 +47,8 @@ import {
 import { computeAdversarialAuditProfile } from "./lib/verification_obligations.mjs";
 import { resolveKnowledgeFromContext } from "./knowledge_resolver.mjs";
 import { deriveTaskProfileContract, evaluateSemanticUpkeepContract } from "./lib/task_profile_contracts.mjs";
+import { normalizeVerificationStatus } from "./lib/verification_status_vocabulary.mjs";
+import { validateRegistry } from "./story_registry.mjs";
 
 const args = process.argv.slice(2);
 const flags = {
@@ -87,12 +95,6 @@ function uniqueNormalizedPaths(values) {
     .filter(Boolean));
 }
 
-const VALID_STORY_STATUSES = new Set(["FULLY_COVERED", "PARTIALLY_COVERED", "NOT_IMPLEMENTED", "RETIRED"]);
-
-function hasNonEmptyArray(value) {
-  return Array.isArray(value) && value.length > 0;
-}
-
 function analyzeStoryRegistryHealth(cwd) {
   const registryPath = join(cwd, "reports", "user_story_audit", "story_registry.json");
   if (!existsSync(registryPath)) {
@@ -124,34 +126,9 @@ function analyzeStoryRegistryHealth(cwd) {
     ...(Array.isArray(parsed?.stories) ? parsed.stories : []),
     ...(Array.isArray(parsed?.infrastructure_stories) ? parsed.infrastructure_stories : []),
   ];
-  const seen = new Set();
-  const errors = [];
-  const warnings = [];
-
-  for (const story of stories) {
-    const id = typeof story?.id === "string" && story.id.trim() ? story.id.trim() : null;
-    if (!id) {
-      errors.push("story missing id");
-      continue;
-    }
-    if (seen.has(id)) errors.push(`${id}: duplicate story ID`);
-    seen.add(id);
-
-    const status = typeof story?.status === "string" ? story.status.trim() : "";
-    if (!status) errors.push(`${id}: missing status`);
-    else if (!VALID_STORY_STATUSES.has(status)) errors.push(`${id}: invalid status '${status}'`);
-
-    if (!story.title) warnings.push(`${id}: missing title`);
-    if (status === "FULLY_COVERED") {
-      const missingEvidence = [];
-      if (!hasNonEmptyArray(story.code_refs)) missingEvidence.push("code_refs");
-      if (!hasNonEmptyArray(story.test_refs)) missingEvidence.push("test_refs");
-      if (!hasNonEmptyArray(story.validation_refs)) missingEvidence.push("validation_refs");
-      if (missingEvidence.length > 0) {
-        errors.push(`${id}: FULLY_COVERED story missing ${missingEvidence.join(", ")}`);
-      }
-    }
-  }
+  const validation = validateRegistry(parsed, cwd);
+  const errors = [...validation.errors];
+  const warnings = [...validation.warnings];
 
   return {
     present: true,
@@ -165,6 +142,137 @@ function analyzeStoryRegistryHealth(cwd) {
       : warnings.length > 0
         ? `${warnings.length} story registry warning(s): ${warnings.slice(0, 4).join("; ")}`
         : `${stories.length} story registry stories look structurally valid`,
+  };
+}
+
+function parseJsonOutput(stdout) {
+  try {
+    return JSON.parse(String(stdout || ""));
+  } catch {
+    return null;
+  }
+}
+
+function asIssueList(value) {
+  return (Array.isArray(value) ? value : [])
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean);
+}
+
+function analyzeCanonicalStoryRegistryHealth(cwd, skillPath) {
+  const scriptPath = join(skillPath, "scripts", "story_registry.mjs");
+  const command = "node .agent/skills/iterative-planner/scripts/story_registry.mjs check --json";
+  let stdout = "";
+  let stderr = "";
+  let exitStatus = 0;
+
+  try {
+    stdout = execFileSync(process.execPath, [scriptPath, "check", "--json"], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        CODEX_THREAD_ID: "",
+        _PLANNER_PLAN_TARGET: "",
+      },
+    });
+  } catch (error) {
+    stdout = error?.stdout || "";
+    stderr = error?.stderr || "";
+    exitStatus = Number.isInteger(error?.status) ? error.status : 1;
+  }
+
+  const parsed = parseJsonOutput(stdout);
+  if (!parsed || typeof parsed !== "object") {
+    const detail = stderr.trim() || stdout.trim() || `story_registry.mjs exited ${exitStatus} without parseable JSON`;
+    return {
+      status: "RUNNER_ERROR",
+      command,
+      exit_status: exitStatus,
+      story_count: null,
+      error_count: 1,
+      warning_count: 0,
+      errors: [detail],
+      warnings: [],
+      runner_error: detail,
+    };
+  }
+
+  const errors = asIssueList(parsed.errors);
+  const warnings = asIssueList(parsed.warnings);
+  const status = String(parsed.status || (errors.length > 0 ? "FAIL" : warnings.length > 0 ? "WARN" : "PASS")).toUpperCase();
+  return {
+    status,
+    command,
+    exit_status: exitStatus,
+    story_count: Number.isFinite(parsed.storyCount) ? parsed.storyCount : null,
+    error_count: errors.length,
+    warning_count: warnings.length,
+    errors,
+    warnings,
+    runner_error: null,
+  };
+}
+
+function buildIvConsistencyBridge({
+  canonicalStoryRegistryHealth,
+  invariantViolations,
+  invariantWarnings,
+}) {
+  const rawCanonicalStatus = String(canonicalStoryRegistryHealth?.status || "UNKNOWN").toUpperCase();
+  const canonicalStatus = normalizeVerificationStatus(rawCanonicalStatus, "gate");
+  const invariantViolationCount = Array.isArray(invariantViolations) ? invariantViolations.length : 0;
+  const invariantWarningCount = Array.isArray(invariantWarnings) ? invariantWarnings.length : 0;
+  const invariantOnlyStatus = invariantViolationCount > 0 ? "FAIL" : "PASS";
+  const canonicalRedInvariantGreen = canonicalStatus.kind === "fail" && invariantViolationCount === 0;
+  const advisories = [];
+
+  if (canonicalRedInvariantGreen) {
+    advisories.push({
+      id: "canonical_story_registry_red_invariant_green",
+      severity: "high",
+      message: "Canonical story registry health is FAIL while invariant-only checks pass; do not treat invariant PASS as broad planner health proof.",
+    });
+  }
+
+  if (rawCanonicalStatus === "RUNNER_ERROR") {
+    advisories.push({
+      id: "canonical_story_registry_check_unavailable",
+      severity: "medium",
+      message: "Canonical story registry health could not be checked; invariant status alone is not broad planner health proof.",
+    });
+  }
+
+  const canonicalHealthDisagreementCount = canonicalRedInvariantGreen
+    ? Math.max(canonicalStoryRegistryHealth?.error_count || 0, 1)
+    : 0;
+
+  return {
+    status: advisories.length > 0 ? "ADVISORY" : "PASS",
+    canonical_story_registry: {
+      status: canonicalStatus.canonical || rawCanonicalStatus,
+      command: canonicalStoryRegistryHealth?.command || null,
+      exit_status: canonicalStoryRegistryHealth?.exit_status ?? null,
+      story_count: canonicalStoryRegistryHealth?.story_count ?? null,
+      error_count: canonicalStoryRegistryHealth?.error_count || 0,
+      warning_count: canonicalStoryRegistryHealth?.warning_count || 0,
+      errors: (canonicalStoryRegistryHealth?.errors || []).slice(0, 8),
+      warnings: (canonicalStoryRegistryHealth?.warnings || []).slice(0, 8),
+      runner_error: canonicalStoryRegistryHealth?.runner_error || null,
+    },
+    invariant_only: {
+      status: invariantOnlyStatus,
+      violation_count: invariantViolationCount,
+      warning_count: invariantWarningCount,
+    },
+    canonical_health_disagreement_count: canonicalHealthDisagreementCount,
+    advisories,
+    summary: canonicalRedInvariantGreen
+      ? `Canonical story registry is FAIL (${canonicalStoryRegistryHealth?.error_count || 0} error(s)) while invariant-only checks are PASS.`
+      : rawCanonicalStatus === "RUNNER_ERROR"
+        ? "Canonical story registry check unavailable; invariant-only status is narrower than broad planner health."
+        : "No canonical story-registry / invariant-only disagreement detected.",
   };
 }
 
@@ -384,7 +492,9 @@ function analyzeCmsMissingContentDiagnosis({
 function buildNextBestActions({
   classification,
   cmsMissingContentDiagnosis,
+  ivConsistencyBridge,
   knowledgeResolution,
+  northStarDecisionSurface,
   semanticBlocks,
   storyRegistryHealth,
   recommendedRecovery,
@@ -440,7 +550,7 @@ function buildNextBestActions({
     } else if (action === "declare_story_conflicts") {
       pushAction("declare_story_conflicts", null, "Declare conflicting story outcomes for the touched stateful flow so contradiction checks can fire deterministically.");
     } else if (action === "proceed_lightweight") {
-      pushAction("proceed_lightweight", "Use task.md + implementation_plan.md + walkthrough.md via /safe-change", "The current task shape is better served by the lightweight flow.");
+      pushAction("proceed_lightweight", "Use normal plan spine with scaled obligations via /safe-change", "The current task shape is better served by the lightweight flow.");
     } else if (action === "proceed_full_flow") {
       pushAction("proceed_full_flow", "node .agent/skills/iterative-planner/scripts/bootstrap.mjs new \"<goal>\"", "The current task shape should remain in the full iterative planner.");
     }
@@ -456,6 +566,24 @@ function buildNextBestActions({
       "node .agent/skills/iterative-planner/scripts/story_registry.mjs check --json",
       storyRegistryHealth.detail || "Repair invalid story registry state before trusting story-guided planning."
     );
+  }
+
+  if ((ivConsistencyBridge?.advisories || []).some((entry) => entry.id === "canonical_story_registry_red_invariant_green")) {
+    pushAction(
+      "repair_iv_consistency_bridge",
+      "node .agent/skills/iterative-planner/scripts/story_registry.mjs check --json",
+      "Canonical story registry health is FAIL while invariant-only checks pass; inspect canonical story-registry failures before treating IV as broad health proof."
+    );
+  }
+
+  if (northStarDecisionSurface?.relevant || (northStarDecisionSurface?.risks || []).length > 0) {
+    for (const action of (northStarDecisionSurface.next_actions || []).slice(0, 3)) {
+      pushAction(
+        action.id,
+        null,
+        action.action || action.reason || "Review and repair the North Star decision-surface status."
+      );
+    }
   }
 
   if (cmsMissingContentDiagnosis?.active) {
@@ -612,6 +740,7 @@ const cmsMissingContentDiagnosis = analyzeCmsMissingContentDiagnosis({
   knowledgeResolution,
 });
 const storyRegistryHealth = analyzeStoryRegistryHealth(cwd);
+const canonicalStoryRegistryHealth = analyzeCanonicalStoryRegistryHealth(cwd, skillPath);
 const proofTelemetry = summarizeProofTelemetry({
   cwd,
   planDir: usePlanContext ? target.planDir : null,
@@ -654,6 +783,11 @@ const semanticDiagnostics = querySemanticDiagnostics({
   structuralTokenRendering,
   substrateSignals,
 });
+const ivConsistencyBridge = buildIvConsistencyBridge({
+  canonicalStoryRegistryHealth,
+  invariantViolations: semanticDiagnostics.invariantViolations,
+  invariantWarnings: semanticDiagnostics.invariantWarnings,
+});
 const storyRegistrySemanticBlocks = storyRegistryHealth.blocking
   ? [{ kind: "story_registry_invalid", detail: storyRegistryHealth.detail }]
   : [];
@@ -668,6 +802,10 @@ const minimalRepairSet = [
 const combinedRepairableVariances = uniqueList([
   ...semanticDiagnostics.repairableVariances.map((entry) => JSON.stringify(entry)),
   ...cmsMissingContentDiagnosis.repairableVariances.map((entry) => JSON.stringify(entry)),
+  ...ivConsistencyBridge.advisories.map((entry) => JSON.stringify({
+    kind: "iv_consistency_gap",
+    detail: entry.id,
+  })),
 ]).map((entry) => JSON.parse(entry));
 const semanticSubstrate = summarizeSemanticSubstrate({
   substrateSignals,
@@ -696,6 +834,15 @@ const manifestoAlignmentSignals = uniqueList([
     activePlanPoisoned,
   }),
 ]);
+const generatedAt = new Date().toISOString();
+const northStarDecisionSurface = buildNorthStarDecisionSurface({
+  cwd,
+  generatedAt,
+  surfaceId: "planner_findings",
+  operatorDecisionSurface: true,
+  goalText: goal,
+  plannedFiles,
+});
 const recommendedRecovery = buildRecommendedRecovery({
   prologModes: semanticDiagnostics.recommendedRecoveryModes,
   classification,
@@ -703,7 +850,9 @@ const recommendedRecovery = buildRecommendedRecovery({
 const nextBestActions = buildNextBestActions({
   classification,
   cmsMissingContentDiagnosis,
+  ivConsistencyBridge,
   knowledgeResolution,
+  northStarDecisionSurface,
   semanticBlocks,
   storyRegistryHealth,
   recommendedRecovery,
@@ -763,7 +912,7 @@ const antiRitual = resolveAntiRitualAssessment({
 });
 
 const payload = {
-  generated_at: new Date().toISOString(),
+  generated_at: generatedAt,
   cwd,
   goal,
   gate: gateName || null,
@@ -789,6 +938,7 @@ const payload = {
     ontology_role: manifestoInfo.manifesto.ontology_role?.mode || null,
   },
   north_star: manifestoInfo.manifesto.north_star,
+  north_star_decision_surface: northStarDecisionSurface,
   hard_policy_mode: manifestoInfo.manifesto.hard_policy_mode,
   manifesto_alignment_signals: manifestoAlignmentSignals,
   authority_profile: authorityProfile,
@@ -851,6 +1001,7 @@ const payload = {
     warning_active: cmsMissingContentDiagnosis.warningActive,
   },
   story_registry_health: storyRegistryHealth,
+  iv_consistency_bridge: ivConsistencyBridge,
   semantic_blocks: semanticBlocks,
   semantic_substrate: semanticSubstrate,
   adversarial_profile: adversarialProfileSummary,
@@ -889,6 +1040,13 @@ if (flags.json) {
   console.log("Planner Findings");
   console.log(`Goal: ${payload.goal || "(not provided)"}`);
   console.log(`North star: ${payload.north_star}`);
+  if (shouldRenderNorthStarDecisionSurface({
+    surface: payload.north_star_decision_surface,
+    goalText: goal,
+    plannedFiles,
+  })) {
+    console.log(renderNorthStarDecisionSurface(payload.north_star_decision_surface));
+  }
   console.log(`Task profile: ${payload.task_profile_id}`);
   console.log(`Flow/Evidence: ${payload.flow_mode} / ${payload.evidence_mode}`);
   console.log(`Validation bundle / strictness: ${payload.validation_bundle.id} / ${payload.strictness_mode}`);
@@ -913,6 +1071,11 @@ if (flags.json) {
   }
   if (payload.semantic_blocks.length > 0) {
     console.log(`Semantic blocks: ${payload.semantic_blocks.map((entry) => `${entry.kind}: ${entry.detail}`).join("; ")}`);
+  }
+  if ((payload.iv_consistency_bridge?.advisories || []).length > 0) {
+    const bridge = payload.iv_consistency_bridge;
+    console.log(`IV consistency advisory: ${bridge.status} (${bridge.canonical_story_registry.status} canonical story registry; ${bridge.invariant_only.status} invariant-only; disagreement count ${bridge.canonical_health_disagreement_count})`);
+    console.log(`IV advisory ids: ${bridge.advisories.map((entry) => entry.id).join(", ")}`);
   }
   if (payload.related_retros.length > 0) {
     console.log(`Related retros: ${payload.related_retros.map((entry) => entry.id).join(", ")}`);

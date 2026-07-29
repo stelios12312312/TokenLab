@@ -2,6 +2,7 @@
 // Autonomy Leash — enforces maximum iteration and attempt limits per phase.
 //
 // Usage:
+//   node autonomy_leash.mjs --self-test           Run this script's local smoke check
 //   node autonomy_leash.mjs check                Check current iteration counts against limits
 //   node autonomy_leash.mjs record <phase>       Record an iteration in the current phase
 //   node autonomy_leash.mjs record-attempt <step> Record a fix attempt for a step
@@ -15,6 +16,14 @@ import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync } from "
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import { getPaths, resolvePlanTarget, debugLog } from "./lib/plan_utils.mjs";
+import {
+  assertSelfTest,
+  cleanupSelfTestTemp,
+  makeSelfTestTemp,
+  printSelfTestPass,
+  runNodeScript,
+  seedActivePlan,
+} from "./lib/script_self_test.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 
@@ -185,9 +194,35 @@ function status(planDir) {
   console.log(JSON.stringify(LIMITS, null, 2));
 }
 
+function runSelfTest() {
+  const tmp = makeSelfTestTemp("autonomy-leash");
+  try {
+    seedActivePlan(tmp, "plan_autonomy_self_test");
+
+    const record = runNodeScript([__filename, "record", "execute"], tmp);
+    assertSelfTest(record.ok, "autonomy_leash records an iteration", record.stderr || record.stdout);
+
+    const checkResult = runNodeScript([__filename, "check"], tmp);
+    assertSelfTest(checkResult.ok, "autonomy_leash check passes for a fresh plan", checkResult.stderr || checkResult.stdout);
+
+    const statusResult = runNodeScript([__filename, "status"], tmp);
+    assertSelfTest(statusResult.ok, "autonomy_leash status exits cleanly", statusResult.stderr || statusResult.stdout);
+    assertSelfTest(statusResult.stdout.includes("\"execute\": 1"), "autonomy_leash status reports the recorded phase count", statusResult.stdout);
+
+    printSelfTestPass("autonomy_leash");
+  } finally {
+    cleanupSelfTestTemp(tmp);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main
 // ---------------------------------------------------------------------------
+
+if (process.argv[2] === "--self-test") {
+  runSelfTest();
+  process.exit(0);
+}
 
 const { plansDir } = getPaths();
 const { planDir } = resolvePlanTarget(plansDir, { exitOnMissing: false });

@@ -9,9 +9,9 @@
     "quant_alpha"
   ],
   "applies_when": {
-    "file_exists_any": [
-      "docs/ive-engine-plan.md",
-      "docs/ive-redesign/09_roadmap.md"
+    "profile_active_any": [
+      "quant",
+      "quant_betting"
     ]
   },
   "provenance": {
@@ -25,5 +25,8 @@
     "decisions.json",
     "vocabulary.json",
     "canonical_artifacts.json"
+  ],
+  "obligation_files": [
+    "obligations.json"
   ]
 }

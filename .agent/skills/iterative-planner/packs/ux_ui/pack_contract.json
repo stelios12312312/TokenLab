@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "pack_id": "ux_ui",
+  "rubrics": [
+    {
+      "id": "rendered_journey",
+      "question": "Does the change include rendered journey proof for user-visible UI behavior?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no"]
+    },
+    {
+      "id": "responsive_states",
+      "question": "Does the change cover desktop and mobile layout states without overlap or clipped text?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no"]
+    }
+  ],
+  "checkers": [
+    {
+      "id": "ux_ui_render_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/packs/ux_ui/index.mjs",
+      "seeded_defect_ids": ["ux-ui-seeded-no-render-proof"]
+    },
+    {
+      "id": "ux_ui_responsive_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/tests/test_presentation_contract.mjs",
+      "seeded_defect_ids": ["ux-ui-seeded-responsive-gap"]
+    }
+  ],
+  "calibration_ref": ".agent/skills/iterative-planner/packs/quant/calibration.json",
+  "goldens_ref": ".agent/skills/iterative-planner/tests/fixtures/pack_contract/goldens.json",
+  "seeded_defects_ref": ".agent/skills/iterative-planner/tests/fixtures/pack_contract/seeded_defects.json",
+  "serves_projects": [
+    {
+      "id": "portable-agent-kit",
+      "evidence_ref": "reports/user_story_audit/story_registry.json#US-PM-AUTO-095"
+    },
+    {
+      "id": "tesseract-automation-engine",
+      "evidence_ref": "docs/ive-redesign/02f_product_and_ux_packs.md"
+    }
+  ]
+}

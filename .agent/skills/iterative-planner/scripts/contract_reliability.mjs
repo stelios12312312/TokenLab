@@ -78,6 +78,7 @@ function main(argv = process.argv.slice(2)) {
   const report = run(argv);
   if (args.json) emitJson(report);
   else printText(report);
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Internal contract-lint report enum is derived from the structural issue count.
   return report.status === "FAIL" ? 1 : 0;
 }
 

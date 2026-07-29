@@ -37,12 +37,13 @@ function walkMjs(dir, acc = []) {
   return acc;
 }
 
-// Runtime consumer set: all .mjs under the skill (minus tests/) + the visualizer app scripts.
-const consumerFiles = [
-  ...walkMjs(join(skillRoot, "scripts")),
-  ...walkMjs(join(skillRoot, "packs")),
+// Runtime consumer set: all non-test skill modules + the visualizer app scripts.
+// Capability packs are shared across skills, so limiting the scan to iterative-planner
+// would falsely classify a live cross-skill import as shelf-ware.
+const consumerFiles = [...new Set([
+  ...walkMjs(join(repoRoot, ".agent", "skills")),
   ...walkMjs(join(repoRoot, "apps", "ive-visualizer", "scripts")),
-];
+])];
 
 function nonTestImportersOf(moduleAbsPath) {
   const base = basename(moduleAbsPath); // e.g. calibration_gate.mjs
@@ -141,6 +142,10 @@ for (const cap of capabilities) {
   const importers = nonTestImportersOf(cap);
   assert(importers.length > 0,
     `${rel} is consumed by a non-test runtime path${importers.length ? ` (${basename(importers[0])})` : " — ORPHAN / shelf-ware"}`);
+  if (rel === "packs/quant/data_receipt.mjs") {
+    assert(importers.some((file) => file.replaceAll("\\", "/").endsWith("/.agent/skills/quant-researcher/scripts/quant_researcher_contracts.mjs")),
+      `${rel} cross-skill consumer is visible to the connectivity census`);
+  }
 }
 
 console.log("\nIVE runtime import graph (T-INTAKE-684369E8 AC3)\n");
@@ -158,6 +163,7 @@ const experimentalIveLibs = new Map([
   ["scripts/lib/ive_action_router.mjs", "deterministic route checker used by intake/verdict preview helpers; not yet transition/bootstrap truth"],
   ["scripts/lib/ive_advisory_records.mjs", "continuous advisory record helpers; not yet part of transition/bootstrap truth"],
   ["scripts/lib/ive_packet_contract.mjs", "packet validation contract consumed by IVE intake/release CLIs, not live gate roots"],
+  ["scripts/lib/ive_profile_packs.mjs", "profile evaluator and knowledge-pack catalog loader retained for CLI/conformance paths after E4-1 removed live gate fact injection"],
   ["scripts/lib/ive_program_intake.mjs", "Program Packet intake mapper used by program-manager paths, not the transition/bootstrap roots"],
   ["scripts/lib/ive_projection.mjs", "projection helper for visualizer/bridge surfaces outside transition/bootstrap roots"],
   ["scripts/lib/ive_real_episode_corpus.mjs", "real-episode fixture adapter consumed by conformance replay suites, intentionally not a live gate root"],

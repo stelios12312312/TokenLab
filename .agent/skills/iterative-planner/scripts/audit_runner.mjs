@@ -34,15 +34,15 @@ import {
 } from "./lib/persona_artifacts.mjs";
 import { createSession } from "./lib/prolog.mjs";
 import { sanitizeAtom, sanitizeEnumAtom } from "./lib/sanitize.mjs";
+import { resolvePlannerPolicyShape } from "./lib/planner_policy.mjs";
+import { inferPersonaAdaptation } from "./lib/persona_adaptation.mjs";
 import {
   decidePersonaPackActivation,
+  renderPersonaShapeSuppressionConflicts,
+  renderShapeSuppressionReceipt,
   resolvePersonaAuthorityPlanContext,
   summarizePersonaAuthority,
 } from "./lib/persona_activation_authority.mjs";
-import {
-  buildIsolatedAuditInputFromPlan,
-  runIsolatedAdversarialAudit,
-} from "./lib/isolated_adversarial_auditor.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const skillPath   = getSkillPath(import.meta.url);
@@ -104,7 +104,7 @@ function loadPlanFiles(cwdOverride, opts = {}) {
   const files = {};
   for (const name of ["state.md", "plan.md", "findings.md", "findings_ledger.json", "intent_contract.json", "decisions.md", "progress.md", "verification.md"]) {
     const content = name === "findings.md"
-      ? readFindingsMarkdown(planDir)
+      ? readFindingsMarkdown(planDir, { sync: false })
       : readFile(join(planDir, name));
     if (content) files[name] = content;
   }
@@ -146,11 +146,20 @@ function loadAuthorityPlanContext(cwdOverride, opts = {}) {
 }
 
 function inferProjectLevelPlanShape(base) {
-  const plannerSkillRoot = join(base, ".agent", "skills", "iterative-planner");
-  if (!existsSync(join(plannerSkillRoot, "scripts", "audit_runner.mjs"))) return null;
+  const declared = resolvePlannerPolicyShape(base);
+  if (declared) return declared;
+
+  const canonicalMarkers = [
+    join(base, "plans", "programs", "ive-trust-repair", "program_packet.json"),
+    join(base, "apps", "ive-visualizer"),
+    join(base, ".agent", "skills", "iterative-planner", "tests", "ive", "run.mjs"),
+  ];
+  if (!canonicalMarkers.every((marker) => existsSync(marker))) return null;
   return {
     primary: "planner-core",
-    source: "project_level_planner_repo",
+    source: "inferred_canonical_planner_repo",
+    source_kind: "inferred",
+    declared: false,
   };
 }
 
@@ -253,6 +262,15 @@ const EVIDENCE_COMMITTEE_BY_PACK = Object.freeze({
 
 const SCOPED_AUTODETECT_PACKS = Object.freeze(["tokenomics"]);
 
+const DOMAIN_PROFILE_SUPPRESSION_PACKS = Object.freeze({
+  quant: Object.freeze(["quant", "quant_research_protocol"]),
+  quant_betting: Object.freeze(["quant", "quant_research_protocol", "quant_target"]),
+  tokenomics: Object.freeze(["tokenomics"]),
+  frontend: Object.freeze(["ux_ui"]),
+  automation: Object.freeze(["assumptions_challenger", "wiring_auditor"]),
+  planner_infra: Object.freeze(["assumptions_challenger", "config_integrity", "traceability"]),
+});
+
 // v7.3.1: shape-pack relevance map. When a plan's detected shape strongly
 // implies a pack is irrelevant, audit_runner drops the pack with a notice
 // (instead of executing it and producing FAIL findings on unrelated concerns).
@@ -276,6 +294,57 @@ function isShapeSkipped(role, shapePrimary, forcePacks) {
     planShape: shapePrimary ? { primary: shapePrimary } : null,
     forcePacks,
   }).may_load;
+}
+
+function configValue(config, dottedKey) {
+  if (!config || typeof config !== "object") return undefined;
+  let current = config;
+  for (const part of String(dottedKey || "").split(".").filter(Boolean)) {
+    if (!current || typeof current !== "object" || Array.isArray(current)) return undefined;
+    current = current[part];
+  }
+  return current;
+}
+
+function configList(config, keys) {
+  const values = [];
+  for (const key of keys || []) {
+    const value = configValue(config, key);
+    if (Array.isArray(value)) values.push(...value);
+  }
+  return uniqueStrings(values);
+}
+
+function configuredSuppressedPersonaPacks(auditConfig) {
+  const suppressedProfiles = configList(auditConfig, [
+    "suppressed_domain_profiles",
+    "persona.suppressed_domain_profiles",
+    "persona_adaptation.suppressed_domain_profiles",
+  ]);
+  const explicitPacks = configList(auditConfig, [
+    "suppressed_persona_packs",
+    "persona.suppressed_packs",
+    "persona_packs_disabled",
+  ]);
+  return new Set(uniqueStrings([
+    ...explicitPacks,
+    ...suppressedProfiles.flatMap((profile) => DOMAIN_PROFILE_SUPPRESSION_PACKS[profile] || [profile]),
+  ]));
+}
+
+function suppressedPackDecision(packId, planShape, evidence = ["audit_config.suppressed_domain_profiles"]) {
+  return {
+    pack_id: packId,
+    plan_shape: planShape?.primary || null,
+    authority: "suppressed",
+    may_load: false,
+    may_emit_guidance: false,
+    may_block: false,
+    may_synthesize_obligation: false,
+    reason: "audit_config_suppressed_domain_profile",
+    evidence: uniqueStrings(evidence),
+    source: "audit_runner",
+  };
 }
 
 function checkPackContract(pack, label) {
@@ -314,13 +383,15 @@ function packApplies(pack, context) {
  * irrelevant for the detected plan shape (e.g. quant pack on a webhook plan).
  * Set `audit.config.json.force_packs` to override.
  */
-export async function loadRolePacks(auditConfig, skillPathOverride, cwdOverride, planShape = null) {
+export async function loadRolePacks(auditConfig, skillPathOverride, cwdOverride, planShape = null, opts = {}) {
   const sPath = skillPathOverride || skillPath;
   // F-006 FIX: Use cwdOverride for worktree boundary check instead of module-level cwd
   const effectiveCwd = cwdOverride || cwd;
   const roles = Array.isArray(auditConfig.roles) ? auditConfig.roles : ["core"];
   const forcePacks = Array.isArray(auditConfig.force_packs) ? auditConfig.force_packs : [];
+  const suppressedPacks = configuredSuppressedPersonaPacks(auditConfig);
   const shapePrimary = planShape?.primary || null;
+  const taskFocusContract = opts.taskFocusContract || opts.personaAuthorityContext?.task_focus_contract || null;
   const packs = [];
   const authorityDecisions = [];
 
@@ -333,6 +404,12 @@ export async function loadRolePacks(auditConfig, skillPathOverride, cwdOverride,
       continue;
     }
 
+    if (suppressedPacks.has(role)) {
+      authorityDecisions.push(suppressedPackDecision(role, planShape));
+      console.error(`  ↳ Skipping pack '${role}': suppressed by audit.config.json`);
+      continue;
+    }
+
     // v7.3.1: shape-conditional pack skip. Packs whose domain is plainly
     // irrelevant for the detected plan shape are dropped here. Agents can
     // override by adding the pack to `audit.config.json.force_packs`.
@@ -340,6 +417,8 @@ export async function loadRolePacks(auditConfig, skillPathOverride, cwdOverride,
       planShape,
       forcePacks,
       evidence: ["audit_config.roles"],
+      taskFocusContract,
+      suppressUnspecifiedDomainPacks: true,
     });
     authorityDecisions.push(authority);
     if (!authority.may_load) {
@@ -400,10 +479,21 @@ export async function loadRolePacks(auditConfig, skillPathOverride, cwdOverride,
     console.error(`     To add a custom pack, create: .agent/packs/${role}/index.mjs`);
   }
 
+  const personaAuthority = summarizePersonaAuthority(authorityDecisions);
   Object.defineProperty(packs, "personaAuthority", {
-    value: summarizePersonaAuthority(authorityDecisions),
+    value: personaAuthority,
     enumerable: false,
   });
+  const receipt = renderShapeSuppressionReceipt(personaAuthority, { indent: "  " });
+  if (receipt) console.error(receipt);
+  try {
+    const adaptation = inferPersonaAdaptation(effectiveCwd);
+    const conflict = renderPersonaShapeSuppressionConflicts(adaptation, personaAuthority, { indent: "  " });
+    if (conflict) console.error(conflict);
+  } catch {
+    // Conflict surfacing is advisory; never make persona adaptation scan failure
+    // hide the deterministic pack-loading result.
+  }
   return packs;
 }
 
@@ -416,6 +506,7 @@ async function augmentEvidenceCommittee(packs, context) {
   if (auditConfig.auto_committee === false) return packs;
 
   const forcePacks = Array.isArray(auditConfig.force_packs) ? auditConfig.force_packs : [];
+  const suppressedPacks = configuredSuppressedPersonaPacks(auditConfig);
   const shapePrimary = context?.planShape?.primary || null;
   const loaded = new Set(packs.map(p => p.id));
   const additions = [];
@@ -426,10 +517,13 @@ async function augmentEvidenceCommittee(packs, context) {
 
     for (const companionId of companions) {
       if (loaded.has(companionId)) continue;
+      if (suppressedPacks.has(companionId)) continue;
       const authority = decidePersonaPackActivation(companionId, {
         planShape: context?.planShape || (shapePrimary ? { primary: shapePrimary } : null),
         forcePacks,
         evidence: [`committee:${pack.id}`],
+        taskFocusContract: context?.personaAuthorityContext?.task_focus_contract || null,
+        suppressUnspecifiedDomainPacks: true,
       });
       if (!authority.may_load) continue;
 
@@ -448,11 +542,26 @@ async function augmentEvidenceCommittee(packs, context) {
 }
 
 async function augmentScopedApplicablePacks(packs, context) {
+  const auditConfig = context?.auditConfig || {};
+  const forcePacks = Array.isArray(auditConfig.force_packs) ? auditConfig.force_packs : [];
+  const suppressedPacks = configuredSuppressedPersonaPacks(auditConfig);
   const loaded = new Set(packs.map(p => p.id));
   const additions = [];
 
   for (const id of SCOPED_AUTODETECT_PACKS) {
     if (loaded.has(id)) continue;
+    if (suppressedPacks.has(id)) {
+      console.error(`  ↳ Skipping scoped domain pack '${id}': suppressed by audit.config.json`);
+      continue;
+    }
+    const authority = decidePersonaPackActivation(id, {
+      planShape: context?.planShape || null,
+      forcePacks,
+      evidence: ["scoped_auto_detect"],
+      taskFocusContract: context?.personaAuthorityContext?.task_focus_contract || null,
+      suppressUnspecifiedDomainPacks: true,
+    });
+    if (!authority.may_load) continue;
     const pack = await loadBuiltInPack(id, `Scoped domain pack '${id}'`);
     if (!pack || !packApplies(pack, context)) continue;
     additions.push(pack);
@@ -483,12 +592,16 @@ export async function enforceMinimumPersona(packs, context) {
   const alreadyLoaded = new Set(packs.map(p => p.id));
   const auditConfig = context?.auditConfig || {};
   const forcePacks = Array.isArray(auditConfig.force_packs) ? auditConfig.force_packs : [];
+  const suppressedPacks = configuredSuppressedPersonaPacks(auditConfig);
   for (const [id, loader] of BUILTIN_PACKS) {
     if (alreadyLoaded.has(id)) continue; // already loaded but not applicable — skip
+    if (suppressedPacks.has(id)) continue;
     const authority = decidePersonaPackActivation(id, {
       planShape: context?.planShape || null,
       forcePacks,
       evidence: ["auto_detect"],
+      taskFocusContract: context?.personaAuthorityContext?.task_focus_contract || null,
+      suppressUnspecifiedDomainPacks: true,
     });
     if (!authority.may_load) continue;
     try {
@@ -794,37 +907,6 @@ import { withFailureCode } from "./lib/determinism.mjs";
 const PASS = "PASS", WARN = "WARN", FAIL = "FAIL";
 function _check(name, status, detail) { return { name, status, detail }; }
 
-const ISOLATED_ADVERSARIAL_AUDIT_GATES = new Set(["reflect-to-validate", "validate-to-close"]);
-
-function personaFindingFromIsolatedAudit(raw, gate) {
-  return {
-    analyzer: "[isolated_adversarial_auditor] " + (raw.category || raw.id || "adversarial_audit"),
-    severity: "fail",
-    message: raw.evidence || raw.category || raw.id,
-    location: gate,
-    count: 1,
-    details: raw.recommendation || "Escalate rather than confirming quality.",
-    _roleAudit: {
-      id: raw.id,
-      role: "isolated_adversarial_auditor",
-      severity: "CRITICAL",
-      category: raw.category || raw.id,
-      story_refs: Array.isArray(raw.story_refs) ? raw.story_refs : ["US-068", "US-086"],
-      evidence: raw.evidence || raw.category || raw.id,
-      recommendation: raw.recommendation || "Escalate rather than confirming quality.",
-      meta: raw.meta || {},
-    },
-  };
-}
-
-function runIsolatedAdversarialGate(planDir, gate) {
-  if (!planDir || !ISOLATED_ADVERSARIAL_AUDIT_GATES.has(gate)) {
-    return { status: "skipped", findings: [], isolation: { raw_gate_json_seen: false } };
-  }
-  const input = buildIsolatedAuditInputFromPlan({ planDir, gate });
-  return runIsolatedAdversarialAudit(input);
-}
-
 /**
  * Run compulsory persona audit at a gate transition.
  * Returns an array of check results (PASS/WARN/FAIL).
@@ -838,8 +920,11 @@ function runIsolatedAdversarialGate(planDir, gate) {
  * @param {string} gate       - Gate name
  * @returns {Promise<Array<{ name: string, status: string, detail: string }>>}
  */
-export async function runPersonaAuditGate(cwdPath, skillRoot, planDir, gate) {
+export async function runPersonaAuditGate(cwdPath, skillRoot, planDir, gate, options = {}) {
   const results = [];
+  const persistArtifacts = options.persistArtifacts !== false;
+  const artifacts = { gate, findings: null, targetPhase: null, guidanceItems: [], constraints: [] };
+  Object.defineProperty(results, "artifacts", { value: artifacts, enumerable: false });
 
   const skipEnv = process.env.PLANNER_SKIP_PERSONA_AUDIT;
   if (skipEnv) {
@@ -868,8 +953,14 @@ export async function runPersonaAuditGate(cwdPath, skillRoot, planDir, gate) {
       plan: planDir ? basename(planDir) : null,
       env: process.env,
     });
-    let packs = await loadRolePacks(auditConfig, skillRoot, cwdPath, context.planShape);
+    let packs = await loadRolePacks(auditConfig, skillRoot, cwdPath, context.planShape, {
+      taskFocusContract: context.personaAuthorityContext?.task_focus_contract || null,
+    });
+    const personaAuthority = packs.personaAuthority || null;
     packs = await enforceMinimumPersona(packs, context);
+    if (personaAuthority && !packs.personaAuthority) {
+      Object.defineProperty(packs, "personaAuthority", { value: personaAuthority, enumerable: false });
+    }
 
     if (packs.length === 0) {
       // F-019 FIX: Add failure code for machine-readable tracking
@@ -888,23 +979,8 @@ export async function runPersonaAuditGate(cwdPath, skillRoot, planDir, gate) {
     ));
 
     let findings = await runRoleAuditors(context, packs);
-    const isolatedAudit = runIsolatedAdversarialGate(planDir, gate);
-    if (isolatedAudit.status === "blocked") {
-      const isolatedFindings = isolatedAudit.findings.map((finding) => personaFindingFromIsolatedAudit(finding, gate));
-      findings = [...findings, ...isolatedFindings];
-      results.push(_check(
-        "Isolated adversarial auditor",
-        FAIL,
-        `${isolatedFindings.length} blocking issue(s): ${isolatedFindings.map((finding) => finding._roleAudit.category).join(", ")}`
-      ));
-    } else if (ISOLATED_ADVERSARIAL_AUDIT_GATES.has(gate)) {
-      results.push(_check(
-        "Isolated adversarial auditor",
-        PASS,
-        `Read/Grep-only isolated auditor ${isolatedAudit.status === "skipped" ? "skipped" : "found no forged-proof signals"}`
-      ));
-    }
-    if (planDir) writePersonaFindings(planDir, findings, gate);
+    artifacts.findings = findings;
+    if (planDir && persistArtifacts) writePersonaFindings(planDir, findings, gate);
 
     // v1.1: Phase guidance — write persona_guidance.md for the target phase
     let targetPhase = null;
@@ -919,12 +995,14 @@ export async function runPersonaAuditGate(cwdPath, skillRoot, planDir, gate) {
 
     if (targetPhase && planDir) {
       const guidanceItems = collectPhaseGuidance(packs, context, targetPhase);
-      writePhaseGuidance(planDir, guidanceItems, targetPhase);
+      artifacts.targetPhase = targetPhase;
+      artifacts.guidanceItems = guidanceItems;
+      if (persistArtifacts) writePhaseGuidance(planDir, guidanceItems, targetPhase);
       if (guidanceItems.length > 0) {
         results.push(_check(
-          "Persona guidance written",
+          "Persona guidance resolved",
           PASS,
-          `persona_guidance.md generated for ${targetPhase.toUpperCase()} phase (${guidanceItems.length} pack(s))`
+          `${guidanceItems.length} pack(s) resolved for ${targetPhase.toUpperCase()} phase`
         ));
       }
     }
@@ -932,12 +1010,13 @@ export async function runPersonaAuditGate(cwdPath, skillRoot, planDir, gate) {
     // v1.1: Plan constraints — write persona_constraints.md at explore-to-plan
     if (gate === "explore-to-plan" && planDir) {
       const constraints = collectPlanConstraints(packs, context);
-      writePlanConstraints(planDir, constraints);
+      artifacts.constraints = constraints;
+      if (persistArtifacts) writePlanConstraints(planDir, constraints);
       if (constraints.length > 0) {
         results.push(_check(
           "Persona constraints collected",
           WARN,
-          `${constraints.length} constraint(s) written to persona_constraints.md — review before planning`
+          `${constraints.length} constraint(s) resolved — review before planning`
         ));
       }
     }
@@ -991,6 +1070,20 @@ export async function runPersonaAuditGate(cwdPath, skillRoot, planDir, gate) {
   }
 
   return results;
+}
+
+export function persistPersonaAuditArtifacts(planDir, artifacts = {}) {
+  if (!planDir || !artifacts) return false;
+  if (Array.isArray(artifacts.findings)) {
+    writePersonaFindings(planDir, artifacts.findings, artifacts.gate);
+  }
+  if (artifacts.targetPhase && Array.isArray(artifacts.guidanceItems)) {
+    writePhaseGuidance(planDir, artifacts.guidanceItems, artifacts.targetPhase);
+  }
+  if (artifacts.gate === "explore-to-plan" && Array.isArray(artifacts.constraints)) {
+    writePlanConstraints(planDir, artifacts.constraints);
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
@@ -1062,8 +1155,14 @@ Exit codes: 0 = no findings at fail_on severity, 1 = findings above threshold, 2
           plan: flags.plan,
           env: process.env,
         });
-        let packs     = await loadRolePacks(auditConfig, skillPath, cwd, context.planShape);
+        let packs     = await loadRolePacks(auditConfig, skillPath, cwd, context.planShape, {
+          taskFocusContract: context.personaAuthorityContext?.task_focus_contract || null,
+        });
+        const personaAuthority = packs.personaAuthority || null;
         packs         = await enforceMinimumPersona(packs, context);
+        if (personaAuthority && !packs.personaAuthority) {
+          Object.defineProperty(packs, "personaAuthority", { value: personaAuthority, enumerable: false });
+        }
         const findings = await runRoleAuditors(context, packs);
 
         // Summary
@@ -1084,6 +1183,8 @@ Exit codes: 0 = no findings at fail_on severity, 1 = findings above threshold, 2
                 planShape: context.planShape,
                 forcePacks: auditConfig.force_packs || [],
                 evidence: ["audit_config.roles"],
+                taskFocusContract: context.personaAuthorityContext?.task_focus_contract || null,
+                suppressUnspecifiedDomainPacks: true,
               })
             )
           ),

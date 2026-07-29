@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iterative-planner.local/schemas/pack_contract.schema.json",
+  "title": "Iterative Planner Pack Contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "pack_id",
+    "rubrics",
+    "checkers",
+    "calibration_ref",
+    "goldens_ref",
+    "seeded_defects_ref",
+    "serves_projects"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": 1,
+      "description": "Contract schema version."
+    },
+    "pack_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Pack id. Must match the pack directory name."
+    },
+    "rubrics": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Closed-question rubric prompts that administrators can calibrate.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "question", "closed_question", "allowed_answers"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "question": {
+            "type": "string",
+            "minLength": 1
+          },
+          "closed_question": {
+            "const": true
+          },
+          "allowed_answers": {
+            "type": "array",
+            "minItems": 2,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        }
+      }
+    },
+    "checkers": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Deterministic checker entry points and their seeded defects.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "deterministic", "seeded_defect_ids"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]*$"
+          },
+          "deterministic": {
+            "const": true
+          },
+          "command": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            ]
+          },
+          "module": {
+            "type": "string",
+            "minLength": 1
+          },
+          "script": {
+            "type": "string",
+            "minLength": 1
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "seeded_defect_ids": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "anyOf": [
+          { "required": ["command"] },
+          { "required": ["module"] },
+          { "required": ["script"] },
+          { "required": ["path"] }
+        ]
+      }
+    },
+    "calibration_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Repo-relative calibration artifact reference."
+    },
+    "goldens_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Repo-relative golden fixture registry reference."
+    },
+    "seeded_defects_ref": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Repo-relative seeded-defect registry reference."
+    },
+    "serves_projects": {
+      "type": "array",
+      "minItems": 2,
+      "description": "At least two real projects served by this reusable/domain pack.",
+      "items": {
+        "oneOf": [
+          {
+            "type": "string",
+            "minLength": 1
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["id", "evidence_ref"],
+            "properties": {
+              "id": {
+                "type": "string",
+                "minLength": 1
+              },
+              "evidence_ref": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

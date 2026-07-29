@@ -7,8 +7,44 @@
 **Gate transition failed** → [Gate Failures](#gate-failures)
 **Plan directory corrupted/missing** → [Plan Recovery](#plan-recovery)
 **Session disconnected mid-work** → [Context Loss Recovery](#context-loss-recovery)
-**Approval daemon issues** → [Daemon Recovery](#daemon-recovery)
+**Planner upgrade is dirty, mixed-version, or interrupted** → [Managed Upgrade Recovery](#managed-upgrade-recovery)
+**Legacy nonce/daemon docs** → [Retired Integrity Substrate](#retired-integrity-substrate)
 **State file corrupted** → [State Recovery](#state-recovery)
+
+---
+
+## Managed Upgrade Recovery
+
+Start with the immutable-source doctor from the canonical planner repository,
+not a possibly half-applied consumer copy:
+
+```bash
+node /absolute/path/to/canonical/.agent/skills/iterative-planner/scripts/migrate.mjs \
+  doctor /absolute/path/to/consumer \
+  --source-ref <release-tag-or-commit> \
+  --json
+```
+
+Read `version_stratigraphy` as three separate facts: `committed` comes from
+target `HEAD`, `tree` comes from the working tree, and `source` comes from the
+selected source pin. Do not treat a dirty tree marker as committed truth.
+
+If `recovery_command` is present, a durable final-handoff journal exists. Run
+that exact source-pinned `recover-upgrade` command. Recovery finalizes a
+candidate already present at `HEAD`, reports an unchanged pre-advance target as
+recovered, and refuses any unrelated `HEAD` instead of guessing.
+
+If doctor reports `half_applied_payload` without an active journal:
+
+1. Preserve unrelated or wanted work first.
+2. Preview untracked planner debris with `git clean -nd -- .agent`.
+3. Stash the planner paths, or restore tracked planner paths from `HEAD`.
+4. Rerun the exact source-pinned upgrade command printed by doctor with
+   `--commit`.
+
+Never force-copy a source payload over a dirty consumer. A normal transactional
+upgrade builds and proves the candidate in a scratch clone, so apply/setup/proof
+failure leaves the live repository unchanged.
 
 ---
 
@@ -34,38 +70,16 @@ node .agent/skills/iterative-planner/scripts/transition.mjs explore-to-plan
 ```
 The salt will be printed. Add `[KB_DIGEST:<salt>]` to `findings.md`.
 
-### GATE-PLN-008: "Approval nonce missing"
+### Legacy approval, nonce, tamper, or envelope errors
 
-**Cause:** The approval path was incomplete for the configured mode.
-- `auto` mode: the prior `explore-to-plan` transition needs to be re-run, or the plan predates the auto-approval release
-- `interactive` mode: the daemon was not running, or nobody consumed the nonce and wrote `[APPROVED:<nonce>]`
-- `multi-agent` mode: story review did not write the approval marker
+`GATE-PLN-008`, nonce expiry/consumption messages, `GATE-TMP-002`, and
+approval-envelope failures are retired by E8-1. Current transitions do not
+require approval markers, approval envelopes, tamper fingerprint approvals, or
+nonce regeneration.
 
-**Fix:**
-1. Re-run: `node .agent/skills/iterative-planner/scripts/transition.mjs explore-to-plan`
-2. If `approval.mode` is `interactive`, start the daemon with `node .agent/skills/iterative-planner/scripts/approval_daemon.mjs` or reveal the nonce with `nonce_reveal.mjs`
-3. If `approval.mode` is `multi-agent`, run `node .agent/skills/iterative-planner/scripts/bootstrap.mjs story-review plans/<plan-dir>/`
-4. Retry `plan-to-execute` after the approval marker is present
-
-### GATE-PLN-009: "Nonce expired"
-
-**Cause:** More than 24 hours passed since the explore-to-plan transition.
-
-**Fix:** Re-run `transition.mjs explore-to-plan` to generate a fresh nonce.
-
-### GATE-PLN-010: "Plan modified after approval"
-
-**Cause:** `plan.md` was edited after the user approved it.
-
-**Fix:** Either:
-- Revert `plan.md` to the approved version: `git checkout -- plans/*/plan.md`
-- Or re-run `explore-to-plan` and re-approve
-
-### GATE-PLN-011: "Nonce already consumed"
-
-**Cause:** This approval nonce was already used by a prior transition.
-
-**Fix:** Re-run `transition.mjs explore-to-plan` to generate a new nonce.
+**Fix:** upgrade the planner/runtime if these appear during live work. If they
+appear in historical telemetry, treat them as evidence of the retired ritual
+substrate rather than a current remediation instruction.
 
 ### AV-19 / `GATE_HISTORY_POISONED`: "5 consecutive failures for the same gate"
 
@@ -102,15 +116,12 @@ Accepted label styles include `Attack:`, `**Attack**:`, or heading-style subsect
 
 ### Config Integrity Failure
 
-**Cause:** Config, script, or Prolog files were modified since the last verified baseline.
+`.config_integrity` baselines were retired by E8-1. Current transitions do not
+read, write, or rebaseline that file.
 
-**Fix:**
-1. If changes were intentional: delete `.config_integrity` and re-baseline:
-   ```bash
-   rm .agent/skills/iterative-planner/config/.config_integrity
-   node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade
-   ```
-2. If changes were unexpected: check `git diff` to see what changed and revert if needed
+**Fix:** upgrade the planner/runtime if this appears during live work. For
+unexpected source changes, inspect `git diff` and the relevant CI/reviewer
+output instead of running a rebaseline command.
 
 ### State Integrity Failure (RT6-C1)
 
@@ -211,36 +222,12 @@ When a session disconnects mid-work:
 
 ---
 
-## Daemon Recovery
+## Retired Integrity Substrate
 
-### Daemon Hung / Unresponsive
-
-```bash
-# Find and kill the daemon process
-lsof ~/.config/iterative-planner/.daemon.sock
-kill <PID>
-
-# Remove stale socket
-rm ~/.config/iterative-planner/.daemon.sock
-
-# Restart
-node .agent/skills/iterative-planner/scripts/approval_daemon.mjs
-```
-
-### "Another daemon already running"
-
-```bash
-# The socket file is locked by another process
-rm ~/.config/iterative-planner/.daemon.sock
-node .agent/skills/iterative-planner/scripts/approval_daemon.mjs
-```
-
-### Nonce Still Valid After Daemon Crash
-
-If the daemon crashes after generating a nonce but before you approve:
-- The nonce file is still on disk (24h TTL)
-- Restarting the daemon will pick it up automatically
-- No need to re-run `explore-to-plan`
+The approval daemon, nonce reveal helper, approval envelope, tamper fingerprint,
+state hash, and `.config_integrity` rebaseline flows were removed by E8-1. Do
+not start a daemon or write nonce approvals as a live repair. Use git diff/log,
+IVE conformance, and configured reviewer/CI jobs as the integrity boundary.
 
 ---
 
@@ -269,4 +256,3 @@ If they disagree, trust `state.json`. The planner ignores `state.md` for all gat
 
 - **Plans are single-user.** Concurrent edits to the same plan from multiple sessions may cause merge conflicts. Use git to resolve.
 - **No undo for transitions.** Once a gate passes, the state moves forward. To go back, restore from git.
-- **Nonces expire after 24h.** If you step away for >24h between EXPLORE and PLAN, re-run `explore-to-plan`.

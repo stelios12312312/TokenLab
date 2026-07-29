@@ -90,6 +90,10 @@ function writeFakeConformanceRunner(root) {
   const runner = join(runnerDir, "run.mjs");
   writeFileSync(runner, `#!/usr/bin/env node
 const mode = process.env.TEST_IVE_CONFORMANCE_MODE || "pass";
+if (mode === "sleep") {
+  const sleepMs = Number(process.env.TEST_IVE_CONFORMANCE_SLEEP_MS || 250);
+  await new Promise((resolveSleep) => setTimeout(resolveSleep, sleepMs));
+}
 console.log(JSON.stringify({ status: mode === "pass" ? "PASS" : "FAIL" }));
 process.exit(mode === "pass" ? 0 : 1);
 `);
@@ -152,6 +156,29 @@ function scenarioIveConformanceWorkflowCoversVisualizer() {
   assert(workflow.includes("node .agent/skills/iterative-planner/tests/ive/test_run.mjs"), "workflow runs IVE conformance unit coverage");
 }
 
+function parseWorkflowTimeout(workflow) {
+  const match = workflow.match(/^\s*timeout-minutes:\s*(\d+)\s*$/m);
+  return match ? Number(match[1]) : null;
+}
+
+function assertWorkflowTimeout(relPath, label) {
+  const workflow = readText(relPath);
+  const timeout = parseWorkflowTimeout(workflow);
+  assert(Number.isInteger(timeout), `${label} declares a job timeout`);
+  assert(Number.isInteger(timeout) && timeout > 0 && timeout <= 20, `${label} timeout is <=20 minutes`);
+}
+
+function scenarioCiWorkflowsDeclareBoundedTimeouts() {
+  assertWorkflowTimeout(".github/workflows/ive-conformance.yml", "IVE conformance workflow");
+  assertWorkflowTimeout(".github/workflows/fresh-context-reviewer.yml", "fresh-context reviewer workflow");
+}
+
+function scenarioRetiredIntegrityWorkflowsAreAbsent() {
+  assert(!existsSync(join(plannerRoot, ".github/workflows/persona-manifest.yml")), "retired persona-manifest workflow is absent");
+  assert(!existsSync(join(plannerRoot, ".github/workflows/verify-plan-envelope.yml")), "retired plan-envelope workflow is absent");
+  assert(!existsSync(join(plannerRoot, "tests/test_migration_envelope_legacy_drift.mjs")), "retired migration envelope drift root test is absent");
+}
+
 function scenarioPrePushHookBlocksMainOnly() {
   const prePush = requireFile(
     ".agent/skills/iterative-planner/scripts/hooks/pre-push",
@@ -162,6 +189,9 @@ function scenarioPrePushHookBlocksMainOnly() {
     "pre-push conformance helper ships"
   );
   if (!prePush || !helper) return;
+  const helperContent = readFileSync(helper, "utf-8");
+  assert(helperContent.includes("DEFAULT_IVE_PRE_PUSH_TIMEOUT_MS = 720_000"), "pre-push helper declares the measured twelve-minute default budget");
+  assert(helperContent.includes("process.env.IVE_PRE_PUSH_TIMEOUT_MS"), "pre-push helper retains the explicit timeout override");
 
   withTempProject("planner-pre-push-main-", (tmp) => {
     writeFakeConformanceRunner(tmp);
@@ -189,6 +219,36 @@ function scenarioPrePushHookBlocksMainOnly() {
     });
     assert(!mainFail.ok, "pre-push hook blocks main push when conformance is red");
     assert((mainFail.stdout + mainFail.stderr).includes("refusing push to main"), "pre-push hook explains the main-push refusal");
+    assert((mainFail.stdout + mainFail.stderr).includes("conformance completed non-zero"), "pre-push hook classifies a completed red conformance run");
+
+    const mainTimeout = runBin("sh", [prePush], {
+      cwd: tmp,
+      input: "refs/heads/main abc refs/heads/main def\n",
+      env: {
+        ...baseEnv,
+        TEST_IVE_CONFORMANCE_MODE: "sleep",
+        TEST_IVE_CONFORMANCE_SLEEP_MS: "250",
+        IVE_PRE_PUSH_TIMEOUT_MS: "25",
+      },
+    });
+    const timeoutOutput = mainTimeout.stdout + mainTimeout.stderr;
+    assert(!mainTimeout.ok, "pre-push hook fails closed when the IVE child times out");
+    assert(timeoutOutput.includes("IVE infrastructure timeout"), "pre-push hook distinguishes infrastructure timeout from completed conformance failure");
+    assert(timeoutOutput.includes("runner=") && timeoutOutput.includes("/tests/ive/run.mjs"), "pre-push timeout diagnostic identifies the child runner");
+    assert(/pid=(?:\d+|unavailable)/.test(timeoutOutput), "pre-push timeout diagnostic identifies the child PID when available");
+    assert(timeoutOutput.includes("timeout_ms=25"), "pre-push timeout diagnostic reports the configured budget");
+    assert(/elapsed_ms=\d+/.test(timeoutOutput), "pre-push timeout diagnostic reports elapsed time");
+    assert(timeoutOutput.includes("refusing push to main"), "pre-push timeout remains a fail-closed refusal");
+
+    for (const invalidValue of ["invalid", "0", "-1", "1.5"]) {
+      const invalidTimeout = runBin("sh", [prePush], {
+        cwd: tmp,
+        input: "refs/heads/main abc refs/heads/main def\n",
+        env: { ...baseEnv, TEST_IVE_CONFORMANCE_MODE: "pass", IVE_PRE_PUSH_TIMEOUT_MS: invalidValue },
+      });
+      assert(!invalidTimeout.ok, `pre-push hook fails closed on invalid timeout override ${invalidValue}`);
+      assert((invalidTimeout.stdout + invalidTimeout.stderr).includes("Invalid IVE timeout configuration"), `pre-push hook explains invalid timeout override ${invalidValue}`);
+    }
   });
 
   withTempProject("planner-pre-push-missing-runner-", (tmp) => {
@@ -302,20 +362,82 @@ function scenarioBranchProtectionSnapshotSurface() {
   });
 }
 
+function scenarioFreshContextReviewerWorkflowSurface() {
+  const workflow = readText(".github/workflows/fresh-context-reviewer.yml");
+  const config = readText(".github/reviewer/config.json");
+
+  assert(/name:\s*fresh-context-reviewer/.test(workflow), "fresh-context reviewer workflow keeps the expected check name");
+  assert(workflow.includes("pull_request:"), "fresh-context reviewer runs on pull_request");
+  assert(workflow.includes("pull-requests: write"), "fresh-context reviewer can post PR comments");
+  assert(workflow.includes("node .agent/skills/iterative-planner/scripts/fresh_context_reviewer.mjs review"), "workflow runs the fresh-context reviewer CLI");
+  assert(workflow.includes("--config .github/reviewer/config.json"), "workflow uses reviewer config from .github/reviewer/");
+  assert(workflow.includes("--comment-file reports/fresh_context_reviewer/comment.md"), "workflow asks reviewer to write a PR comment artifact");
+  assert(workflow.includes("gh pr comment"), "workflow posts the reviewer comment");
+  assert(workflow.includes("Enforce reviewer verdict"), "workflow has a final verdict enforcement step");
+  assert(workflow.includes("steps.review.outputs.reviewer_exit"), "workflow fails with the reviewer exit code");
+  assert(config.includes('"fail_honest": true'), "reviewer config declares fail_honest true");
+  assert(config.includes('".github/reviewer/**"'), "reviewer config owns self-review path for reviewer config");
+  assert(config.includes('"wiring_auditor"') && config.includes('"assumptions_challenger"'), "reviewer config includes required persona packs");
+}
+
+function scenarioL3AutonomousDogfoodWorkflowSurface() {
+  const workflow = readText(".github/workflows/l3-autonomous-dogfood.yml");
+  const runbook = readText("docs/ci/l3-autonomous-dogfood.md");
+
+  assert(/name:\s*l3-autonomous-dogfood/.test(workflow), "L3 autonomous dogfood workflow has a distinctive check name");
+  assert(workflow.includes("workflow_dispatch:"), "L3 real-run lane supports manual dispatch");
+  assert(workflow.includes("schedule:") && workflow.includes("cron:"), "L3 real-run lane has a separate schedule");
+  assert(!/^\s*push:\s*$/m.test(workflow) && !/^\s*pull_request:\s*$/m.test(workflow), "L3 real-run lane is absent from push and pull-request triggers");
+  assert(workflow.includes("runs-on: [self-hosted, l3-agent]"), "L3 real-run lane requires the credentialed labeled runner");
+  assert(workflow.includes("persist-credentials: false"), "L3 real-run lane does not expose checkout credentials to the agent workspace");
+  assert(workflow.includes("inputs.agent_cmd || vars.L3_AGENT_CMD"), "L3 agent command is explicit configuration rather than a hardcoded vendor");
+  assert((workflow.match(/autonomous_dogfood_run\.mjs run/g) || []).length === 1, "L3 workflow invokes the harness exactly once");
+  assert(workflow.includes("continue-on-error: true") && workflow.includes("if: always()"), "L3 workflow reaches receipt upload after a failed stochastic attempt");
+  assert(workflow.includes("actions/upload-artifact@v4"), "L3 workflow preserves dated receipt evidence");
+  assert(workflow.includes('test "${{ steps.l3_run.outcome }}" = "success"'), "L3 workflow restores honest failed-attempt job status after upload");
+  assert(runbook.includes("does not retry") && runbook.includes("must not be converted into a pass"), "L3 runbook binds the no-retry nondeterminism policy");
+  assert(runbook.includes("does not prove general autonomous coding") && runbook.includes("L4 domain work"), "L3 runbook binds the fixture-scoped claim boundary");
+  assert(runbook.includes("parent process") && runbook.includes("transcript text"), "L3 runbook documents independent countersign rather than self-grading");
+}
+
 function scenarioIveRunnerRegistersCiEnforcementSuite() {
   const runner = readText(".agent/skills/iterative-planner/tests/ive/run.mjs");
   assert(runner.includes('id: "ci-enforcement-contracts"'), "IVE conformance runner registers the CI enforcement suite");
   assert(runner.includes("test_ci_enforcement_contracts.mjs"), "IVE conformance runner points at the CI enforcement test file");
+  assert(runner.includes('id: "pack-contract"'), "IVE conformance runner registers the pack contract suite");
+  assert(runner.includes("test_pack_contract.mjs"), "IVE conformance runner points at the pack contract test file");
+  assert(runner.includes("pack_contract_validate.mjs"), "IVE conformance runner tracks the pack contract validator CLI");
+  assert(runner.includes("pack_contract.schema.json"), "IVE conformance runner tracks the pack contract schema");
+  assert(runner.includes("packs/quant/pack_contract.json"), "IVE conformance runner tracks the quant pack contract");
+  assert(!runner.includes("verify-plan-envelope.yml"), "IVE CI enforcement suite no longer tracks the retired envelope workflow");
+  assert(!runner.includes("persona-manifest.yml"), "IVE CI enforcement suite no longer tracks the retired persona manifest workflow");
+  assert(runner.includes('id: "fresh-context-reviewer"'), "IVE conformance runner registers the fresh-context reviewer suite");
+  assert(runner.includes("test_fresh_context_reviewer.mjs"), "IVE conformance runner points at the fresh-context reviewer tests");
+  assert(runner.includes("fresh_context_reviewer.mjs"), "IVE conformance runner tracks the fresh-context reviewer CLI and library");
+  assert(runner.includes("fresh-context-reviewer.yml"), "IVE conformance runner tracks the fresh-context reviewer workflow");
+  assert(runner.includes('id: "l3-autonomous-dogfood-harness"'), "IVE runner registers required deterministic L3 harness self-tests");
+  assert(runner.includes('id: "l3-autonomous-dogfood-receipt-freshness"'), "IVE runner registers separate L3 receipt freshness advisory");
+  assert(runner.includes("l3-autonomous-dogfood.yml"), "IVE runner tracks the separate L3 real-run workflow");
+  assert(runner.includes(".github/reviewer/config.json"), "IVE conformance runner tracks reviewer config");
+  assert(!runner.includes("test_migration_envelope_legacy_drift.mjs"), "IVE CI enforcement suite no longer tracks the retired migration envelope drift test");
+  assert(runner.includes("test_escalation_triggers.mjs"), "IVE CI enforcement suite tracks escalation trigger tests");
+  assert(runner.includes("test_loop_guards.mjs"), "IVE CI enforcement suite tracks loop guard tests");
   assert(runner.includes("snapshot_branch_protection.mjs"), "IVE conformance runner tracks branch-protection snapshot changes");
   assert(runner.includes("pre_push_conformance.mjs"), "IVE conformance runner tracks pre-push helper changes");
+  assert(runner.includes('id: "ive-conformance-runner-meta"'), "IVE conformance runner registers its meta-test as a default suite");
+  assert(runner.includes("test_ive_conformance_runner.mjs"), "IVE conformance runner meta-suite points at the runner meta-test");
 }
 
 console.log("\nCI Enforcement Contract Tests\n");
 
 scenarioIveConformanceWorkflowCoversVisualizer();
+scenarioCiWorkflowsDeclareBoundedTimeouts();
+scenarioRetiredIntegrityWorkflowsAreAbsent();
 scenarioPrePushHookBlocksMainOnly();
 scenarioInstallerManagesPrePushWithoutClobbering();
 scenarioBranchProtectionSnapshotSurface();
+scenarioFreshContextReviewerWorkflowSurface();
+scenarioL3AutonomousDogfoodWorkflowSurface();
 scenarioIveRunnerRegistersCiEnforcementSuite();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);

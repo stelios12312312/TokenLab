@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "id": "wo_validate_contract",
+  "goal": "Validate the work-order contract fixtures and report deterministic proof outcomes.",
+  "inputs": [
+    {
+      "id": "fixture_dir",
+      "kind": "path",
+      "ref": ".agent/skills/iterative-planner/tests/fixtures/work_orders",
+      "description": "Golden and seeded-invalid work-order fixtures."
+    }
+  ],
+  "constraints": [
+    "Stay within the work-order validator and fixture surfaces.",
+    "Do not implement the upward claims/evidence contract."
+  ],
+  "claims_to_produce": [
+    {
+      "id": "fixtures_validated",
+      "statement": "The golden fixture passes and seeded-invalid fixtures fail with actionable errors.",
+      "consumer": "PGM-IVE-AUTOCODER-V2 E3-1 close proof"
+    },
+    {
+      "id": "schema_documented",
+      "statement": "The work_order.schema.json artifact documents budget and proof obligation fields.",
+      "consumer": "cheap-agent dispatcher"
+    }
+  ],
+  "proof_obligations": [
+    {
+      "claim_id": "fixtures_validated",
+      "method": "executed",
+      "command": [
+        "node",
+        ".agent/skills/iterative-planner/tests/test_work_order_contract.mjs"
+      ]
+    },
+    {
+      "claim_id": "schema_documented",
+      "method": "deterministic",
+      "check": "Schema required fields include claims_to_produce, proof_obligations, stop_conditions, and budget."
+    }
+  ],
+  "stop_conditions": [
+    "Stop if any seeded-invalid fixture validates successfully.",
+    "Stop if validator errors omit code, path, or message."
+  ],
+  "budget": {
+    "max_tokens": 12000,
+    "max_cost_usd": 0,
+    "max_time_minutes": 20
+  }
+}

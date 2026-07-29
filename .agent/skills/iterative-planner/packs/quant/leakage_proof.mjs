@@ -5,6 +5,10 @@
 // other quant packs.
 
 import { existsSync, readFileSync } from "fs";
+import {
+  normalizeVerificationStatus,
+  verificationStatusIsPass,
+} from "../../scripts/lib/verification_status_vocabulary.mjs";
 
 function asObject(value) {
   return value && typeof value === "object" && !Array.isArray(value) ? value : {};
@@ -129,7 +133,177 @@ function evaluateKnownAtTime(split, blockers, checks) {
 }
 
 function sourceLeakageStatusPasses(status) {
-  return ["pass", "passed", "clear", "clean", "no_findings", "ok"].includes(normalize(status));
+  return verificationStatusIsPass(status, "execution");
+}
+
+function firstNonEmptyValue(...values) {
+  for (const value of values) {
+    if (nonEmpty(value)) return value;
+  }
+  return null;
+}
+
+function boolTrue(...values) {
+  return values.some((value) => value === true || normalize(value) === "true");
+}
+
+function blockingVerdict(value) {
+  return normalizeVerificationStatus(value, "execution").kind === "fail";
+}
+
+function provenanceObject(doc) {
+  const root = asObject(doc);
+  return asObject(
+    root.capture_time_provenance ??
+    asObject(root.time_join).capture_time_provenance ??
+    asObject(root.time_joined_evidence).capture_time_provenance ??
+    asObject(root.timestamp_provenance).capture_time_provenance ??
+    root.timestamp_provenance,
+  );
+}
+
+function provenanceHandling(provenance, ...keys) {
+  for (const key of keys) {
+    const value = provenance[key];
+    if (nonEmpty(value)) return value;
+  }
+  return null;
+}
+
+function failClosed(value) {
+  return normalize(value) === "fail_closed";
+}
+
+export function evaluateNegativeLeakageGuardFixture(artifact = {}) {
+  const blockers = [];
+  const checks = {};
+  const doc = asObject(artifact);
+  const negative = asObject(
+    doc.negative_fixture ??
+    doc.negative_leakage_fixture ??
+    doc.leakage_guard_negative_fixture ??
+    doc,
+  );
+  const guard = asObject(
+    negative.guard ??
+    negative.leakage_guard ??
+    negative.observed ??
+    negative.actual ??
+    negative.result,
+  );
+  const observed = asObject(negative.observed ?? negative.actual ?? negative.result ?? doc.observed ?? doc.actual ?? doc.result);
+
+  checks.artifact_object_present = Object.keys(doc).length > 0;
+  if (!checks.artifact_object_present) {
+    addBlocker(blockers, "negative_fixture_empty", "negative leakage fixture must be a JSON object");
+  }
+
+  checks.known_bad_input = boolTrue(
+    negative.known_bad,
+    negative.negative_case,
+    negative.expected_bad,
+    doc.known_bad,
+  );
+  if (!checks.known_bad_input) {
+    addBlocker(blockers, "negative_fixture_known_bad_missing", "negative leakage fixture must mark the input as known_bad");
+  }
+
+  checks.guard_fired = boolTrue(
+    negative.guard_fired,
+    guard.fired,
+    guard.guard_fired,
+    observed.guard_fired,
+    observed.fired,
+  );
+  if (!checks.guard_fired) {
+    addBlocker(blockers, "negative_fixture_guard_not_firing", "negative leakage fixture must record guard_fired=true");
+  }
+
+  const verdict = firstNonEmptyValue(
+    negative.verdict,
+    negative.status,
+    guard.verdict,
+    guard.status,
+    observed.verdict,
+    observed.status,
+  );
+  checks.known_bad_rejected = blockingVerdict(verdict);
+  if (!checks.known_bad_rejected) {
+    addBlocker(blockers, "negative_fixture_not_rejected", "negative leakage fixture must show the known-bad input was blocked or rejected");
+  }
+
+  return {
+    pass: blockers.length === 0,
+    blockers,
+    warnings: [],
+    checks,
+    verdict: blockers.length === 0 ? "pass" : "fail",
+  };
+}
+
+export function evaluateCaptureTimeProvenance(artifact = {}, options = {}) {
+  const blockers = [];
+  const checks = {};
+  const doc = asObject(artifact);
+  const provenance = provenanceObject(doc);
+  const runClass = normalize(options.runClass);
+  const failClosedRequired = ["serious_search", "promotion_candidate"].includes(runClass);
+
+  checks.capture_time_provenance_present = Object.keys(provenance).length > 0;
+  if (!checks.capture_time_provenance_present) {
+    addBlocker(blockers, "capture_time_provenance_missing", "time-joined evidence must declare capture_time_provenance");
+  }
+
+  const source = firstNonEmptyValue(
+    provenance.timestamp_source,
+    provenance.capture_source,
+    provenance.source,
+    provenance.observed_at_source,
+  );
+  checks.capture_time_source_present = nonEmpty(source);
+  if (!checks.capture_time_source_present) {
+    addBlocker(blockers, "capture_time_source_missing", "capture_time_provenance must name the timestamp source");
+  }
+
+  const synthesizedHandling = provenanceHandling(
+    provenance,
+    "synthesized_timestamp_handling",
+    "synthetic_timestamp_handling",
+    "synthesized_handling",
+  );
+  checks.synthesized_timestamp_handling_present = nonEmpty(synthesizedHandling);
+  if (!checks.synthesized_timestamp_handling_present) {
+    addBlocker(blockers, "synthesized_timestamp_handling_missing", "capture_time_provenance must state synthesized timestamp handling");
+  }
+
+  const unverifiableHandling = provenanceHandling(
+    provenance,
+    "unverifiable_timestamp_handling",
+    "unverified_timestamp_handling",
+    "unknown_timestamp_handling",
+  );
+  checks.unverifiable_timestamp_handling_present = nonEmpty(unverifiableHandling);
+  if (!checks.unverifiable_timestamp_handling_present) {
+    addBlocker(blockers, "unverifiable_timestamp_handling_missing", "capture_time_provenance must state unverifiable timestamp handling");
+  }
+
+  if (failClosedRequired) {
+    checks.synthesized_timestamp_fail_closed = failClosed(synthesizedHandling);
+    checks.unverifiable_timestamp_fail_closed = failClosed(unverifiableHandling);
+    if (!checks.synthesized_timestamp_fail_closed || !checks.unverifiable_timestamp_fail_closed) {
+      addBlocker(blockers, "serious_run_timestamp_handling_not_fail_closed", "serious_search and promotion_candidate evidence must fail closed for synthesized or unverifiable timestamps");
+    }
+  }
+
+  return {
+    pass: blockers.length === 0,
+    blockers,
+    warnings: [],
+    checks,
+    run_class: runClass || null,
+    fail_closed_required: failClosedRequired,
+    verdict: blockers.length === 0 ? "pass" : "fail",
+  };
 }
 
 function evaluateSourceLeakageScan(scan, blockers, checks) {
@@ -157,12 +331,83 @@ function evaluateSourceLeakageScan(scan, blockers, checks) {
 
   const severe = findings.find((finding) => {
     const row = asObject(finding);
-    return ["high", "critical", "fail", "blocked"].includes(normalize(row.severity ?? row.status));
+    const severity = normalize(row.severity);
+    return ["high", "critical"].includes(severity) ||
+      normalizeVerificationStatus(row.status, "execution").kind === "fail";
   });
   checks.source_leakage_scan_severity_clear = !severe;
   if (severe && severe !== qu006) {
     addBlocker(blockers, "source_leakage_scan_blocking_finding", "source-leakage scan contains a blocking finding");
   }
+}
+
+function assertionStatusPasses(assertion) {
+  const authored = assertion.status ?? assertion.verdict ?? assertion.result;
+  if (nonEmpty(authored)) return verificationStatusIsPass(authored, "execution");
+  const explicitBoolean = [assertion.pass, assertion.passed, assertion.satisfied]
+    .find((value) => typeof value === "boolean");
+  if (explicitBoolean === undefined) return false;
+  return verificationStatusIsPass(explicitBoolean ? "pass" : "fail", "execution");
+}
+
+function assertionProvenancePresent(assertion) {
+  const provenance = asObject(
+    assertion.provenance ??
+    assertion.computed_from ??
+    assertion.source_provenance ??
+    assertion.receipt,
+  );
+  return Object.keys(provenance).length > 0 && nonEmpty(firstNonEmptyValue(
+    provenance.source_artifact,
+    provenance.artifact,
+    provenance.source,
+    provenance.producer,
+    provenance.algorithm,
+    assertion.source_artifact,
+    assertion.artifact,
+  ));
+}
+
+function assertionComputed(assertion) {
+  return boolTrue(assertion.computed, assertion.measured, assertion.machine_generated, assertion.programmatic) ||
+    nonEmpty(assertion.formula ?? assertion.metric ?? assertion.check) ||
+    assertionProvenancePresent(assertion);
+}
+
+function normalizeComputedAssertions(value) {
+  if (Array.isArray(value)) return value.map(asObject);
+  const obj = asObject(value);
+  return Object.entries(obj).map(([id, assertion]) => ({ id, ...asObject(assertion) }));
+}
+
+function evaluateComputedAssertions(value, blockers, checks) {
+  const assertions = normalizeComputedAssertions(value);
+  checks.computed_assertions_present = assertions.length > 0;
+  if (!checks.computed_assertions_present) {
+    addBlocker(blockers, "computed_assertions_missing", "leakage proof must include computed assertions with provenance");
+    return;
+  }
+
+  assertions.forEach((assertion, index) => {
+    const id = normalize(assertion.id ?? assertion.name ?? assertion.check ?? `assertion_${index + 1}`) || `assertion_${index + 1}`;
+    const computed = assertionComputed(assertion);
+    const provenance = assertionProvenancePresent(assertion);
+    const passed = assertionStatusPasses(assertion);
+
+    checks[`computed_assertion_${id}_computed`] = computed;
+    checks[`computed_assertion_${id}_provenance`] = provenance;
+    checks[`computed_assertion_${id}_passed`] = passed;
+
+    if (!computed) {
+      addBlocker(blockers, "computed_assertion_not_computed", `computed assertion ${id} must be machine-derived or measured`);
+    }
+    if (!provenance) {
+      addBlocker(blockers, "computed_assertion_without_provenance", `computed assertion ${id} must cite source provenance`);
+    }
+    if (!passed) {
+      addBlocker(blockers, "computed_assertion_failed", `computed assertion ${id} did not pass`);
+    }
+  });
 }
 
 function semanticGateFor(checks, blockers) {
@@ -203,6 +448,13 @@ export function evaluateLeakageProofArtifact(artifact = {}) {
   }
 
   evaluateSourceLeakageScan(doc.source_leakage_scan ?? doc.source_scan ?? doc.qu006_scan, blockers, checks);
+  evaluateComputedAssertions(
+    doc.computed_assertions ??
+    doc.assertions ??
+    asObject(doc.leakage_audit).computed_assertions,
+    blockers,
+    checks,
+  );
 
   return {
     pass: blockers.length === 0,

@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "goal": "Validate that every requested claim has an explicit proof obligation.",
+  "inputs": [
+    {
+      "id": "fixture",
+      "ref": "plans/programs/ive-autocoder-v2/program_packet.json"
+    }
+  ],
+  "constraints": [
+    "Return only deterministic validation results."
+  ],
+  "claims_to_produce": [
+    {
+      "id": "validated_contract",
+      "statement": "The contract was validated."
+    }
+  ],
+  "proof_obligations": [],
+  "stop_conditions": [
+    "Stop after validator output is produced."
+  ],
+  "budget": {
+    "max_tokens": 4000,
+    "max_cost_usd": 0,
+    "max_time_minutes": 5
+  }
+}

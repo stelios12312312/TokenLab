@@ -30,6 +30,7 @@ import {
   resolveProgramPacketPath,
 } from "./lib/program_packet.mjs";
 import { stampJsonRunRecordFile } from "./lib/run_record.mjs";
+import { verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -218,6 +219,7 @@ function main(argv = process.argv.slice(2), cwd = process.cwd()) {
   }
 
   const target = loadTarget(cwd, args.program);
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Optional Program-packet resolver protocol, not an executed verification-row status; SKIP executes no row and asserts no proof.
   if (target.resolved.status === "SKIP") {
     const result = {
       command: args.command,
@@ -296,7 +298,7 @@ function main(argv = process.argv.slice(2), cwd = process.cwd()) {
     result.executions.push(executeRow(row, cwd));
   }
   result.executed_count = result.executions.length;
-  const anyFail = result.executions.some((execution) => execution.result !== "PASS");
+  const anyFail = result.executions.some((execution) => !verificationStatusIsPass(execution.result, "execution"));
   result.status = anyFail ? "FAIL" : "PASS";
 
   if (args.write) {
@@ -314,7 +316,7 @@ function main(argv = process.argv.slice(2), cwd = process.cwd()) {
   }
 
   console.log(args.json ? JSON.stringify(result, null, 2) : renderText(result));
-  return result.status === "PASS" ? 0 : 1;
+  return verificationStatusIsPass(result.status, "execution") ? 0 : 1;
 }
 
 if (process.argv[1] === __filename) {

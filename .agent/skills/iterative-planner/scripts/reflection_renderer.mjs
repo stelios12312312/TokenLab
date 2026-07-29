@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
 import { basename, join, resolve } from "path";
 import { isDirectInvocation } from "./lib/script_entrypoint.mjs";
+import { verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
 import {
   compileStructuredEvidence,
   loadIveReflectionDiffInputs,
@@ -53,7 +54,7 @@ function renderForPlan({ plan = null, cwd = process.cwd(), write = false } = {})
   const compiled = compileStructuredEvidence(structuredTelemetry);
   const markdown = renderReflectionMarkdown(compiled.report, structuredTelemetry);
   const result = {
-    ok: compiled.report.status !== "FAIL",
+    ok: verificationStatusIsPass(compiled.report.status, "execution"),
     status: compiled.report.status,
     plan_dir: planDir,
     plan_id: basename(planDir),

@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "id": "wo_claim_briefing",
+  "goal": "Compile a validated work-order into deterministic closed-question briefings for cheap execution agents.",
+  "inputs": [
+    {
+      "id": "work_order_fixture",
+      "kind": "work_order",
+      "ref": ".agent/skills/iterative-planner/tests/fixtures/work_orders/golden.claim-briefing.json",
+      "description": "Fixture used to prove the E6-2 claim briefing compiler."
+    },
+    {
+      "id": "pack_contracts",
+      "kind": "pack_contract",
+      "ref": ".agent/skills/iterative-planner/packs",
+      "description": "Selected pack rubrics compiled into closed questions."
+    }
+  ],
+  "constraints": [
+    "Use only validated work-order and pack-contract inputs.",
+    "Emit closed questions with declared allowed answers and answer contracts.",
+    "Keep output deterministic and timestamp-free."
+  ],
+  "claims_to_produce": [
+    {
+      "id": "briefing_compiles",
+      "statement": "The claim briefing compiler emits deterministic JSON from a valid work-order and selected pack rubrics.",
+      "consumer": "cheap-agent dispatcher"
+    },
+    {
+      "id": "closed_questions_enforced",
+      "statement": "The briefing validator rejects open-ended judgment questions before a cheap agent receives them.",
+      "consumer": "rubric administrator"
+    }
+  ],
+  "proof_obligations": [
+    {
+      "claim_id": "briefing_compiles",
+      "method": "executed",
+      "command": [
+        "node",
+        ".agent/skills/iterative-planner/tests/test_claim_briefing_compiler.mjs"
+      ]
+    },
+    {
+      "claim_id": "closed_questions_enforced",
+      "method": "deterministic",
+      "check": "validateClaimBriefing(briefing).ok"
+    },
+    {
+      "claim_id": "closed_questions_enforced",
+      "method": "rubric",
+      "rubric_ref": "quant.temporal_leakage"
+    }
+  ],
+  "stop_conditions": [
+    "Stop if any generated question lacks closed_question=true.",
+    "Stop if an open-ended question passes output validation.",
+    "Stop if a selected pack contract is missing or invalid."
+  ],
+  "budget": {
+    "max_tokens": 9000,
+    "max_cost_usd": 0,
+    "max_time_minutes": 15
+  }
+}

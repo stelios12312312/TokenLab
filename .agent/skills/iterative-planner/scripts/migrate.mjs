@@ -3,8 +3,8 @@
 //
 // Usage:
 //   node migrate.mjs detect <target-project-path>    Detect current planner version + integrity
-//   node migrate.mjs upgrade <target-project-path>    Apply upgrades
-//   node migrate.mjs upgrade <target-project-path> --seed-kb   Also seed knowledge base
+//   node migrate.mjs upgrade <target-project-path> --commit    Prove and commit upgrades
+//   node migrate.mjs upgrade <target-project-path> --commit --seed-kb   Also seed knowledge base
 //   node migrate.mjs verify <target-project-path>     Post-upgrade integrity check
 //   node migrate.mjs --dry-run upgrade <target-path>  Preview changes without writing
 //
@@ -18,7 +18,7 @@
 // Zero dependencies — Node 18+.
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync, copyFileSync, readdirSync, renameSync, statSync, chmodSync, unlinkSync, realpathSync } from "fs";
-import { join, dirname, basename, resolve, relative, extname } from "path";
+import { join, dirname, basename, resolve, relative, extname, sep } from "path";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
 import { createHash } from "crypto";
@@ -28,6 +28,7 @@ import {
   readMistakeRegistryEntries,
   validateMistakeOverlayDocument,
 } from "./lib/mistake_registry.mjs";
+import { createMigrationSourcePin } from "./lib/migration_source_pin.mjs";
 import {
   readLearnedObligationRegistryEntries,
   validateLearnedObligationOverlayDocument,
@@ -35,20 +36,23 @@ import {
 import { loadRetroRegistry } from "./lib/retro_registry.mjs";
 import { summarizeWorkflowIntelligence } from "./lib/workflow_intelligence.mjs";
 import {
+  HOST_OWNED_WORKFLOW_MARKER,
+  validateWorkflowContractSurface,
+  workflowFileHasExplicitHostOwnerMarker,
+} from "./lib/workflow_contracts.mjs";
+import {
+  canonicalVerificationStatus,
+  verificationStatusIsPass,
+} from "./lib/verification_status_vocabulary.mjs";
+import {
   inferPersonaAdaptation,
   isProblematicPersonaStatus,
   registryPathFromEnv,
 } from "./lib/persona_adaptation.mjs";
+import { writePlanWorkOrderProjection } from "./lib/work_order_contract.mjs";
 import { attachSemanticHealth } from "./lib/semantic_maintenance.mjs";
-import {
-  buildEnvelope as buildPlanEnvelope,
-  getEnvelopePath as getPlanEnvelopePath,
-  validateEnvelopeAgainstDisk as validatePlanEnvelopeAgainstDisk,
-  assertProjectionEquivalence as assertPlanProjectionEquivalence,
-  assertNoDuplicateKeys as assertPlanNoDuplicateKeys,
-  REASON_CODES as PLAN_CONTRACT_REASON_CODES,
-} from "./lib/plan_contract.mjs";
 import { readStateJson as readPlanStateJson, writeStateJson as writePlanStateJson } from "./lib/determinism.mjs";
+import { ensurePlannerPolicy, loadPlannerPolicy } from "./lib/planner_policy.mjs";
 import {
   ROOT_INSTRUCTION_SOURCE_OF_TRUTH,
   ROOT_INSTRUCTION_TARGETS,
@@ -61,18 +65,41 @@ import {
   rootInstructionParityStatus,
 } from "./lib/root_instruction_renderer.mjs";
 import {
+  buildIveMigrationPlan,
   DEFAULT_IVE_PHASE,
   DEFAULT_VALIDATE_PLAN_COUNT,
+  findIveBackupRetentionWarnings,
   runIveRecover,
   runIveRollback,
   runIveUpgrade,
   runIveValidateMigration,
 } from "./lib/ive_migration_bootstrap.mjs";
+import { JOURNAL_REL_PATH, loadJournal } from "./lib/agent_journal.mjs";
+import {
+  MANAGED_UPGRADE_RECEIPT_RELATIVE_PATH as MANAGED_UPGRADE_RECEIPT_REL_PATH,
+  managedUpgradeConsentCommand,
+  managedUpgradeDiagnostics,
+  managedUpgradeRecoveryCommand,
+  readCommittedPlannerVersion,
+  recoverManagedUpgrade,
+  runManagedUpgradeTransaction,
+} from "./lib/managed_upgrade_transaction.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
 const skillDir = resolve(scriptDir, "..");
 const agentDir = resolve(skillDir, "../..");
+const {
+  assessManagedSyncSafety,
+  canonicalSourceProjectPath,
+  gitPath,
+  managedDisplayPath,
+  printManagedSyncRefusal,
+  runFromPinnedSourceSnapshot,
+  selectedSourceCommit,
+  selectedSourceRef,
+  sourcePathHasHistory,
+} = createMigrationSourcePin({ agentDir, fileHash, normalizeComparablePath });
 
 // Read version from single source of truth
 const versionJsonPath = join(skillDir, "config", "version.json");
@@ -115,6 +142,10 @@ const DEFAULT_MIGRATION_WAVE_EXCLUSIONS = Object.freeze([
   "IPBS",
   "Tennis",
 ]);
+const SETUP_PROFILES = new Set(["full", "kernel"]);
+const KERNEL_INSTRUCTIONS_REL_PATH = "AGENTS.md";
+const KERNEL_INSTRUCTION_MARKER = "## Iterative Planner Kernel";
+const KERNEL_SEED_ID = "J-KERNEL-SEED";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -284,15 +315,12 @@ function buildExpectedManifest(targetPath) {
   const sourceConfigDir = join(skillDir, "config");
   if (existsSync(sourceConfigDir)) {
     for (const f of listManagedDirNames(sourceConfigDir, (name) =>
-      name.endsWith(".json") || name.endsWith(".schema.json") || name === ".checklist_integrity"
+      (name.endsWith(".json") && name !== basename(MANAGED_UPGRADE_RECEIPT_REL_PATH))
+        || name.endsWith(".schema.json")
+        || name === ".checklist_integrity"
+        || name.endsWith(".yaml")
     )) {
-      const entry = { path: join(base, "config", f), category: "config", critical: true };
-      // persona_manifest.json is environment-specific: rebaselined_at timestamp and
-      // recommended_seed_roles depend on the target project's domain inference, not
-      // the source planner. Doctor/verify must not compare its byte content to the
-      // source — content drift here is expected after a successful upgrade.
-      if (f === "persona_manifest.json") entry.allow_content_drift = true;
-      entries.push(entry);
+      entries.push({ path: join(base, "config", f), category: "config", critical: true });
     }
   }
 
@@ -327,10 +355,17 @@ function buildExpectedManifest(targetPath) {
     }
   }
 
-  // Tests (golden tests + fixtures)
+  // Tests (golden tests + fixtures). Keep every supported proof asset format
+  // atomic with the test modules that consume it.
   const sourceTestsDir = join(skillDir, "tests");
   if (existsSync(sourceTestsDir)) {
-    for (const f of walkDir(sourceTestsDir, (name) => name.endsWith(".mjs") || name.endsWith(".json") || name.endsWith(".md"))) {
+    for (const f of walkDir(sourceTestsDir, (name) =>
+      name.endsWith(".mjs")
+        || name.endsWith(".json")
+        || name.endsWith(".jsonl")
+        || name.endsWith(".md")
+        || name.endsWith(".html")
+    )) {
       const relPath = relative(sourceTestsDir, f);
       entries.push({ path: join(base, "tests", relPath), category: "tests", critical: false });
     }
@@ -506,6 +541,321 @@ function normalizeComparablePath(path) {
     return realpathSync(path);
   } catch {
     return resolve(path);
+  }
+}
+
+function sha256Bytes(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function gitCommand(targetPath, args, options = {}) {
+  return execFileSync("git", ["-C", targetPath, ...args], {
+    encoding: options.encoding === null ? null : "utf-8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+}
+
+function gitCommandSucceeds(targetPath, args) {
+  try {
+    gitCommand(targetPath, args);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function pathIsInside(rootPath, candidatePath) {
+  const normalizedRoot = resolve(rootPath);
+  const normalizedCandidate = resolve(candidatePath);
+  return normalizedCandidate === normalizedRoot || normalizedCandidate.startsWith(`${normalizedRoot}${sep}`);
+}
+
+function parseChecklistDecisionRef(decisionRef) {
+  const match = String(decisionRef || "").match(/^([^#]+)#(D-[A-Za-z0-9_-]+)$/);
+  if (!match) {
+    throw new Error("--decision-ref must be a plans/plan_*/decisions.md#D-* reference");
+  }
+  const decisionPath = gitPath(match[1]);
+  if (!/^plans\/plan_[^/]+\/decisions\.md$/.test(decisionPath)) {
+    throw new Error("--decision-ref must resolve to plans/plan_*/decisions.md inside the target repository");
+  }
+  return { decisionPath, decisionId: match[2] };
+}
+
+function checklistIntegrityTimestamp() {
+  const raw = process.env.CHECKLIST_INTEGRITY_TIMESTAMP || new Date().toISOString();
+  const timestamp = new Date(raw);
+  if (!Number.isFinite(timestamp.getTime())) {
+    throw new Error("CHECKLIST_INTEGRITY_TIMESTAMP must be a valid ISO-8601 timestamp when provided");
+  }
+  return timestamp.toISOString();
+}
+
+function loadChecklistIntegrityProjection(targetPath, checklistName, decisionRef) {
+  if (!/^[a-z0-9_-]+$/.test(String(checklistName || ""))) {
+    throw new Error("--checklist must contain only lower-case letters, digits, underscores, or hyphens");
+  }
+
+  const targetRoot = realpathSync(targetPath);
+  const gitRoot = realpathSync(String(gitCommand(targetRoot, ["rev-parse", "--show-toplevel"])).trim());
+  if (gitRoot !== targetRoot) {
+    throw new Error(`target must be the Git worktree root (resolved ${gitRoot})`);
+  }
+
+  const checklistBase = ".agent/skills/iterative-planner/checklists";
+  const yamlRel = `${checklistBase}/${checklistName}.yaml`;
+  const ymlRel = `${checklistBase}/${checklistName}.yml`;
+  const checklistRel = existsSync(join(targetRoot, yamlRel)) ? yamlRel : ymlRel;
+  const checklistPath = join(targetRoot, checklistRel);
+  if (!existsSync(checklistPath)) throw new Error(`checklist not found: ${yamlRel} or ${ymlRel}`);
+  const checklistRealPath = realpathSync(checklistPath);
+  if (!pathIsInside(targetRoot, checklistRealPath)) throw new Error("checklist resolves outside the target repository");
+  if (!gitCommandSucceeds(targetRoot, ["ls-files", "--error-unmatch", "--", checklistRel])) {
+    throw new Error(`checklist must be tracked at HEAD: ${checklistRel}`);
+  }
+  const worktreeClean = gitCommandSucceeds(targetRoot, ["diff", "--quiet", "--", checklistRel]);
+  const indexClean = gitCommandSucceeds(targetRoot, ["diff", "--cached", "--quiet", "--", checklistRel]);
+  if (!worktreeClean || !indexClean) {
+    throw new Error(`checklist must be clean in both worktree and index: ${checklistRel}`);
+  }
+
+  const headBytes = gitCommand(targetRoot, ["show", `HEAD:${checklistRel}`], { encoding: null });
+  const worktreeBytes = readFileSync(checklistRealPath);
+  if (!Buffer.from(headBytes).equals(worktreeBytes)) {
+    throw new Error(`checklist worktree bytes do not equal HEAD: ${checklistRel}`);
+  }
+
+  const registryRel = ".agent/skills/iterative-planner/config/.checklist_integrity";
+  const registryPath = join(targetRoot, registryRel);
+  if (!existsSync(registryPath)) throw new Error(`checklist integrity registry not found: ${registryRel}`);
+  const registryRealPath = realpathSync(registryPath);
+  if (!pathIsInside(targetRoot, registryRealPath)) throw new Error("checklist integrity registry resolves outside the target repository");
+  if (!gitCommandSucceeds(targetRoot, ["ls-files", "--error-unmatch", "--", registryRel])) {
+    throw new Error(`checklist integrity registry must be tracked: ${registryRel}`);
+  }
+  if (!gitCommandSucceeds(targetRoot, ["diff", "--quiet", "--", registryRel]) ||
+      !gitCommandSucceeds(targetRoot, ["diff", "--cached", "--quiet", "--", registryRel])) {
+    throw new Error(`checklist integrity registry must be clean before regeneration: ${registryRel}`);
+  }
+  const registryText = readFileSync(registryRealPath, "utf-8");
+  let registry;
+  try {
+    registry = JSON.parse(registryText);
+  } catch (error) {
+    throw new Error(`checklist integrity registry is invalid JSON: ${error.message}`);
+  }
+  if (!registry || typeof registry !== "object" || Array.isArray(registry)) {
+    throw new Error("checklist integrity registry must be a JSON object");
+  }
+  if (!Object.prototype.hasOwnProperty.call(registry, checklistName) ||
+      typeof registry[checklistName] !== "string" || !registry[checklistName]) {
+    throw new Error(`refusing lazy baseline: registry has no existing entry for ${checklistName}`);
+  }
+
+  const parsedDecision = parseChecklistDecisionRef(decisionRef);
+  const decisionPath = join(targetRoot, parsedDecision.decisionPath);
+  if (!existsSync(decisionPath)) throw new Error(`decision file not found: ${parsedDecision.decisionPath}`);
+  const decisionRealPath = realpathSync(decisionPath);
+  if (!pathIsInside(targetRoot, decisionRealPath)) throw new Error("decision file resolves outside the target repository");
+  const decisionText = readFileSync(decisionRealPath, "utf-8");
+  const escapedDecisionId = parsedDecision.decisionId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const decisionHeading = new RegExp(`^## ${escapedDecisionId}(?::|\\s*$)`, "m");
+  if (!decisionHeading.test(decisionText)) {
+    throw new Error(`decision heading not found: ## ${parsedDecision.decisionId}`);
+  }
+
+  const checklistSha256 = sha256Bytes(headBytes);
+  const registryHash = checklistSha256.slice(0, 32);
+  if (registry[checklistName] === registryHash) {
+    throw new Error(`registry entry already matches clean HEAD for ${checklistName}; regeneration is unnecessary`);
+  }
+  const projectedRegistry = { ...registry, [checklistName]: registryHash };
+  const projectedRegistryText = `${JSON.stringify(projectedRegistry, null, 2)}\n`;
+  const headSha = String(gitCommand(targetRoot, ["rev-parse", "HEAD"])).trim();
+
+  return {
+    targetRoot,
+    headSha,
+    checklistName,
+    checklistRel,
+    checklistPath: checklistRealPath,
+    checklistSha256,
+    registryHash,
+    registryRel,
+    registryPath: registryRealPath,
+    registry,
+    registryText,
+    registrySha256: sha256Bytes(registryText),
+    projectedRegistry,
+    projectedRegistryText,
+    projectedRegistrySha256: sha256Bytes(projectedRegistryText),
+    previousValue: registry[checklistName],
+    decisionRef,
+    decisionPath: parsedDecision.decisionPath,
+    decisionId: parsedDecision.decisionId,
+    decisionSha256: sha256Bytes(decisionText),
+    cleanliness: {
+      tracked: true,
+      worktree_clean: worktreeClean,
+      index_clean: indexClean,
+      worktree_matches_head: true,
+    },
+  };
+}
+
+function checklistIntegrityReceipt(snapshot, timestamp, receiptRel) {
+  return {
+    schema_version: "checklist_integrity_regeneration_receipt.v1",
+    status: "PASS",
+    operation: "regenerate-checklist-integrity",
+    mode: "write",
+    recorded_at: timestamp,
+    source: {
+      target_root: snapshot.targetRoot,
+      head_sha: snapshot.headSha,
+    },
+    authorization: {
+      decision_ref: snapshot.decisionRef,
+      decision_path: snapshot.decisionPath,
+      decision_id: snapshot.decisionId,
+      decision_sha256: snapshot.decisionSha256,
+    },
+    checklist: {
+      name: snapshot.checklistName,
+      path: snapshot.checklistRel,
+      sha256: snapshot.checklistSha256,
+      registry_hash: snapshot.registryHash,
+    },
+    registry: {
+      path: snapshot.registryRel,
+      previous_value: snapshot.previousValue,
+      new_value: snapshot.registryHash,
+      sha256_before: snapshot.registrySha256,
+      sha256_after: snapshot.projectedRegistrySha256,
+      sibling_entries_unchanged: true,
+    },
+    cleanliness: snapshot.cleanliness,
+    receipt_path: receiptRel,
+  };
+}
+
+function emitChecklistIntegrityResult(result, jsonOutput) {
+  if (jsonOutput) {
+    console.log(JSON.stringify(result, null, 2));
+  } else if (result.ok) {
+    console.log(`Checklist integrity regeneration ${result.mode}: PASS`);
+    console.log(`  Checklist: ${result.checklist.path}`);
+    console.log(`  HEAD:      ${result.source.head_sha}`);
+    console.log(`  Decision:  ${result.authorization.decision_ref}`);
+    console.log(`  Registry:  ${result.registry.previous_value} -> ${result.registry.new_value}`);
+    if (result.receipt_path) console.log(`  Receipt:   ${result.receipt_path}`);
+  } else {
+    console.error(`Checklist integrity regeneration: FAIL\n  ${result.reason}`);
+  }
+}
+
+function cmdRegenerateChecklistIntegrity(targetPath, { checklistName, decisionRef, dryRun, write, jsonOutput }) {
+  try {
+    if (dryRun && write) throw new Error("--dry-run and --write are mutually exclusive");
+    if (!checklistName) throw new Error("--checklist is required");
+    if (!decisionRef) throw new Error("--decision-ref is required");
+    const mode = write ? "write" : "dry-run";
+    const initial = loadChecklistIntegrityProjection(targetPath, checklistName, decisionRef);
+    const baseResult = {
+      ok: true,
+      status: "PASS",
+      operation: "regenerate-checklist-integrity",
+      mode,
+      source: { target_root: initial.targetRoot, head_sha: initial.headSha },
+      authorization: {
+        decision_ref: initial.decisionRef,
+        decision_path: initial.decisionPath,
+        decision_id: initial.decisionId,
+        decision_sha256: initial.decisionSha256,
+      },
+      checklist: {
+        name: initial.checklistName,
+        path: initial.checklistRel,
+        sha256: initial.checklistSha256,
+        registry_hash: initial.registryHash,
+      },
+      registry: {
+        path: initial.registryRel,
+        previous_value: initial.previousValue,
+        new_value: initial.registryHash,
+        sha256_before: initial.registrySha256,
+        sha256_after: initial.projectedRegistrySha256,
+        sibling_entries_unchanged: true,
+      },
+      cleanliness: initial.cleanliness,
+      receipt_path: null,
+    };
+
+    if (!write) {
+      emitChecklistIntegrityResult(baseResult, jsonOutput);
+      return;
+    }
+
+    const fresh = loadChecklistIntegrityProjection(targetPath, checklistName, decisionRef);
+    const unchanged = [
+      ["HEAD", initial.headSha, fresh.headSha],
+      ["checklist hash", initial.checklistSha256, fresh.checklistSha256],
+      ["decision digest", initial.decisionSha256, fresh.decisionSha256],
+      ["registry digest", initial.registrySha256, fresh.registrySha256],
+    ];
+    const changed = unchanged.find(([, before, after]) => before !== after);
+    if (changed) throw new Error(`${changed[0]} changed between preflight and write; refusing regeneration`);
+
+    const timestamp = checklistIntegrityTimestamp();
+    const stamp = timestamp.replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+    const receiptRel = `reports/ive/checklist_integrity_regenerations/checklist_integrity_regeneration_${stamp}_${checklistName}_${fresh.headSha.slice(0, 12)}.json`;
+    const receiptPath = join(fresh.targetRoot, receiptRel);
+    if (existsSync(receiptPath)) throw new Error(`receipt already exists: ${receiptRel}`);
+    ensureDir(dirname(receiptPath));
+    const receipt = checklistIntegrityReceipt(fresh, timestamp, receiptRel);
+    const nonce = `${process.pid}.${Date.now()}`;
+    const registryTmp = `${fresh.registryPath}.${nonce}.new.tmp`;
+    const rollbackTmp = `${fresh.registryPath}.${nonce}.rollback.tmp`;
+    const receiptTmp = `${receiptPath}.${nonce}.tmp`;
+    let registryReplaced = false;
+    try {
+      writeFileSync(registryTmp, fresh.projectedRegistryText);
+      writeFileSync(rollbackTmp, fresh.registryText);
+      writeFileSync(receiptTmp, `${JSON.stringify(receipt, null, 2)}\n`);
+      renameSync(registryTmp, fresh.registryPath);
+      registryReplaced = true;
+      try {
+        renameSync(receiptTmp, receiptPath);
+      } catch (error) {
+        renameSync(rollbackTmp, fresh.registryPath);
+        registryReplaced = false;
+        throw new Error(`receipt finalization failed; registry restored: ${error.message}`);
+      }
+      try { if (existsSync(rollbackTmp)) unlinkSync(rollbackTmp); } catch { /* best-effort cleanup */ }
+    } catch (error) {
+      if (registryReplaced && existsSync(rollbackTmp)) {
+        try { renameSync(rollbackTmp, fresh.registryPath); } catch (rollbackError) {
+          throw new Error(`regeneration failed and registry rollback failed: ${error.message}; ${rollbackError.message}`);
+        }
+      }
+      for (const tempPath of [registryTmp, rollbackTmp, receiptTmp]) {
+        try { if (existsSync(tempPath)) unlinkSync(tempPath); } catch { /* best-effort cleanup */ }
+      }
+      throw error;
+    }
+
+    emitChecklistIntegrityResult({ ...baseResult, mode: "write", receipt_path: receiptRel }, jsonOutput);
+  } catch (error) {
+    const failure = {
+      ok: false,
+      status: "FAIL",
+      operation: "regenerate-checklist-integrity",
+      mode: write ? "write" : "dry-run",
+      reason: error.message,
+      durable_state: "inspect reported reason; failed writes are rolled back when possible and never emit a PASS result",
+    };
+    emitChecklistIntegrityResult(failure, jsonOutput);
+    process.exit(1);
   }
 }
 
@@ -1577,7 +1927,7 @@ function validateRootInstructionSurface(targetPath) {
         "error",
         templatePath || path,
         "The shipped CLAUDE instruction template is missing the canonical workflow/gate snapshot sections required for migration.",
-        `Run \`node .agent/skills/iterative-planner/tests/test_planner_doc_contracts.mjs\` in the planner source repo, repair the template, and rerun \`node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade "${targetPath}"\`.`
+        `Run \`node .agent/skills/iterative-planner/tests/ive/run.mjs --only migration-bootstrap --json --no-manifest\` in the planner source repo, repair the template, and rerun \`node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade "${targetPath}" --commit\`.`
       )
     );
     return result;
@@ -2173,7 +2523,7 @@ function findStaleFiles(manifest, targetPath) {
     const relToTarget = relative(join(targetPath, ".agent"), e.path);
     const sourcePath = join(agentDir, relToTarget);
     if (existsSync(sourcePath)) {
-      const srcH = normalizedComparisonHash(sourcePath, { sourceProjectPath: resolve(join(agentDir, "..")) });
+      const srcH = normalizedComparisonHash(sourcePath, { sourceProjectPath: canonicalSourceProjectPath() });
       const destH = normalizedComparisonHash(e.path);
       if (srcH && destH && srcH !== destH) stale.push(e);
     }
@@ -2360,6 +2710,29 @@ function collectRepairableSetupIssues(targetPath) {
     }
   }
 
+  const policyInfo = loadPlannerPolicy(targetPath);
+  if (!policyInfo.present) {
+    issues.push({
+      code: "missing_planner_policy",
+      path: "planner.policy.yaml",
+      repair_via: "setup",
+    });
+  } else if (!policyInfo.valid) {
+    issues.push({
+      code: "invalid_planner_policy",
+      path: policyInfo.path ? relative(targetPath, policyInfo.path) : "planner.policy.yaml",
+      repair_via: "manual_then_setup",
+      issues: policyInfo.issues,
+    });
+  } else if (policyInfo.missing_defaults.length > 0) {
+    issues.push({
+      code: "incomplete_planner_policy",
+      path: policyInfo.path ? relative(targetPath, policyInfo.path) : "planner.policy.yaml",
+      repair_via: "setup",
+      missing_defaults: policyInfo.missing_defaults,
+    });
+  }
+
   return issues;
 }
 
@@ -2380,22 +2753,65 @@ function formatDoctorAdvisoryEntry(targetPath, entry) {
   };
 }
 
+function validateRitualContractReadiness(targetPath) {
+  try {
+    const report = validateWorkflowContractSurface(targetPath);
+    return {
+      status: report.ok ? "PASS" : "FAIL",
+      issue_count: Array.isArray(report.issues) ? report.issues.length : 0,
+      issues: Array.isArray(report.issues) ? report.issues : [],
+      registry_public_count: Array.isArray(report.registry?.workflows) ? report.registry.workflows.length : 0,
+      workflow_file_count: Array.isArray(report.workflow_files) ? report.workflow_files.length : 0,
+    };
+  } catch (e) {
+    return {
+      status: "FAIL",
+      issue_count: 1,
+      issues: [{
+        id: "ritual_contract_readiness_error",
+        severity: "error",
+        message: e.message,
+      }],
+      registry_public_count: 0,
+      workflow_file_count: 0,
+    };
+  }
+}
+
 function buildDoctorReport(targetPath) {
   const targetSkillMd = join(targetPath, ".agent/skills/iterative-planner/SKILL.md");
   const detection = detectVersion(targetSkillMd);
+  const upgradeState = managedUpgradeDiagnostics(targetPath, CURRENT_VERSION);
+  const committedVersion = upgradeState.committed_version || detection.version;
+  const treeVersion = upgradeState.tree_version || detection.version;
+  const versionStratigraphy = {
+    committed: committedVersion,
+    tree: treeVersion,
+    source: CURRENT_VERSION,
+    source_commit: selectedSourceCommit(),
+    classification: upgradeState.classification,
+  };
+  const installState = upgradeState.classification === "half_applied_upgrade"
+    ? "half_applied_payload"
+    : upgradeState.classification;
   const manifest = buildExpectedManifest(targetPath);
   const missing = manifest.filter((entry) => !existsSync(entry.path));
   const stale = findVerificationDrift(manifest, targetPath);
   const setupIssues = collectRepairableSetupIssues(targetPath);
   const advisoryIssues = findRootInstructionSyncIssues(targetPath);
-  const versionMismatch = detection.version !== CURRENT_VERSION;
+  const ritualContractReadiness = validateRitualContractReadiness(targetPath);
+  const versionMismatch = committedVersion !== CURRENT_VERSION;
   const criticalMissing = missing.filter((entry) => entry.critical);
 
   const repairReasons = [];
-  if (versionMismatch) repairReasons.push(`version ${detection.version} -> ${CURRENT_VERSION}`);
+  if (versionMismatch) repairReasons.push(`committed version ${committedVersion} -> ${CURRENT_VERSION}`);
+  if (installState !== "coherent_committed") {
+    repairReasons.push(`install state ${installState}`);
+  }
   if (missing.length > 0) repairReasons.push(`${missing.length} missing file(s)`);
   if (stale.length > 0) repairReasons.push(`${stale.length} stale file(s)`);
   if (setupIssues.length > 0) repairReasons.push(`${setupIssues.length} repairable setup issue(s)`);
+  if (!verificationStatusIsPass(ritualContractReadiness.status, "execution")) repairReasons.push(`ritual contract readiness ${ritualContractReadiness.status}`);
 
   const advisoryReasons = [];
   if (advisoryIssues.length > 0) advisoryReasons.push(`${advisoryIssues.length} advisory sync issue(s)`);
@@ -2407,13 +2823,35 @@ function buildDoctorReport(targetPath) {
       : "planner install is current";
 
   return {
-    source_project_path: resolve(join(agentDir, "..")),
+    source_project_path: canonicalSourceProjectPath(),
+    source_ref: selectedSourceRef(),
+    source_commit: selectedSourceCommit(),
     target_path: targetPath,
     detected_version: detection.version,
     current_version: CURRENT_VERSION,
+    committed_version: committedVersion,
+    tree_version: treeVersion,
+    source_version: CURRENT_VERSION,
+    install_state: installState,
+    upgrade_state: installState,
+    version_stratigraphy: versionStratigraphy,
+    active_upgrade_transaction: upgradeState.active_transaction,
+    last_upgrade_receipt: upgradeState.last_receipt,
     detection,
-    needs_repair: versionMismatch || missing.length > 0 || stale.length > 0 || setupIssues.length > 0,
-    repair_command: `node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade ${JSON.stringify(targetPath)}`,
+    needs_repair: versionMismatch || installState !== "coherent_committed" || missing.length > 0 || stale.length > 0 || setupIssues.length > 0 || !verificationStatusIsPass(ritualContractReadiness.status, "execution"),
+    repair_command: managedUpgradeConsentCommand(
+      targetPath,
+      selectedSourceCommit() || selectedSourceRef(),
+      false,
+      __filename,
+    ),
+    recovery_command: upgradeState.active_transaction
+      ? managedUpgradeRecoveryCommand(
+          targetPath,
+          selectedSourceCommit() || selectedSourceRef(),
+          __filename,
+        )
+      : null,
     summary: {
       description,
       version_mismatch: versionMismatch,
@@ -2422,11 +2860,14 @@ function buildDoctorReport(targetPath) {
       stale_count: stale.length,
       setup_issue_count: setupIssues.length,
       advisory_count: advisoryIssues.length,
+      ritual_contract_readiness: ritualContractReadiness.status,
+      ritual_contract_issue_count: ritualContractReadiness.issue_count,
     },
     missing_files: missing.map((entry) => formatDoctorManifestEntry(targetPath, entry)),
     stale_files: stale.map((entry) => formatDoctorManifestEntry(targetPath, entry)),
     setup_issues: setupIssues,
     advisory_issues: advisoryIssues.map((entry) => formatDoctorAdvisoryEntry(targetPath, entry)),
+    ritual_contract_readiness: ritualContractReadiness,
   };
 }
 
@@ -2446,20 +2887,22 @@ function copyIfMissing(src, dest, dryRun, log) {
     return false;
   }
   if (existsSync(dest)) {
-    const srcHash = normalizedComparisonHash(src, { sourceProjectPath: resolve(join(agentDir, "..")) });
+    const srcHash = normalizedComparisonHash(src, { sourceProjectPath: canonicalSourceProjectPath() });
     const destHash = normalizedComparisonHash(dest);
     if (srcHash && destHash && srcHash === destHash) {
       log.push(`  OK (up to date): ${basename(dest)}`);
       return false;
     }
     // File exists but is stale — update it
+    const beforeHash = fileHash(dest);
+    const afterHash = fileHash(src);
     if (dryRun) {
-      log.push(`  WOULD UPDATE: ${basename(dest)} (content differs from source)`);
+      log.push(`  WOULD UPDATE: ${managedDisplayPath(dest)} before_sha256=${beforeHash || "unavailable"} after_sha256=${afterHash || "unavailable"}`);
       return true;
     }
     ensureDir(dirname(dest));
     copyFileSync(src, dest);
-    log.push(`  UPDATED: ${basename(dest)}`);
+    log.push(`  UPDATED: ${managedDisplayPath(dest)} before_sha256=${beforeHash || "unavailable"} after_sha256=${fileHash(dest) || afterHash || "unavailable"}`);
     return true;
   }
   if (dryRun) {
@@ -2502,6 +2945,128 @@ function copyDirTree(sourceDir, targetDir, filter, dryRun, log) {
   }
 }
 
+function collectObsoletePlannerWorkflowFiles(targetPath) {
+  const sourceWorkflowsDir = join(agentDir, "workflows");
+  const targetWorkflowsDir = join(targetPath, ".agent/workflows");
+  if (!existsSync(sourceWorkflowsDir) || !existsSync(targetWorkflowsDir)) {
+    return { prunable: [], preserved: [] };
+  }
+
+  const canonical = new Set(listManagedDirNames(sourceWorkflowsDir, (name) => name.endsWith(".md")));
+  const prunable = [];
+  const preserved = [];
+  for (const entry of readdirSync(targetWorkflowsDir, { withFileTypes: true })) {
+    if (!entry.isFile() || !entry.name.endsWith(".md")) continue;
+    if (canonical.has(entry.name)) continue;
+    const full = join(targetWorkflowsDir, entry.name);
+    const sourceRelativePath = gitPath(join(".agent", "workflows", entry.name));
+    const canonicalHistory = sourcePathHasHistory(sourceRelativePath);
+    if (workflowFileHasExplicitHostOwnerMarker(full) || canonicalHistory === false) {
+      preserved.push(full);
+    } else {
+      // A null history result is indeterminate, so retain fail-closed behavior
+      // by sending the path through managed-sync safety rather than preserving it.
+      prunable.push(full);
+    }
+  }
+  return {
+    prunable: prunable.sort((a, b) => a.localeCompare(b)),
+    preserved: preserved.sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+function pruneObsoletePlannerWorkflowFiles(targetPath, dryRun, log) {
+  const { prunable, preserved } = collectObsoletePlannerWorkflowFiles(targetPath);
+  for (const path of preserved) {
+    if (workflowFileHasExplicitHostOwnerMarker(path)) {
+      log.push(`  PRESERVED host-owned workflow: ${basename(path)} (${HOST_OWNED_WORKFLOW_MARKER})`);
+    } else {
+      log.push(`  PRESERVED non-canonical workflow: ${basename(path)} (no same-path canonical source history)`);
+    }
+  }
+  if (prunable.length === 0) {
+    log.push("  OK: no obsolete planner workflow leftovers");
+    return 0;
+  }
+  for (const path of prunable) {
+    if (dryRun) {
+      log.push(`  WOULD REMOVE obsolete planner workflow: ${gitPath(relative(targetPath, path))} before_sha256=${fileHash(path) || "unavailable"} after_sha256=missing`);
+      continue;
+    }
+    const beforeHash = fileHash(path);
+    unlinkSync(path);
+    log.push(`  REMOVED obsolete planner workflow: ${gitPath(relative(targetPath, path))} before_sha256=${beforeHash || "unavailable"} after_sha256=missing`);
+  }
+  return prunable.length;
+}
+
+function collectObsoletePlannerTestFiles(targetPath) {
+  const sourceTestsDir = join(skillDir, "tests");
+  const targetTestsDir = join(
+    targetPath,
+    ".agent/skills/iterative-planner/tests",
+  );
+  const include = (name) =>
+    name.endsWith(".mjs") || name.endsWith(".json") || name.endsWith(".md");
+  if (!existsSync(sourceTestsDir) || !existsSync(targetTestsDir)) {
+    return { prunable: [], preserved: [] };
+  }
+
+  const canonical = new Set(
+    walkDir(sourceTestsDir, include)
+      .map((path) => gitPath(relative(sourceTestsDir, path))),
+  );
+  const prunable = [];
+  const preserved = [];
+  for (const path of walkDir(targetTestsDir, include)) {
+    const relativeTestPath = gitPath(relative(targetTestsDir, path));
+    if (canonical.has(relativeTestPath)) continue;
+    const sourceRelativePath = gitPath(
+      join(".agent", "skills", "iterative-planner", "tests", relativeTestPath),
+    );
+    const canonicalHistory = sourcePathHasHistory(sourceRelativePath);
+    if (canonicalHistory === false) {
+      preserved.push(path);
+    } else {
+      // Null history is indeterminate. Route it through managed-sync safety so
+      // the upgrade refuses instead of silently deleting unknown bytes.
+      prunable.push(path);
+    }
+  }
+  return {
+    prunable: prunable.sort((a, b) => a.localeCompare(b)),
+    preserved: preserved.sort((a, b) => a.localeCompare(b)),
+  };
+}
+
+function pruneObsoletePlannerTestFiles(targetPath, dryRun, log) {
+  const { prunable, preserved } = collectObsoletePlannerTestFiles(targetPath);
+  for (const path of preserved) {
+    log.push(
+      `  PRESERVED non-canonical test asset: ${gitPath(relative(targetPath, path))} (no same-path canonical source history)`,
+    );
+  }
+  if (prunable.length === 0) {
+    log.push("  OK: no obsolete planner test leftovers");
+    return 0;
+  }
+  for (const path of prunable) {
+    const relativePath = gitPath(relative(targetPath, path));
+    if (dryRun) {
+      log.push(
+        `  WOULD REMOVE obsolete planner test: ${relativePath} before_sha256=${fileHash(path) || "unavailable"} after_sha256=missing`,
+      );
+      continue;
+    }
+    const beforeHash = fileHash(path);
+    unlinkSync(path);
+    log.push(
+      `  REMOVED obsolete planner test: ${relativePath} before_sha256=${beforeHash || "unavailable"} after_sha256=missing`,
+    );
+  }
+  return prunable.length;
+}
+
 /**
  * Shared project-level setup: audit config, KB seeding, version marker, hooks, ripple check.
  * Called by explicit setup and by upgrade only when a real repair requires setup.
@@ -2524,7 +3089,11 @@ function runProjectSetup(targetPath, dryRun, log) {
     log.push(`  OK: audit.config.json exists`);
   }
 
-  // 2. Seed KB files if missing (v3.0.0: explore-to-plan gate FAILs without these)
+  // 2. Seed planner.policy.yaml if missing or merge newly added defaults.
+  log.push("\n## Planner Policy");
+  ensurePlannerPolicy(targetPath, { dryRun, log });
+
+  // 3. Seed KB files if missing (v3.0.0: explore-to-plan gate FAILs without these)
   log.push("\n## Knowledge Base (required)");
   const kbDir = join(targetPath, "plans/knowledge");
   ensureDir(kbDir);
@@ -2556,7 +3125,7 @@ function runProjectSetup(targetPath, dryRun, log) {
     log.push("  OK: plans/knowledge/retros/retro_ledger.json exists");
   }
 
-  // 3. Check SKILL.md has planner_version matching version.json
+  // 4. Check SKILL.md has planner_version matching version.json
   log.push("\n## Version Marker");
   const versionJsonTarget = join(targetBase, "config", "version.json");
   let targetVersion = CURRENT_VERSION;
@@ -2592,7 +3161,7 @@ function runProjectSetup(targetPath, dryRun, log) {
     }
   }
 
-  // 4. Install pre-commit hook if not present
+  // 5. Install pre-commit hook if not present
   log.push("\n## Pre-commit Hook");
   const gitHooksDir = join(targetPath, ".git", "hooks");
   const preCommitTarget = join(gitHooksDir, "pre-commit");
@@ -2630,7 +3199,7 @@ function runProjectSetup(targetPath, dryRun, log) {
     log.push(`  SKIP: not a git repo`);
   }
 
-  // 5. Install sync-instructions.sh and create root instruction files
+  // 6. Install sync-instructions.sh and create root instruction files
   log.push("\n## Root Instruction Files (CLAUDE.md / GEMINI.md / AGENTS.md)");
   const syncScriptSrc  = join(agentDir, "scripts", "sync-instructions.sh");
   const syncScriptDest = join(targetPath, ".agent/scripts", "sync-instructions.sh");
@@ -2645,7 +3214,7 @@ function runProjectSetup(targetPath, dryRun, log) {
 
   syncRootInstructionSurfaces(targetPath, { dryRun, log });
 
-  // 6. Run ripple check
+  // 7. Run ripple check
   log.push("\n## Ripple-Through Check");
   const rippleCheckPath = join(targetBase, "scripts", "ripple_check.mjs");
   if (existsSync(rippleCheckPath)) {
@@ -2661,6 +3230,198 @@ function runProjectSetup(targetPath, dryRun, log) {
   } else {
     log.push(`  SKIP: ripple_check.mjs not found`);
   }
+}
+
+function normalizeSetupProfile(value) {
+  const normalized = String(value || "full").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  if (!normalized || normalized === "default") return "full";
+  if (normalized === "planner_kernel" || normalized === "minimal_kernel") return "kernel";
+  return normalized;
+}
+
+function kernelInstructionSection() {
+  return `${KERNEL_INSTRUCTION_MARKER}
+
+Use the planner kernel when this repo only needs cheap execution support:
+- Keep task memory in \`${JOURNAL_REL_PATH}\`.
+- Record retros as promoted journal entries when a lesson should survive.
+- Treat incidents as activation evidence for the full planner layer.
+
+Kernel setup is intentionally small. If repeated incidents, cross-file migrations, program packets, or gate evidence are needed, graduate to the full planner setup instead of adding a second local ritual.
+`;
+}
+
+function kernelInstructionDocument() {
+  return `# Project Instructions
+
+${kernelInstructionSection()}`;
+}
+
+function kernelSeedEntry() {
+  return {
+    id: KERNEL_SEED_ID,
+    ts: new Date().toISOString(),
+    type: "decision",
+    status: "accepted",
+    confidence: "operator_policy",
+    topic: "planner_kernel",
+    summary: "Kernel profile installed: memory, retro, and plan spine only.",
+    tags: ["kernel", "install_profile"],
+    actor: "migrate.mjs",
+    payload: {
+      install_profile: "kernel",
+      files: [KERNEL_INSTRUCTIONS_REL_PATH, JOURNAL_REL_PATH],
+      activation_rules: [
+        {
+          trigger: "journal incident or failure entry",
+          layer: "full_planner",
+          recommendation: "Run full planner setup before closing complex or recurring work.",
+        },
+      ],
+    },
+  };
+}
+
+function runKernelProjectSetup(targetPath, dryRun, log) {
+  log.push("\n## Kernel Profile");
+  log.push("  PROFILE: kernel (two-file drop-in; full setup remains the default)");
+
+  log.push("\n## Kernel Instruction File");
+  const instructionsPath = join(targetPath, KERNEL_INSTRUCTIONS_REL_PATH);
+  if (!existsSync(instructionsPath)) {
+    if (dryRun) {
+      log.push(`  WOULD CREATE: ${KERNEL_INSTRUCTIONS_REL_PATH}`);
+    } else {
+      writeFileSync(instructionsPath, kernelInstructionDocument());
+      log.push(`  CREATED: ${KERNEL_INSTRUCTIONS_REL_PATH}`);
+    }
+  } else {
+    appendSectionIfMissing(instructionsPath, KERNEL_INSTRUCTION_MARKER, kernelInstructionSection(), dryRun, log);
+  }
+
+  log.push("\n## Kernel Journal");
+  const journalPath = join(targetPath, JOURNAL_REL_PATH);
+  const seedLine = `${JSON.stringify(kernelSeedEntry())}\n`;
+  if (!existsSync(journalPath)) {
+    if (dryRun) {
+      log.push(`  WOULD CREATE: ${JOURNAL_REL_PATH}`);
+    } else {
+      ensureDir(dirname(journalPath));
+      writeFileSync(journalPath, seedLine);
+      log.push(`  CREATED: ${JOURNAL_REL_PATH}`);
+    }
+  } else {
+    const existing = readFile(journalPath) || "";
+    if (existing.includes(`"id":"${KERNEL_SEED_ID}"`) || existing.includes(`"install_profile":"kernel"`)) {
+      log.push(`  OK: ${JOURNAL_REL_PATH} already records kernel metadata`);
+    } else if (dryRun) {
+      log.push(`  WOULD APPEND: ${JOURNAL_REL_PATH} kernel seed`);
+    } else {
+      writeFileSync(journalPath, `${existing.trimEnd()}\n${seedLine}`);
+      log.push(`  APPENDED: ${JOURNAL_REL_PATH} kernel seed`);
+    }
+  }
+
+  log.push("\n## Full Planner Surface");
+  log.push("  SKIP: kernel setup does not copy .agent/skills/iterative-planner/scripts");
+}
+
+function normalizeTagList(tags) {
+  return (Array.isArray(tags) ? tags : []).map((tag) => String(tag || "").trim().toLowerCase()).filter(Boolean);
+}
+
+function entryHasTag(entry, tag) {
+  return normalizeTagList(entry?.tags).includes(tag);
+}
+
+function entryTopic(entry) {
+  return String(entry?.topic || "").trim().toLowerCase();
+}
+
+function loadPlannerProfileMetadata(targetPath) {
+  const profilePath = join(targetPath, "planner.profile.json");
+  if (!existsSync(profilePath)) return null;
+  try {
+    const profile = JSON.parse(readFileSync(profilePath, "utf-8"));
+    const rawProfile = profile.install_profile || profile.profile || profile.tier;
+    if (normalizeSetupProfile(rawProfile) === "kernel") {
+      return { active: true, source: "planner.profile.json" };
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+function summarizeKernelStatus(targetPath) {
+  const journal = loadJournal({ cwd: targetPath });
+  const entries = journal.entries || [];
+  const seedEntry = entries.find((entry) => entry?.payload?.install_profile === "kernel" || entryHasTag(entry, "install_profile"));
+  const profileMetadata = loadPlannerProfileMetadata(targetPath);
+  const taskEntries = entries.filter((entry) => entryTopic(entry) === "task" || entryHasTag(entry, "task")).length;
+  const retroPromotions = entries.filter((entry) => (
+    entry?.type === "promotion" && (entryTopic(entry) === "retro" || entryHasTag(entry, "retro"))
+  )).length;
+  const incidentEntries = entries.filter((entry) => (
+    entry?.type === "failure" || entryTopic(entry) === "incident" || entryHasTag(entry, "incident")
+  )).length;
+  const profileActive = !!profileMetadata || !!seedEntry;
+  const activatedLayers = [];
+  if (incidentEntries > 0) {
+    activatedLayers.push({
+      id: "full_planner",
+      status: "recommended",
+      reason: "incident_history",
+      command: "node .agent/skills/iterative-planner/scripts/migrate.mjs setup .",
+    });
+  }
+
+  return {
+    ok: true,
+    profile: profileActive ? "kernel" : "unknown",
+    profile_source: profileMetadata?.source || (seedEntry ? JOURNAL_REL_PATH : null),
+    target_path: targetPath,
+    instructions_present: existsSync(join(targetPath, KERNEL_INSTRUCTIONS_REL_PATH)),
+    journal: {
+      present: journal.present,
+      path: journal.path,
+      entries: entries.length,
+      issues: journal.issues.length,
+      task_entries: taskEntries,
+      retro_promotions: retroPromotions,
+      incident_entries: incidentEntries,
+    },
+    activated_layers: activatedLayers,
+  };
+}
+
+function cmdKernelStatus(targetPath, jsonOutput) {
+  const summary = summarizeKernelStatus(targetPath);
+  if (jsonOutput) {
+    console.log(JSON.stringify(summary, null, 2));
+    return;
+  }
+
+  console.log(`\n╔══════════════════════════════════════════════════════╗`);
+  console.log(`║  KERNEL PROFILE STATUS                              ║`);
+  console.log(`╚══════════════════════════════════════════════════════╝\n`);
+  console.log(`  Profile:       ${summary.profile}`);
+  console.log(`  Source:        ${summary.profile_source || "not detected"}`);
+  console.log(`  Instructions:  ${summary.instructions_present ? "present" : "missing"}`);
+  console.log(`  Journal:       ${summary.journal.entries} entr${summary.journal.entries === 1 ? "y" : "ies"}, ${summary.journal.issues} issue(s)`);
+  console.log(`  Tasks:         ${summary.journal.task_entries}`);
+  console.log(`  Retro promos:  ${summary.journal.retro_promotions}`);
+  console.log(`  Incidents:     ${summary.journal.incident_entries}`);
+  if (summary.activated_layers.length > 0) {
+    console.log(`\n  Activated layers:`);
+    for (const layer of summary.activated_layers) {
+      console.log(`    - ${layer.id}: ${layer.status} (${layer.reason})`);
+      console.log(`      ${layer.command}`);
+    }
+  } else {
+    console.log(`\n  Activated layers: none`);
+  }
+  console.log();
 }
 
 // ---------------------------------------------------------------------------
@@ -2702,14 +3463,14 @@ function cmdDetect(targetPath) {
       console.log(`     - ${relative(targetPath, e.path)} [${e.category}]`);
     }
     if (missingCritical.length > 15) console.log(`     ... and ${missingCritical.length - 15} more`);
-    console.log(`\n  Run: node migrate.mjs upgrade ${targetPath}`);
+    console.log(`\n  Run: node migrate.mjs upgrade ${targetPath} --commit`);
   } else if (missing.length > 0) {
     console.log(`\n  🟡 Optional files missing (${missing.length}):`);
     for (const e of missing.slice(0, 10)) {
       console.log(`     - ${relative(targetPath, e.path)} [${e.category}]`);
     }
     if (missing.length > 10) console.log(`     ... and ${missing.length - 10} more`);
-    console.log(`\n  Run: node migrate.mjs upgrade ${targetPath}`);
+    console.log(`\n  Run: node migrate.mjs upgrade ${targetPath} --commit`);
   } else {
     console.log(`\n  ✅ All files present. Installation is complete.`);
   }
@@ -2728,9 +3489,13 @@ function cmdDoctor(targetPath, jsonOutput) {
   console.log(`║  PLANNER DOCTOR                                     ║`);
   console.log(`╚══════════════════════════════════════════════════════╝\n`);
   console.log(`  Source repo:       ${report.source_project_path}`);
+  console.log(`  Source ref:        ${report.source_ref}`);
+  console.log(`  Source commit:     ${report.source_commit || "unresolved"}`);
   console.log(`  Target project:    ${report.target_path}`);
-  console.log(`  Detected version:  ${report.detected_version}`);
-  console.log(`  Current version:   ${report.current_version}`);
+  console.log(`  Committed version: ${report.committed_version}`);
+  console.log(`  Tree version:      ${report.tree_version}`);
+  console.log(`  Source version:    ${report.source_version}`);
+  console.log(`  Install state:     ${report.install_state}`);
   console.log(`  Needs repair:      ${report.needs_repair ? "YES" : "NO"}`);
   console.log(`  Summary:           ${report.summary.description}`);
 
@@ -2763,7 +3528,8 @@ function cmdDoctor(targetPath, jsonOutput) {
   }
 
   if (report.needs_repair) {
-    console.log(`\n  Suggested repair: node migrate.mjs upgrade ${targetPath}`);
+    if (report.recovery_command) console.log(`\n  Interrupted transaction recovery: ${report.recovery_command}`);
+    console.log(`\n  Suggested repair: ${report.repair_command}`);
   } else {
     console.log(`\n  ✅ Planner install is current and repairable setup state is intact.`);
     if ((report.advisory_issues || []).length > 0) {
@@ -2787,11 +3553,41 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   const missing = manifest.filter(e => !existsSync(e.path));
 
   // RT10-MIGRATE: Also count stale files (exist but content differs)
-  const staleCount = findVerificationDrift(manifest, targetPath).length;
+  const staleEntries = findVerificationDrift(manifest, targetPath);
+  const staleCount = staleEntries.length;
+  const obsoleteWorkflows = collectObsoletePlannerWorkflowFiles(targetPath);
+  const obsoleteWorkflowCount = obsoleteWorkflows.prunable.length;
+  const obsoleteTests = collectObsoletePlannerTestFiles(targetPath);
+  const obsoleteTestCount = obsoleteTests.prunable.length;
   const setupIssues = collectRepairableSetupIssues(targetPath);
   const advisoryIssues = findRootInstructionSyncIssues(targetPath);
 
-  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && setupIssues.length === 0 && !seedKB) {
+  const syncSafetyEntries = staleEntries.filter((entry) => basename(entry.path) !== ".project_registry.json");
+  const syncSafety = assessManagedSyncSafety(
+    targetPath,
+    syncSafetyEntries,
+    [...obsoleteWorkflows.prunable, ...obsoleteTests.prunable],
+  );
+  if (!syncSafety.ok) {
+    const stratigraphy = managedUpgradeDiagnostics(targetPath, CURRENT_VERSION);
+    console.log(
+      `\n  Version strata: committed=${stratigraphy.committed_version}, tree=${stratigraphy.tree_version}, source=${stratigraphy.source_version}`,
+    );
+    printManagedSyncRefusal(syncSafety);
+    process.exitCode = 1;
+    return {
+      noOp: false,
+      setupNeeded: false,
+      changed: false,
+      blocked: true,
+      from: version,
+      to: CURRENT_VERSION,
+      reason: "managed-sync-conflict",
+      conflicts: syncSafety.conflicts,
+    };
+  }
+
+  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && obsoleteTestCount === 0 && setupIssues.length === 0 && !seedKB) {
     console.log(`\n  ✅ Already at version ${CURRENT_VERSION} with all ${manifest.length} files present and up to date.`);
     console.log(`  No project-level setup repair is required; upgrade is a read-only no-op.`);
     if (advisoryIssues.length > 0) {
@@ -2808,7 +3604,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     };
   }
 
-  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && setupIssues.length > 0 && !seedKB) {
+  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && obsoleteTestCount === 0 && setupIssues.length > 0 && !seedKB) {
     console.log(`\n  ⚠️  Already at version ${CURRENT_VERSION}, but ${setupIssues.length} setup repair issue(s) require project setup.`);
     console.log(`  Planner-managed files are current; setup ${dryRun ? "would run" : "will run"} as the explicit repair step.\n`);
     return {
@@ -2829,15 +3625,29 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${setupIssues.length} setup repair issue(s) remain. Setup ${dryRun ? "would run" : "will run"} after file sync.`);
   }
 
+  if (version === CURRENT_VERSION && obsoleteWorkflowCount > 0) {
+    console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${obsoleteWorkflowCount} obsolete planner workflow file(s) remain. Pruning...`);
+  }
+  if (version === CURRENT_VERSION && obsoleteTestCount > 0) {
+    console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${obsoleteTestCount} obsolete planner test file(s) remain. Pruning...`);
+  }
+
   console.log(`\n╔══════════════════════════════════════════════════════╗`);
   console.log(`║  PLANNER UPGRADE ${dryRun ? "(DRY RUN) " : ""}                             ║`);
-  const changeDesc = missing.length > 0 && staleCount > 0
-    ? `${missing.length} new, ${staleCount} stale`
-    : missing.length > 0 ? `${missing.length} to add`
-    : staleCount > 0 ? `${staleCount} to update`
-    : `0 changes`;
+  const changeParts = [];
+  if (missing.length > 0) changeParts.push(`${missing.length} new`);
+  if (staleCount > 0) changeParts.push(`${staleCount} stale`);
+  if (obsoleteWorkflowCount > 0) changeParts.push(`${obsoleteWorkflowCount} obsolete workflow${obsoleteWorkflowCount === 1 ? "" : "s"}`);
+  if (obsoleteTestCount > 0) changeParts.push(`${obsoleteTestCount} obsolete test${obsoleteTestCount === 1 ? "" : "s"}`);
+  const changeDesc = changeParts.length > 0 ? changeParts.join(", ") : "0 changes";
   console.log(`║  ${version} → ${CURRENT_VERSION}  (${changeDesc})                  ║`);
   console.log(`╚══════════════════════════════════════════════════════╝\n`);
+  console.log(`  Source ref: ${selectedSourceRef()}`);
+  console.log(`  Source commit: ${selectedSourceCommit() || "unresolved"}`);
+  if (selectedSourceCommit()) {
+    console.log(`  Manual pinned-ref first hop: node ${JSON.stringify(join(canonicalSourceProjectPath(), ".agent/skills/iterative-planner/scripts/migrate.mjs"))} upgrade ${JSON.stringify(targetPath)} --source-ref ${selectedSourceCommit()} --commit`);
+  }
+  console.log();
 
   const targetBase = join(targetPath, ".agent/skills/iterative-planner");
 
@@ -2881,21 +3691,35 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   copyDirTree(
     join(skillDir, "config"),
     join(targetBase, "config"),
-    (name) => name.endsWith(".json") || name === ".checklist_integrity",
+    (name) => (name.endsWith(".json")
+        && name !== ".project_registry.json"
+        && name !== basename(MANAGED_UPGRADE_RECEIPT_REL_PATH))
+      || name === ".checklist_integrity"
+      || name.endsWith(".yaml"),
     dryRun, log
   );
-  if (!dryRun) {
-    const targetRegistryPath = join(targetBase, "config", ".project_registry.json");
-    try {
-      const registry = existsSync(targetRegistryPath)
-        ? JSON.parse(readFileSync(targetRegistryPath, "utf-8"))
-        : { projects: [] };
-      registry.source_project_path = resolve(join(agentDir, ".."));
-      writeFileSync(targetRegistryPath, JSON.stringify(registry, null, 2) + "\n");
-      log.push("  UPDATED: .project_registry.json source_project_path");
-    } catch (e) {
-      log.push(`  WARN: Could not update .project_registry.json source_project_path: ${e.message}`);
+  const targetRegistryPath = join(targetBase, "config", ".project_registry.json");
+  try {
+    const registryBefore = existsSync(targetRegistryPath) ? readFileSync(targetRegistryPath) : null;
+    const registry = existsSync(targetRegistryPath)
+      ? JSON.parse(readFileSync(targetRegistryPath, "utf-8"))
+      : { projects: [] };
+    registry.source_project_path = canonicalSourceProjectPath();
+    const registryAfter = `${JSON.stringify(registry, null, 2)}\n`;
+    if (!registryBefore || !registryBefore.equals(Buffer.from(registryAfter))) {
+      const beforeHash = registryBefore ? createHash("sha256").update(registryBefore).digest("hex") : "missing";
+      const afterHash = createHash("sha256").update(registryAfter).digest("hex");
+      if (dryRun) {
+        log.push(`  WOULD MERGE: .project_registry.json source_project_path before_sha256=${beforeHash} after_sha256=${afterHash}`);
+      } else {
+        writeFileSync(targetRegistryPath, registryAfter);
+        log.push(`  UPDATED: ${managedDisplayPath(targetRegistryPath)} before_sha256=${beforeHash} after_sha256=${afterHash}`);
+      }
+    } else {
+      log.push("  OK (up to date): .project_registry.json source_project_path");
     }
+  } catch (e) {
+    log.push(`  WARN: Could not update .project_registry.json source_project_path: ${e.message}`);
   }
 
   // --- Checklists ---
@@ -2930,9 +3754,15 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   copyDirTree(
     join(skillDir, "tests"),
     join(targetBase, "tests"),
-    (name) => name.endsWith(".mjs") || name.endsWith(".json") || name.endsWith(".md"),
+    (name) =>
+      name.endsWith(".mjs")
+        || name.endsWith(".json")
+        || name.endsWith(".jsonl")
+        || name.endsWith(".md")
+        || name.endsWith(".html"),
     dryRun, log
   );
+  pruneObsoletePlannerTestFiles(targetPath, dryRun, log);
 
   // --- Packs (domain packs) ---
   log.push("\n## Domain Packs");
@@ -2985,6 +3815,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
       copyIfMissing(join(sourceWorkflowsDir, f), join(targetWorkflowsDir, f), dryRun, log);
     }
   }
+  pruneObsoletePlannerWorkflowFiles(targetPath, dryRun, log);
 
   // --- Agent-level config files ---
   log.push("\n## Agent Config");
@@ -3035,18 +3866,8 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
           const stateJson = JSON.parse(readFileSync(statePath, "utf-8"));
           if (!stateJson.circuit_breakers) {
             stateJson.circuit_breakers = {};
-            // Recompute _state_hash via determinism.mjs
-            const skillBase = join(targetPath, ".agent/skills/iterative-planner");
-            const hashScript = `
-              import { computeStateHash } from "./scripts/lib/determinism.mjs";
-              import { readFileSync, writeFileSync } from "fs";
-              const p = ${JSON.stringify(statePath)};
-              const s = JSON.parse(readFileSync(p, "utf8"));
-              s.circuit_breakers = {};
-              s._state_hash = computeStateHash(s);
-              writeFileSync(p, JSON.stringify(s, null, 2));
-            `;
-            runNode(["--input-type=module", "-e", hashScript], { cwd: skillBase, stdio: "pipe", timeout: 10000 });
+            delete stateJson._state_hash;
+            writeFileSync(statePath, JSON.stringify(stateJson, null, 2) + "\n");
             log.push(`  SEEDED: circuit_breakers field in ${planDirName}/state.json (v3.8.0)`);
           }
         }
@@ -3079,6 +3900,30 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
             deliverables: [],
           }, null, 2) + "\n");
           log.push(`  SEEDED: intent_contract.json in ${planDirName} (structured intent rollout)`);
+        }
+
+        const workOrderPath = join(planDir, "work_order.json");
+        if (!existsSync(workOrderPath)) {
+          let intentContract = null;
+          try {
+            intentContract = JSON.parse(readFileSync(intentContractPath, "utf-8"));
+          } catch {
+            intentContract = {
+              version: 1,
+              primary_user: null,
+              job_to_be_done: null,
+              desired_outcomes: [],
+              anti_goals: [],
+              constraints: [],
+              deliverables: [],
+            };
+          }
+          const stateJson = readPlanStateJson(planDir);
+          writePlanWorkOrderProjection(planDir, {
+            goal: stateJson?.goal || `Active planner plan ${planDirName}`,
+            intentContract,
+          });
+          log.push(`  SEEDED: work_order.json in ${planDirName} (structured work-order projection rollout)`);
         }
       }
     } catch (e) {
@@ -3114,9 +3959,10 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     const postManifest = buildExpectedManifest(targetPath);
     const stillMissing = postManifest.filter(e => !existsSync(e.path));
     const stillMissingCritical = stillMissing.filter(e => e.critical);
+    const stillStale = findVerificationDrift(postManifest, targetPath);
 
-    if (stillMissing.length === 0) {
-      console.log(`  ✅ POST-UPGRADE VERIFICATION: All ${postManifest.length} files present.`);
+    if (stillMissing.length === 0 && stillStale.length === 0) {
+      console.log(`  ✅ POST-UPGRADE VERIFICATION: All ${postManifest.length} files present and current.`);
     } else if (stillMissingCritical.length > 0) {
       console.log(`  ❌ POST-UPGRADE VERIFICATION: ${stillMissingCritical.length} CRITICAL file(s) still missing:`);
       for (const e of stillMissingCritical) {
@@ -3125,45 +3971,18 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     } else {
       console.log(`  ⚠️  POST-UPGRADE VERIFICATION: ${stillMissing.length} optional file(s) still missing.`);
     }
+    if (stillStale.length > 0) {
+      console.log(`  ❌ POST-UPGRADE VERIFICATION: ${stillStale.length} managed file(s) remain stale.`);
+      for (const entry of stillStale.slice(0, 15)) {
+        console.log(`     - ${relative(targetPath, entry.path)} [${entry.category}]`);
+      }
+      process.exitCode = 1;
+    }
     // Config integrity baselines are signed trust anchors. Migration may create
     // a missing first baseline, but existing baselines require an out-of-band
     // nonce before re-baselining so a tampered in-tree rule file is not laundered.
-    try {
-      const integrityProbe = [
-        "import{checkConfigIntegrity,updateConfigIntegrity}from'./scripts/lib/determinism.mjs';",
-        "const status=checkConfigIntegrity();",
-        "if(status.intact){console.log(JSON.stringify({status:'verified'}));process.exit(0);}",
-        "if(String(status.reason||'').includes('baseline missing')){process.exit(updateConfigIntegrity()?0:1);}",
-        "console.error(JSON.stringify(status));process.exit(2);",
-      ].join("");
-      const skillBase = join(targetPath, ".agent/skills/iterative-planner");
-      const output = runNode(["--input-type=module", "-e", integrityProbe], { cwd: skillBase, stdio: "pipe", timeout: 10000 });
-      const status = output.trim() ? JSON.parse(output.trim()) : { status: "created" };
-      if (status.status === "verified") {
-        console.log(`  ✅ CONFIG INTEGRITY: Existing baseline verified; no rebaseline performed.`);
-      } else {
-        console.log(`  ✅ CONFIG INTEGRITY: Created missing baseline.`);
-      }
-    } catch (e) {
-      console.log(`  ⚠️  CONFIG INTEGRITY: Existing baseline not rebaselined; out-of-band approval is required for config/rule hash changes.`);
-    }
-
-    // Re-baseline persona manifest (T-INTAKE-3B20A6BB / US-085) — migrate.mjs
-    // is a trusted file modifier, so persona pack hashes must be refreshed
-    // after upgrade or the next persona-manifest CI run would FAIL on drift.
-    try {
-      const personaVerifier = join(targetPath, ".agent/skills/iterative-planner/scripts/persona_manifest_verify.mjs");
-      if (existsSync(personaVerifier)) {
-        // F-003 closure: rebaseline is dry-run by default. Upgrade context is
-        // intentionally dirty (we just refreshed pack files), so --confirm
-        // --allow-uncommitted is required.
-        runNode([personaVerifier, "rebaseline", "--confirm", "--allow-uncommitted"], { cwd: targetPath, stdio: "pipe", timeout: 10000 });
-        console.log(`  ✅ PERSONA MANIFEST: Re-baselined after upgrade.`);
-      }
-    } catch (e) {
-      // persona_manifest_verify.mjs may not exist in older versions — not fatal
-      console.log(`  ⚠️  PERSONA MANIFEST: Could not re-baseline automatically. Run persona_manifest_verify.mjs rebaseline manually if CI blocks.`);
-    }
+    console.log(`  ✅ CONFIG INTEGRITY: Retired by E8-1; no baseline or rebaseline required.`);
+    console.log(`  ✅ PERSONA MANIFEST: Retired by E8-1; no manifest hash refresh required.`);
 
     console.log(`\n  ══ UPGRADE COMPLETE — ${version} → ${CURRENT_VERSION} ══`);
     console.log(`  IMPORTANT: Review SKILL.md changes manually.`);
@@ -3189,6 +4008,7 @@ function cmdVerify(targetPath) {
   const present = manifest.filter(e => existsSync(e.path));
   const stale = findVerificationDrift(manifest, targetPath);
   const advisoryIssues = findRootInstructionSyncIssues(targetPath);
+  const ritualContractReadiness = validateRitualContractReadiness(targetPath);
   const categories = buildCategorySummary(manifest, stale);
 
   console.log(`\n╔══════════════════════════════════════════════════════╗`);
@@ -3227,36 +4047,50 @@ function cmdVerify(targetPath) {
     }
   }
 
+  console.log(`\n  ${verificationStatusIsPass(ritualContractReadiness.status, "execution") ? "✅" : "❌"} ritual_contract_readiness ${ritualContractReadiness.status} (${ritualContractReadiness.issue_count} issue(s), public workflows ${ritualContractReadiness.registry_public_count}, workflow files ${ritualContractReadiness.workflow_file_count})`);
+  for (const issue of (ritualContractReadiness.issues || []).slice(0, 20)) {
+    console.log(`     - ${issue.id}: ${issue.message}`);
+  }
+
   if (missing.length > 0 && missingCritical.length === 0) {
     console.log(`\n  🟡 Only optional files missing — core functionality intact.`);
   }
 
-  if (missing.length === 0 && stale.length === 0) {
+  if (missing.length === 0 && stale.length === 0 && verificationStatusIsPass(ritualContractReadiness.status, "execution")) {
     if (advisoryIssues.length > 0) {
       console.log(`\n  ✅ PASS — Planner-managed files are present and current. Advisory instruction drift is listed above.`);
     } else {
       console.log(`\n  ✅ PASS — Installation complete. All ${manifest.length} files present and up to date.`);
     }
   } else if (missing.length === 0 && stale.length > 0) {
-    console.log(`\n  ⚠️  STALE — All files present but ${stale.length} need updating. Run: node migrate.mjs upgrade <path>`);
+    console.log(`\n  ⚠️  STALE — All files present but ${stale.length} need updating. Run: node migrate.mjs upgrade <path> --commit`);
   }
 
   console.log();
-  process.exit(missingCritical.length > 0 ? 1 : 0);
+  process.exit(missingCritical.length > 0 || !verificationStatusIsPass(ritualContractReadiness.status, "execution") ? 1 : 0);
 }
 
 // ---------------------------------------------------------------------------
 // Project-level setup (always runs, regardless of version)
 // ---------------------------------------------------------------------------
 
-function cmdSetup(targetPath, dryRun) {
+function cmdSetup(targetPath, dryRun, options = {}) {
   const log = [];
+  const profile = normalizeSetupProfile(options.profile || "full");
+  if (!SETUP_PROFILES.has(profile)) {
+    console.error(`ERROR: Unknown setup profile '${options.profile}'. Expected: full, kernel.`);
+    process.exit(2);
+  }
 
   console.log(`\n╔══════════════════════════════════════════════════════╗`);
-  console.log(`║  PROJECT SETUP ${dryRun ? "(DRY RUN) " : ""}                              ║`);
+  console.log(`║  PROJECT SETUP ${profile === "kernel" ? "[kernel] " : ""}${dryRun ? "(DRY RUN) " : ""}                     ║`);
   console.log(`╚══════════════════════════════════════════════════════╝\n`);
 
-  runProjectSetup(targetPath, dryRun, log);
+  if (profile === "kernel") {
+    runKernelProjectSetup(targetPath, dryRun, log);
+  } else {
+    runProjectSetup(targetPath, dryRun, log);
+  }
 
   // Print log
   for (const line of log) {
@@ -3264,7 +4098,11 @@ function cmdSetup(targetPath, dryRun) {
   }
 
   console.log(`\n  ══ SETUP COMPLETE ══`);
-  console.log(`  If audit.config.json was just created, edit it to add your domain role(s): "assumptions_challenger", "quant", "tokenomics", "ux_ui", etc.`);
+  if (profile === "kernel") {
+    console.log(`  Kernel profile installed. Use kernel-status to inspect journal counts and earned-layer activation.`);
+  } else {
+    console.log(`  If audit.config.json was just created, edit it to add your domain role(s): "assumptions_challenger", "quant", "tokenomics", "ux_ui", etc.`);
+  }
   console.log();
 }
 
@@ -3274,14 +4112,14 @@ function cmdSyncInstructions(targetPath, dryRun, jsonOutput) {
 
   if (jsonOutput) {
     console.log(JSON.stringify(report, null, 2));
-    process.exit(report.status === "ok" ? 0 : 1);
+    process.exit(verificationStatusIsPass(report.status, "execution") ? 0 : 1);
   }
 
   console.log(`\n╔══════════════════════════════════════════════════════╗`);
   console.log(`║  ROOT INSTRUCTION SYNC ${dryRun ? "(DRY RUN) " : ""}                    ║`);
   console.log(`╚══════════════════════════════════════════════════════╝\n`);
   for (const line of log) console.log(line);
-  if (report.status !== "ok") {
+  if (!verificationStatusIsPass(report.status, "execution")) {
     console.log(`\n  ❌ Sync skipped: root instruction template is invalid.`);
     process.exit(1);
   }
@@ -3514,7 +4352,7 @@ const registryPath = registryPathFromEnv();
 function normalizeRegistry(registry) {
   return {
     ...registry,
-    source_project_path: registry?.source_project_path || resolve(join(agentDir, "..")),
+    source_project_path: registry?.source_project_path || canonicalSourceProjectPath(),
     projects: Array.isArray(registry?.projects) ? registry.projects : [],
     last_scan: registry?.last_scan || null,
     scan_roots: Array.isArray(registry?.scan_roots) ? registry.scan_roots : [],
@@ -3526,6 +4364,29 @@ function loadRegistry() {
     if (existsSync(registryPath)) return normalizeRegistry(JSON.parse(readFileSync(registryPath, "utf-8")));
   } catch { /* corrupt — reset */ }
   return normalizeRegistry({ projects: [], last_scan: null });
+}
+
+function fleetRegistryStatus(registry = loadRegistry()) {
+  const projects = Array.isArray(registry.projects) ? registry.projects : [];
+  const existingProjects = projects.filter((project) => project?.path && existsSync(project.path));
+  const staleProjects = projects.filter((project) => project?.path && !existsSync(project.path));
+  return {
+    path: registryPath,
+    scope: "fleet_batch_cache_only",
+    per_project_registration_required: false,
+    last_scan: registry.last_scan || null,
+    project_count: projects.length,
+    existing_project_count: existingProjects.length,
+    stale_paths_ignored: staleProjects.length,
+    stale_paths_status: staleProjects.length > 0 ? "advisory_fleet_only" : "none",
+  };
+}
+
+function printFleetRegistryBoundary(status = fleetRegistryStatus()) {
+  console.log("  Registry scope: fleet/batch commands only; single-project migration uses explicit target paths and does not require source-repo registration.");
+  if (status.stale_paths_ignored > 0) {
+    console.log(`  Stale registry paths: ${status.stale_paths_ignored} ignored for this fleet run (advisory fleet drift; run scan to refresh the batch cache).`);
+  }
 }
 
 function saveRegistry(registry) {
@@ -3648,7 +4509,7 @@ function cmdScan(roots, quiet) {
     console.log(`  Summary: ${enriched.length} projects found, ${needsUpgrade.length} need upgrade to v${CURRENT_VERSION}`);
     console.log(`  Registry saved to: ${registryPath}`);
     if (needsUpgrade.length > 0) {
-      console.log(`\n  To upgrade all: node migrate.mjs upgrade-all`);
+      console.log(`\n  To upgrade all: node migrate.mjs upgrade-all --commit`);
     }
     console.log();
   }
@@ -3656,8 +4517,9 @@ function cmdScan(roots, quiet) {
   return enriched;
 }
 
-function cmdUpgradeAll(dryRun) {
+function cmdUpgradeAll(dryRun, commitRequested = false) {
   const registry = loadRegistry();
+  const initialRegistryStatus = fleetRegistryStatus(registry);
 
   // If no registry or stale (>7 days), auto-scan
   const registryAge = registry.last_scan
@@ -3666,7 +4528,9 @@ function cmdUpgradeAll(dryRun) {
 
   let projects;
   if (registry.projects.length === 0 || registryAge > 7) {
-    console.log("  Registry empty or stale — scanning for projects first...\n");
+    console.log("  Fleet registry empty or stale (batch cache only) - scanning for projects first...");
+    printFleetRegistryBoundary(initialRegistryStatus);
+    console.log();
     const homeDir = homedir();
     const defaultRoots = [
       join(homeDir, "Dropbox (Personal)", "Freelance"),
@@ -3685,11 +4549,13 @@ function cmdUpgradeAll(dryRun) {
         const vMatch = content?.match(/planner_version:\s*["']?(\d+\.\d+\.\d+)["']?/);
         return { ...p, version: vMatch ? vMatch[1] : "unknown", name: basename(p.path) };
       });
-    console.log(`  Using cached registry (${projects.length} projects, scanned ${registry.last_scan})\n`);
+    console.log(`  Using cached fleet registry (${projects.length} existing projects, scanned ${registry.last_scan})`);
+    printFleetRegistryBoundary(initialRegistryStatus);
+    console.log();
   }
 
   // Filter to source project itself
-  const sourceProject = resolve(join(agentDir, ".."));
+  const sourceProject = canonicalSourceProjectPath();
   const targets = projects.filter(p => resolve(p.path) !== sourceProject);
 
   const needsUpgrade = targets.filter(p => p.version !== CURRENT_VERSION);
@@ -3715,9 +4581,37 @@ function cmdUpgradeAll(dryRun) {
     console.log(`   ${project.path}\n`);
 
     try {
-      // Run upgrade
-      const upgradeResult = cmdUpgrade(project.path, false, dryRun);
-      if (!dryRun && upgradeResult?.setupNeeded) cmdSetup(project.path, false);
+      // Run the same single-project transactional boundary for every target.
+      const preview = cmdUpgrade(project.path, false, true);
+      let upgradeResult = preview;
+      if (!dryRun && !preview?.blocked && !preview?.noOp) {
+        if (!commitRequested) {
+          console.log(`   CONSENT REQUIRED: ${managedUpgradeConsentCommand(project.path, selectedSourceCommit() || selectedSourceRef(), false, __filename)}`);
+          upgradeResult = {
+            ...preview,
+            changed: false,
+            consentRequired: true,
+            reason: "commit-consent-required",
+          };
+        } else {
+          const transaction = runManagedUpgradeTransaction({
+            targetPath: project.path,
+            sourceScript: __filename,
+            sourceRef: selectedSourceRef(),
+            sourceCommit: selectedSourceCommit(),
+            fromVersion: readCommittedPlannerVersion(project.path),
+            toVersion: CURRENT_VERSION,
+          });
+          upgradeResult = {
+            noOp: false,
+            setupNeeded: false,
+            changed: transaction.ok,
+            from: project.version,
+            to: CURRENT_VERSION,
+            reason: "transactional-upgrade",
+          };
+        }
+      }
 
       // Verify version after upgrade
       const postSkillMd = join(project.path, ".agent/skills/iterative-planner/SKILL.md");
@@ -3729,7 +4623,7 @@ function cmdUpgradeAll(dryRun) {
         path: project.path,
         from: project.version,
         to: postVersion,
-        status: "OK",
+        status: upgradeResult?.consentRequired ? "CONSENT_REQUIRED" : "OK",
         noOp: !!upgradeResult?.noOp,
         setupNeeded: !!upgradeResult?.setupNeeded,
         changed: !!upgradeResult?.changed,
@@ -3745,16 +4639,22 @@ function cmdUpgradeAll(dryRun) {
   console.log(`║  UPGRADE-ALL SUMMARY                                ║`);
   console.log(`╚══════════════════════════════════════════════════════╝\n`);
 
-  const ok = results.filter(r => r.status === "OK");
-  const failed = results.filter(r => r.status !== "OK");
+  const consentRequired = results.filter((r) => r.status === "CONSENT_REQUIRED");
+  const ok = results.filter((r) => verificationStatusIsPass(r.status, "execution"));
+  const failed = results.filter(
+    (r) => r.status !== "CONSENT_REQUIRED"
+      && !verificationStatusIsPass(r.status, "execution"),
+  );
 
   for (const r of results) {
-    const icon = r.status === "OK" ? "✅" : "❌";
+    const icon = r.status === "CONSENT_REQUIRED"
+      ? "⏸️"
+      : (verificationStatusIsPass(r.status, "execution") ? "✅" : "❌");
     const versionChange = r.from === r.to ? `v${r.to}` : `v${r.from} → v${r.to}`;
     console.log(`  ${icon} ${r.name.padEnd(35)} ${versionChange}`);
   }
 
-  console.log(`\n  ${ok.length} succeeded, ${failed.length} failed out of ${results.length} projects`);
+  console.log(`\n  ${ok.length} succeeded, ${consentRequired.length} awaiting consent, ${failed.length} failed out of ${results.length} projects`);
   if (failed.length > 0) {
     console.log(`\n  Failed projects:`);
     for (const r of failed) console.log(`    ${r.path}: ${r.status}`);
@@ -3763,6 +4663,11 @@ function cmdUpgradeAll(dryRun) {
 
   if (dryRun) {
     console.log(`  Registry metadata unchanged in dry run.`);
+    return;
+  }
+  if (!commitRequested && consentRequired.length > 0) {
+    console.log(`  Registry metadata unchanged; rerun upgrade-all with --commit to consent.`);
+    process.exitCode = 2;
     return;
   }
 
@@ -3786,13 +4691,16 @@ function cmdUpgradeAll(dryRun) {
 
 function cmdAnnotateAll(dryRun) {
   const registry = loadRegistry();
+  const initialRegistryStatus = fleetRegistryStatus(registry);
   const registryAge = registry.last_scan
     ? (Date.now() - new Date(registry.last_scan).getTime()) / (24 * 60 * 60 * 1000)
     : Infinity;
 
   let projects;
   if (registry.projects.length === 0 || registryAge > 7) {
-    console.log("  Registry empty or stale — scanning for projects first...\n");
+    console.log("  Fleet registry empty or stale (batch cache only) - scanning for projects first...");
+    printFleetRegistryBoundary(initialRegistryStatus);
+    console.log();
     const homeDir = homedir();
     const defaultRoots = [
       join(homeDir, "Dropbox (Personal)", "Freelance"),
@@ -3805,10 +4713,12 @@ function cmdAnnotateAll(dryRun) {
     projects = registry.projects.filter(p => existsSync(p.path)).map(p => ({
       ...p, name: basename(p.path),
     }));
-    console.log(`  Using cached registry (${projects.length} projects)\n`);
+    console.log(`  Using cached fleet registry (${projects.length} existing projects)`);
+    printFleetRegistryBoundary(initialRegistryStatus);
+    console.log();
   }
 
-  const sourceProject = resolve(join(agentDir, ".."));
+  const sourceProject = canonicalSourceProjectPath();
   const targets = projects.filter(p => resolve(p.path) !== sourceProject);
 
   console.log(`╔══════════════════════════════════════════════════════╗`);
@@ -4009,7 +4919,7 @@ function cmdMigrationWaveVerify(jsonOutput, manifestPath) {
   const report = buildMigrationWaveVerification(manifestPath || defaultMigrationWavePath());
   if (jsonOutput) {
     console.log(JSON.stringify(report, null, 2));
-    if (report.status !== "PASS") process.exitCode = 1;
+    if (!verificationStatusIsPass(report.status, "execution")) process.exitCode = 1;
     return;
   }
 
@@ -4024,7 +4934,7 @@ function cmdMigrationWaveVerify(jsonOutput, manifestPath) {
     console.log(`  - ${entry.name}: actual ${entry.actual_version}, expected ${entry.expected_version} (${entry.boundary_status})`);
   }
   console.log();
-  if (report.status !== "PASS") process.exitCode = 1;
+  if (!verificationStatusIsPass(report.status, "execution")) process.exitCode = 1;
 }
 
 function collectHostProjectSurfaceStatus(targetPath) {
@@ -4046,7 +4956,7 @@ function collectHostProjectSurfaceStatus(targetPath) {
 function classifyFleetStatus(report, secondPass = null) {
   if (!report) return "blocked";
   if ((report.summary?.critical_missing_count || 0) > 0) return "blocked";
-  if (secondPass?.status && secondPass.status !== "PASS") return "semantically_behind";
+  if (secondPass?.status && !verificationStatusIsPass(secondPass.status, "execution")) return "semantically_behind";
   if (
     report.summary?.version_mismatch &&
     (report.summary?.missing_count || 0) === 0 &&
@@ -4063,6 +4973,7 @@ function classifyFleetStatus(report, secondPass = null) {
 }
 
 function fleetStatusReason(status) {
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Locally generated fleet classification controls whether a second scan is required; it is install-state routing rather than verification proof truth.
   if (status === "blocked") return "install_failure";
   if (status === "semantically_behind") return "semantic_backlog";
   if (status === "supported_lagging") return "version_lag";
@@ -4088,7 +4999,7 @@ function loadFleetProjects() {
   }
 
   const refreshed = loadRegistry();
-  const sourceProject = resolve(join(agentDir, ".."));
+  const sourceProject = canonicalSourceProjectPath();
   return refreshed.projects
     .filter((project) => existsSync(project.path))
     .filter((project) => resolve(project.path) !== sourceProject)
@@ -4156,8 +5067,9 @@ function buildFleetProjectReport(project, migrationWaveRead = null) {
     host_project_surfaces: secondPassVerification.host_project_surfaces,
     planner_managed_surfaces: secondPassVerification.planner_managed_surfaces,
     second_pass_verification: secondPassVerification,
+    // proof-status-lint: exempt T-INTAKE-B07B8898 -- Locally generated fleet classification controls whether a second scan is required; it is install-state routing rather than verification proof truth.
     second_pass_required: status === "semantically_behind" || status === "blocked",
-    second_pass_verified: secondPassVerification.status === "PASS",
+    second_pass_verified: verificationStatusIsPass(secondPassVerification.status, "execution"),
   });
 }
 
@@ -4181,10 +5093,12 @@ function cmdSemanticScan(targetPath, jsonOutput) {
 
 function cmdVerifyFleet(jsonOutput, manifestPath = null) {
   const projects = loadFleetProjects();
+  const registryStatus = fleetRegistryStatus();
   const migrationWaveRead = readMigrationWaveManifest(manifestPath || defaultMigrationWavePath());
   const report = {
     generated_at: new Date().toISOString(),
     current_version: CURRENT_VERSION,
+    fleet_registry: registryStatus,
     migration_wave: migrationWaveRead.usable ? {
       manifest_path: migrationWaveRead.path,
       included_count: migrationWaveRead.manifest.included_projects.length,
@@ -4222,6 +5136,8 @@ function cmdVerifyFleet(jsonOutput, manifestPath = null) {
   console.log(`╚══════════════════════════════════════════════════════╝\n`);
   console.log(`  Current planner version: ${CURRENT_VERSION}`);
   console.log(`  Projects checked: ${report.project_count}\n`);
+  printFleetRegistryBoundary(registryStatus);
+  console.log();
   console.log(`  current:             ${report.statuses.current}`);
   console.log(`  supported_lagging:   ${report.statuses.supported_lagging}`);
   console.log(`  semantically_behind: ${report.statuses.semantically_behind}`);
@@ -4384,7 +5300,7 @@ function classifyProjectGaps(projectReport) {
   }
   for (const issue of workflow?.issues || []) pushGap(gaps, "workflow_intelligence", "workflow_intelligence", issue);
 
-  if (projectReport.second_pass_verification?.status && projectReport.second_pass_verification.status !== "PASS") {
+  if (projectReport.second_pass_verification?.status && !verificationStatusIsPass(projectReport.second_pass_verification.status, "execution")) {
     pushGap(gaps, "semantic_readiness", "second_pass_verification", {
       code: "semantic_readiness_not_passing",
       severity: "warning",
@@ -4602,6 +5518,531 @@ function cmdPromoteKnowledge(targetPath, jsonOutput, writePromotion, dryRun, dra
   console.log();
 }
 
+function quoteCommandArg(value) {
+  return JSON.stringify(String(value || ""));
+}
+
+function safeIvePhase(phase = DEFAULT_IVE_PHASE) {
+  const normalized = String(phase || DEFAULT_IVE_PHASE).trim();
+  return normalized.replace(/[^A-Za-z0-9_.-]/g, "_") || DEFAULT_IVE_PHASE;
+}
+
+function migrateCommand(command, targetPath, flags = []) {
+  return [
+    "node .agent/skills/iterative-planner/scripts/migrate.mjs",
+    command,
+    quoteCommandArg(targetPath),
+    ...flags,
+  ].filter(Boolean).join(" ");
+}
+
+function latestIveBackupSummary(targetPath, phase = DEFAULT_IVE_PHASE) {
+  const backupRoot = join(targetPath, ".agent", "skills", "iterative-planner", "migration_backups");
+  const phaseId = safeIvePhase(phase);
+  if (!existsSync(backupRoot)) {
+    return {
+      available: false,
+      phase: phaseId,
+      latest_backup_dir: null,
+      latest_manifest: null,
+      reason: "No migration_backups directory found",
+    };
+  }
+  const candidates = readdirSync(backupRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith(`${phaseId}_`))
+    .map((entry) => join(backupRoot, entry.name))
+    .filter((path) => existsSync(join(path, "manifest.json")))
+    .sort();
+  const latest = candidates.at(-1) || null;
+  return {
+    available: !!latest,
+    phase: phaseId,
+    latest_backup_dir: latest ? relative(targetPath, latest) : null,
+    latest_manifest: latest ? relative(targetPath, join(latest, "manifest.json")) : null,
+    reason: latest ? null : `No backup manifest found for phase ${phaseId}`,
+  };
+}
+
+function readIveRecoveryMarker(targetPath) {
+  const markerPath = join(targetPath, ".agent", "skills", "iterative-planner", "migration_backups", ".ive_migration_in_progress.json");
+  const read = readJsonSafe(markerPath);
+  if (!existsSync(markerPath)) {
+    return {
+      present: false,
+      path: relative(targetPath, markerPath),
+      status: "none",
+      recovery_needed: false,
+      raw: null,
+    };
+  }
+  if (!read.ok) {
+    return {
+      present: true,
+      path: relative(targetPath, markerPath),
+      status: "unreadable",
+      recovery_needed: true,
+      error: read.error,
+      raw: null,
+    };
+  }
+  return {
+    present: true,
+    path: relative(targetPath, markerPath),
+    status: read.value?.status || "unknown",
+    recovery_needed: read.value?.status === "in_progress",
+    raw: read.value,
+  };
+}
+
+function plannerInstallClassification(detection) {
+  if (detection.confidence === "FAILED" || detection.version === "0.0.0") return "missing";
+  if (detection.version !== CURRENT_VERSION) return "lagging";
+  return "current";
+}
+
+function buildIveFrontDoorStatus(targetPath, { phase = DEFAULT_IVE_PHASE, plans = DEFAULT_VALIDATE_PLAN_COUNT } = {}) {
+  const root = resolve(targetPath);
+  const phaseId = safeIvePhase(phase);
+  const requestedPlans = Math.max(1, Number.parseInt(plans, 10) || DEFAULT_VALIDATE_PLAN_COUNT);
+  const detection = detectVersion(join(root, ".agent/skills/iterative-planner/SKILL.md"));
+  const classification = plannerInstallClassification(detection);
+  const doctor = buildDoctorReport(root);
+  const auditPath = join(root, "audit.config.json");
+  const auditRead = readJsonSafe(auditPath);
+  const auditConfig = auditRead.ok && auditRead.value && typeof auditRead.value === "object"
+    ? auditRead.value
+    : {};
+  const iveMigration = auditConfig.ive_migration && typeof auditConfig.ive_migration === "object"
+    ? auditConfig.ive_migration
+    : null;
+  const plan = buildIveMigrationPlan(root, { phase: phaseId });
+  const backup = latestIveBackupSummary(root, phaseId);
+  const recovery = readIveRecoveryMarker(root);
+  const retentionWarnings = findIveBackupRetentionWarnings(root);
+  const commandFlags = ["--phase", phaseId];
+
+  const commands = {
+    status: migrateCommand("ive-status", root, [...commandFlags]),
+    status_json: migrateCommand("ive-status", root, [...commandFlags, "--json"]),
+    dry_run: migrateCommand("ive-adopt", root, [...commandFlags, "--dry-run"]),
+    write_adopt: migrateCommand("ive-adopt", root, [...commandFlags, "--write"]),
+    validate_migration: migrateCommand("validate-migration", root, ["--plans", String(requestedPlans)]),
+    rollback: migrateCommand("rollback", root, [...commandFlags]),
+    recover: migrateCommand("recover", root, [...commandFlags]),
+    repair_dry_run: migrateCommand("upgrade", root, ["--dry-run"]),
+    repair_write: migrateCommand("upgrade", root),
+    legacy_explicit_dry_run: migrateCommand("upgrade", root, ["--to-ive", ...commandFlags, "--dry-run"]),
+  };
+
+  return {
+    ok: true,
+    status: "PASS",
+    operation: "ive-status",
+    read_only: true,
+    canonical_files_touched: false,
+    target_path: root,
+    phase: phaseId,
+    generated_at: new Date().toISOString(),
+    planner_install: {
+      classification,
+      detected_version: detection.version,
+      current_version: CURRENT_VERSION,
+      confidence: detection.confidence,
+      reason: detection.reason,
+      needs_repair: !!doctor.needs_repair,
+      repair_summary: doctor.summary?.description || null,
+    },
+    ive_adoption: {
+      enabled: iveMigration?.enabled === true,
+      kill_switch_enabled: auditConfig.ive_features_disabled === true,
+      audit_config_present: existsSync(auditPath),
+      audit_config_usable: auditRead.ok,
+      status: iveMigration?.enabled === true
+        ? "adopted"
+        : auditConfig.ive_features_disabled === true
+          ? "blocked_by_kill_switch"
+          : "not_adopted",
+      metadata: iveMigration,
+    },
+    safety: {
+      default_mode: "read_only",
+      adopt_write_requires: "--write",
+      dry_run_default: true,
+      mode_conflict: "--dry-run and --write are mutually exclusive for ive-adopt",
+      rollback_available: backup.available,
+      recovery_needed: recovery.recovery_needed,
+    },
+    backup,
+    recovery,
+    retention_warnings: retentionWarnings,
+    migration_preview: {
+      dry_run_report: plan.dry_run_report,
+      backup_dir: plan.backup_dir,
+      affected_files: plan.affected_files,
+      planned_actions: plan.planned_actions,
+      kill_switch: plan.kill_switch,
+    },
+    commands,
+  };
+}
+
+function printIveFrontDoorStatus(report) {
+  console.log(`\n╔══════════════════════════════════════════════════════╗`);
+  console.log(`║  IVE MIGRATION FRONT DOOR                           ║`);
+  console.log(`╚══════════════════════════════════════════════════════╝\n`);
+  console.log(`  Target:             ${report.target_path}`);
+  console.log(`  Phase:              ${report.phase}`);
+  console.log(`  Read-only:          yes`);
+  console.log(`  Canonical touched:  no`);
+  console.log(`  Planner install:    ${report.planner_install.classification} (${report.planner_install.detected_version} -> ${report.planner_install.current_version}, ${report.planner_install.confidence})`);
+  console.log(`  IVE adoption:       ${report.ive_adoption.status}`);
+  console.log(`  Kill switch:        ${report.ive_adoption.kill_switch_enabled ? "enabled" : "disabled"}`);
+  console.log(`  Rollback backup:    ${report.backup.available ? report.backup.latest_manifest : "not available"}`);
+  console.log(`  Recover marker:     ${report.recovery.status}${report.recovery.recovery_needed ? " (recovery needed)" : ""}`);
+  if (report.retention_warnings.length > 0) {
+    console.log(`  Retention warning:  ${report.retention_warnings.length} backup(s) nearing expiry`);
+  }
+  console.log(`\n  Next commands:`);
+  console.log(`    Dry run:     ${report.commands.dry_run}`);
+  console.log(`    Adopt/write: ${report.commands.write_adopt}`);
+  console.log(`    Validate:    ${report.commands.validate_migration}`);
+  console.log(`    Rollback:    ${report.commands.rollback}`);
+  console.log(`    Recover:     ${report.commands.recover}`);
+  if (report.planner_install.classification !== "current" || report.planner_install.needs_repair) {
+    console.log(`    Repair dry:  ${report.commands.repair_dry_run}`);
+    console.log(`    Repair:      ${report.commands.repair_write}`);
+  }
+  console.log(`\n  Default is read-only. Use --write only after reviewing the dry-run output.\n`);
+}
+
+function cmdIveStatus(targetPath, { phase = DEFAULT_IVE_PHASE, plans = DEFAULT_VALIDATE_PLAN_COUNT, jsonOutput = false } = {}) {
+  const report = buildIveFrontDoorStatus(targetPath, { phase, plans });
+  if (jsonOutput) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    printIveFrontDoorStatus(report);
+  }
+}
+
+function cmdIveAdopt(targetPath, { phase = DEFAULT_IVE_PHASE, dryRun = false, writeAdoption = false, jsonOutput = false } = {}) {
+  if (dryRun && writeAdoption) {
+    emitIveMigrationResult({
+      ok: false,
+      status: "FAIL",
+      operation: "ive-adopt",
+      phase: safeIvePhase(phase),
+      mode: "invalid",
+      reason: "--dry-run and --write are mutually exclusive for ive-adopt",
+      canonical_files_touched: false,
+    }, jsonOutput);
+    return;
+  }
+
+  if (!dryRun && !writeAdoption) {
+    const status = buildIveFrontDoorStatus(targetPath, { phase });
+    emitIveMigrationResult({
+      ok: true,
+      status: "PASS",
+      operation: "ive-adopt --dry-run",
+      phase: status.phase,
+      dry_run: true,
+      mode: "dry-run",
+      read_only: true,
+      defaulted_to_dry_run: true,
+      canonical_files_touched: false,
+      plan: status.migration_preview,
+      report: null,
+      follow_up_commands: status.commands,
+    }, jsonOutput);
+    return;
+  }
+
+  const effectiveDryRun = !writeAdoption;
+  const result = runIveUpgrade(targetPath, { phase, dryRun: effectiveDryRun, jsonOutput });
+  const status = buildIveFrontDoorStatus(targetPath, { phase });
+  emitIveMigrationResult({
+    ...result,
+    operation: writeAdoption ? "ive-adopt --write" : "ive-adopt --dry-run",
+    mode: writeAdoption ? "write" : "dry-run",
+    read_only: !writeAdoption,
+    defaulted_to_dry_run: !dryRun && !writeAdoption,
+    canonical_files_touched: writeAdoption
+      ? (result.canonical_files_touched === false ? false : verificationStatusIsPass(result.status, "execution"))
+      : false,
+    follow_up_commands: status.commands,
+  }, jsonOutput);
+}
+
+function projectHasLegacyPlannerLayout(targetPath) {
+  return existsSync(join(targetPath, ".agent", "iterative-planner", "SKILL.md"));
+}
+
+function readinessEntry(kind, code, message, command = null, source = null) {
+  return {
+    kind,
+    code,
+    message,
+    command,
+    source,
+  };
+}
+
+function buildMigrationReadinessReport(targetPath, { phase = DEFAULT_IVE_PHASE, plans = DEFAULT_VALIDATE_PLAN_COUNT } = {}) {
+  const root = resolve(targetPath);
+  const phaseId = safeIvePhase(phase);
+  const requestedPlans = Math.max(1, Number.parseInt(plans, 10) || DEFAULT_VALIDATE_PLAN_COUNT);
+  const doctor = buildDoctorReport(root);
+  const semantic = buildFleetProjectReport({ name: basename(root), path: root }, null);
+  const ive = buildIveFrontDoorStatus(root, { phase: phaseId, plans: requestedPlans });
+  const registryStatus = fleetRegistryStatus();
+  const detection = doctor.detection || {};
+  const legacyLayout = projectHasLegacyPlannerLayout(root);
+  const heuristicVersion = detection.confidence === "LOW";
+  const backupReady = !!ive.backup?.available;
+  const rollbackAvailable = !!ive.safety?.rollback_available;
+
+  const deterministicBlockers = [];
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Locally generated fleet classification emits a deterministic readiness blocker and does not parse or satisfy authored verification status.
+  if (semantic.status === "blocked") {
+    deterministicBlockers.push(readinessEntry(
+      "deterministic_blocker",
+      "planner_install_blocked",
+      "Planner install has critical missing files or unreadable migration state.",
+      ive.commands.repair_write,
+      "doctor"
+    ));
+  }
+  if (semantic.status === "semantically_behind") {
+    deterministicBlockers.push(readinessEntry(
+      "deterministic_blocker",
+      "semantic_readiness_not_passing",
+      "Second-pass semantic readiness is not passing.",
+      semantic.semantic_health?.recommended_commands?.[0] || migrateCommand("semantic-scan", root, ["--json"]),
+      "semantic-scan"
+    ));
+  }
+  if (ive.ive_adoption.kill_switch_enabled) {
+    deterministicBlockers.push(readinessEntry(
+      "deterministic_blocker",
+      "kill_switch_enabled",
+      "IVE adoption writes are disabled by audit.config.json.",
+      null,
+      "ive-status"
+    ));
+  }
+  if (ive.recovery?.recovery_needed) {
+    deterministicBlockers.push(readinessEntry(
+      "deterministic_blocker",
+      "recovery_needed",
+      "An interrupted IVE migration marker is present.",
+      ive.commands.recover,
+      "ive-status"
+    ));
+  }
+
+  const advisoryGaps = [];
+  for (const issue of doctor.advisory_issues || []) {
+    advisoryGaps.push(readinessEntry(
+      "advisory_gap",
+      issue.code || "doctor_advisory",
+      `${issue.category || "advisory"} drift in ${issue.path}`,
+      issue.repair_via || null,
+      "doctor"
+    ));
+  }
+  for (const issue of semantic.second_pass_verification?.issues || []) {
+    const severity = String(issue.severity || issue.level || "").toLowerCase();
+    if (severity === "error" || severity === "critical") continue;
+    advisoryGaps.push(readinessEntry(
+      "advisory_gap",
+      issue.code || issue.id || "semantic_advisory",
+      issue.message || issue.summary || "Second-pass semantic advisory.",
+      issue.command || null,
+      "semantic-scan"
+    ));
+  }
+  if (registryStatus.stale_paths_ignored > 0) {
+    advisoryGaps.push(readinessEntry(
+      "advisory_gap",
+      "stale_registry_paths",
+      `${registryStatus.stale_paths_ignored} stale fleet registry path(s) ignored for single-project readiness.`,
+      "node .agent/skills/iterative-planner/scripts/migrate.mjs scan",
+      "fleet_registry"
+    ));
+  }
+
+  const dryRunClean = !ive.ive_adoption.kill_switch_enabled && !ive.recovery?.recovery_needed;
+  const labels = new Set([semantic.status || "blocked"]);
+  if (ive.planner_install.classification === "current") labels.add("current");
+  if (ive.planner_install.classification === "lagging") labels.add("supported_lagging");
+  if (ive.planner_install.classification === "missing") labels.add("blocked");
+  if (dryRunClean) labels.add("dry_run_clean");
+  if (ive.ive_adoption.kill_switch_enabled) labels.add("kill_switch_enabled");
+  if (backupReady) labels.add("backup_ready");
+  if (rollbackAvailable) labels.add("rollback_available");
+  if (heuristicVersion) labels.add("heuristic_version");
+  if (legacyLayout) labels.add("legacy_layout");
+
+  const remainingActions = [];
+  if (deterministicBlockers.length === 0) {
+    remainingActions.push({
+      label: "Review IVE adoption dry run",
+      command: ive.commands.dry_run,
+    });
+  }
+  if (doctor.needs_repair) {
+    remainingActions.push({
+      label: "Repair planner install",
+      command: ive.commands.repair_write,
+    });
+  }
+  if (semantic.second_pass_required) {
+    remainingActions.push({
+      label: "Inspect semantic readiness",
+      command: migrateCommand("semantic-scan", root, ["--json"]),
+    });
+  }
+  if (!backupReady) {
+    remainingActions.push({
+      label: "Create rollback backup before write adoption",
+      command: ive.commands.write_adopt,
+    });
+  }
+  if (registryStatus.stale_paths_ignored > 0) {
+    remainingActions.push({
+      label: "Refresh fleet registry cache for batch work",
+      command: "node .agent/skills/iterative-planner/scripts/migrate.mjs scan",
+    });
+  }
+
+  const oldPlannerHandlingMode = legacyLayout
+    ? "legacy_layout_review"
+    : heuristicVersion
+      ? "heuristic_version_review"
+      : ive.planner_install.classification === "lagging" || semantic.status === "supported_lagging"
+        ? "supported_lagging_upgrade"
+        : "not_required";
+
+  return {
+    ok: true,
+    status: deterministicBlockers.length === 0 ? "PASS" : "ACTION_REQUIRED",
+    operation: "migration-readiness",
+    read_only: true,
+    canonical_files_touched: false,
+    target_path: root,
+    generated_at: new Date().toISOString(),
+    phase: phaseId,
+    labels: [...labels],
+    overall_status: deterministicBlockers.length > 0 ? "action_required" : (semantic.status || "current"),
+    planner_install: {
+      classification: ive.planner_install.classification,
+      detected_version: doctor.detected_version,
+      current_version: doctor.current_version,
+      confidence: detection.confidence,
+      reason: detection.reason,
+      needs_repair: !!doctor.needs_repair,
+      doctor_status: semantic.status,
+      old_planner_handling_mode: oldPlannerHandlingMode,
+    },
+    semantic_readiness: {
+      status: semantic.status,
+      status_reason: semantic.status_reason,
+      semantic_health: semantic.semantic_health,
+      second_pass_required: !!semantic.second_pass_required,
+      second_pass_verified: !!semantic.second_pass_verified,
+    },
+    ive_adoption: {
+      status: ive.ive_adoption.status,
+      enabled: ive.ive_adoption.enabled,
+      kill_switch_enabled: ive.ive_adoption.kill_switch_enabled,
+      dry_run_clean: dryRunClean,
+    },
+    safety: {
+      backup_ready: backupReady,
+      rollback_available: rollbackAvailable,
+      recovery_needed: ive.safety.recovery_needed,
+      backup: ive.backup,
+      recovery: ive.recovery,
+    },
+    legacy_handling: {
+      heuristic_version: heuristicVersion,
+      legacy_layout: legacyLayout,
+      mode: oldPlannerHandlingMode,
+    },
+    deterministic_blockers: deterministicBlockers,
+    advisory_gaps: advisoryGaps,
+    remaining_actions: remainingActions,
+    fleet_registry: {
+      ...registryStatus,
+      single_project_blocker: false,
+    },
+    commands: {
+      doctor: migrateCommand("doctor", root, ["--json"]),
+      semantic_scan: migrateCommand("semantic-scan", root, ["--json"]),
+      ive_status: ive.commands.status_json,
+      dry_run: ive.commands.dry_run,
+      write_adopt: ive.commands.write_adopt,
+      validate_migration: ive.commands.validate_migration,
+      repair: ive.commands.repair_write,
+    },
+  };
+}
+
+function printMigrationReadinessReport(report) {
+  console.log(`\n╔══════════════════════════════════════════════════════╗`);
+  console.log(`║  MIGRATION READINESS SUMMARY                        ║`);
+  console.log(`╚══════════════════════════════════════════════════════╝\n`);
+  console.log(`  Target:          ${report.target_path}`);
+  console.log(`  Overall:         ${report.overall_status}`);
+  console.log(`  Labels:          ${report.labels.join(", ") || "none"}`);
+  console.log(`  Planner install: ${report.planner_install.doctor_status} (${report.planner_install.detected_version} -> ${report.planner_install.current_version}, ${report.planner_install.confidence})`);
+  console.log(`  IVE adoption:    ${report.ive_adoption.status}`);
+  console.log(`  Kill switch:     ${report.ive_adoption.kill_switch_enabled ? "enabled" : "disabled"}`);
+  console.log(`  Backup ready:    ${report.safety.backup_ready ? "yes" : "no"}`);
+  console.log(`  Rollback:        ${report.safety.rollback_available ? "available" : "not available"}`);
+  console.log(`  Registry scope:  fleet advisory only; single-project readiness uses explicit target path`);
+
+  console.log(`\n  Deterministic blockers:`);
+  if (report.deterministic_blockers.length === 0) {
+    console.log(`    - none`);
+  } else {
+    for (const item of report.deterministic_blockers) {
+      console.log(`    - ${item.code}: ${item.message}`);
+      if (item.command) console.log(`      command: ${item.command}`);
+    }
+  }
+
+  console.log(`\n  Advisory gaps:`);
+  if (report.advisory_gaps.length === 0) {
+    console.log(`    - none`);
+  } else {
+    for (const item of report.advisory_gaps.slice(0, 20)) {
+      console.log(`    - ${item.code}: ${item.message}`);
+      if (item.command) console.log(`      command: ${item.command}`);
+    }
+    if (report.advisory_gaps.length > 20) console.log(`    - ... and ${report.advisory_gaps.length - 20} more`);
+  }
+
+  console.log(`\n  Remaining operator actions:`);
+  if (report.remaining_actions.length === 0) {
+    console.log(`    - none`);
+  } else {
+    for (const action of report.remaining_actions) {
+      console.log(`    - ${action.label}: ${action.command}`);
+    }
+  }
+  console.log();
+}
+
+function cmdMigrationReadiness(targetPath, { phase = DEFAULT_IVE_PHASE, plans = DEFAULT_VALIDATE_PLAN_COUNT, jsonOutput = false } = {}) {
+  const report = buildMigrationReadinessReport(targetPath, { phase, plans });
+  if (jsonOutput) {
+    console.log(JSON.stringify(report, null, 2));
+  } else {
+    printMigrationReadinessReport(report);
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
@@ -4612,7 +6053,12 @@ function printUsage() {
 Commands:
   detect <path>              Detect version + integrity check (missing files)
   doctor <path>              Machine-readable repair diagnosis for self-heal entrypoints
-  upgrade <path>             Apply upgrades (all components)
+  migration-readiness <path> Concise read-only readiness summary (JSON or human)
+  ive-status <path>          Read-only IVE migration status and exact next commands
+  ive-adopt <path> [--dry-run|--write]
+                             Operator-facing IVE adoption wrapper; defaults to dry-run
+  upgrade <path>             Read-only upgrade preflight (all components)
+  upgrade <path> --commit    Prove and commit in scratch, then fast-forward target
   upgrade <path> --seed-kb   Also seed knowledge base
   upgrade <path> --to-ive [--phase <N>] [--dry-run]
                              Explicitly opt a project into IVE migration bootstrap/adoption
@@ -4622,31 +6068,49 @@ Commands:
                              Replay recent historical plans and write migration parity proof
   recover <path> [--phase <N>]
                              Resolve an interrupted IVE migration marker
+  recover-upgrade <path>     Resolve an interrupted managed planner upgrade journal
   setup <path>               Project-level setup (audit config, hooks, version sync)
+  setup <path> --profile kernel
+                             Minimal kernel setup (AGENTS.md + journal seed only)
+  kernel-status <path>       Read-only kernel journal/profile status
   sync-instructions <path>   Refresh planner-managed root instruction snapshots
   annotate <path>            Bootstrap @planner: annotations (scan, apply, review)
   verify <path>              Post-upgrade integrity verification
   scaffold-discovery-policy <path>  Suggest or write a starter planner.discovery.json for matched archetypes
   promote-knowledge <path>   Preview or write draft KB promotion overlays for host-owned learnings
   semantic-scan <path>       Read-only semantic health scan for one project
+  regenerate-checklist-integrity <path> --checklist <name> --decision-ref <plans/plan_*/decisions.md#D-*>
+                             Re-authorize one clean tracked HEAD checklist; defaults to dry-run
 
   scan [path...]             Discover all planner projects under given paths
-  verify-fleet               Classify discovered projects by migration/support status
+  verify-fleet               Classify discovered projects by migration/support status (fleet registry cache only)
   fleet-doctor               Group recurring fleet readiness gaps by project archetype
   migration-wave create      Write reports/migration_wave.json include/exclude contract
   migration-wave verify      Verify migration_wave.json version boundaries
-  upgrade-all                Upgrade ALL discovered projects (uses registry from last scan)
-  annotate-all               Annotate ALL discovered projects
+  upgrade-all                Upgrade ALL discovered projects (uses fleet registry from last scan)
+  annotate-all               Annotate ALL discovered projects (uses fleet registry from last scan)
+
+Registry boundary:
+  The project registry is a cached fleet/batch surface for scan, upgrade-all,
+  annotate-all, verify-fleet, fleet-doctor, and migration-wave workflows.
+  Single-project migration commands use explicit target paths and do not need
+  source-repo registration.
 
 Options:
   --dry-run                  Preview changes without writing files
-  --json                     Emit JSON for commands that support it (doctor, sync-instructions, verify-fleet, fleet-doctor, migration-wave, scaffold-discovery-policy, promote-knowledge, semantic-scan)
+  --commit                   Consent to the transactional managed-upgrade commit
+  --source-ref <git-ref>     Read planner payload from this exact source commit/tag (default: PLANNER_SOURCE_REF or HEAD)
+  --json                     Emit JSON for commands that support it (doctor, migration-readiness, ive-status, ive-adopt, sync-instructions, verify-fleet, fleet-doctor, migration-wave, scaffold-discovery-policy, promote-knowledge, semantic-scan, regenerate-checklist-integrity)
   --to-ive                   Select the explicit IVE adoption path for upgrade
   --phase <N>                IVE migration phase selector (default: ${DEFAULT_IVE_PHASE})
   --plans <N>                validate-migration historical plan count (default: ${DEFAULT_VALIDATE_PLAN_COUNT})
   --recover                  Alias for recover . when run from a target project root
   --keep-deltas              Retain rollback delta/audit artifacts when supported
-  --write                    Write scaffold output for commands that support it
+  --profile <full|kernel>    Setup profile selector (default: full)
+  --tier <full|kernel>       Alias for --profile
+  --write                    Write scaffold/adoption output for commands that support it
+  --checklist <name>         Existing checklist registry entry to regenerate
+  --decision-ref <ref>       Recorded plans/plan_*/decisions.md#D-* authorization
   --draft-candidates <path>  Reviewed draft-candidate surface relative to the target project (default: ${DEFAULT_DRAFT_CANDIDATES_REVIEW_RELATIVE_PATH})
   --manifest <path>          Migration wave manifest path (default: reports/migration_wave.json)
   --exclude <selector>       Exclude project selector for migration-wave create (repeatable)
@@ -4663,276 +6127,40 @@ Design: Updates stale files (hash comparison), adds missing files.
 Current version: ${CURRENT_VERSION}`);
 }
 
-// ── Step 7 (US-086): upgrade-approval-envelope subcommand ───────────────────
-//
-// Materializes the plan-approval envelope contract for plans that were
-// approved under the legacy md-only hash. The previous approval_daemon wrote
-// state.json.approved_plan_hash; the new daemon writes
-// plans/<plan>/approval_envelope.json. This subcommand bridges the two:
-//
-//   - `ok`            — envelope present, schema-valid, matches disk
-//   - `needs_upgrade` — state has approval_nonce_hash, envelope absent,
-//                       projection equivalence holds, no duplicate keys
-//   - `expired`       — approval claimed but cannot construct envelope
-//                       (projection drift, duplicate keys, missing plan.md)
-//   - `not_approved`  — no approval_nonce_hash
-//   - `closed`        — plan was closed; no migration required
-//   - `unreadable`    — state.json missing or unparseable
-//
-// Caveat: the legacy `approved_plan_hash` only covered plan.md, so we cannot
-// reconstruct what plan.json looked like at approval. The envelope's
-// canonical_hash will lock down CURRENT plan.md+plan.json — the operator must
-// accept that the current pair is what they want to retroactively bless. This
-// is recorded in MIGRATION_APPROVAL_ENVELOPE.md as a known limitation.
-
-function classifyPlanForEnvelopeMigration(projectRoot, planDirName) {
-  const planDir = join(projectRoot, "plans", planDirName);
-  const statePath = join(planDir, "state.json");
-  if (!existsSync(statePath)) {
-    return { plan_dir_name: planDirName, status: "unreadable", reason: "state.json missing" };
-  }
-  let stateJson;
-  try { stateJson = JSON.parse(readFileSync(statePath, "utf-8")); }
-  catch (err) { return { plan_dir_name: planDirName, status: "unreadable", reason: `state.json parse failed: ${err.message}` }; }
-
-  const closed = stateJson.state === "CLOSED" || stateJson.closed === true;
-  const envelopePresent = existsSync(getPlanEnvelopePath(planDir));
-  const nonceHash = typeof stateJson.approval_nonce_hash === "string" && stateJson.approval_nonce_hash.length > 0
-    ? stateJson.approval_nonce_hash : null;
-  const legacyHash = typeof stateJson.approved_plan_hash === "string" && stateJson.approved_plan_hash.length > 0
-    ? stateJson.approved_plan_hash : null;
-
-  if (envelopePresent) {
-    const envCheck = validatePlanEnvelopeAgainstDisk(planDir);
-    if (envCheck.ok) return { plan_dir_name: planDirName, status: "ok", reason: "envelope present and matches disk" };
-    return { plan_dir_name: planDirName, status: "envelope_invalid", reason: `[${envCheck.reason_code}] ${envCheck.detail}` };
-  }
-
-  if (closed) {
-    return { plan_dir_name: planDirName, status: "closed", reason: "plan is closed; envelope migration not required" };
-  }
-
-  if (!nonceHash) {
-    return { plan_dir_name: planDirName, status: "not_approved", reason: "no approval_nonce_hash in state.json" };
-  }
-
-  const dupDrift = assertPlanNoDuplicateKeys(planDir);
-  if (dupDrift) {
-    return {
-      plan_dir_name: planDirName,
-      status: "expired",
-      reason: `cannot upgrade: ${dupDrift.detail}; re-approve after fixing plan.json`,
-    };
-  }
-  const projectionDrift = assertPlanProjectionEquivalence(planDir);
-  if (projectionDrift) {
-    return {
-      plan_dir_name: planDirName,
-      status: "expired",
-      reason: `cannot upgrade: ${projectionDrift.detail}; re-approve after regenerating plan.md`,
-    };
-  }
-
-  // NF-001 fix: when the legacy approved_plan_hash is present, the
-  // operator's original approval only blessed plan.md (not plan.json).
-  // We MUST verify that plan.md still matches that hash before blessing
-  // current disk state with a new envelope. Otherwise an attacker can
-  // mutate plan.md between original approval and migration; the migration
-  // would silently materialize an envelope binding the mutated content.
-  if (legacyHash) {
-    const planMdPath = join(planDir, "plan.md");
-    if (existsSync(planMdPath)) {
-      const rawMd = readFileSync(planMdPath, "utf-8")
-        .replace(/\r\n/g, "\n")
-        .replace(/\n+$/, "\n");
-      const currentMdHash = createHash("sha256").update(rawMd).digest("hex").slice(0, 32);
-      if (currentMdHash !== legacyHash) {
-        return {
-          plan_dir_name: planDirName,
-          status: "expired",
-          reason: `cannot upgrade: plan.md hash drift since legacy approval (legacy=${legacyHash}, current=${currentMdHash}); re-approve to bless current content`,
-          legacy_hash_present: true,
-          legacy_hash_drift: true,
-        };
-      }
-    }
-  }
-
-  return {
-    plan_dir_name: planDirName,
-    status: "needs_upgrade",
-    reason: legacyHash
-      ? "legacy approved_plan_hash present and matches current plan.md; envelope can be materialized"
-      : "approval_nonce_hash present without legacy hash; envelope can be materialized but origin is ambiguous",
-    legacy_hash_present: !!legacyHash,
-  };
-}
-
-function upgradeOnePlanToEnvelope(projectRoot, planDirName, classification) {
-  const planDir = join(projectRoot, "plans", planDirName);
-  const statePath = join(planDir, "state.json");
-  let stateJson;
-  try { stateJson = JSON.parse(readFileSync(statePath, "utf-8")); }
-  catch (err) { return { ok: false, reason: `state.json parse failed: ${err.message}` }; }
-
-  const nonceHash = stateJson.approval_nonce_hash;
-  if (typeof nonceHash !== "string" || nonceHash.length === 0) {
-    return { ok: false, reason: "no approval_nonce_hash to anchor the upgrade" };
-  }
-
-  // The legacy daemon stored only the nonce HASH, not the nonce. We use the
-  // hash directly as the approval_nonce_hash field on the new envelope.
-  // buildEnvelope normally hashes the raw nonce; here we patch the result.
-  const fakeNonce = "0".repeat(64); // placeholder; we overwrite the hash below
-  const build = buildPlanEnvelope(planDir, { approvalNonce: fakeNonce, approverOrigin: "interactive" });
-  if (!build.envelope) {
-    return { ok: false, reason: `envelope construction failed: [${build.reason_code}] ${build.detail}` };
-  }
-  build.envelope.approval_nonce_hash = nonceHash;
-  // Mark the envelope as a migration so audits can distinguish it from fresh approvals.
-  build.envelope.migration_origin = "legacy_approved_plan_hash";
-  // NF-008: prefer the original nonce_generated_at as approved_at when available
-  // so the migration does not collapse the audit timeline into "all approved at
-  // migration time". Falls back to current time only when the legacy field is
-  // absent (which means the plan predates the nonce-TTL feature).
-  if (typeof stateJson.nonce_generated_at === "string"
-      && !isNaN(new Date(stateJson.nonce_generated_at).getTime())) {
-    build.envelope.approved_at = stateJson.nonce_generated_at;
-  }
-
-  try {
-    writeFileSync(getPlanEnvelopePath(planDir), JSON.stringify(build.envelope, null, 2) + "\n");
-  } catch (err) {
-    return { ok: false, reason: `failed to write envelope: ${err.message}` };
-  }
-
-  // Update state.json pointer and remove the legacy hash to prevent confusion.
-  // Keep approval_nonce_hash (still used by verify_gate's nonce check).
-  // Route through writeStateJson so the _state_hash integrity field is
-  // recomputed — direct writeFileSync would invalidate the gate's tamper check.
-  delete stateJson.approved_plan_hash;
-  stateJson.approval_envelope_path = "approval_envelope.json";
-  stateJson.approval_envelope_schema = build.envelope.schema_version;
-  if (!writePlanStateJson(planDir, stateJson)) {
-    return { ok: false, reason: "failed to update state.json (could not recompute _state_hash)" };
-  }
-
-  return { ok: true, envelope_path: getPlanEnvelopePath(planDir) };
-}
-
-function rollbackOnePlanEnvelope(projectRoot, planDirName) {
-  const planDir = join(projectRoot, "plans", planDirName);
-  const statePath = join(planDir, "state.json");
-  const envPath = getPlanEnvelopePath(planDir);
-  if (!existsSync(envPath)) {
-    return { ok: false, reason: "no envelope to roll back" };
-  }
-  try { unlinkSync(envPath); } catch (err) { return { ok: false, reason: `failed to remove envelope: ${err.message}` }; }
-  if (existsSync(statePath)) {
-    try {
-      const sj = readPlanStateJson(planDir);
-      if (sj) {
-        delete sj.approval_envelope_path;
-        delete sj.approval_envelope_schema;
-        writePlanStateJson(planDir, sj);
-      }
-    } catch { /* non-fatal — state.json untouched */ }
-  }
-  return { ok: true, removed: envPath };
-}
-
 function cmdUpgradeApprovalEnvelope(projectRoot, { dryRun, jsonOutput, rollback }) {
-  const plansDir = join(projectRoot, "plans");
-  if (!existsSync(plansDir)) {
-    if (jsonOutput) { console.log(JSON.stringify({ ok: false, reason: "no plans/ directory" }, null, 2)); }
-    else { console.error("ERROR: no plans/ directory at " + plansDir); }
-    process.exit(1);
-  }
-  const planDirNames = readdirSync(plansDir, { withFileTypes: true })
-    .filter(d => d.isDirectory() && d.name.startsWith("plan_"))
-    .map(d => d.name)
-    .sort();
-
-  const classifications = planDirNames.map(name => classifyPlanForEnvelopeMigration(projectRoot, name));
-
-  if (rollback) {
-    const rolledBack = [];
-    const skipped = [];
-    for (const cls of classifications) {
-      if (cls.status === "ok" || cls.status === "envelope_invalid") {
-        if (dryRun) { skipped.push({ ...cls, rollback: "would_remove_envelope" }); continue; }
-        const result = rollbackOnePlanEnvelope(projectRoot, cls.plan_dir_name);
-        rolledBack.push({ ...cls, rollback_result: result });
-      } else {
-        skipped.push({ ...cls, rollback: "no_envelope_to_remove" });
-      }
-    }
-    const summary = { ok: true, action: "rollback", dry_run: !!dryRun, rolled_back: rolledBack.length, skipped: skipped.length, plans: [...rolledBack, ...skipped] };
-    if (jsonOutput) console.log(JSON.stringify(summary, null, 2));
-    else {
-      console.log(`upgrade-approval-envelope --rollback ${dryRun ? "(dry-run) " : ""}`);
-      console.log(`  rolled back: ${rolledBack.length}`);
-      console.log(`  skipped:     ${skipped.length}`);
-      for (const r of rolledBack) console.log(`  - ${r.plan_dir_name} [${r.status}] ${JSON.stringify(r.rollback_result)}`);
-      for (const s of skipped) console.log(`  - ${s.plan_dir_name} [${s.status}] ${s.reason}`);
-    }
-    return;
-  }
-
-  const counts = { ok: 0, needs_upgrade: 0, expired: 0, not_approved: 0, closed: 0, unreadable: 0, envelope_invalid: 0 };
-  for (const c of classifications) counts[c.status] = (counts[c.status] || 0) + 1;
-
-  const upgrades = [];
-  for (const cls of classifications) {
-    if (cls.status !== "needs_upgrade") continue;
-    if (dryRun) { upgrades.push({ ...cls, upgrade: "would_upgrade" }); continue; }
-    const result = upgradeOnePlanToEnvelope(projectRoot, cls.plan_dir_name, cls);
-    upgrades.push({ ...cls, upgrade_result: result });
-  }
-
   const summary = {
     ok: true,
-    action: "upgrade",
+    action: rollback ? "rollback" : "upgrade",
     dry_run: !!dryRun,
     project_root: projectRoot,
-    counts,
-    total: classifications.length,
-    plans: classifications.map(c => {
-      const up = upgrades.find(u => u.plan_dir_name === c.plan_dir_name);
-      return up || c;
-    }),
+    status: "retired",
+    reason: "approval envelope migration was retired by E8-1; legacy approval_envelope artifacts are ignored by runtime gates",
   };
 
   if (jsonOutput) { console.log(JSON.stringify(summary, null, 2)); return; }
 
   console.log(`upgrade-approval-envelope ${dryRun ? "(dry-run) " : ""}`);
-  console.log(`  total plans:      ${summary.total}`);
-  console.log(`  ok (envelope):    ${counts.ok}`);
-  console.log(`  needs upgrade:    ${counts.needs_upgrade}${dryRun ? " (would upgrade)" : " (upgraded this run)"}`);
-  console.log(`  expired:          ${counts.expired}`);
-  console.log(`  not approved:     ${counts.not_approved}`);
-  console.log(`  closed:           ${counts.closed}`);
-  console.log(`  envelope invalid: ${counts.envelope_invalid}`);
-  console.log(`  unreadable:       ${counts.unreadable}`);
-  for (const c of classifications) {
-    if (c.status === "needs_upgrade" || c.status === "expired" || c.status === "envelope_invalid") {
-      const up = upgrades.find(u => u.plan_dir_name === c.plan_dir_name);
-      const tag = up?.upgrade_result?.ok ? "UPGRADED" : up?.upgrade === "would_upgrade" ? "WOULD UPGRADE" : c.status.toUpperCase();
-      console.log(`  - ${c.plan_dir_name} [${tag}] ${c.reason}`);
-    }
-  }
+  console.log(`  status: retired`);
+  console.log(`  reason: ${summary.reason}`);
 }
 
 function emitIveMigrationResult(result, jsonOutput) {
   if (jsonOutput) {
     console.log(JSON.stringify(result, null, 2));
   } else {
-    const statusLabel = result.ok ? (result.status || "PASS") : "FAIL";
+    const statusLabel = canonicalVerificationStatus(result.status, "execution", {
+      fallback: result.ok === false ? "FAIL" : "UNKNOWN",
+    });
     console.log(`\n╔══════════════════════════════════════════════════════╗`);
     console.log(`║  IVE MIGRATION ${statusLabel.padEnd(36)}║`);
     console.log(`╚══════════════════════════════════════════════════════╝\n`);
     console.log(`  Operation: ${result.operation || "unknown"}`);
     if (result.phase) console.log(`  Phase:     ${result.phase}`);
+    if (result.mode) console.log(`  Mode:      ${result.mode}${result.defaulted_to_dry_run ? " (default)" : ""}`);
+    if (result.canonical_files_touched !== undefined) {
+      console.log(`  Canonical touched: ${result.canonical_files_touched ? "yes" : "no"}`);
+    }
+    if (result.read_only !== undefined) console.log(`  Read-only: ${result.read_only ? "yes" : "no"}`);
     if (result.reason) console.log(`  Reason:    ${result.reason}`);
     if (result.backup_manifest) console.log(`  Backup:    ${result.backup_manifest}`);
     if (result.backup_dir) console.log(`  Backup dir:${result.backup_dir}`);
@@ -4946,6 +6174,14 @@ function emitIveMigrationResult(result, jsonOutput) {
       console.log(`  Plans replayed: ${result.plans_replayed}/${result.plans_requested}`);
       console.log(`  Drift count:    ${result.drift_count}`);
     }
+    if (result.follow_up_commands) {
+      console.log(`\n  Follow-up commands:`);
+      console.log(`    Status:      ${result.follow_up_commands.status}`);
+      console.log(`    Adopt/write: ${result.follow_up_commands.write_adopt}`);
+      console.log(`    Validate:    ${result.follow_up_commands.validate_migration}`);
+      console.log(`    Rollback:    ${result.follow_up_commands.rollback}`);
+      console.log(`    Recover:     ${result.follow_up_commands.recover}`);
+    }
     console.log();
   }
   if (!result.ok) process.exit(1);
@@ -4953,6 +6189,8 @@ function emitIveMigrationResult(result, jsonOutput) {
 
 const args = process.argv.slice(2);
 const dryRun = args.includes("--dry-run");
+const commitRequested = args.includes("--commit");
+const transactionApply = args.includes("--transaction-apply");
 const seedKB = args.includes("--seed-kb");
 const jsonOutput = args.includes("--json");
 const writePolicy = args.includes("--write");
@@ -4966,10 +6204,61 @@ let waveDeferredVersion = null;
 let waveReason = null;
 let ivePhaseArg = DEFAULT_IVE_PHASE;
 let validatePlansArg = DEFAULT_VALIDATE_PLAN_COUNT;
+let setupProfileArg = null;
+let sourceRefArg = process.env.PLANNER_SOURCE_REF?.trim() || null;
+let invalidSourceRefOption = false;
+let checklistNameArg = null;
+let decisionRefArg = null;
 const waveExclusions = [];
 const filteredArgs = [];
 for (let index = 0; index < args.length; index++) {
   const arg = args[index];
+  if (arg === "--source-ref") {
+    const candidate = args[index + 1];
+    if (!candidate || candidate.startsWith("--")) {
+      invalidSourceRefOption = true;
+    } else {
+      sourceRefArg = candidate;
+      index++;
+    }
+    continue;
+  }
+  if (arg.startsWith("--source-ref=")) {
+    sourceRefArg = arg.slice("--source-ref=".length) || null;
+    if (!sourceRefArg) invalidSourceRefOption = true;
+    continue;
+  }
+  if (arg === "--checklist") {
+    checklistNameArg = args[index + 1] || null;
+    if (args[index + 1]) index++;
+    continue;
+  }
+  if (arg.startsWith("--checklist=")) {
+    checklistNameArg = arg.slice("--checklist=".length) || null;
+    continue;
+  }
+  if (arg === "--decision-ref") {
+    decisionRefArg = args[index + 1] || null;
+    if (args[index + 1]) index++;
+    continue;
+  }
+  if (arg.startsWith("--decision-ref=")) {
+    decisionRefArg = arg.slice("--decision-ref=".length) || null;
+    continue;
+  }
+  if (arg === "--profile" || arg === "--tier") {
+    setupProfileArg = args[index + 1] || null;
+    if (args[index + 1]) index++;
+    continue;
+  }
+  if (arg.startsWith("--profile=")) {
+    setupProfileArg = arg.slice("--profile=".length) || null;
+    continue;
+  }
+  if (arg.startsWith("--tier=")) {
+    setupProfileArg = arg.slice("--tier=".length) || null;
+    continue;
+  }
   if (arg === "--phase") {
     ivePhaseArg = args[index + 1] || DEFAULT_IVE_PHASE;
     if (args[index + 1]) index++;
@@ -5016,6 +6305,11 @@ for (let index = 0; index < args.length; index++) {
   filteredArgs.push(arg);
 }
 
+if (invalidSourceRefOption) {
+  console.error("ERROR: --source-ref requires a non-empty git commit, tag, or ref; no managed files were written.");
+  process.exit(1);
+}
+
 if (recoverRequested && filteredArgs[0] !== "recover") {
   if (filteredArgs.length === 0) {
     filteredArgs.push("recover", ".");
@@ -5044,6 +6338,8 @@ if (!["scan", "verify-fleet", "fleet-doctor", "migration-wave", "upgrade-all", "
   }
 }
 
+runFromPinnedSourceSnapshot(args, sourceRefArg, command, targetPath);
+
 // ---------------------------------------------------------------------------
 // Self-update: for mutating commands we refresh the target copy first so a stale
 // downstream migrate.mjs can still repair itself. Read-only commands must not
@@ -5051,7 +6347,7 @@ if (!["scan", "verify-fleet", "fleet-doctor", "migration-wave", "upgrade-all", "
 // ---------------------------------------------------------------------------
 const selfSource = __filename;
 const selfTarget = targetPath ? join(targetPath, ".agent/skills/iterative-planner/scripts/migrate.mjs") : null;
-const selfUpdatingCommands = new Set(["upgrade", "setup", "sync-instructions", "annotate", "promote-knowledge"]);
+const selfUpdatingCommands = new Set(["setup", "sync-instructions", "annotate", "promote-knowledge"]);
 if (selfUpdatingCommands.has(command) && selfTarget && resolve(selfSource) !== resolve(selfTarget) && existsSync(selfTarget)) {
   const srcHash = fileHash(selfSource);
   const destHash = fileHash(selfTarget);
@@ -5073,14 +6369,63 @@ if (command === "upgrade-approval-envelope") {
   cmdDetect(targetPath);
 } else if (command === "doctor") {
   cmdDoctor(targetPath, jsonOutput);
+} else if (command === "migration-readiness") {
+  cmdMigrationReadiness(targetPath, { phase: ivePhaseArg, plans: validatePlansArg, jsonOutput });
+} else if (command === "ive-status") {
+  cmdIveStatus(targetPath, { phase: ivePhaseArg, plans: validatePlansArg, jsonOutput });
+} else if (command === "ive-adopt") {
+  cmdIveAdopt(targetPath, { phase: ivePhaseArg, dryRun, writeAdoption: writePolicy, jsonOutput });
 } else if (command === "upgrade") {
   if (toIve) {
     const result = runIveUpgrade(targetPath, { phase: ivePhaseArg, dryRun, jsonOutput });
     emitIveMigrationResult(result, jsonOutput);
   } else {
-    const upgradeResult = cmdUpgrade(targetPath, seedKB, dryRun);
-    if (!dryRun && upgradeResult?.setupNeeded) {
-      cmdSetup(targetPath, false);
+    if (transactionApply) {
+      if (process.env._PLANNER_MANAGED_UPGRADE_INTERNAL !== "1") {
+        console.error("ERROR: --transaction-apply is internal-only; no managed files were written.");
+        process.exit(2);
+      }
+      const upgradeResult = cmdUpgrade(targetPath, seedKB, false);
+      if (upgradeResult?.setupNeeded) cmdSetup(targetPath, false);
+    } else {
+      const preview = cmdUpgrade(targetPath, seedKB, true);
+      if (!preview?.blocked && !preview?.noOp && !dryRun) {
+        if (!commitRequested) {
+          const consent = managedUpgradeConsentCommand(
+            targetPath,
+            selectedSourceCommit() || selectedSourceRef(),
+            seedKB,
+            __filename,
+          );
+          console.log(`\n  ⏸️  COMMIT CONSENT REQUIRED — target remains unchanged.`);
+          console.log(`  Run: ${consent}\n`);
+          process.exitCode = 2;
+        } else if (resolve(targetPath) === canonicalSourceProjectPath()) {
+          console.error("ERROR: transactional upgrade targets consuming repositories, not the canonical source repository.");
+          process.exitCode = 2;
+        } else {
+          try {
+            runManagedUpgradeTransaction({
+              targetPath,
+              sourceScript: __filename,
+              sourceRef: selectedSourceRef(),
+              sourceCommit: selectedSourceCommit(),
+              fromVersion: readCommittedPlannerVersion(targetPath),
+              toVersion: CURRENT_VERSION,
+              seedKB,
+            });
+          } catch (error) {
+            console.error(
+              error.liveTargetAdvanced
+                ? "\n  ❌ TRANSACTION FINALIZATION INCOMPLETE — proven candidate is at live HEAD."
+                : "\n  ❌ TRANSACTIONAL UPGRADE FAILED — live target was not advanced.",
+            );
+            console.error(`  ${error.message}`);
+            if (error.recovery) console.error(`  Recovery: ${error.recovery}`);
+            process.exitCode = 1;
+          }
+        }
+      }
     }
   }
 } else if (command === "rollback") {
@@ -5092,8 +6437,25 @@ if (command === "upgrade-approval-envelope") {
 } else if (command === "recover") {
   const result = runIveRecover(targetPath, { phase: ivePhaseArg });
   emitIveMigrationResult(result, jsonOutput);
+} else if (command === "recover-upgrade") {
+  try {
+    const result = recoverManagedUpgrade(targetPath, {
+      sourceCommit: selectedSourceCommit(),
+    });
+    if (jsonOutput) console.log(JSON.stringify(result, null, 2));
+    else {
+      console.log(`Managed upgrade recovery: ${result.status}`);
+      console.log(`  Target: ${result.target_path}`);
+      if (result.target_head) console.log(`  HEAD:   ${result.target_head}`);
+    }
+  } catch (error) {
+    console.error(`ERROR: ${error.message}`);
+    process.exitCode = 1;
+  }
 } else if (command === "setup") {
-  cmdSetup(targetPath, dryRun);
+  cmdSetup(targetPath, dryRun, { profile: setupProfileArg || "full" });
+} else if (command === "kernel-status") {
+  cmdKernelStatus(targetPath, jsonOutput);
 } else if (command === "sync-instructions") {
   cmdSyncInstructions(targetPath, dryRun, jsonOutput);
 } else if (command === "annotate") {
@@ -5106,6 +6468,14 @@ if (command === "upgrade-approval-envelope") {
   cmdPromoteKnowledge(targetPath, jsonOutput, writePolicy, dryRun, draftCandidatesPathArg);
 } else if (command === "semantic-scan") {
   cmdSemanticScan(targetPath, jsonOutput);
+} else if (command === "regenerate-checklist-integrity") {
+  cmdRegenerateChecklistIntegrity(targetPath, {
+    checklistName: checklistNameArg,
+    decisionRef: decisionRefArg,
+    dryRun,
+    write: writePolicy,
+    jsonOutput,
+  });
 } else if (command === "scan") {
   let scanRoots = filteredArgs.slice(1).map(p => resolve(p));
   if (scanRoots.length === 0) {
@@ -5140,7 +6510,7 @@ if (command === "upgrade-approval-envelope") {
     process.exit(1);
   }
 } else if (command === "upgrade-all") {
-  cmdUpgradeAll(dryRun);
+  cmdUpgradeAll(dryRun, commitRequested);
 } else if (command === "annotate-all") {
   cmdAnnotateAll(dryRun);
 } else {

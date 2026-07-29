@@ -18,6 +18,7 @@ import { fileURLToPath } from "url";
 import {
   analyzeIntentContract,
   classifyPlannerPreflight,
+  detectPlannerDogfoodIncident,
   extractFilesToModify,
   getPaths,
   goalLooksLikeProgramIntakeRequest,
@@ -83,6 +84,39 @@ const WORKFLOW_ROUTE_MAP = Object.freeze({
   execute_known_recipe: "/recipe-tidy",
   recipe_tidy: "/recipe-tidy",
   recipe_discovery: "/recipe-discovery",
+});
+const INTERNAL_WORKFLOW_ROUTING_METADATA = Object.freeze({
+  "/safe-change-power": Object.freeze({
+    trigger_tags: [
+      "planner core",
+      "migration",
+      "config migration",
+      "plugin config",
+      "cross system",
+      "multi surface",
+      "course generator",
+      "user visible regression",
+      "high risk",
+    ],
+    route_tags: [
+      "planner core changes",
+      "migration parity",
+      "config migration risk",
+      "user visible regression risk",
+      "stronger guardrails",
+    ],
+    preferred_personas: ["config_integrity", "traceability", "wiring_auditor", "ux_ui", "assumptions_challenger"],
+  }),
+  "/sme-improvement": Object.freeze({
+    trigger_tags: ["improvement", "upside", "strategy", "better strategies", "quant improvement", "quant upside"],
+    route_tags: ["goal aligned improvement", "upside discovery", "strategic improvement", "quant improvement"],
+    preferred_personas: ["quant", "quant_target", "assumptions_challenger", "traceability"],
+  }),
+  "/ticket-traceability-repair": Object.freeze({
+    trigger_tags: ["needs story", "missing story refs", "ticket without traceability", "gap reference"],
+    route_tags: ["story traceability repair", "ticket traceability repair", "needs_story"],
+    preferred_personas: ["traceability"],
+  }),
 });
 const DEFAULT_DRAFT_REVIEW_SURFACE = "plans/knowledge/draft_candidates.review.json";
 
@@ -252,8 +286,9 @@ function extractGoalFromPlanContent(planContent) {
 }
 
 const defaultWorkflowRegistryPath = join(getSkillPath(import.meta.url), "config", "workflow_registry.json");
+const defaultWorkflowMigrationInventoryPath = join(getSkillPath(import.meta.url), "config", "workflow_migration_inventory.json");
 
-function normalizeWorkflowEntry(entry) {
+function normalizeWorkflowEntry(entry, options = {}) {
   if (!entry || typeof entry !== "object") return null;
   const id = typeof entry.id === "string" && entry.id.trim() ? entry.id.trim() : "";
   if (!id) return null;
@@ -270,19 +305,55 @@ function normalizeWorkflowEntry(entry) {
     required_inputs: normalizeStringList(entry.required_inputs),
     canonical_outputs: normalizeStringList(entry.canonical_outputs),
     related_failure_codes: normalizeStringList(entry.related_failure_codes),
+    internal: !!options.internal,
   };
 }
 
-export function loadWorkflowRegistry({ registryPath = defaultWorkflowRegistryPath } = {}) {
+function normalizeInventoryWorkflowEntry(entry, publicIds) {
+  const id = typeof entry?.workflow === "string" && entry.workflow.trim() ? entry.workflow.trim() : "";
+  if (!id || publicIds.has(id)) return null;
+  const idTokens = id.replace(/^\//, "").replace(/-/g, " ");
+  const routing = INTERNAL_WORKFLOW_ROUTING_METADATA[id] || {};
+  const purpose = [entry.v6_purpose, entry.notes].filter(Boolean).join(" ");
+  return normalizeWorkflowEntry({
+    id,
+    purpose,
+    trigger_tags: [idTokens, entry.v6_purpose, entry.notes, ...normalizeStringList(routing.trigger_tags)],
+    route_tags: [idTokens, entry.v6_purpose, entry.v7_action, entry.notes, ...normalizeStringList(routing.route_tags)],
+    search_tier: "tier1",
+    dispatch_targets: [],
+    skill_hints: [id],
+    preferred_personas: routing.preferred_personas || [],
+    recipe_affinity: id.startsWith("/recipe-") ? "high" : "low",
+    required_inputs: [],
+    canonical_outputs: [],
+    related_failure_codes: [],
+  }, { internal: true });
+}
+
+export function loadWorkflowRegistry({
+  registryPath = defaultWorkflowRegistryPath,
+  inventoryPath = defaultWorkflowMigrationInventoryPath,
+} = {}) {
   const parsed = safeReadJson(registryPath);
-  const workflows = Array.isArray(parsed?.workflows)
+  const publicWorkflows = Array.isArray(parsed?.workflows)
     ? parsed.workflows.map(normalizeWorkflowEntry).filter(Boolean)
     : [];
+  const publicIds = new Set(publicWorkflows.map((workflow) => workflow.id));
+  const inventory = safeReadJson(inventoryPath);
+  const internalWorkflows = Array.isArray(inventory?.entries)
+    ? inventory.entries.map((entry) => normalizeInventoryWorkflowEntry(entry, publicIds)).filter(Boolean)
+    : [];
+  const workflows = [...publicWorkflows, ...internalWorkflows];
   return {
     path: registryPath,
     present: existsSync(registryPath),
-    usable: !!parsed && workflows.length > 0,
+    usable: !!parsed && publicWorkflows.length > 0,
     version: parsed?.version || 1,
+    public_count: publicWorkflows.length,
+    internal_inventory_path: inventoryPath,
+    internal_inventory_present: existsSync(inventoryPath),
+    internal_count: internalWorkflows.length,
     workflows,
   };
 }
@@ -471,7 +542,7 @@ function collectSecondarySignals({
 function goalLooksLikeTicketTraceabilityRepairRequest(goalText) {
   const text = String(goalText || "").toLowerCase();
   if (!text.trim()) return false;
-  const ticketContext = /\b(program packet|ticket|tickets|github issue|github issues|issue|issues|ticket intake receipt|deepseek|advisory|acceptance criteria)\b/.test(text);
+  const ticketContext = /\b(program packet|ticket|tickets|github issue|github issues|issue|issues|ticket intake receipt|advisory|acceptance criteria)\b/.test(text);
   const missingStoryTraceability = (
     /\bneeds_story\b/.test(text) ||
     /\bticket_without_traceability\b/.test(text) ||
@@ -740,6 +811,24 @@ function chooseEntryPoint(scoredWorkflows, classificationHints = {}) {
   };
 }
 
+function applyPlannerDogfoodRouting(scoredWorkflows, dogfoodIncident) {
+  if (!dogfoodIncident?.active) return scoredWorkflows;
+  return (Array.isArray(scoredWorkflows) ? scoredWorkflows : [])
+    .map((workflow) => {
+      if (workflow?.id !== "/steward") return workflow;
+      return {
+        ...workflow,
+        score: Math.max(Number(workflow.score) || 0, 140),
+        matched_via: uniqueList([...(workflow.matched_via || []), "planner_dogfood_false_green_incident"]),
+        reasons: uniqueList([
+          ...(workflow.reasons || []),
+          "planner dogfood false-green incident requires cross-surface stewardship before ordinary continuation",
+        ]),
+      };
+    })
+    .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+}
+
 function buildRelevantRecipes(recipeResolution, discoveryPolicy) {
   const preferred = new Set(normalizeStringList(discoveryPolicy?.preferred_recipes));
   return (Array.isArray(recipeResolution?.recipe_candidates) ? recipeResolution.recipe_candidates : [])
@@ -915,6 +1004,7 @@ export function resolveKnowledgeFromContext({
     plannedFiles: uniqueNormalizedPaths([...(rawPlanMatchContext.plannedFiles || []), ...plannedFiles]),
     effectiveFiles: uniqueNormalizedPaths([...(rawPlanMatchContext.effectiveFiles || []), ...plannedFiles]),
   };
+  const dogfoodIncident = detectPlannerDogfoodIncident(goalText || rawPlanMatchContext.goalText, planMatchContext.effectiveFiles);
 
   traceProfile.tiers_visited.push("tier0");
   traceProfile.sources_consulted.push("workflow_registry.json", "recipe_resolver", "plans/knowledge/index.md");
@@ -943,6 +1033,7 @@ export function resolveKnowledgeFromContext({
       tier: "tier0",
     }))
     .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+  scoredWorkflows = applyPlannerDogfoodRouting(scoredWorkflows, dogfoodIncident);
 
   let searchTier = "tier0";
   let storyMatches = [];
@@ -1042,6 +1133,7 @@ export function resolveKnowledgeFromContext({
         return scored;
       })
       .sort((a, b) => b.score - a.score || a.id.localeCompare(b.id));
+    scoredWorkflows = applyPlannerDogfoodRouting(scoredWorkflows, dogfoodIncident);
 
     const entryAfterTier1 = chooseEntryPoint(scoredWorkflows, classificationHints);
     const tier1CanStop = (
@@ -1316,6 +1408,7 @@ export function resolveKnowledgeFromContext({
       preferred_recipes: discoveryPolicy.preferred_recipes,
     },
     recommended_entrypoint: recommendedEntryPoint,
+    planner_dogfood_incident: dogfoodIncident,
     north_star: manifestoInfo.manifesto.north_star,
     hard_policy_mode: manifestoInfo.manifesto.hard_policy_mode,
     manifesto_alignment_signals: manifestoAlignmentSignals,

@@ -514,5 +514,6 @@ export async function runBootstrapRegistryCommand({ projectRoot = process.cwd(),
   if (json) console.log(JSON.stringify(result, null, 2));
   else console.log(formatHumanOutput(result));
 
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Bootstrap operation result enum controls the command wrapper rather than verification truth.
   return result.ok === false || result.status === "FAIL" ? 1 : 0;
 }

@@ -1,0 +1,545 @@
+{
+  "schema_version": 1,
+  "ticket": "T-INTAKE-B07B8898",
+  "finding_class": "FI-PROOF-STATUS-002",
+  "source_snapshot": "cfa81741e0a22d145019ed86f147e620836d2f1b",
+  "baseline": {"javascript_files": 506, "prolog_files": 20, "repair_javascript_readers": 49, "repair_prolog_readers": 8},
+  "protocol_exemptions": [
+    {
+      "id": ".agent/skills/quant-researcher/scripts/quant_researcher_contracts.mjs:direct_status_comparison:ad0f918f56affd19",
+      "path": ".agent/skills/quant-researcher/scripts/quant_researcher_contracts.mjs",
+      "reason": "Agent-review verdict is a countersign protocol enum, not authored or executed verification proof.",
+      "proof_boundary": "The comparison can only add a referee mismatch blocker; independent human authorization, envelope binding, and reviewer satisfaction remain mandatory and cannot be promoted by this enum."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/degraded_coverage.mjs:direct_status_comparison:d870b1008cdebd8e",
+      "path": ".agent/skills/iterative-planner/scripts/lib/degraded_coverage.mjs",
+      "reason": "Coverage-resolution lifecycle (valid, degraded, waived), not authored or executed verification proof.",
+      "proof_boundary": "Evidence validity remains canonical and claim support remains false for degraded or waived coverage; this comparison only labels whether every unresolved coverage item has governed waiver metadata."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/gate_verdict.mjs:direct_status_comparison:8b00e275b6b19950",
+      "path": ".agent/skills/iterative-planner/scripts/lib/gate_verdict.mjs",
+      "reason": "Coverage-resolution lifecycle aggregation, not authored or executed verification proof.",
+      "proof_boundary": "The receipt merger preserves invalid or degraded evidence validity and cannot satisfy a gate or verification obligation; it only combines already-derived coverage assessments."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/gate_satisfiability.mjs:direct_status_comparison:70143e2ddd220b37",
+      "path": ".agent/skills/iterative-planner/scripts/lib/gate_satisfiability.mjs",
+      "reason": "Gate-requirement lifecycle enum, not authored or executed verification-result truth.",
+      "proof_boundary": "The comparisons only count outcomes already derived from structural predicates; they cannot ingest evidence or promote any verification obligation."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/gate_satisfiability.mjs:direct_status_comparison:3525e5d7b5110390",
+      "path": ".agent/skills/iterative-planner/scripts/lib/gate_satisfiability.mjs",
+      "reason": "Gate-requirement lifecycle enum, not authored or executed verification-result truth.",
+      "proof_boundary": "The comparisons only count outcomes already derived from structural predicates; they cannot ingest evidence or promote any verification obligation."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/program_packet.mjs:direct_status_comparison:aed9269f2c1e189e",
+      "path": ".agent/skills/iterative-planner/scripts/lib/program_packet.mjs",
+      "reason": "Structural gate-requirement lifecycle drives semantic facts, not verification-result truth.",
+      "proof_boundary": "Fact emission mirrors a fail-closed structural evaluator; authored verification rows still require canonical normalized execution results."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/program_packet.mjs:direct_status_comparison:58622991ae55ae3a",
+      "path": ".agent/skills/iterative-planner/scripts/lib/program_packet.mjs",
+      "reason": "Structural gate-requirement lifecycle drives semantic facts, not verification-result truth.",
+      "proof_boundary": "Fact emission mirrors a fail-closed structural evaluator; authored verification rows still require canonical normalized execution results."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/program_packet.mjs:status_collection:45e36b4f75ef008a",
+      "path": ".agent/skills/iterative-planner/scripts/lib/program_packet.mjs",
+      "reason": "Program dependency lifecycle enum (verified, closed, deferred), not an authored verification outcome; missing and unknown lifecycle values do not satisfy Set membership.",
+      "proof_boundary": "Actual Program verification rows use normalizeVerificationStatus with the program context and explicit pass or waiver kinds; dependency lifecycle readiness cannot upgrade row truth."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/migrate.mjs:direct_status_comparison:1f5bfccba7e0508d",
+      "path": ".agent/skills/iterative-planner/scripts/migrate.mjs",
+      "reason": "Locally generated fleet classification controls whether a second scan is required; it is install-state routing rather than verification proof truth.",
+      "proof_boundary": "Second-pass semantic status is evaluated through the canonical execution helper, while blocked install state derives independently from fleet-doctor critical-missing counts."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/migrate.mjs:direct_status_comparison:8cae20f3a8f43dcc",
+      "path": ".agent/skills/iterative-planner/scripts/migrate.mjs",
+      "reason": "Locally generated fleet classification emits a deterministic readiness blocker and does not parse or satisfy authored verification status.",
+      "proof_boundary": "Semantic verification status is canonicalized separately; this branch labels already-derived install state and cannot turn missing or unknown proof green."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/program_manager.mjs:direct_status_comparison:8ee5d2723bae97e1",
+      "path": ".agent/skills/iterative-planner/scripts/program_manager.mjs",
+      "reason": "Program-packet resolver protocol (FOUND, SKIP, MISSING, AMBIGUOUS), not a verification result; SKIP means no optional packet is in scope.",
+      "proof_boundary": "Missing, ambiguous, and load-error resolver states fail; loaded packet validation, verification rows, and ontology results remain the authoritative proof boundary."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/verification_runner.mjs:direct_status_comparison:8ee5d2723bae97e1",
+      "path": ".agent/skills/iterative-planner/scripts/verification_runner.mjs",
+      "reason": "Optional Program-packet resolver protocol, not an executed verification-row status; SKIP executes no row and asserts no proof.",
+      "proof_boundary": "Executed row results and final runner status require canonical execution PASS; missing or unknown execution results fail closed."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/ive_action_router.mjs:direct_status_comparison:f77becf0df0dc5a8",
+      "path": ".agent/skills/iterative-planner/scripts/lib/ive_action_router.mjs",
+      "reason": "fact_routes status is the IVE routing lifecycle enum, not verification truth.",
+      "proof_boundary": "The branch only enforces that a blocked route requires ask_user; it cannot satisfy evidence or promote a gate result."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/ive_advisory_records.mjs:direct_status_comparison:46caba321213da69",
+      "path": ".agent/skills/iterative-planner/scripts/lib/ive_advisory_records.mjs",
+      "reason": "Detects blocked or unrouted IVE lifecycle states while constructing advisory input.",
+      "proof_boundary": "The branch preserves deterministic blockers and cannot let advisory output clear or satisfy proof."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/ive_packet_contract.mjs:direct_status_comparison:46caba321213da69",
+      "path": ".agent/skills/iterative-planner/scripts/lib/ive_packet_contract.mjs",
+      "reason": "Validates the packet material-fact routing lifecycle rather than a verification result.",
+      "proof_boundary": "This is schema and closure-input validation; packet validation emits its canonical PASS or FAIL separately."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/ive_real_episode_corpus.mjs:direct_status_comparison:1f5bfccba7e0508d",
+      "path": ".agent/skills/iterative-planner/scripts/lib/ive_real_episode_corpus.mjs",
+      "reason": "Converts a fixture route lifecycle state into an expected scenario outcome.",
+      "proof_boundary": "It defines an expected oracle only; actual assertions consume canonical proof status, and unknown routes fail packet validation."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/ive_user_verdict.mjs:direct_status_comparison:1f5bfccba7e0508d",
+      "path": ".agent/skills/iterative-planner/scripts/lib/ive_user_verdict.mjs",
+      "reason": "packet.closure_status is an IVE lifecycle state rather than authored verification proof.",
+      "proof_boundary": "The state can force a blocked user verdict but cannot satisfy evidence; fulfillment proof is canonicalized separately."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/ive_user_verdict.mjs:direct_status_comparison:e8cb552a8a4105c3",
+      "path": ".agent/skills/iterative-planner/scripts/lib/ive_user_verdict.mjs",
+      "reason": "fulfillment_status is the semantic label satisfied, partially_satisfied, or not_satisfied.",
+      "proof_boundary": "This comparison selects false-green-risk wording only and does not affect proof acceptance."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/ive_user_verdict.mjs:direct_status_comparison:f77becf0df0dc5a8",
+      "path": ".agent/skills/iterative-planner/scripts/lib/ive_user_verdict.mjs",
+      "reason": "Route-summary status is the IVE routing lifecycle enum.",
+      "proof_boundary": "It only determines whether user input is required and cannot make the verdict or a gate pass."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/evidence_verifier.mjs:status_regex:e8784f8cbe075321",
+      "path": ".agent/skills/iterative-planner/scripts/lib/evidence_verifier.mjs",
+      "reason": "Console-log error detector searches raw output for error, uncaught, or exception terms rather than parsing proof status.",
+      "proof_boundary": "The regex can only add a console-noise finding; structured test and evidence outcomes require canonical execution status."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/persona_execute.mjs:direct_status_comparison:92e386f1d0d27394",
+      "path": ".agent/skills/iterative-planner/scripts/persona_execute.mjs",
+      "reason": "Persona adaptation status is a role/configuration lifecycle enum.",
+      "proof_boundary": "Non-satisfied states add obligations or blockers; this comparison cannot satisfy plan verification evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/persona_execute.mjs:direct_status_comparison:1bd8801fb15e8237",
+      "path": ".agent/skills/iterative-planner/scripts/persona_execute.mjs",
+      "reason": "Persona adaptation status is a role/configuration lifecycle enum.",
+      "proof_boundary": "The branch preserves an underfit or blocked persona state and cannot promote verification truth."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/plan_artifact_renderer.mjs:direct_status_comparison:6854702b67c8433c",
+      "path": ".agent/skills/iterative-planner/scripts/plan_artifact_renderer.mjs",
+      "reason": "Renderer summary status is locally synthesized from artifact-render errors.",
+      "proof_boundary": "The comparison selects the CLI exit code only; it neither reads authored proof nor emits verification satisfaction."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/thrashing_detector.mjs:status_regex:39d6093b854eb8d0",
+      "path": ".agent/skills/iterative-planner/scripts/thrashing_detector.mjs",
+      "reason": "Raw command-log parser recognizes exception and failure-shaped output lines for telemetry extraction.",
+      "proof_boundary": "The regex can only record error-pattern lines; structured test telemetry uses canonical execution status and unknown remains non-passing."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/bootstrap_registry.mjs:direct_status_comparison:f553f1bac72d012e",
+      "path": ".agent/skills/iterative-planner/scripts/bootstrap_registry.mjs",
+      "reason": "Bootstrap operation result enum controls the command wrapper rather than verification truth.",
+      "proof_boundary": "Initialize, from-annotations, and validate synthesize the result; this branch only selects CLI exit and cannot establish proof."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/checklist_runner.mjs:direct_status_comparison:f553f1bac72d012e",
+      "path": ".agent/skills/iterative-planner/scripts/checklist_runner.mjs",
+      "reason": "Locally returned runCheck protocol is used for deterministic icons and counts.",
+      "proof_boundary": "Each check computes its closed result; unknown falls into failure handling and the comparison cannot promote external evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/checklist_runner.mjs:direct_status_comparison:0e52828ba638455b",
+      "path": ".agent/skills/iterative-planner/scripts/checklist_runner.mjs",
+      "reason": "Locally returned runCheck protocol is used for deterministic icons and counts.",
+      "proof_boundary": "Each check computes its closed result; unknown falls into failure handling and the comparison cannot promote external evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/contract_reliability.mjs:direct_status_comparison:8fe260e325ac2c5d",
+      "path": ".agent/skills/iterative-planner/scripts/contract_reliability.mjs",
+      "reason": "Internal contract-lint report enum is derived from the structural issue count.",
+      "proof_boundary": "The wrapper comparison only selects exit behavior; structural issues remain authoritative and no authored proof is consumed."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/contract_reliability.mjs:direct_status_comparison:16aa549dc16c7c74",
+      "path": ".agent/skills/iterative-planner/scripts/lib/contract_reliability.mjs",
+      "reason": "Internal contract-lint aggregate enum is derived from the structural issue list.",
+      "proof_boundary": "The comparison renders an already-derived report and cannot ingest or satisfy authored verification proof."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/conventions.mjs:direct_status_comparison:70143e2ddd220b37",
+      "path": ".agent/skills/iterative-planner/scripts/conventions.mjs",
+      "reason": "Convention lifecycle enum (satisfied, violated, exempted, pending_file_creation), not verification vocabulary.",
+      "proof_boundary": "Check predicates construct state from filesystem and config facts; unknown is never satisfied and cannot upgrade proof truth."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/convention_checks.mjs:direct_status_comparison:740f5b9ff19d67dd",
+      "path": ".agent/skills/iterative-planner/scripts/lib/convention_checks.mjs",
+      "reason": "Convention lifecycle enum (satisfied, violated, exempted, pending_file_creation), not verification vocabulary.",
+      "proof_boundary": "Check predicates construct state from filesystem and config facts; unknown is never satisfied and cannot upgrade proof truth."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/convention_checks.mjs:direct_status_comparison:70143e2ddd220b37",
+      "path": ".agent/skills/iterative-planner/scripts/lib/convention_checks.mjs",
+      "reason": "Convention lifecycle enum (satisfied, violated, exempted, pending_file_creation), not verification vocabulary.",
+      "proof_boundary": "Check predicates construct state from filesystem and config facts; unknown is never satisfied and cannot upgrade proof truth."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/convention_checks.mjs:direct_status_comparison:1b841b4d5d9433c0",
+      "path": ".agent/skills/iterative-planner/scripts/lib/convention_checks.mjs",
+      "reason": "Convention lifecycle enum (satisfied, violated, exempted, pending_file_creation), not verification vocabulary.",
+      "proof_boundary": "Check predicates construct state from filesystem and config facts; unknown is never satisfied and cannot upgrade proof truth."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/coverage_baseline.mjs:direct_status_comparison:0e52828ba638455b",
+      "path": ".agent/skills/iterative-planner/scripts/coverage_baseline.mjs",
+      "reason": "Locally computed coverage-ratchet result used by the command wrapper.",
+      "proof_boundary": "Regression records and counts determine status; the comparison only emits and exits and reads no authored proof token."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/issue_history_cache.mjs:direct_status_comparison:0e52828ba638455b",
+      "path": ".agent/skills/iterative-planner/scripts/issue_history_cache.mjs",
+      "reason": "Cache command operation result is synthesized from local I/O and error state.",
+      "proof_boundary": "CLI routing cannot satisfy a verification obligation or upgrade authored evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/issue_history_cache.mjs:direct_status_comparison:f553f1bac72d012e",
+      "path": ".agent/skills/iterative-planner/scripts/issue_history_cache.mjs",
+      "reason": "Cache command operation result is synthesized from local I/O and error state.",
+      "proof_boundary": "CLI routing cannot satisfy a verification obligation or upgrade authored evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/issue_history_facts.mjs:direct_status_comparison:f553f1bac72d012e",
+      "path": ".agent/skills/iterative-planner/scripts/issue_history_facts.mjs",
+      "reason": "Fact-generation command result is synthesized from local I/O and validation errors.",
+      "proof_boundary": "The CLI branch only selects exit behavior and cannot satisfy proof or verification obligations."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/issue_history_facts.mjs:status_regex:72dd508362e813c2",
+      "path": ".agent/skills/iterative-planner/scripts/lib/issue_history_facts.mjs",
+      "reason": "Semantic topic classifier detects blocker language in issue-history text.",
+      "proof_boundary": "It classifies episode text only, emits no PASS or satisfaction, and cannot alter verification status."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/journal.mjs:direct_status_comparison:8fe260e325ac2c5d",
+      "path": ".agent/skills/iterative-planner/scripts/journal.mjs",
+      "reason": "Locally built journal-validation report enum is derived from issue collection.",
+      "proof_boundary": "The CLI comparison chooses exit behavior only and cannot consume authored proof."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/knowledge_triggers.mjs:direct_status_comparison:8fe260e325ac2c5d",
+      "path": ".agent/skills/iterative-planner/scripts/knowledge_triggers.mjs",
+      "reason": "Validate or capture operation result enum is generated locally from operation errors.",
+      "proof_boundary": "Required-evidence satisfaction is canonicalized separately; this wrapper cannot make missing or unknown proof green."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/knowledge_triggers.mjs:direct_status_comparison:20ffdb4e18d32092",
+      "path": ".agent/skills/iterative-planner/scripts/lib/knowledge_triggers.mjs",
+      "reason": "Capture-operation result enum aggregates locally generated errors.",
+      "proof_boundary": "Blocking knowledge evidence is evaluated through canonical status; this operation aggregate cannot satisfy it."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/diagnosis_artifact.mjs:direct_status_comparison:d870b1008cdebd8e",
+      "path": ".agent/skills/iterative-planner/scripts/lib/diagnosis_artifact.mjs",
+      "reason": "Corrective-action lifecycle discriminator identifies an explicitly waived action with its own reason and approver.",
+      "proof_boundary": "Verification evidence is canonicalized separately; a waived action alone cannot satisfy or promote proof."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/ideation_quality_benchmark.mjs:direct_status_comparison:16aa549dc16c7c74",
+      "path": ".agent/skills/iterative-planner/scripts/lib/ideation_quality_benchmark.mjs",
+      "reason": "Internal seeded benchmark aggregate is derived from fixture regression counts.",
+      "proof_boundary": "The comparison renders benchmark output only and cannot establish production verification evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/knowledge_receipt.mjs:status_collection:42fca06e5ac909ee",
+      "path": ".agent/skills/iterative-planner/scripts/lib/knowledge_receipt.mjs",
+      "reason": "Persona-applicability lifecycle set suppresses records that are not applicable, not required, or skipped.",
+      "proof_boundary": "Required knowledge evidence remains independent and canonical; missing or unknown applicable evidence stays unsatisfied."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/novel_insight_floor.mjs:direct_status_comparison:46e63cb25020cd0c",
+      "path": ".agent/skills/iterative-planner/scripts/lib/novel_insight_floor.mjs",
+      "reason": "Renderer summarizes an internally evaluated I-050 contract from its issue list.",
+      "proof_boundary": "The actual gate consumes canonical status; this presentation comparison cannot satisfy proof."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/pack_guard_benchmark.mjs:direct_status_comparison:16aa549dc16c7c74",
+      "path": ".agent/skills/iterative-planner/scripts/lib/pack_guard_benchmark.mjs",
+      "reason": "Internal seeded benchmark aggregate is derived from fixture regression counts.",
+      "proof_boundary": "The comparison renders benchmark output only and cannot establish production verification evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/plan_utils.mjs:status_regex:7a6a280d0c0be820",
+      "path": ".agent/skills/iterative-planner/scripts/lib/plan_utils.mjs",
+      "reason": "Semantic risk-language detector checks Current Understanding and pre-mortem text for acknowledged weaknesses.",
+      "proof_boundary": "It can only require stronger risk discussion and never emits or promotes verification proof."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/quant_gate_hardening.mjs:status_regex:3a94ad6c62cb6e4a",
+      "path": ".agent/skills/iterative-planner/scripts/lib/quant_gate_hardening.mjs",
+      "reason": "Numeric completed-trial-count extractor recognizes optimization scale statements, not verdict status.",
+      "proof_boundary": "It supplies a numeric contract field only; canonical quant gate status and evidence are evaluated separately."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/quant_gate_hardening.mjs:status_regex:aff02af1572503b4",
+      "path": ".agent/skills/iterative-planner/scripts/lib/quant_gate_hardening.mjs",
+      "reason": "Numeric completed-trial-count extractor recognizes optimization scale statements, not verdict status.",
+      "proof_boundary": "It supplies a numeric contract field only; canonical quant gate status and evidence are evaluated separately."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/quant_gate_hardening.mjs:direct_status_comparison:46e63cb25020cd0c",
+      "path": ".agent/skills/iterative-planner/scripts/lib/quant_gate_hardening.mjs",
+      "reason": "Presentation summary reflects an internally derived quant-contract issue list.",
+      "proof_boundary": "Issues determine non-pass and the actual transition consumes canonical status; the summary cannot promote evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/quant_persona_gate.mjs:direct_status_comparison:35b49e0298691358",
+      "path": ".agent/skills/iterative-planner/scripts/lib/quant_persona_gate.mjs",
+      "reason": "Domain-persona gate lifecycle is derived from missing scientific guard counts.",
+      "proof_boundary": "Missing and unknown guards remain blocked; this routing comparison cannot satisfy verification evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/quant_persona_gate.mjs:direct_status_comparison:f56ed0285ba78acb",
+      "path": ".agent/skills/iterative-planner/scripts/lib/quant_persona_gate.mjs",
+      "reason": "Domain-persona gate lifecycle is derived from missing scientific guard counts.",
+      "proof_boundary": "Missing and unknown guards remain blocked; this routing comparison cannot satisfy verification evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/quant_results_validation.mjs:status_collection:a5a43c740c5e83df",
+      "path": ".agent/skills/iterative-planner/scripts/lib/quant_results_validation.mjs",
+      "reason": "Promotion-decision enum distinguishes diagnostic-only, non-promotable, promotable, and blocked model claims.",
+      "proof_boundary": "Scientific controls derive promotion independently; unknown decisions fail and cannot become verification PASS."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/quant_results_validation.mjs:direct_status_comparison:3a7dca7e1f7d1d45",
+      "path": ".agent/skills/iterative-planner/scripts/lib/quant_results_validation.mjs",
+      "reason": "Promotion-decision enum routes whether a model claim remains blocked after scientific validation.",
+      "proof_boundary": "Scientific controls derive the decision independently; unknown decisions fail and cannot become verification PASS."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/reflection_validation.mjs:status_collection:23e75b3c367fd8a8",
+      "path": ".agent/skills/iterative-planner/scripts/lib/reflection_validation.mjs",
+      "reason": "Anti-terse scalar set rejects one-word reflection answers such as yes, no, pass, fail, or partial.",
+      "proof_boundary": "The check makes reflection quality stricter and cannot satisfy a verification obligation."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/semantic_maintenance.mjs:direct_status_comparison:1f5bfccba7e0508d",
+      "path": ".agent/skills/iterative-planner/scripts/lib/semantic_maintenance.mjs",
+      "reason": "Maintenance lifecycle state is derived from semantic issue severities and routes repair work.",
+      "proof_boundary": "The lifecycle cannot satisfy evidence; unresolved or unknown maintenance state does not promote a gate."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/project.mjs:direct_status_comparison:f553f1bac72d012e",
+      "path": ".agent/skills/iterative-planner/scripts/project.mjs",
+      "reason": "Project command result is synthesized from operation errors for CLI exit routing.",
+      "proof_boundary": "The wrapper reads no authored proof and cannot satisfy a verification obligation."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/project_health.mjs:direct_status_comparison:fdac954edd0700e6",
+      "path": ".agent/skills/iterative-planner/scripts/project_health.mjs",
+      "reason": "Story analyzer uses SKIP when no story registry is applicable to the health operation.",
+      "proof_boundary": "SKIP asserts no proof; required invalid inputs error and verification findings remain independently canonical."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/security_audit.mjs:direct_status_comparison:566fea2fd31b6ded",
+      "path": ".agent/skills/iterative-planner/scripts/security_audit.mjs",
+      "reason": "Local security-check result is derived from boolean predicates and issue counts.",
+      "proof_boundary": "The comparison only aggregates already-derived checks; missing or failed checks cannot be upgraded to proof."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/security_audit.mjs:direct_status_comparison:0e52828ba638455b",
+      "path": ".agent/skills/iterative-planner/scripts/security_audit.mjs",
+      "reason": "Local security-audit aggregate is derived from its check issue counts.",
+      "proof_boundary": "The comparison controls counts and exit only; it cannot consume or promote authored verification evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/seeded_defect_harness.mjs:direct_status_comparison:0b1c019b78c9c16f",
+      "path": ".agent/skills/iterative-planner/scripts/seeded_defect_harness.mjs",
+      "reason": "Seeded-defect benchmark outcome classifies controlled fixture behavior.",
+      "proof_boundary": "Fixture outcomes cannot establish production proof and are evaluated against an explicit benchmark oracle."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/seeded_defect_harness.mjs:direct_status_comparison:e77ecc4c66d4580d",
+      "path": ".agent/skills/iterative-planner/scripts/seeded_defect_harness.mjs",
+      "reason": "Seeded-defect benchmark outcome classifies controlled fixture behavior.",
+      "proof_boundary": "Fixture outcomes cannot establish production proof and are evaluated against an explicit benchmark oracle."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/seeded_defect_harness.mjs:direct_status_comparison:0e52828ba638455b",
+      "path": ".agent/skills/iterative-planner/scripts/seeded_defect_harness.mjs",
+      "reason": "Seeded-defect benchmark aggregate is derived from controlled fixture outcomes.",
+      "proof_boundary": "Fixture aggregates cannot establish production proof and only report benchmark conformance."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/snapshot_branch_protection.mjs:direct_status_comparison:4d5899ad61389d2f",
+      "path": ".agent/skills/iterative-planner/scripts/snapshot_branch_protection.mjs",
+      "reason": "GitHub snapshot transport and domain error lifecycle controls whether a snapshot was obtained.",
+      "proof_boundary": "Any error prevents the snapshot; branch-protection evidence facts are evaluated separately and cannot be synthesized here."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/source_parity_guard.mjs:direct_status_comparison:5b7a9b64afcc1fe7",
+      "path": ".agent/skills/iterative-planner/scripts/source_parity_guard.mjs",
+      "reason": "Explicit operational SKIP reports that a parity source pair is outside the selected command scope.",
+      "proof_boundary": "SKIP asserts no parity proof; payload.ok and mismatch facts independently determine success for in-scope pairs."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/migrate.mjs:direct_status_comparison:1f5bfccba7e0508d:occurrence-2",
+      "path": ".agent/skills/iterative-planner/scripts/migrate.mjs",
+      "reason": "Locally generated fleet classification controls whether a second scan is required; it is install-state routing rather than verification proof truth.",
+      "proof_boundary": "Second-pass semantic status is evaluated through the canonical execution helper, while blocked install state derives independently from fleet-doctor critical-missing counts."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/ive_user_verdict.mjs:direct_status_comparison:f77becf0df0dc5a8:occurrence-2",
+      "path": ".agent/skills/iterative-planner/scripts/lib/ive_user_verdict.mjs",
+      "reason": "Route-summary status is the IVE routing lifecycle enum.",
+      "proof_boundary": "It only determines whether user input is required and cannot make the verdict or a gate pass."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/plan_artifact_renderer.mjs:direct_status_comparison:6854702b67c8433c:occurrence-2",
+      "path": ".agent/skills/iterative-planner/scripts/plan_artifact_renderer.mjs",
+      "reason": "Renderer summary status is locally synthesized from artifact-render errors.",
+      "proof_boundary": "The comparison selects the CLI exit code only; it neither reads authored proof nor emits verification satisfaction."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/checklist_runner.mjs:direct_status_comparison:0e52828ba638455b:occurrence-2",
+      "path": ".agent/skills/iterative-planner/scripts/checklist_runner.mjs",
+      "reason": "Locally returned runCheck protocol is used for deterministic icons and counts.",
+      "proof_boundary": "Each check computes its closed result; unknown falls into failure handling and the comparison cannot promote external evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/convention_checks.mjs:direct_status_comparison:740f5b9ff19d67dd:occurrence-2",
+      "path": ".agent/skills/iterative-planner/scripts/lib/convention_checks.mjs",
+      "reason": "Convention lifecycle enum (satisfied, violated, exempted, pending_file_creation), not verification vocabulary.",
+      "proof_boundary": "Check predicates construct state from filesystem and config facts; unknown is never satisfied and cannot upgrade proof truth."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/quant_gate_hardening.mjs:direct_status_comparison:46e63cb25020cd0c:occurrence-2",
+      "path": ".agent/skills/iterative-planner/scripts/lib/quant_gate_hardening.mjs",
+      "reason": "Presentation summary reflects an internally derived quant-contract issue list.",
+      "proof_boundary": "Issues determine non-pass and the actual transition consumes canonical status; the summary cannot promote evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/quant_gate_hardening.mjs:direct_status_comparison:46e63cb25020cd0c:occurrence-3",
+      "path": ".agent/skills/iterative-planner/scripts/lib/quant_gate_hardening.mjs",
+      "reason": "Presentation summary reflects an internally derived quant-contract issue list.",
+      "proof_boundary": "Issues determine non-pass and the actual transition consumes canonical status; the summary cannot promote evidence."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/semantic_maintenance.mjs:direct_status_comparison:1f5bfccba7e0508d:occurrence-2",
+      "path": ".agent/skills/iterative-planner/scripts/lib/semantic_maintenance.mjs",
+      "reason": "Maintenance lifecycle state is derived from semantic issue severities and routes repair work.",
+      "proof_boundary": "The lifecycle cannot satisfy evidence; unresolved or unknown maintenance state does not promote a gate."
+    }
+  ],
+  "readers": [
+    {"id":"EXT-R01","language":"javascript","path":".agent/skills/story-verification/scripts/verify_obligations.mjs","symbol":"legacy direct_status_comparison at line 129","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced persona_audit_result?.verdict === \"PASS\" with canonical configured status semantics."},
+    {"id":"EXT-R02","language":"javascript","path":"apps/ive-visualizer/scripts/bridge-parity-check.mjs","symbol":"legacy direct_status_comparison at line 142","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced Verdict !== \"fail\" with canonical configured status semantics."},
+    {"id":"EXT-R03","language":"javascript","path":"apps/ive-visualizer/scripts/bridge-parity-check.mjs","symbol":"legacy direct_status_comparison at line 147","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced Verdict !== \"pass\" with canonical configured status semantics."},
+    {"id":"EXT-R04","language":"javascript","path":"apps/ive-visualizer/scripts/bridge-parity-check.mjs","symbol":"legacy direct_status_comparison at line 152","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced the second Verdict !== \"pass\" site with canonical configured status semantics."},
+    {"id":"EXT-R05","language":"javascript","path":"apps/ive-visualizer/scripts/bridge-parity-check.mjs","symbol":"legacy direct_status_comparison at line 158","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced the third Verdict !== \"pass\" site with canonical configured status semantics."},
+    {"id":"EXT-R06","language":"javascript","path":"apps/ive-visualizer/scripts/generate-live-payload.mjs","symbol":"legacy direct_status_comparison at line 191","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced finding.status !== \"pass\" with canonical configured status semantics."},
+    {"id":"EXT-R07","language":"javascript","path":"apps/ive-visualizer/scripts/generate-live-payload.mjs","symbol":"legacy direct_status_comparison at line 589","classification":"repaired","anchor":"normalizeVerificationStatus","reason":"Repository-wide production scan replaced status === \"blocked\" with canonical configured status semantics."},
+    {"id":"EXT-R08","language":"javascript","path":"apps/ive-visualizer/scripts/generate-live-payload.mjs","symbol":"legacy direct_status_comparison at line 1073","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced gateEvidence.status === \"passed\" with canonical configured status semantics."},
+    {"id":"EXT-R09","language":"javascript","path":"apps/ive-visualizer/scripts/generate-live-payload.mjs","symbol":"legacy direct_status_comparison at line 1087","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced the second gateEvidence.status === \"passed\" site with canonical configured status semantics."},
+    {"id":"EXT-R10","language":"javascript","path":"apps/ive-visualizer/scripts/generate-live-payload.mjs","symbol":"legacy direct_status_comparison at line 1318","classification":"repaired","anchor":"normalizeVerificationStatus","reason":"Repository-wide production scan replaced fact.status === \"fail\" with canonical configured status semantics."},
+    {"id":"EXT-R11","language":"javascript","path":"apps/ive-visualizer/scripts/generate-live-payload.mjs","symbol":"legacy direct_status_comparison at line 1366","classification":"repaired","anchor":"normalizeVerificationStatus","reason":"Repository-wide production scan replaced the second fact.status === \"fail\" site with canonical configured status semantics."},
+    {"id":"EXT-R12","language":"javascript","path":"apps/ive-visualizer/scripts/graph-payload-check.mjs","symbol":"legacy direct_status_comparison at line 35","classification":"repaired","anchor":"normalizeVerificationStatus","reason":"Repository-wide production scan replaced healthSummary.status !== \"blocked\" with canonical configured status semantics."},
+    {"id":"EXT-R13","language":"javascript","path":"apps/ive-visualizer/scripts/graph-payload-check.mjs","symbol":"legacy direct_status_comparison at line 54","classification":"repaired","anchor":"normalizeVerificationStatus","reason":"Repository-wide production scan replaced Status === \"blocked\" with canonical configured status semantics."},
+    {"id":"EXT-R14","language":"javascript","path":"apps/ive-visualizer/scripts/pack-inspector-data.mjs","symbol":"legacy direct_status_comparison at line 72","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced status === \"pass\" with canonical configured status semantics."},
+    {"id":"EXT-R15","language":"javascript","path":"apps/ive-visualizer/scripts/pack-inspector-data.mjs","symbol":"legacy direct_status_comparison at line 74","classification":"repaired","anchor":"normalizeVerificationStatus","reason":"Repository-wide production scan replaced status === \"blocked\" with canonical configured status semantics."},
+    {"id":"EXT-R16","language":"javascript","path":"apps/ive-visualizer/scripts/pack-inspector-data.mjs","symbol":"legacy direct_status_comparison at line 74","classification":"repaired","anchor":"normalizeVerificationStatus","reason":"Repository-wide production scan replaced status === \"fail\" with canonical configured status semantics."},
+    {"id":"EXT-R17","language":"javascript","path":"apps/ive-visualizer/scripts/pack-inspector-data.mjs","symbol":"legacy direct_status_comparison at line 170","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced pack.status === \"PASS\" with canonical configured status semantics."},
+    {"id":"EXT-R18","language":"javascript","path":"apps/ive-visualizer/src/data/visualizerPayload.js","symbol":"legacy direct_status_comparison at line 767","classification":"repaired","anchor":"normalizeVerificationStatus","reason":"Repository-wide production scan replaced fact.status === \"fail\" with canonical configured status semantics."},
+    {"id":"EXT-R19","language":"javascript","path":"apps/ive-visualizer/src/data/visualizerPayload.js","symbol":"legacy direct_status_comparison at line 768","classification":"repaired","anchor":"normalizeVerificationStatus","reason":"Repository-wide production scan replaced status === \"blocked\" with canonical configured status semantics."},
+    {"id":"EXT-R20","language":"javascript","path":"tools/planner-visualizer/generate.mjs","symbol":"legacy direct_status_comparison at line 1069","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced result?.status === \"ERROR\" with canonical configured status semantics."},
+    {"id":"EXT-R21","language":"javascript","path":"tools/planner-visualizer/generate.mjs","symbol":"legacy direct_status_comparison at line 1089","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced the second result?.status === \"ERROR\" site with canonical configured status semantics."},
+    {"id":"EXT-R22","language":"javascript","path":"tools/planner-visualizer/generate.mjs","symbol":"legacy direct_status_comparison at line 1105","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced the third result?.status === \"ERROR\" site with canonical configured status semantics."},
+    {"id":"EXT-R23","language":"javascript","path":"tools/planner-visualizer/generate.mjs","symbol":"legacy direct_status_comparison at line 1121","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced the fourth result?.status === \"ERROR\" site with canonical configured status semantics."},
+    {"id":"EXT-R24","language":"javascript","path":"tools/planner-visualizer/generate.mjs","symbol":"legacy direct_status_comparison at line 1124","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced result?.status === \"PASS\" with canonical configured status semantics."},
+    {"id":"EXT-R25","language":"javascript","path":"tools/planner-visualizer/generate.mjs","symbol":"legacy direct_status_comparison at line 1611","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced entry?.status !== \"ERROR\" with canonical configured status semantics."},
+    {"id":"EXT-R26","language":"javascript","path":"tools/planner-visualizer/generate.mjs","symbol":"legacy direct_status_comparison at line 1622","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced the second entry?.status !== \"ERROR\" site with canonical configured status semantics."},
+    {"id":"EXT-R27","language":"javascript","path":"tools/planner-visualizer/generate.mjs","symbol":"legacy direct_status_comparison at line 1633","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced the third entry?.status !== \"ERROR\" site with canonical configured status semantics."},
+    {"id":"EXT-R28","language":"javascript","path":"tools/planner-visualizer/generate.mjs","symbol":"legacy direct_status_comparison at line 1643","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced mismatchResult?.status === \"ERROR\" with canonical configured status semantics."},
+    {"id":"EXT-R29","language":"javascript","path":"tools/planner-visualizer/generate.mjs","symbol":"legacy direct_status_comparison at line 1900","classification":"repaired","anchor":"verificationStatusIsPass","reason":"Repository-wide production scan replaced parsed.status === \"PASS\" with canonical configured status semantics."},
+    {"id":"EXT-R30","language":"javascript","path":"tools/planner-visualizer/refresh_saved_snapshot.mjs","symbol":"legacy direct_status_comparison at line 47","classification":"repaired","anchor":"normalizeVerificationStatus","reason":"Repository-wide production scan replaced result?.status === \"ERROR\" with canonical configured status semantics."},
+    {"id":"CAN-R01","language":"json-authority","path":".agent/skills/iterative-planner/config/verification_status_vocabulary.json","symbol":"contexts","classification":"canonical-derived","anchor":"\"contexts\"","reason":"Authoritative context, token, kind, and satisfaction declarations."},
+    {"id":"CAN-R02","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/verification_status_vocabulary.mjs","symbol":"normalizeVerificationStatus","classification":"canonical-derived","anchor":"export function normalizeVerificationStatus","reason":"Canonical fail-closed normalization for every configured context."},
+    {"id":"CAN-R03","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/verification_status_vocabulary.mjs","symbol":"verificationStatusSatisfies","classification":"canonical-derived","anchor":"export function verificationStatusSatisfies","reason":"Canonical satisfaction predicate with optional kind restriction."},
+    {"id":"CAN-R04","language":"javascript-prolog-compiler","path":".agent/skills/iterative-planner/scripts/lib/verification_status_vocabulary.mjs","symbol":"compileVerificationStatusFacts","classification":"canonical-derived","anchor":"export function compileVerificationStatusFacts","reason":"Generates Prolog status facts directly from the JSON authority."},
+    {"id":"CAN-R05","language":"prolog","path":".agent/skills/iterative-planner/prolog/verification_statuses.pl","symbol":"verification_status_accepts/2","classification":"canonical-derived","anchor":"verification_status_accepts(Context, Status)","reason":"Canonical Prolog satisfaction predicate over generated facts."},
+    {"id":"CAN-R06","language":"prolog","path":".agent/skills/iterative-planner/prolog/verification_statuses.pl","symbol":"verification_status_is_pass/2","classification":"canonical-derived","anchor":"verification_status_is_pass(Context, Status)","reason":"Canonical Prolog strict-pass predicate over generated facts."},
+    {"id":"CAN-R07","language":"prolog","path":".agent/skills/iterative-planner/prolog/verification_statuses.pl","symbol":"verification_status_blocks/2","classification":"canonical-derived","anchor":"verification_status_blocks(Context, Status)","reason":"Canonical Prolog fail-closed blocking predicate."},
+    {"id":"CAN-R08","language":"prolog","path":".agent/skills/iterative-planner/prolog/verification_statuses.pl","symbol":"verification_result/3","classification":"canonical-derived","anchor":"verification_result(Criterion, Satisfies, Evidence)","reason":"Canonical presentation-result projection including unknown-as-false behavior."},
+    {"id":"CAN-R09","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/verification_status_vocabulary.mjs","symbol":"verificationStatusIsHardFailure","classification":"canonical-derived","anchor":"export function verificationStatusIsHardFailure","reason":"Canonical fail-closed hard-failure predicate that preserves configured advisory statuses."},
+    {"id":"JS-R01","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/verification_truth.mjs","symbol":"deriveVerificationTruth","classification":"repaired","anchor":"deriveVerificationTruth","reason":"Remove semantic prose fallback and preserve proof-of-work separately."},
+    {"id":"JS-R02","language":"javascript","path":".agent/skills/iterative-planner/scripts/ontology_serializer.mjs","symbol":"extractActiveMistakeEvidence","classification":"repaired","anchor":"verificationStatusIsPass(status, \"presentation\")","reason":"Active Mistake status now requires canonical presentation PASS; evidence, waiver, and N/A cannot upgrade it."},
+    {"id":"JS-R03","language":"javascript","path":".agent/skills/iterative-planner/scripts/ontology_serializer.mjs","symbol":"extractAntiRecurrenceMarkdownEvidence","classification":"repaired","anchor":"extractAntiRecurrenceMarkdownEvidence","reason":"Structured anti-recurrence rows now require canonical presentation PASS."},
+    {"id":"JS-R04","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/plan_refresh.mjs","symbol":"computeCloseSignals","classification":"repaired","anchor":"computeCloseSignals","reason":"Replace prose close-signal interpretation."},
+    {"id":"JS-R05","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/plan_refresh.mjs","symbol":"verification ledger reader","classification":"repaired","anchor":"verification_ledger","reason":"Use evidence context rather than a local passing set."},
+    {"id":"JS-R06","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/plan_refresh.mjs","symbol":"anti-recurrence reader","classification":"repaired","anchor":"anti_recurrence","reason":"Remove repeated section-wide status inference."},
+    {"id":"JS-R07","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/plan_refresh.mjs","symbol":"deliverable proof reader","classification":"repaired","anchor":"deliverable","reason":"Remove proximity and check-mark proof inference."},
+    {"id":"JS-R08","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/plan_refresh.mjs","symbol":"verificationShowsPassingCommand","classification":"repaired","anchor":"verificationShowsPassingCommand","reason":"Command proof requires a structured Command/Status row with canonical presentation PASS."},
+    {"id":"JS-R09","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/learned_obligations.mjs","symbol":"ledger evidence reader","classification":"repaired","anchor":"verification_ledger","reason":"Use the canonical evidence context."},
+    {"id":"JS-R10","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/learned_obligations.mjs","symbol":"Markdown hook evaluator","classification":"repaired","anchor":"verification.md","reason":"Replace subject-window prose status inference."},
+    {"id":"JS-R11","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/knowledge_triggers.mjs","symbol":"required-evidence hook","classification":"repaired","anchor":"required_evidence","reason":"Use canonical evidence truth for blocking knowledge obligations."},
+    {"id":"JS-R12","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/incident_contract.mjs","symbol":"closeout hook","classification":"repaired","anchor":"closeout","reason":"Require structured canonical incident evidence."},
+    {"id":"JS-R13","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/objective_claims.mjs","symbol":"objective claim reader","classification":"repaired","anchor":"objective","reason":"Use canonical execution truth for objective claims and observations."},
+    {"id":"JS-R14","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/mistake_mitigation_linter.mjs","symbol":"Program mitigation reader","classification":"repaired","anchor":"mitigation","reason":"Delegate Program result truth to the canonical program context."},
+    {"id":"JS-R15","language":"javascript","path":".agent/skills/iterative-planner/scripts/autocoder_metrics.mjs","symbol":"Program proof scoreboard","classification":"repaired","anchor":"executed_pass","reason":"Evidence or executed booleans must not replace status."},
+    {"id":"JS-R16","language":"javascript","path":".agent/skills/iterative-planner/scripts/autocoder_metrics.mjs","symbol":"test manifest scoreboard","classification":"repaired","anchor":"test_manifest","reason":"Use canonical execution truth."},
+    {"id":"JS-R17","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/evidence_verifier.mjs","symbol":"structured test artifact reader","classification":"repaired","anchor":"passed","reason":"Unify test outcome aliases and keep unknown visible."},
+    {"id":"JS-R18","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/ontology_schema.mjs","symbol":"test run schema","classification":"repaired","anchor":"test_run","reason":"Derive allowed test outcomes from canonical execution truth."},
+    {"id":"JS-R19","language":"javascript","path":".agent/skills/iterative-planner/scripts/consolidation_receipt.mjs","symbol":"manifest comparison","classification":"repaired","anchor":"requiredSuites","reason":"Unknown required suite status must fail closed."},
+    {"id":"JS-R20","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/scoreboard.mjs","symbol":"scoreboard status readers","classification":"repaired","anchor":"scoreboard","reason":"Remove status defaults, ok fallbacks, and raw word counts."},
+    {"id":"JS-R21","language":"javascript","path":".agent/skills/iterative-planner/scripts/test_baseline.mjs","symbol":"command output parser","classification":"repaired","anchor":"parseTestOutput","reason":"Bound closed machine output and reject ambiguous lines."},
+    {"id":"JS-R22","language":"javascript","path":".agent/skills/iterative-planner/scripts/close_guard.mjs","symbol":"close heuristic","classification":"repaired","anchor":"allPass","reason":"Consume structured verification truth."},
+    {"id":"JS-R23","language":"javascript","path":".agent/skills/iterative-planner/scripts/gate_prepare.mjs","symbol":"verification preflight","classification":"repaired","anchor":"verification_has_pass","reason":"Consume structured verification truth."},
+    {"id":"JS-R24","language":"javascript","path":".agent/skills/iterative-planner/mcp_server.mjs","symbol":"add_verification_result","classification":"repaired","anchor":"add_verification_result","reason":"Validate authored result tokens at the write boundary."},
+    {"id":"JS-R25","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs","symbol":"reachability audit loader","classification":"repaired","anchor":"reachability_audit","reason":"Missing or unknown audit status must not emit proof."},
+    {"id":"JS-R26","language":"javascript","path":".agent/skills/iterative-planner/scripts/verification_metrics.mjs","symbol":"genuine close metric","classification":"repaired","anchor":"genuine","reason":"Require explicit canonical gate PASS."},
+    {"id":"JS-R27","language":"javascript","path":".agent/skills/iterative-planner/scripts/trace_auditor.mjs","symbol":"phase timestamp fallback","classification":"repaired","anchor":"verificationStatusIsPass(transitions[i].gate_result, \"gate\")","reason":"Transition fallback requires explicit canonical gate PASS."},
+    {"id":"JS-R28","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/determinism.mjs","symbol":"gate decision reader","classification":"repaired","anchor":"ALLOWED","reason":"Unknown checks must block rather than default allowed."},
+    {"id":"JS-R29","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/gate_verdict.mjs","symbol":"normalizedStatus","classification":"repaired","anchor":"function normalizedStatus","reason":"Unknown check status becomes a coded hard contract failure."},
+    {"id":"JS-R30","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/semantic_divergence.mjs","symbol":"dual-engine semantic blocker classifier","classification":"repaired","anchor":"verificationStatusIsHardFailure(row?.status, \"gate\")","reason":"Dual-engine divergence status requires canonical gate hard-failure classification."},
+    {"id":"JS-R31","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/planner_truth_packet.mjs","symbol":"truth packet report aggregator","classification":"repaired","anchor":"planner_truth_packet","reason":"Exit zero cannot default an absent status to PASS."},
+    {"id":"JS-R32","language":"javascript","path":".agent/skills/iterative-planner/scripts/planner_score_health_closeout.mjs","symbol":"closeout scoreboard","classification":"repaired","anchor":"score","reason":"Ok booleans and absent budget flags cannot replace proof status."},
+    {"id":"JS-R33","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/deterministic_findings.mjs","symbol":"IVE severity reader","classification":"repaired","anchor":"findings","reason":"Unknown required statuses remain findings and fail closed."},
+    {"id":"JS-R34","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/ttinsights_report.mjs","symbol":"report source normalizer","classification":"repaired","anchor":"source","reason":"Absent or unknown report source status is not ok."},
+    {"id":"JS-R35","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/ive_reflection_diff.mjs","symbol":"reflection evidence compiler","classification":"repaired","anchor":"delivered","reason":"Evidence refs do not establish delivery without satisfying status."},
+    {"id":"JS-R36","language":"javascript","path":".agent/skills/iterative-planner/scripts/reflection_renderer.mjs","symbol":"reflection report consumer","classification":"repaired","anchor":"compiled","reason":"Unknown compiled status is non-passing."},
+    {"id":"JS-R37","language":"javascript","path":".agent/skills/iterative-planner/scripts/substrate_check.mjs","symbol":"child report reader","classification":"repaired","anchor":"child","reason":"Exit zero and unknown child status are not PASS."},
+    {"id":"JS-R38","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/plan_utils.mjs","symbol":"normalizeStatus","classification":"repaired","anchor":"normalizeStatus","reason":"Bound reflection decision tokens to a canonical context."},
+    {"id":"JS-R39","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/novel_insight_floor.mjs","symbol":"isGatePass","classification":"repaired","anchor":"function isGatePass","reason":"Reflection transition evidence consumes bounded canonical decision truth."},
+    {"id":"JS-R40","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/diagnosis_artifact.mjs","symbol":"normalizeCorrectiveOutcome","classification":"repaired","anchor":"normalizeCorrectiveOutcome","reason":"Structured corrective outcomes use canonical execution truth."},
+    {"id":"JS-R41","language":"javascript","path":".agent/skills/iterative-planner/packs/quant/leakage_proof.mjs","symbol":"scientific proof artifact","classification":"repaired","anchor":"leakage","reason":"Use canonical execution truth without boolean promotion."},
+    {"id":"JS-R42","language":"javascript","path":".agent/skills/iterative-planner/packs/assumptions_challenger/index.mjs","symbol":"validation status serializer","classification":"repaired","anchor":"normalizeVerificationStatus(authoredStatus, \"execution\")","reason":"Raw model statuses are normalized before pack-local Prolog facts."},
+    {"id":"JS-R43","language":"javascript","path":".agent/skills/iterative-planner/packs/quant/archetype_accomplices.mjs","symbol":"obligation evidence hook","classification":"repaired","anchor":"accomplice","reason":"Use a configured execution context and explicit waiver semantics."},
+    {"id":"JS-R44","language":"javascript","path":".agent/skills/iterative-planner/scripts/thrashing_detector.mjs","symbol":"test telemetry reader","classification":"repaired","anchor":"thrashing","reason":"Use canonical execution truth for structured test telemetry."},
+    {"id":"JS-R45","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/behavior_report.mjs","symbol":"shadow canary reader","classification":"repaired","anchor":"canary","reason":"Use canonical status before boolean corroboration."},
+    {"id":"JS-R46","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/ive_profile_packs.mjs","symbol":"profile result evaluator","classification":"repaired","anchor":"profile","reason":"Unknown child or check status must be blocking."},
+    {"id":"JS-R47","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/session_obligations.mjs","symbol":"assumption evidence reader","classification":"repaired","anchor":"assumption","reason":"Use a configured evidence context."},
+    {"id":"JS-R48","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/ontology_schema.mjs","symbol":"schema verifier parity","classification":"repaired","anchor":"verificationStatusAcceptedForms","reason":"Schema verification statuses are derived from the canonical execution forms."},
+    {"id":"JS-R49","language":"javascript","path":".agent/skills/iterative-planner/scripts/verify_gate.mjs","symbol":"legacy reflect-to-close reader","classification":"repaired","anchor":"reflect-to-close","reason":"Delete raw PASS/FAIL presence fallback."},
+    {"id":"PL-R01","language":"javascript-prolog-bridge","path":".agent/skills/iterative-planner/scripts/ontology_serializer.mjs","symbol":"Active Mistake Evidence satisfaction","classification":"repaired","anchor":"verificationStatusIsPass(status, \"presentation\")","reason":"Only explicit canonical PASS emits mistake_hook_satisfied/2; FAIL, unknown, waiver, and N/A do not."},
+    {"id":"PL-R02","language":"javascript-prolog-bridge","path":".agent/skills/iterative-planner/scripts/ontology_serializer.mjs","symbol":"anti-recurrence status bridge","classification":"repaired","anchor":"extractAntiRecurrenceMarkdownEvidence","reason":"Canonical structured PASS is required before emitting Prolog anti-recurrence evidence."},
+    {"id":"PL-R03","language":"javascript-prolog-bridge","path":".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs","symbol":"reachability audit proof","classification":"repaired","anchor":"reachability_audit","reason":"Require explicit canonical PASS."},
+    {"id":"PL-R04","language":"prolog","path":".agent/skills/iterative-planner/prolog/transitions.pl","symbol":"subject_has_passing_evidence/2","classification":"repaired","anchor":"verification_status_accepts('evidence', Status)","reason":"Transition obligation truth uses the generated projection."},
+    {"id":"PL-R05","language":"prolog","path":".agent/skills/iterative-planner/prolog/invariants.pl","symbol":"subject_has_passing_evidence/2","classification":"repaired","anchor":"verification_status_accepts('evidence', Status)","reason":"Core obligation truth uses the generated projection."},
+    {"id":"PL-R06","language":"prolog","path":".agent/skills/iterative-planner/prolog/invariants.pl","symbol":"subject_has_pack_satisfaction/2","classification":"repaired","anchor":"verification_status_accepts('evidence', Status)","reason":"Pack obligation truth uses the generated projection."},
+    {"id":"PL-R07","language":"prolog","path":".agent/skills/iterative-planner/prolog/invariants.pl","symbol":"degenerate_output_passed","classification":"repaired","anchor":"verification_status_accepts('execution', Status)","reason":"All canonical executed-pass forms trigger the safety invariant."},
+    {"id":"PL-R08","language":"javascript-prolog-bridge","path":".agent/skills/iterative-planner/packs/assumptions_challenger/index.mjs","symbol":"AC-005 validation bridge","classification":"repaired","anchor":"compileVerificationStatusFacts()","reason":"Pack-local session loads generated truth and normalizes raw status before AC-005."}
+  ]
+}

@@ -258,13 +258,15 @@ function collectStoryIds({ goalText, preflight, statusSnapshot, cwd }) {
   return uniqueList(ids).sort();
 }
 
-export function deriveTaskIntakeCompatibility({ preflight, storyIds = [] } = {}) {
+export function deriveTaskIntakeCompatibility({ preflight, statusSnapshot = null, storyIds = [] } = {}) {
   const workflow = typeof preflight?.workflow?.recommended === "string"
     ? preflight.workflow.recommended.trim()
     : null;
 
   let frontDoorMode = "advisor_first";
-  if (preflight?.active_plan?.present && workflow === "continue-active-plan") {
+  const preflightActivePlanOwnsWork = preflight?.active_plan?.used_for_classification === true ||
+    workflow === "continue-active-plan";
+  if (statusSnapshot?.present || preflightActivePlanOwnsWork) {
     frontDoorMode = "continue_active_plan";
   } else if (workflow && workflow !== "/advisor") {
     frontDoorMode = "direct_workflow";
@@ -707,7 +709,7 @@ export function buildAdvisoryRecommendation({
   statusSnapshot,
   storyIds = [],
 } = {}) {
-  const taskIntakeCompatibility = deriveTaskIntakeCompatibility({ preflight, storyIds });
+  const taskIntakeCompatibility = deriveTaskIntakeCompatibility({ preflight, statusSnapshot, storyIds });
   const ruleContract = loadOrchestratorRuleConfig(cwd);
   const ruleContext = buildRuleEvaluationContext({
     preflight,
@@ -797,6 +799,7 @@ export function buildAdvisoryRecommendation({
     matched_rule_ids: ruleEvaluation.matchedRules.map((rule) => rule.id),
     matched_rules: ruleEvaluation.matchedRules,
     recommended_flow: ruleEvaluation.steps,
+    supervisor_verdict: escalation?.supervisor_verdict || null,
     reasoning: uniqueList(reasoning),
     alternative_flows: buildAlternativeFlows({ preflight, storyIds, versionInfo }),
     source_contracts: [

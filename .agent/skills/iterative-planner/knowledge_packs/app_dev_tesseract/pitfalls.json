@@ -1,0 +1,30 @@
+[
+  {
+    "id": "APPDEV-PIT-001",
+    "title": "Async fetch closes without state coverage",
+    "severity": "high",
+    "polarity": "risk",
+    "summary": "Fetch/API work can look complete while users see no loading, error, or empty state."
+  },
+  {
+    "id": "APPDEV-PIT-002",
+    "title": "Environment variables read from many places",
+    "severity": "medium",
+    "polarity": "risk",
+    "summary": "Duplicate env reads make local-vs-CI behavior and secret defaults drift between handlers."
+  },
+  {
+    "id": "APPDEV-PIT-003",
+    "title": "Webhook success without delivery semantics",
+    "severity": "high",
+    "polarity": "risk",
+    "summary": "Webhook handlers need signature/secret proof plus idempotency or retry semantics; a happy-path POST route is not enough."
+  },
+  {
+    "id": "APPDEV-PIT-004",
+    "title": "Migration path tested only as code shape",
+    "severity": "medium",
+    "polarity": "risk",
+    "summary": "Backfills, imports, and upgrades need an exercised journey such as dry-run, rollback, checkpoint, or before/after verification."
+  }
+]

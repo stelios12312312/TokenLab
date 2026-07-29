@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "pack_id": "tokenomics",
+  "rubrics": [
+    {
+      "id": "unlock_authority",
+      "question": "Does the plan identify supply, vesting, unlock schedule, and authority over changes?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no"]
+    },
+    {
+      "id": "incentive_source",
+      "question": "Does any APY, staking, airdrop, or liquidity claim identify the incentive source and advisory boundary?",
+      "closed_question": true,
+      "allowed_answers": ["yes", "no"]
+    }
+  ],
+  "checkers": [
+    {
+      "id": "tokenomics_unlock_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/packs/tokenomics/index.mjs",
+      "seeded_defect_ids": ["tokenomics-seeded-unlock-authority-missing"]
+    },
+    {
+      "id": "tokenomics_incentive_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/tests/test_tokenomics_conformance.mjs",
+      "seeded_defect_ids": ["tokenomics-seeded-incentive-source-missing"]
+    }
+  ],
+  "calibration_ref": ".agent/skills/iterative-planner/packs/quant/calibration.json",
+  "goldens_ref": ".agent/skills/iterative-planner/tests/fixtures/pack_contract/goldens.json",
+  "seeded_defects_ref": ".agent/skills/iterative-planner/tests/fixtures/pack_contract/seeded_defects.json",
+  "serves_projects": [
+    {
+      "id": "portable-agent-kit",
+      "evidence_ref": "reports/user_story_audit/story_registry.json#US-PM-AUTO-095"
+    },
+    {
+      "id": "tokenlab",
+      "evidence_ref": "AGENTS.md#Domain-Persona-Autorun"
+    }
+  ]
+}

@@ -1,0 +1,157 @@
+{
+  "schema_version": 1,
+  "id": "e6_4_dispute_fixture",
+  "delivery_id": "delivery_e6_4_dispute_fixture",
+  "provider_config": {
+    "role_provider_defaults": {
+      "frontier": {
+        "kind": "openai_compatible",
+        "default_model": "frontier-fixture-model",
+        "default_base_url": "https://frontier.invalid/v1",
+        "mock_response_env": "PLANNER_ESCALATION_MOCK_RESPONSE",
+        "timeout_ms": 1000
+      }
+    },
+    "role_providers": {
+      "escalation": {
+        "quality": "frontier"
+      }
+    },
+    "cost_estimates": {
+      "currency": "USD",
+      "source": "delivery_receipt_fixture_estimate",
+      "rates_per_million_tokens": {
+        "frontier-fixture-model": {
+          "input": 2,
+          "output": 6
+        }
+      }
+    }
+  },
+  "escalation_mock_response": {
+    "status": "needs_operator_review",
+    "decision": "frontier_escalation_recorded",
+    "summary": "Fixture frontier reviewer recorded the verifier disagreement and requested operator review.",
+    "recommended_next_action": "operator_review",
+    "usage": {
+      "prompt_tokens": 100,
+      "completion_tokens": 50,
+      "total_tokens": 150
+    }
+  },
+  "claims_evidence": {
+    "schema_version": 1,
+    "return_type": "claims_evidence",
+    "bounce": {
+      "attempt": 0,
+      "max_bounces": 2
+    },
+    "claims": [
+      {
+        "id": "claim_scoreboard_status",
+        "statement": "The scoreboard status is verified by deterministic test output and rubric review.",
+        "type": "implementation",
+        "evidence_refs": [
+          ".agent/skills/iterative-planner/tests/test_scoreboard.mjs"
+        ],
+        "verification_method": "rubric",
+        "cost": {
+          "tokens": 80,
+          "usd": 0,
+          "wall_clock_ms": 12
+        }
+      },
+      {
+        "id": "claim_budget_gate",
+        "statement": "The delivery budget gate remains closed when deterministic checks fail.",
+        "type": "verification",
+        "evidence_refs": [
+          ".agent/skills/iterative-planner/tests/test_delivery_receipt_assembler.mjs"
+        ],
+        "verification_method": "deterministic",
+        "cost": {
+          "tokens": 64,
+          "usd": 0,
+          "wall_clock_ms": 9
+        }
+      },
+      {
+        "id": "claim_no_dispute",
+        "statement": "The no-dispute path preserves cheap execution methods.",
+        "type": "negative-path",
+        "evidence_refs": [
+          ".agent/skills/iterative-planner/tests/test_delivery_receipt_assembler.mjs"
+        ],
+        "verification_method": "executed",
+        "cost": {
+          "tokens": 32,
+          "usd": 0,
+          "wall_clock_ms": 4
+        }
+      }
+    ]
+  },
+  "verifier_disputes": [
+    {
+      "id": "rubric_admin_split",
+      "kind": "rubric_admin_split",
+      "impacted_claim_ids": [
+        "claim_scoreboard_status"
+      ],
+      "rubric_verdicts": [
+        {
+          "id": "cheap_honest",
+          "status": "pass"
+        },
+        {
+          "id": "cheap_sycophant",
+          "status": "fail"
+        }
+      ],
+      "deterministic_check": {
+        "id": "scoreboard_fixture",
+        "status": "pass"
+      },
+      "transcript": {
+        "id": "rubric_admin_split",
+        "ref": ".agent/skills/iterative-planner/tests/fixtures/rubric_admin/sycophancy_suite.json",
+        "event_id": "e6_4_rubric_admin_split"
+      }
+    },
+    {
+      "id": "rubric_deterministic_contradiction",
+      "kind": "rubric_deterministic_contradiction",
+      "impacted_claim_ids": [
+        "claim_budget_gate"
+      ],
+      "rubric_verdicts": [
+        {
+          "id": "cheap_admin",
+          "status": "fail"
+        }
+      ],
+      "deterministic_check": {
+        "id": "budget_gate_deterministic",
+        "status": "pass"
+      },
+      "transcript": {
+        "id": "rubric_deterministic_contradiction",
+        "ref": ".agent/skills/iterative-planner/tests/test_delivery_receipt_assembler.mjs",
+        "event_id": "e6_4_rubric_deterministic_contradiction"
+      }
+    }
+  ],
+  "residual_risks": [
+    {
+      "id": "risk_live_provider_quality",
+      "severity": "low",
+      "source": "fixture_boundary",
+      "summary": "Local fixture uses a mock frontier response; live reviewer quality remains an external boundary.",
+      "mitigation": "E6-1 role-provider contract records provider quality and cost."
+    }
+  ],
+  "escalation_budgets": {
+    "max_escalation_rate": 1,
+    "max_cost_per_escalation_usd": 0.01
+  }
+}

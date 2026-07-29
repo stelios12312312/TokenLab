@@ -9,6 +9,16 @@ Analyses what happened and improves the iterative planner and red team audit ski
 
 Invocation: describe the bugs/issues/requests (or reference the conversation), then add `/retro`.
 
+## Incident Front Door
+
+Before treating retro as an after-action-only ritual, run the incident contract front door on the prompt or session summary:
+
+```bash
+node .agent/skills/iterative-planner/scripts/incident_contract.mjs check --entrypoint retro --from-text "<incident/session summary>" --json
+```
+
+If the contract returns `status=required`, carry its `persona.required_packs`, `required_preflights`, `closeout_gates`, active-plan isolation decision, and `next_commands` into the repair plan before reruns start. Quant/WFO, optimizer, connector, migration, backend, report, or dead-signal incidents must not close on a green artifact until `verification.md -> ## Incident Closeout` records PASS evidence for the contract rows. Report/artifact incidents must satisfy `report_semantic_acceptance`: the report answers the operator question, names lineage, preserves diagnostics, states recommendations or stop conditions, and records claims not promoted.
+
 ## Phase 1: EXTRACT — Catalogue the bugs and issues
 
 1. **Parse the prompt** — identify every distinct bug, issue, unexpected behavior, or request the user mentions. Create a structured list:
@@ -70,6 +80,8 @@ For each bug/issue, answer these questions:
    | `learned_obligation` | Promote it into mistake intelligence plus a reusable proof contract |
    | `hard_invariant` | Treat it as planner-core invariant-worthy and record the blocking rule id as well |
 
+   `docs_only` is a narrative decision, not action evidence. Every accepted retro must also record at least one concrete action evidence field: `promotions`, `remediation_ticket_ids`, `remediation_plan_ids`, `related_plan_ids`, or `action_evidence_refs`. If no action is warranted, do not mark the retro accepted until the rejection rationale is explicit and reviewable.
+
 ## Phase 3: IMPLEMENT — Edit the skill files directly
 
 > [!CAUTION]
@@ -102,8 +114,15 @@ For each bug/issue, answer these questions:
 9a. **Update the structured retro archive** — add an incident record to `plans/knowledge/retros/retro_ledger.json` and a matching case file under `plans/knowledge/retros/cases/`:
     - Required ledger fields: `id`, `date`, `title`, `summary`, `failure_modes`, `discovered_phase`, `affected_surfaces`, `root_cause`, `promotion_decision`, `case_file`, `status`
     - If `promotion_decision != docs_only`, include `promotions.mistake_ids`, `promotions.obligation_ids`, and/or `promotions.invariant_ids`
+    - If `promotion_decision == docs_only`, include `remediation_ticket_ids`, `remediation_plan_ids`, `related_plan_ids`, or `action_evidence_refs`; docs-only accepted retros without action evidence fail closeout
     - Reuse `kb_refs` to link the retro to the matching `mistakes.md` entry when one exists
     - Keep the markdown case file narrative-focused; keep retrieval metadata in the ledger
+
+9aa. **Verify accepted retros are actioned** — before closeout, run:
+    ```bash
+    node .agent/skills/iterative-planner/scripts/verify_retro_action.mjs --json
+    ```
+    This is also enforced by `validate-to-close.yaml`; do not bypass it by claiming a prose-only retro is complete.
 
 9b. **Record the anti-recurrence guard explicitly** — update `verification.md` with a `## Anti-Recurrence Guard` section that proves which durable guard now exists:
     - `Guard Type: test` — new or updated regression/invariant test

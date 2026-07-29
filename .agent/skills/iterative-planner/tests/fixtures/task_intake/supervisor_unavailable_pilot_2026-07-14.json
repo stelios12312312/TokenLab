@@ -1,0 +1,39 @@
+{
+  "schema_version": "recorded_task_intake_episode.v1",
+  "recorded_at": "2026-07-14T00:00:00.000Z",
+  "provenance": {
+    "kind": "real_pilot_episode",
+    "fabricated": false,
+    "source_path": "reports/ive/2026-07-14-guidance-first-proof-trust-pilot-handoff.md",
+    "source_lines": "27-34"
+  },
+  "goal": "Review the surfaced advisor escalation and choose the next planner action",
+  "triage": null,
+  "preflight": {
+    "active_plan": {
+      "present": false,
+      "used_for_classification": false
+    },
+    "flow": {
+      "mode": null,
+      "confidence": "low",
+      "reason": "The supervisor was unavailable and no recommended flow was produced."
+    },
+    "workflow": {
+      "recommended": null
+    }
+  },
+  "advisory_recommendation": {
+    "recommended_flow": [],
+    "supervisor_verdict": {
+      "status": "unavailable",
+      "source": "fallback",
+      "next": "Review the escalation manually; run /advisor for full triage",
+      "why": "Supervisor unavailable: unavailable",
+      "run": [
+        "node .agent/skills/iterative-planner/scripts/escalation_check.mjs"
+      ]
+    }
+  },
+  "observed_block": "⚠️  Advisor review recommended — Meaningful recent change: recent change is large (109 files, +4782/-1651 lines)\n\n     NEXT: Review the escalation manually; run /advisor for full triage\n     WHY:  Supervisor unavailable: unavailable\n        Run: node .agent/skills/iterative-planner/scripts/escalation_check.mjs\n     Supervisor: unavailable (source=fallback)"
+}

@@ -17,15 +17,19 @@ Invocation: describe what you want done, then add `/safe-change-power`.
    node .agent/skills/iterative-planner/scripts/recipe_resolver.mjs --goal "<task>" --json
    ```
 2. **If it resolves to a known or nearly-known recipe, use `/recipe-tidy` first**.
-3. **Run the same deterministic preflight used by `/safe-change`**:
+3. **Run the same deterministic work-preflight used by `/safe-change`**:
+   ```bash
+   node .agent/skills/iterative-planner/scripts/planner.mjs work-preflight --goal "<task>" --json
+   ```
+4. **If you need the lower-level diagnostic payload, run planner preflight**:
    ```bash
    node .agent/skills/iterative-planner/scripts/planner_preflight.mjs --goal "<task>" --json
    ```
-4. **If the task still belongs on the planner side, compile the shared discovery contract**:
+5. **If the task still belongs on the planner side, compile the shared discovery contract**:
    ```bash
    node .agent/skills/iterative-planner/scripts/knowledge_resolver.mjs --goal "<task>" --json
    ```
-5. **Run the domain persona autorun check for domain-shaped work**:
+6. **Run the domain persona autorun check for domain-shaped work**:
    ```bash
    node .agent/skills/iterative-planner/scripts/persona_adapt.mjs scan . --json
    ```
@@ -46,7 +50,7 @@ Invocation: describe what you want done, then add `/safe-change-power`.
 
    If persona-triggered recommendations are generated, show the user the compact recommendation summary. Do not bury recommendations in `persona_guidance.json`, `verification_matrix --json`, or `bootstrap status` output only.
 
-6. **Honor the combined routing contract** from `planner_preflight`, `knowledge_resolver`, and persona adaptation:
+7. **Honor the combined routing contract** from `planner_preflight`, `knowledge_resolver`, and persona adaptation:
    - If the preflight says `lightweight`, keep the implementation branch lightweight.
    - If it recommends `/recipe-tidy`, normalize the recipe surface before `/safe-change`.
    - If it returns `recover_poison_then_*`, preserve the poisoned plan first.
@@ -62,7 +66,7 @@ Invocation: describe what you want done, then add `/safe-change-power`.
    - If the task comes from a Program Packet migration, delete/move, shared-surface, planner-core, compatibility-contract, or required-child-plan ticket, keep the stronger wrapper even when the local code change looks small.
    - If the request is still a roadmap/program decomposition or broad idea/backlog/ticket-generation intake rather than one executable ticket, switch to `/program-manager` first.
    - If the request asks to create, review, or publish GitHub tickets from an idea/backlog/project item, do not create GitHub tickets directly. Run `program_manager.mjs intake` first, surface the Ticket Intake Receipt, confirm the `retro_recurrence_status`, `quant_persona_gate_status` when present, and blocker/advisory counts, then use `github_ticket_review.mjs publish` or `review` only as the explicit GitHub mirror step.
-   - For quant/betting/modeling tickets, `quant_persona_gate_status=blocked` is a hard stop. Do not let DeepSeek or a high-level ticket summary override missing what-happened overview, target/outcome, data lineage, temporal/leakage handling, controls, or quant verification proof rows.
+   - For quant/betting/modeling tickets, `quant_persona_gate_status=blocked` is a hard stop. Do not let advisory review or a high-level ticket summary override missing what-happened overview, target/outcome, data lineage, temporal/leakage handling, controls, or quant verification proof rows.
 
 ## Phase 1: Execute /safe-change
 
@@ -102,6 +106,13 @@ The main agent reconciles the three returned summaries into a single decision. D
    node <skill-path>/scripts/rule_engine.mjs check-invariants
    ```
    Any violations should be treated as additional escalation signals (invariant violations → REQUIRED red-team audit).
+
+2c. **For branch consolidation, recovery, or push-policy bypass work, record a local consolidation receipt**:
+   ```bash
+   node <skill-path>/tests/ive/run.mjs
+   node <skill-path>/scripts/consolidation_receipt.mjs --before <before-manifest.json> --after <after-manifest.json> --run-id <ticket-or-merge-id> --json
+   ```
+   GitHub Actions is not evidence for this project. A receipt passes only when the after manifest has no new required failures compared with the before manifest.
 
 3. **Interpret the results**:
 

@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 // Focused coverage for quant_results_validation.json close-signal semantics.
 
-import { mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "fs";
 import { join } from "path";
 import { tmpdir } from "os";
 
 import { serializeToFacts } from "../scripts/ontology_serializer.mjs";
-import { computeQuantResultsValidationSignal } from "../scripts/lib/quant_results_validation.mjs";
+import { evaluateEnvironmentPreflight } from "../scripts/lib/environment_preflight.mjs";
+import {
+  computeQuantResultsValidationSignal,
+  evaluateQuantArtifactKillClaim,
+} from "../scripts/lib/quant_results_validation.mjs";
 import { stampRunRecordPayload } from "../scripts/lib/run_record.mjs";
 
 let passed = 0;
@@ -27,6 +31,10 @@ function makePlanDir(name) {
 }
 
 function writePlanFiles(planDir, { plan = "", verification = "", validation = null, writeLeakageArtifact = true, leakageArtifact = null } = {}) {
+  const fixtureDataPath = join(planDir, "fixture-data.db");
+  writeFileSync(fixtureDataPath, "deterministic non-empty fixture data\n");
+  const stableFixtureTime = new Date(Date.now() - 5000);
+  utimesSync(fixtureDataPath, stableFixtureTime, stableFixtureTime);
   writeFileSync(join(planDir, "plan.md"), plan || "# Plan\n");
   writeFileSync(join(planDir, "verification.md"), verification || "# Verification\n");
   writeFileSync(join(planDir, "reflection.md"), "# Reflection\n");
@@ -60,6 +68,26 @@ function validLeakageProofArtifact(overrides = {}) {
       artifact: "reports/quant/source-leakage.json",
       findings: [],
     },
+    computed_assertions: [
+      {
+        id: "temporal_order",
+        status: "pass",
+        computed: true,
+        provenance: {
+          source_artifact: "reports/quant/leakage-audit.json",
+          algorithm: "compare train, validation, and final_oos window boundaries",
+        },
+      },
+      {
+        id: "known_at_time_boundary",
+        status: "pass",
+        computed: true,
+        provenance: {
+          source_artifact: "reports/quant/leakage-audit.json",
+          algorithm: "verify feature availability boundary exists for each split",
+        },
+      },
+    ],
     ...overrides,
   };
 }
@@ -167,6 +195,14 @@ function completePromotionArtifact(overrides = {}) {
       },
     ],
     evidence: {
+      claimed_data_sources: [
+        {
+          id: "fixture_data",
+          path: "fixture-data.db",
+          expected_worktree_root: ".",
+          freshness: { max_age_seconds: 86400 },
+        },
+      ],
       bootstrap_ci: "ROI 95% CI: 1.2%..4.1%",
       rolling_or_yearly_stability: "Yearly ROI positive in 4/5 years.",
       leakage_audit: validLeakageGate(),
@@ -521,6 +557,14 @@ function scenarioDiagnosticSmokePassesOnlyAsDiagnostic() {
           },
           controls: [],
           evidence: {
+            claimed_data_sources: [
+              {
+                id: "fixture_data",
+                path: "fixture-data.db",
+                expected_worktree_root: ".",
+                freshness: { max_age_seconds: 86400 },
+              },
+            ],
             strongest_counterargument: "Trial budget is too small for inference.",
             falsification_criteria: "Must rerun as serious_search before promotion.",
             presentation_stamp: "diagnostic_only",
@@ -566,6 +610,14 @@ function scenarioBadCalibrationBinsBlockDiagnosticOnly() {
         },
         controls: [],
         evidence: {
+          claimed_data_sources: [
+            {
+              id: "fixture_data",
+              path: "fixture-data.db",
+              expected_worktree_root: ".",
+              freshness: { max_age_seconds: 86400 },
+            },
+          ],
           strongest_counterargument: "Calibration diagnostics show this is not policy-usable.",
           falsification_criteria: "Must pass calibration quality thresholds before policy use.",
           presentation_stamp: "diagnostic_only",
@@ -908,6 +960,531 @@ scenarioMissingSportsBettingAccompliceBlocksQrv();
 scenarioFundingRateResidualCorrelationReopensPlanInQrv();
 scenarioSportsBettingMissingDevigAndPitfallsBlocksQrv();
 scenarioCryptoPerpMissingExecutionRealismBlocksQrv();
+
+const genericMlFixtureText = await (async () => {
+  try {
+    const fs = await import("fs");
+    const path = await import("path");
+    const url = await import("url");
+    const __filename = url.fileURLToPath(import.meta.url);
+    const raw = fs.readFileSync(path.join(path.dirname(__filename), "fixtures", "real_telemetry", "generic_ml_pipeline.jsonl"), "utf-8");
+    return raw.split(/\r?\n/).map((l) => { try { return JSON.parse(l.trim()); } catch { return null; } }).filter(Boolean).map((e) => JSON.stringify(e)).join(" ");
+  } catch {
+    return "generic ML churn forecast leakage walk-forward feature-store model-target claim";
+  }
+})();
+
+function genericMlDiagnosticArtifact(overrides = {}) {
+  return {
+    version: 1,
+    applicable: true,
+    run_class: "exploratory",
+    promotion_verdict: "diagnostic_only",
+    search: { trials_completed: 50, unique_parameter_count: 12, objective_handling: "sampled" },
+    controls: [],
+    evidence: {
+      claimed_data_sources: [
+        {
+          id: "fixture_data",
+          path: "fixture-data.db",
+          expected_worktree_root: ".",
+          freshness: { max_age_seconds: 86400 },
+        },
+      ],
+      strongest_counterargument: "The recall gain may come from a small number of high-leverage late-event rows that are not operationally actionable.",
+      falsification_criteria: "Fails if macro-F1 on the final OOS fold does not beat the logistic baseline after feature-store embargo is enforced.",
+      presentation_stamp: "diagnostic_only",
+      next_alpha_hypothesis: "Delayed event features improve recall when they respect the feature-store embargo.",
+      next_experiment: "Expand the feature-store lookback window and rerun walk-forward evaluation.",
+      leakage_audit: validLeakageGate(),
+    },
+    ...overrides,
+  };
+}
+
+function scenarioGenericMlMissingArtifactBlocks() {
+  const planDir = makePlanDir("generic-ml-missing");
+  try {
+    writePlanFiles(planDir, {
+      plan: genericMlFixtureText,
+    });
+    const signal = computeQuantResultsValidationSignal({ planDir });
+    assert(signal.required === true, "generic ML result claim requires validation");
+    assert(signal.satisfied === false, "missing quant_results_validation.json blocks the generic ML claim");
+    assert(signal.status === "missing_artifact", "missing artifact reports missing_artifact status");
+    assert(signal.blocking_issues.includes("missing_quant_results_validation_artifact"), "missing artifact blocker is explicit");
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioPlannerCoreFilesSuppressQuotedQuantBoundary() {
+  const planDir = makePlanDir("planner-core-quant-boundary");
+  try {
+    writePlanFiles(planDir, {
+      plan: `# Plan
+
+## Goal
+
+Repair planner gate classification.
+
+## Files To Modify
+
+- .agent/skills/iterative-planner/scripts/lib/quant_results_validation.mjs
+- .agent/skills/iterative-planner/tests/test_quant_results_validation.mjs
+
+## False-Positive Boundary
+
+The planner must not demand quant model-result or promotion proof merely because
+the tooling plan documents those trigger words and tests the result validator.
+`,
+    });
+
+    const signal = computeQuantResultsValidationSignal({ planDir });
+    assert(signal.required === false, "planner-core file scope suppresses quoted quant result-boundary language");
+    assert(signal.satisfied === true && signal.status === "not_required", "planner-core quant boundary needs no result artifact");
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioStructuredPlannerCoreShapeSuppressesQuotedQuantBoundary() {
+  const planDir = makePlanDir("structured-planner-core-quant-boundary");
+  try {
+    writePlanFiles(planDir, {
+      plan: `# Plan
+
+## Goal
+
+Repair planner coverage reporting where the documented model result beats baseline trigger is only heuristic test language.
+
+## Files To Modify
+
+- .agent/skills/iterative-planner/scripts/lib/quant_results_validation.mjs
+- .agent/skills/iterative-planner/tests/test_quant_results_validation.mjs
+- reports/user_story_audit/story_registry.json
+`,
+    });
+    writeFileSync(join(planDir, "state.json"), JSON.stringify({
+      plan_shape: {
+        primary: "feature",
+        source: "goal_text",
+      },
+    }, null, 2));
+
+    const signal = computeQuantResultsValidationSignal({ planDir });
+    assert(signal.required === false, "mixed-scope planner-core plan is re-detected despite stale feature state shape");
+    assert(signal.satisfied === true && signal.status === "not_required", "re-detected planner-core shape needs no quant result artifact");
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioGenericMlDiagnosticPasses() {
+  const planDir = makePlanDir("generic-ml-diagnostic");
+  try {
+    writePlanFiles(planDir, {
+      plan: genericMlFixtureText,
+      validation: withRunRecord(genericMlDiagnosticArtifact()),
+    });
+    const signal = computeQuantResultsValidationSignal({ planDir });
+    assert(signal.required === true, "generic ML diagnostic run requires validation");
+    assert(signal.satisfied === true, "complete generic ML diagnostic evidence satisfies validation");
+    assert(signal.status === "diagnostic_only", "generic ML exploratory run reports diagnostic_only");
+    assert(signal.measured_quant_gates?.leakage?.pass === true, "generic ML leakage proof passes");
+    assert(
+      !signal.blocking_issues.some((issue) => issue.startsWith("betting_market") || issue.startsWith("crypto_execution")),
+      "non-betting generic ML artifact does not trigger betting/crypto market blockers"
+    );
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioGenericMlLeakageFailureBlocks() {
+  const planDir = makePlanDir("generic-ml-leakage-fail");
+  try {
+    writePlanFiles(planDir, {
+      plan: genericMlFixtureText,
+      validation: withRunRecord(genericMlDiagnosticArtifact()),
+      leakageArtifact: validLeakageProofArtifact({
+        source_leakage_scan: {
+          status: "pass",
+          tool: "audit_runner",
+          findings: [
+            { id: "QU-006", severity: "high", message: "Future event timestamp leaked into training features." },
+          ],
+        },
+      }),
+    });
+    const signal = computeQuantResultsValidationSignal({ planDir });
+    assert(signal.satisfied === false, "QU-006 leakage finding blocks generic ML diagnostic");
+    assert(
+      signal.blocking_issues.some((issue) => issue.startsWith("leakage_proof:source_leakage_scan_qu006")),
+      "QU-006 leakage blocker is surfaced for generic ML"
+    );
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioNonResultSkipsEnvironmentObservation() {
+  let observations = 0;
+  const explosiveSources = new Proxy([], {
+    get() {
+      observations++;
+      throw new Error("non-result preflight touched claimed sources");
+    },
+  });
+  const receipt = evaluateEnvironmentPreflight({
+    required: false,
+    claimed_sources: explosiveSources,
+    project_root: "/path/that/does/not/need/to/exist",
+  });
+  assert(receipt.status === "not_required", "non-result work reports environment preflight not_required");
+  assert(receipt.performed === false && receipt.probe_count === 0, "non-result work performs zero filesystem probes");
+  assert(observations === 0, "non-result work does not iterate claimed sources");
+  assert(receipt.claim_support_allowed === false && receipt.numeric_output_reportable === false, "not_required never masquerades as valid result support");
+}
+
+function scenarioEnvironmentPreflightRejectsMalformedAndUntrustedSources() {
+  const parentDir = makePlanDir("environment-controls");
+  const activeDir = join(parentDir, "active");
+  const outsideDir = join(parentDir, "outside");
+  mkdirSync(activeDir);
+  mkdirSync(outsideDir);
+  const evaluatedAt = "2026-07-17T12:00:00.000Z";
+  const validPath = join(activeDir, "valid.db");
+  const stalePath = join(activeDir, "stale.db");
+  const futurePath = join(activeDir, "future.db");
+  const outsidePath = join(outsideDir, "outside.db");
+  const symlinkPath = join(activeDir, "outside-link.db");
+  writeFileSync(validPath, "valid\n");
+  writeFileSync(stalePath, "stale\n");
+  writeFileSync(futurePath, "future\n");
+  writeFileSync(outsidePath, "outside\n");
+  mkdirSync(join(activeDir, "directory-source"));
+  symlinkSync(outsidePath, symlinkPath);
+  utimesSync(validPath, new Date("2026-07-17T11:59:00.000Z"), new Date("2026-07-17T11:59:00.000Z"));
+  utimesSync(stalePath, new Date("2026-07-17T10:00:00.000Z"), new Date("2026-07-17T10:00:00.000Z"));
+  utimesSync(futurePath, new Date("2026-07-17T12:01:00.000Z"), new Date("2026-07-17T12:01:00.000Z"));
+  try {
+    const receipt = evaluateEnvironmentPreflight({
+      required: true,
+      project_root: activeDir,
+      evaluated_at: evaluatedAt,
+      claimed_sources: [
+        { id: "duplicate", path: validPath, expected_worktree_root: activeDir, freshness: { max_age_seconds: 3600 } },
+        { id: "duplicate", path: validPath, expected_worktree_root: activeDir, freshness: { max_age_seconds: 3600 } },
+        { id: "missing", path: "missing.db", expected_worktree_root: activeDir, freshness: { max_age_seconds: 3600 } },
+        { id: "stale", path: stalePath, expected_worktree_root: activeDir, freshness: { max_age_seconds: 60 } },
+        { id: "future", path: futurePath, expected_worktree_root: activeDir, freshness: { max_age_seconds: 3600 } },
+        { id: "directory", path: "directory-source", expected_worktree_root: activeDir, freshness: { max_age_seconds: 3600 } },
+        { id: "symlink_escape", path: symlinkPath, expected_worktree_root: activeDir, freshness: { max_age_seconds: 3600 } },
+        { id: "malformed" },
+      ],
+    });
+    assert(receipt.status === "environment_invalid", "malformed/untrusted source set returns environment_invalid");
+    assert(receipt.blocking_issues.includes("claimed_data_source_id_duplicate:duplicate"), "duplicate source ids are blocked");
+    assert(receipt.blocking_issues.includes("claimed_data_source_missing:missing"), "missing source path is blocked");
+    assert(receipt.blocking_issues.includes("claimed_data_source_stale:stale"), "stale source is blocked against declared freshness");
+    assert(receipt.blocking_issues.includes("claimed_data_source_mtime_future:future"), "future-dated source mtime is blocked");
+    assert(receipt.blocking_issues.includes("claimed_data_source_not_regular_file:directory"), "non-regular source is blocked");
+    assert(receipt.blocking_issues.includes("claimed_data_source_outside_active_worktree:symlink_escape"), "canonical symlink escape is blocked");
+    assert(receipt.blocking_issues.includes("claimed_data_source_path_missing:malformed"), "malformed declaration names its missing path");
+    assert(receipt.blocking_issues.includes("claimed_data_source_expected_worktree_missing:malformed"), "malformed declaration names its missing worktree identity");
+    assert(receipt.blocking_issues.includes("claimed_data_source_freshness_invalid:malformed"), "malformed declaration names its invalid freshness contract");
+    assert(receipt.claim_support_allowed === false && receipt.numeric_output_reportable === false, "any environment defect disables result support and reporting");
+  } finally {
+    rmSync(parentDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioEmptySiblingWorktreeIsEnvironmentInvalid() {
+  const parentDir = makePlanDir("empty-sibling");
+  const activeDir = join(parentDir, "active");
+  const siblingDir = join(parentDir, "sibling");
+  mkdirSync(activeDir);
+  mkdirSync(siblingDir);
+  const siblingDatabase = join(siblingDir, "soccer.db");
+  writeFileSync(siblingDatabase, "");
+  try {
+    const base = genericMlDiagnosticArtifact();
+    writePlanFiles(activeDir, {
+      plan: `${genericMlFixtureText}\n\nObserved 0 of 1000 populated rows in soccer.db.`,
+      verification: "## Results\nDiagnostic result: 0/1000 populated rows.",
+      validation: withRunRecord({
+        ...base,
+        numeric_output: { populated_rows: 0, expected_rows: 1000 },
+        evidence: {
+          ...base.evidence,
+          claimed_data_sources: [
+            {
+              id: "soccer_database",
+              path: siblingDatabase,
+              expected_worktree_root: siblingDir,
+              freshness: { max_age_seconds: 86400 },
+            },
+          ],
+        },
+      }),
+    });
+    const signal = computeQuantResultsValidationSignal({ planDir: activeDir, projectRoot: activeDir });
+    assert(signal.status === "environment_invalid", "empty sibling-worktree database returns environment_invalid");
+    assert(signal.satisfied === false, "empty sibling-worktree database cannot satisfy result validation");
+    assert(signal.evidence_validity === "environment_invalid", "empty sibling environment uses the shared evidence-validity state");
+    assert(signal.claim_support_allowed === false && signal.numeric_output_reportable === false, "empty sibling numeric output is non-reportable");
+    assert(signal.environment_preflight_receipt?.probe_count === 1, "empty sibling receipt records one claimed-source probe");
+    assert(signal.blocking_issues.includes("claimed_data_source_empty:soccer_database"), "empty sibling receipt exposes the empty-source blocker");
+    const serialized = serializeToFacts({
+      cwd: activeDir,
+      storyRegistry: null,
+      planDir: activeDir,
+      planContent: `${genericMlFixtureText}\n\nObserved 0 of 1000 populated rows in soccer.db.`,
+      annotations: [],
+    });
+    assert(serialized.facts.includes("quant_results_validation_status('environment_invalid')."), "ontology facts preserve environment_invalid status");
+    assert(serialized.facts.includes("quant_results_numeric_output_reportable(false)."), "ontology facts preserve numeric non-reportability");
+    assert(serialized.facts.includes("quant_results_environment_preflight_probe_count(1)."), "ontology facts preserve claimed-source probe count");
+  } finally {
+    rmSync(parentDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioValidActiveWorktreePreservesDiagnosticTruth() {
+  const planDir = makePlanDir("valid-active");
+  try {
+    writePlanFiles(planDir, {
+      plan: genericMlFixtureText,
+      validation: withRunRecord(genericMlDiagnosticArtifact()),
+    });
+    const signal = computeQuantResultsValidationSignal({ planDir, projectRoot: planDir });
+    assert(signal.status === "diagnostic_only", "valid active-worktree source preserves diagnostic_only status");
+    assert(signal.satisfied === true, "valid active-worktree source satisfies diagnostic validation");
+    assert(signal.evidence_validity === "valid", "valid active-worktree source records valid evidence state");
+    assert(signal.claim_support_allowed === true && signal.numeric_output_reportable === true, "valid diagnostic output remains reportable as diagnostic evidence");
+    assert(signal.environment_preflight_receipt?.sources?.[0]?.sha256?.length === 64, "valid receipt computes source SHA-256 from disk");
+    const serialized = serializeToFacts({
+      cwd: planDir,
+      storyRegistry: null,
+      planDir,
+      planContent: genericMlFixtureText,
+      annotations: [],
+    });
+    assert(serialized.facts.includes("quant_results_evidence_validity('valid')."), "ontology facts preserve valid evidence state");
+    assert(serialized.facts.includes("quant_results_claim_support_allowed(true)."), "ontology facts preserve diagnostic claim support");
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioResultLanguageCannotUseApplicableFalseBypass() {
+  const planDir = makePlanDir("applicable-false-result");
+  try {
+    writePlanFiles(planDir, {
+      plan: `${genericMlFixtureText}\n\nFinal OOS result: 0 of 1000 rows were populated.`,
+      verification: "## Results\nThe diagnostic returned 0/1000 rows.",
+      validation: withRunRecord({
+        version: 1,
+        applicable: false,
+        reason: "Caller attempted to exempt a result-bearing artifact.",
+        evidence: {
+          claimed_data_sources: [
+            {
+              id: "fixture_data",
+              path: "fixture-data.db",
+              expected_worktree_root: ".",
+              freshness: { max_age_seconds: 86400 },
+            },
+          ],
+        },
+      }),
+    });
+    const signal = computeQuantResultsValidationSignal({ planDir, projectRoot: planDir });
+    assert(signal.required === true, "detected result language overrides applicable=false");
+    assert(signal.status !== "not_required", "applicable=false cannot bypass result validation");
+    assert(signal.environment_preflight_receipt?.performed === true, "applicable=false result still performs environment preflight");
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
+function canonicalNoGoArtifact(overrides = {}) {
+  const base = {
+    run_class: "serious_search",
+    route: "no_go",
+    kill_claim_evidence: {
+      mde: { value: 0.05, metric: "bounded_effect" },
+      sample_floor: 20,
+      observed_sample_size: 24,
+      sample_floor_met: true,
+      power_note: "Power uses independent registered fixture cells and a predeclared 80% target.",
+      tested_region: "The tested region covers the registered canonical no-go fixture only.",
+      claim_boundary: "Negative over the enumerated tested region only.",
+      claim_support_allowed: true,
+    },
+  };
+  return {
+    ...base,
+    ...overrides,
+    kill_claim_evidence: {
+      ...base.kill_claim_evidence,
+      ...(overrides.kill_claim_evidence || {}),
+    },
+  };
+}
+
+function scenarioCanonicalKillClaimFloor() {
+  const nonKill = evaluateQuantArtifactKillClaim({ route: "report_only", run_class: "smoke" });
+  assert(nonKill.required === false && nonKill.satisfied === true, "non-kill quant artifact is inert under kill-claim floor");
+
+  const earned = evaluateQuantArtifactKillClaim(canonicalNoGoArtifact());
+  assert(earned.satisfied === true, "complete serious-class no_go artifact satisfies kill-claim floor");
+
+  const evidenceCarriedRoute = evaluateQuantArtifactKillClaim(canonicalNoGoArtifact({
+    route: null,
+    kill_claim_evidence: { attempted_route: "no_go" },
+  }));
+  assert(evidenceCarriedRoute.required === true && evidenceCarriedRoute.satisfied === true, "canonical kill evidence can carry its explicit attempted route");
+
+  for (const runClass of ["smoke", "wiring_proof", "exploratory", "fixture_integration_smoke", "unknown"]) {
+    const rejected = evaluateQuantArtifactKillClaim(canonicalNoGoArtifact({ run_class: runClass }));
+    assert(rejected.satisfied === false, `${runClass} no_go evidence is rejected`);
+    assert(rejected.blockers.includes("kill_claim_from_smoke_evidence"), `${runClass} rejection exposes stable kill issue`);
+  }
+
+  for (const field of ["mde", "sample_floor", "power_note", "tested_region", "claim_boundary"]) {
+    const rejected = evaluateQuantArtifactKillClaim(canonicalNoGoArtifact({
+      kill_claim_evidence: { [field]: field === "sample_floor" ? 0 : null },
+    }));
+    assert(rejected.satisfied === false, `no_go missing ${field} is rejected`);
+    assert(rejected.blockers.includes("kill_claim_from_smoke_evidence"), `missing ${field} uses stable umbrella issue`);
+  }
+
+  const underFloor = evaluateQuantArtifactKillClaim(canonicalNoGoArtifact({
+    kill_claim_evidence: { sample_floor_met: false, observed_sample_size: 10 },
+  }));
+  assert(underFloor.satisfied === false, "no_go below sample floor is rejected");
+  assert(underFloor.detail_blockers.includes("kill_claim_sample_floor_not_met"), "sample-floor failure is explicit");
+}
+
+function scenarioCanonicalNoGoRunsThroughLiveCloseSignal() {
+  const makeArtifact = (killOverrides = {}) => {
+    const base = completePromotionArtifact();
+    return withRunRecord({
+      ...base,
+      run_class: "serious_search",
+      promotion_verdict: "blocked",
+      route: "no_go",
+      kill_claim_evidence: {
+        ...canonicalNoGoArtifact().kill_claim_evidence,
+        ...killOverrides,
+      },
+    });
+  };
+
+  const passingDir = makePlanDir("canonical-no-go-pass");
+  try {
+    writePlanFiles(passingDir, {
+      plan: "# Plan\n\nA bounded serious-search no-go is negative over its tested region only.",
+      validation: makeArtifact(),
+    });
+    const signal = computeQuantResultsValidationSignal({ planDir: passingDir });
+    assert(signal.satisfied === true, "canonical earned no_go satisfies the live quant close signal");
+    assert(signal.kill_claim_evidence?.satisfied === true, "live quant close signal exposes satisfied kill evidence");
+  } finally {
+    rmSync(passingDir, { recursive: true, force: true });
+  }
+
+  const blockedDir = makePlanDir("canonical-no-go-blocked");
+  try {
+    writePlanFiles(blockedDir, {
+      plan: "# Plan\n\nAn under-evidenced no-go must fail closed.",
+      validation: makeArtifact({ mde: null }),
+    });
+    const signal = computeQuantResultsValidationSignal({ planDir: blockedDir });
+    assert(signal.satisfied === false, "under-evidenced no_go blocks the live quant close signal");
+    assert(signal.blocking_issues.includes("kill_claim_from_smoke_evidence"), "live close signal exposes stable kill issue");
+  } finally {
+    rmSync(blockedDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioLegacyExp012BundleProjection() {
+  const planDir = makePlanDir("legacy-exp012-bundle");
+  try {
+    const validation = {
+      artifact_type: "quant_results_validation",
+      experiment_id: "EXP-012",
+      run_class: "serious_search",
+      promotion_verdict: "blocked",
+      claim_boundary: "This artifact validates falsification over its recorded region and does not approve live or paper trading.",
+      power_study_artifact: "power_study.json",
+      evidence: {
+        composed_go_no_go: "no_go",
+        noise_floor_power_study: {
+          status: "pass",
+          candidate_rows_are_not_independent: true,
+          observed_cell_count: 2,
+        },
+      },
+    };
+    writeFileSync(join(planDir, "power_study.json"), JSON.stringify({
+      artifact_type: "exp012_noise_floor_power_study",
+      alpha: 0.05,
+      power: 0.8,
+      methodology: {
+        block_bootstrap: "Resample independent period/cell cluster means.",
+        effective_n_basis: "period_cell_cluster_bootstrap",
+        claim_boundary: "Power floor only; not a profitability or promotion claim.",
+      },
+      power_tables: [
+        { label: "return", status: "measurable_floor_estimated", period_count: 14, row_count: 13320, block_bootstrap_mde: 2.5 },
+        { label: "short_horizon", status: "underpowered", period_count: 1, row_count: 1000, block_bootstrap_mde: null },
+      ],
+    }, null, 2));
+    writeFileSync(join(planDir, "hypothesis_space_ledger.json"), JSON.stringify({
+      artifact_type: "exp012_hypothesis_space_ledger",
+      claim_boundary: "negative_over_tested_region_only",
+      negative_claim_rule: "Every no-go finding must be negative over the tested region only.",
+      period_config_count: 15,
+      ledger_rows: [
+        { dimension: "strategy_families", tested_count: 4, tested_values: ["a", "b", "c", "d"] },
+        { dimension: "bar_intervals", tested_count: 1, tested_values: ["1h"] },
+        { dimension: "directionality", tested_count: 1, tested_values: ["long_only"] },
+        { dimension: "search_budget", tested_count: 1, tested_values: { quick: [true] } },
+        { dimension: "period_windows", tested_count: 15, tested_values: { period_config_count: 15 } },
+      ],
+    }, null, 2));
+
+    const earned = evaluateQuantArtifactKillClaim(validation, { baseDir: planDir });
+    assert(earned.satisfied === true, "legacy EXP-012-shaped bundle satisfies earned no_go floor");
+    assert(earned.source === "legacy_exp012_bundle", "legacy no_go names compatibility source");
+    assert(earned.evidence?.sample_floor === 14, "legacy bundle derives its measurable cluster floor");
+    assert(earned.evidence?.tested_region?.includes("four strategy families"), "legacy bundle projects an explicit tested region");
+
+    rmSync(join(planDir, "power_study.json"));
+    const missingPower = evaluateQuantArtifactKillClaim(validation, { baseDir: planDir });
+    assert(missingPower.satisfied === false, "legacy no_go without power study fails closed");
+    assert(missingPower.detail_blockers.includes("kill_claim_legacy_power_study_missing"), "legacy missing power component is explicit");
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
+scenarioGenericMlMissingArtifactBlocks();
+scenarioPlannerCoreFilesSuppressQuotedQuantBoundary();
+scenarioStructuredPlannerCoreShapeSuppressesQuotedQuantBoundary();
+scenarioGenericMlDiagnosticPasses();
+scenarioGenericMlLeakageFailureBlocks();
+scenarioNonResultSkipsEnvironmentObservation();
+scenarioEnvironmentPreflightRejectsMalformedAndUntrustedSources();
+scenarioEmptySiblingWorktreeIsEnvironmentInvalid();
+scenarioValidActiveWorktreePreservesDiagnosticTruth();
+scenarioResultLanguageCannotUseApplicableFalseBypass();
+scenarioCanonicalKillClaimFloor();
+scenarioCanonicalNoGoRunsThroughLiveCloseSignal();
+scenarioLegacyExp012BundleProjection();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

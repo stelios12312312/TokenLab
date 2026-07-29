@@ -2,6 +2,7 @@
 // close_guard.mjs — CLOSE phase enforcement and minimal-CLOSE template generation.
 //
 // Usage:
+//   node close_guard.mjs --self-test                    Run this script's local smoke check
 //   node close_guard.mjs check [--plan <plan-dir>]          Check if plan is nearly done and CLOSE is needed
 //   node close_guard.mjs template [--plan <plan-dir>]       Generate a minimal-CLOSE summary template from decisions.md
 //
@@ -11,6 +12,17 @@
 import { writeFileSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { getPaths, readPointer, resolvePlanTarget, readFile, readFindingsMarkdown } from "./lib/plan_utils.mjs";
+import { captureEnvValues, restoreEnvValues } from "./lib/env_scope.mjs";
+import { deriveVerificationTruth } from "./lib/verification_truth.mjs";
+import {
+  assertSelfTest,
+  cleanupSelfTestTemp,
+  makeSelfTestTemp,
+  printSelfTestPass,
+  runNodeScript,
+  seedActivePlan,
+  selfPath,
+} from "./lib/script_self_test.mjs";
 
 const cwd = process.cwd();
 const { plansDir, knowledgeDir } = getPaths(cwd);
@@ -46,10 +58,11 @@ function cmdCheck(planDir, planDirName) {
   const remaining = (progress.match(/^- \[ \]/gm) || []).length;
   const total = completed + inProgress + remaining;
 
-  // Check verification
-  const hasPassResults = verification && verification.includes("PASS");
-  const hasFailResults = verification && verification.includes("FAIL");
-  const allPass = hasPassResults && !hasFailResults;
+  // Verification truth is structured and fail-closed. A PASS word elsewhere in
+  // the document is not close evidence, and evidence presence cannot upgrade a
+  // missing, unknown, or failing result.
+  const verificationTruth = deriveVerificationTruth({ cwd, planDir, verificationContent: verification });
+  const allPass = verificationTruth.resultsRecorded === true && verificationTruth.allVerificationPass === true;
 
   console.log(`\n┌──────────────────────────────────────────────────────┐`);
   console.log(`│  CLOSE GUARD CHECK                                   │`);
@@ -198,6 +211,47 @@ Reads from an explicit target plan, thread-local target, or plans/.current_plan.
 }
 
 const args = process.argv.slice(2);
+if (args[0] === "--self-test") {
+  const scriptPath = selfPath(import.meta.url);
+  const tmp = makeSelfTestTemp("close-guard");
+  try {
+    const planDir = seedActivePlan(tmp, "plan_close_self_test");
+    writeFileSync(join(planDir, "state.json"), JSON.stringify({ state: "EXECUTE", iteration: 2 }, null, 2));
+    writeFileSync(join(planDir, "progress.md"), `# Progress
+
+- [x] finished one
+- [x] finished two
+- [x] finished three
+- [x] finished four
+- [ ] wrap up notes
+`);
+    writeFileSync(join(planDir, "verification.md"), "## Verification\nPASS\n");
+    writeFileSync(join(planDir, "decisions.md"), `# Decisions
+
+## D-001
+Use close_guard smoke fixture
+`);
+    writeFileSync(join(planDir, "plan.md"), `# Plan
+
+## Goal
+Close guard smoke coverage
+`);
+
+    const checkResult = runNodeScript([scriptPath, "check"], tmp);
+    assertSelfTest(checkResult.ok, "close_guard check exits cleanly", checkResult.stderr || checkResult.stdout);
+    assertSelfTest(checkResult.stdout.includes("CLOSE IS DUE"), "close_guard check identifies a near-close plan", checkResult.stdout);
+
+    const templateResult = runNodeScript([scriptPath, "template"], tmp);
+    assertSelfTest(templateResult.ok, "close_guard template exits cleanly", templateResult.stderr || templateResult.stdout);
+    assertSelfTest(existsSync(join(planDir, "summary.md")), "close_guard template writes summary.md");
+
+    printSelfTestPass("close_guard");
+  } finally {
+    cleanupSelfTestTemp(tmp);
+  }
+  process.exit(0);
+}
+
 if (args.length === 0 || args[0] === "--help" || args[0] === "help") {
   printUsage();
   process.exit(0);
@@ -217,7 +271,9 @@ if (!planDirName) {
   console.error("ERROR: No target plan.");
   process.exit(1);
 }
+const plannerEnvScope = captureEnvValues(["_PLANNER_PLAN_TARGET"]);
 process.env._PLANNER_PLAN_TARGET = planDirName;
+try {
 
 if (target.source && target.source !== "pointer") {
   console.log(`Target source: ${target.source}`);
@@ -235,4 +291,7 @@ if (args[0] === "check") {
 } else {
   console.error(`ERROR: Unknown command "${args[0]}". Use --help.`);
   process.exit(1);
+}
+} finally {
+  restoreEnvValues(plannerEnvScope);
 }

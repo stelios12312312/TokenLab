@@ -7,7 +7,7 @@ description: Repair Program Packet tickets blocked by missing story traceability
 > **Invoke with**: `/ticket-traceability-repair`
 
 Use this when a Program Packet ticket, Ticket Intake Receipt, GitHub review packet,
-or DeepSeek advisory says `needs_story`, `ticket_without_traceability`, or "gap
+or advisory review says `needs_story`, `ticket_without_traceability`, or "gap
 reference but no linked stories."
 
 This workflow repairs traceability for an existing local Program Packet ticket.
@@ -20,8 +20,7 @@ ticket. After repair, executable work still goes through `/safe-change` or
 - Program Packet path or id
 - Ticket id
 - Ticket Intake Receipt or Review Packet when available
-- DeepSeek advisory status/summary/artifact path when present; include the full
-  advisory block only if the operator explicitly requested verbose review output
+- Advisory review status/summary/artifact path when present
 
 If the request is still only a broad idea, backlog item, GitHub Issue, or GitHub
 Project item with no local Program Packet ticket, stop and use `/program-manager`
@@ -29,11 +28,10 @@ intake first.
 
 ## Phase 1: Preserve The Receipt
 
-If the input contains DeepSeek review data, preserve the compact status, summary,
+If the input contains advisory review data, preserve the compact status, summary,
 and artifact path in the user-facing reply before acting on it. Deterministic
 Program Packet, story, annotation, ontology, and verification evidence remains
-authoritative; DeepSeek is advisory only. The full `deepseek_advisory_block`
-stays in the artifact unless the user asks to inspect it.
+authoritative; advisory review cannot clear deterministic blockers.
 
 Record:
 - program packet path
@@ -113,7 +111,7 @@ node .agent/skills/iterative-planner/scripts/program_manager.mjs verify ready-to
 ```
 
 Treat `invariant_violated` and deterministic blockers as blocking. Treat
-DeepSeek and other LLM review as advisory. Existing unrelated annotation
+LLM or agent review metadata as advisory. Existing unrelated annotation
 warnings may be reported as residual risk, but failed annotation validation on
 the repaired surfaces must be fixed before dispatching implementation.
 

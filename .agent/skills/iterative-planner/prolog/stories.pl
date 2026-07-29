@@ -30,6 +30,20 @@ has_docs(StoryId) :- doc_ref(StoryId, _).
 
 %% Coverage levels
 coverage(StoryId, full) :-
+    story_coverage_tracking_enabled,
+    story_coverage_contract(StoryId, current),
+    story(StoryId, _, _, _),
+    has_code(StoryId), has_tests(StoryId), has_docs(StoryId),
+    story_validation_satisfied(StoryId).
+
+coverage(StoryId, full) :-
+    story_coverage_tracking_enabled,
+    \+ story_coverage_contract(StoryId, current),
+    story(StoryId, _, _, _),
+    has_code(StoryId), has_tests(StoryId), has_docs(StoryId).
+
+coverage(StoryId, full) :-
+    \+ story_coverage_tracking_enabled,
     story(StoryId, _, _, _),
     has_code(StoryId), has_tests(StoryId), has_docs(StoryId).
 
@@ -129,6 +143,11 @@ gap_high_priority(StoryId) :-
     story(StoryId, _, high, Status),
     Status \= retired,
     Status \= fully_covered.
+
+gap_high_priority(StoryId) :-
+    story(StoryId, _, high, fully_covered),
+    story_coverage_contract(StoryId, current),
+    \+ story_validation_satisfied(StoryId).
 
 %% Stories with verification paths but no tests
 gap_untested_path(StoryId) :-

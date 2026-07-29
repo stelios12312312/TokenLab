@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "id": "wo_recipe_sample_flow",
+  "goal": "Promote sample flow recipe into a dry-run verified work-order profile.",
+  "inputs": [
+    {
+      "id": "recipe_definition",
+      "kind": "recipe",
+      "ref": ".agent/skills/iterative-planner/tests/fixtures/recipes/canonical/recipes/sample-flow/recipe.json"
+    }
+  ],
+  "constraints": [
+    "Execute the recipe through its declared runner contract only.",
+    "Default execution mode must be dry-run unless the operator explicitly selects live execution."
+  ],
+  "claims_to_produce": [
+    {
+      "id": "recipe_profile_valid",
+      "statement": "The recipe is represented as a work-order profile with a fail-closed dry-run runner contract."
+    }
+  ],
+  "proof_obligations": [
+    {
+      "claim_id": "recipe_profile_valid",
+      "method": "deterministic",
+      "check": "validateWorkOrder(work_order).ok"
+    }
+  ],
+  "stop_conditions": [
+    "Stop if the recipe profile lacks dry-run flags."
+  ],
+  "budget": {
+    "max_tokens": 12000,
+    "max_cost_usd": 0,
+    "max_time_minutes": 20
+  },
+  "profile": {
+    "type": "recipe",
+    "recipe_id": "sample-flow",
+    "capability_id": "run_sample_flow",
+    "required_params": [],
+    "dry_run_fail_closed": true,
+    "runner": {
+      "type": "command",
+      "cwd": ".",
+      "command": [
+        "python",
+        "scripts/sample_flow.py"
+      ],
+      "defaults": {},
+      "dry_run_flags": [
+        "--dry-run"
+      ],
+      "live_flags": []
+    }
+  }
+}

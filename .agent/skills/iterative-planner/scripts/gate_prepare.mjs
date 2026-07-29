@@ -4,8 +4,9 @@
 // Usage:
 //   node gate_prepare.mjs <gate> --plan <plan-dir> [--json] [--write]
 
-import { existsSync, readFileSync, writeFileSync } from "fs";
+import { existsSync, readFileSync, realpathSync, writeFileSync } from "fs";
 import { basename, isAbsolute, join, resolve } from "path";
+import { fileURLToPath, pathToFileURL } from "url";
 
 import {
   analyzeRedTeamNotes,
@@ -31,6 +32,8 @@ import {
   scaffoldVerificationStrategy,
 } from "./lib/verification_strategy.mjs";
 import { computeVerificationObligationSynthesis } from "./lib/verification_obligations.mjs";
+import { buildGuidanceReminder, renderGuidanceReminder } from "./lib/guidance_reminder.mjs";
+import { deriveVerificationTruth } from "./lib/verification_truth.mjs";
 
 const SUPPORTED_GATES = new Set([
   "explore-to-plan",
@@ -605,8 +608,14 @@ function analyzeReflectToValidate(context) {
 
 function analyzeValidateToClose(context) {
   const closeSignals = context.refresh?.closeSignals || {};
+  const verificationTruth = deriveVerificationTruth({
+    cwd: context.cwd,
+    planDir: context.planDir,
+    planContent: context.planContent,
+    verificationContent: context.verificationContent,
+  });
   const checks = {
-    verification_has_pass: /\bPASS\b/.test(context.verificationContent),
+    verification_has_pass: verificationTruth.resultsRecorded === true && verificationTruth.allVerificationPass === true,
     verification_not_template: !context.verificationContent.includes("To be populated during PLAN"),
     systems_exercised_section: sectionPresent(context.verificationContent, "Systems Exercised"),
     remaining_unverified_section: sectionPresent(context.verificationContent, "Remaining Unverified"),
@@ -825,12 +834,16 @@ function applyGateWrite(context, analysis) {
   }
 
   if (context.gate === "plan-to-execute") {
-    if (!context.strategyLint?.strategy_present) {
-      const strategy = scaffoldVerificationStrategy({ cwd: context.cwd, planDir: context.planDir, force: false });
+    // Legacy Markdown can make lint report strategy_present even when the
+    // canonical file is absent. Creation/preparation contracts are about the
+    // canonical artifact, so check its path directly.
+    const canonicalPresent = existsSync(getVerificationStrategyPath(context.planDir));
+    if (!canonicalPresent || !context.strategyLint?.ok) {
+      const strategy = scaffoldVerificationStrategy({ cwd: context.cwd, planDir: context.planDir, force: canonicalPresent });
       actions.push({
         id: "verification_strategy",
         file: strategy.path,
-        status: strategy.wrote ? "written" : "not_written",
+        status: strategy.wrote ? (canonicalPresent ? "updated" : "written") : "not_written",
         truthfulness: STRUCTURAL_ONLY_NOTE,
         errors: strategy.errors || [],
       });
@@ -898,6 +911,15 @@ function buildResult({ cwd, gate, planArg, write }) {
     truthfulness_notes: buildTruthfulnessNotes(afterContext),
     diagnostics: after.diagnostics || {},
   };
+  const command = `node .agent/skills/iterative-planner/scripts/gate_prepare.mjs ${gate} --plan ${resolved.planDirName} --write`;
+  const missingCount = after.missing.length;
+  const advisoryReminder = buildGuidanceReminder({
+    triggered: !write && missingCount > 0,
+    surface: "gate_preparation",
+    reason: "unresolved_preparation_items",
+    nextCommand: command,
+    why: `${missingCount} deterministic preparation item${missingCount === 1 ? "" : "s"} remain${missingCount === 1 ? "s" : ""}.`,
+  });
   return {
     status: after.missing.length === 0 ? "pass" : "needs_preparation",
     ok: after.missing.length === 0,
@@ -919,7 +941,8 @@ function buildResult({ cwd, gate, planArg, write }) {
     wrote: writeActions.some((action) => ["created", "updated", "written", "appended_missing_tokens", "synced_from_ledger"].includes(action.status) || action.written),
     write_actions: generatedArtifactActions,
     write_result: writeActions.length > 0 ? { actions: generatedArtifactActions } : null,
-    command: `node .agent/skills/iterative-planner/scripts/gate_prepare.mjs ${gate} --plan ${resolved.planDirName} --write`,
+    command,
+    advisory_reminder: advisoryReminder,
   };
 }
 
@@ -940,18 +963,39 @@ function printHuman(result) {
   console.log(`  generated actions: ${result.report?.generated_artifact_actions?.length || 0}`);
   console.log(`  wrote: ${result.wrote ? "yes" : "no"}`);
   if (!result.ok && !result.write) console.log(`  repair: ${result.command}`);
+  const reminder = renderGuidanceReminder(result.advisory_reminder, { indent: "  " });
+  if (reminder) {
+    console.log();
+    console.log(reminder);
+  }
 }
 
-const args = parseArgs(process.argv);
-if (args.gate === "help" || args.gate === "--help") {
-  console.log(usage());
-  process.exitCode = 0;
-} else {
-  const result = buildResult({ cwd: process.cwd(), gate: args.gate, planArg: args.plan, write: args.write });
-  if (args.json) {
-    console.log(JSON.stringify(result, null, 2));
-  } else {
-    printHuman(result);
+// --- Public API for programmatic use (e.g. from transition.mjs) ---
+export { buildResult };
+
+// --- CLI entry point (only runs when executed directly) ---
+function isMainModule() {
+  if (!process.argv[1]) return false;
+  try {
+    const argvFile = pathToFileURL(realpathSync(resolve(process.argv[1]))).href;
+    const thisFile = pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+    return argvFile === thisFile;
+  } catch {
+    return false;
   }
-  process.exitCode = result.ok ? 0 : 1;
+}
+if (isMainModule()) {
+  const args = parseArgs(process.argv);
+  if (args.gate === "help" || args.gate === "--help") {
+    console.log(usage());
+    process.exitCode = 0;
+  } else {
+    const result = buildResult({ cwd: process.cwd(), gate: args.gate, planArg: args.plan, write: args.write });
+    if (args.json) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      printHuman(result);
+    }
+    process.exitCode = result.ok ? 0 : 1;
+  }
 }

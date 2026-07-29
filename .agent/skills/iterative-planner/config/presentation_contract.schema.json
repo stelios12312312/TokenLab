@@ -1,0 +1,154 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iterative-planner.local/schemas/presentation_contract.schema.json",
+  "title": "Iterative Planner Presentation Contract",
+  "description": "Render-layer and write-authority contract for preserving schema fields verbatim and declaring single-writer planner artifact ownership.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "render_contracts",
+    "write_authority_matrix"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [1]
+    },
+    "render_contracts": {
+      "type": "object",
+      "description": "Named presentation surfaces. Each surface renders only declared fields in declared order.",
+      "minProperties": 1,
+      "additionalProperties": {
+        "$ref": "#/$defs/render_contract"
+      }
+    },
+    "write_authority_matrix": {
+      "type": "array",
+      "description": "Per-artifact/state writer authority rows. Multi-writer rows must declare disjoint paths and write sequence.",
+      "items": {
+        "$ref": "#/$defs/write_authority_row"
+      }
+    }
+  },
+  "$defs": {
+    "render_contract": {
+      "type": "object",
+      "required": ["surface", "fields"],
+      "properties": {
+        "surface": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source_schema": {
+          "type": "string",
+          "minLength": 1
+        },
+        "fields": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["name"],
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "label": {
+                "type": "string"
+              },
+              "source_path": {
+                "type": "string",
+                "minLength": 1
+              },
+              "required": {
+                "type": "boolean"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "write_authority_row": {
+      "type": "object",
+      "required": ["artifact", "state", "owner", "writers"],
+      "properties": {
+        "artifact": {
+          "type": "string",
+          "minLength": 1
+        },
+        "state": {
+          "type": "string",
+          "minLength": 1
+        },
+        "owner": {
+          "type": "string",
+          "minLength": 1
+        },
+        "artifact_class": {
+          "type": "string",
+          "enum": ["orchestrator_state", "plan_artifact", "program_packet", "evidence_artifact", "other"]
+        },
+        "writers": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["actor"],
+            "properties": {
+              "actor": {
+                "type": "string",
+                "minLength": 1
+              },
+              "paths": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "sequence": {
+                "type": "integer",
+                "minimum": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "examples": [
+    {
+      "schema_version": 1,
+      "render_contracts": {
+        "step": {
+          "surface": "step",
+          "source_schema": "planner_step",
+          "fields": [
+            { "name": "step" },
+            { "name": "files" },
+            { "name": "commit" },
+            { "name": "surprises" },
+            { "name": "next" }
+          ]
+        }
+      },
+      "write_authority_matrix": [
+        {
+          "artifact": "state.json",
+          "state": "EXECUTE",
+          "owner": "orchestrator",
+          "artifact_class": "orchestrator_state",
+          "writers": [
+            { "actor": "orchestrator", "paths": ["state"], "sequence": 1 }
+          ]
+        }
+      ]
+    }
+  ]
+}

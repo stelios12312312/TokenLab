@@ -7,11 +7,15 @@
 // second orchestration path.
 
 import { execFileSync } from "child_process";
-import { existsSync, mkdirSync, writeFileSync } from "fs";
-import { dirname, join, relative, resolve } from "path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 import { emitJson } from "../../scripts/lib/emit_json.mjs";
 import { isDirectInvocation } from "../../scripts/lib/script_entrypoint.mjs";
+import { buildRepoStateStamp } from "../../scripts/lib/repo_state_stamp.mjs";
+import { findingsFromIveReport } from "../../scripts/lib/deterministic_findings.mjs";
+import { plannerSubprocessEnv } from "../helpers/env.mjs";
+import { COVERAGE_TARGETS } from "../../scripts/coverage_baseline.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const TEST_DIR = dirname(__filename);
@@ -25,12 +29,67 @@ const STDOUT_EXCERPT_BYTES = 500;
 const DEFAULT_TIMEOUT_MS = 120000;
 const NODE = process.execPath;
 const REPORT_ROOT = join(REPO_ROOT, "reports", "ive", "test_runs");
+const RELEASE_PROFILES_PATH = join(SKILL_DIR, "config", "ive_release_profiles.json");
 const VISUALIZER_SKIP_EXIT_CODE = 78;
 
 const FAILING_STATUSES = new Set(["FAIL", "TIMEOUT", "NOT_IMPLEMENTED_YET"]);
+const TEST_CLASS_FUNCTIONAL_PROOF = "functional_proof_test";
+const TEST_CLASS_QUALITY_SCORE = "quality_score_evaluation";
+const TEST_CLASS_LABELS = Object.freeze({
+  [TEST_CLASS_FUNCTIONAL_PROOF]: "Functional proof test",
+  [TEST_CLASS_QUALITY_SCORE]: "Quality-score evaluation",
+});
+const QUALITY_SCORE_TOKENS = new Set([
+  "ab-task-benchmark",
+  "autocoder-metrics",
+  "autocoder_v2",
+  "behavior-report",
+  "behavior_report",
+  "convergence-metrics",
+  "false-green",
+  "gate-survival",
+  "ideation",
+  "ideation_quality",
+  "insight-velocity",
+  "insight_velocity",
+  "north-star",
+  "projection",
+  "quality",
+  "real-telemetry",
+  "real_telemetry",
+  "ritual-replay",
+  "ritual_replay",
+  "scoreboard",
+]);
 
 function displayCommand(command) {
-  return command.join(" ");
+  return command.map((arg) => {
+    let rendered = String(arg);
+    if (isAbsolute(rendered)) {
+      const repoRelative = relative(REPO_ROOT, rendered);
+      if (repoRelative && !repoRelative.startsWith("..") && !isAbsolute(repoRelative)) {
+        rendered = repoRelative.split(sep).join("/");
+      }
+    }
+    return /[\s"'\\]/.test(rendered) ? JSON.stringify(rendered) : rendered;
+  }).join(" ");
+}
+
+function normalizeTestClass(value) {
+  const normalized = String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return normalized === TEST_CLASS_QUALITY_SCORE ? TEST_CLASS_QUALITY_SCORE : TEST_CLASS_FUNCTIONAL_PROOF;
+}
+
+function inferTestClass({ id, category, phases = [], surfaces = [] }) {
+  const tokens = [
+    id,
+    category,
+    ...phases,
+    ...surfaces,
+  ].map((entry) => String(entry || "").trim().toLowerCase()).filter(Boolean);
+  return tokens.some((token) => QUALITY_SCORE_TOKENS.has(token))
+    ? TEST_CLASS_QUALITY_SCORE
+    : TEST_CLASS_FUNCTIONAL_PROOF;
 }
 
 function suite({
@@ -43,21 +102,34 @@ function suite({
   fixtures = [],
   changedFilePatterns = [],
   timeoutMs = null,
+  testClass = null,
+  required = true,
+  acceptsPlanTarget = false,
   run,
 }) {
+  const resolvedSurfaces = surfaces || [category];
+  const resolvedTestClass = normalizeTestClass(testClass || inferTestClass({
+    id,
+    category,
+    phases,
+    surfaces: resolvedSurfaces,
+  }));
   return {
     id,
     name: id,
     category,
+    test_class: resolvedTestClass,
+    test_class_label: TEST_CLASS_LABELS[resolvedTestClass],
     label,
     command,
     display_command: displayCommand(command),
-    required: true,
+    required,
     phases,
-    surfaces,
+    surfaces: resolvedSurfaces,
     fixtures,
     changed_file_patterns: changedFilePatterns,
     timeout_ms: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : null,
+    accepts_plan_target: acceptsPlanTarget === true,
     run,
   };
 }
@@ -70,6 +142,10 @@ function docsIvePattern(fileName) {
   return new RegExp(`^docs/ive-redesign/${fileName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
 }
 
+function exactRepoPathPattern(repoPath) {
+  return new RegExp(`^${repoPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`);
+}
+
 function visualizerAppRoot(repoRoot = REPO_ROOT) {
   return join(repoRoot, "apps", "ive-visualizer");
 }
@@ -80,15 +156,86 @@ function visualizerPlaywrightBin(repoRoot = REPO_ROOT) {
 
 const DEFAULT_SUITES = [
   suite({
+    id: "planner-core-coverage-ratchet",
+    category: "ci",
+    label: "K2 modified planner-core scripts do not regress below measured coverage baselines",
+    command: ["node", join(TESTS_ROOT, "test_coverage_baseline.mjs")],
+    phases: ["k2", "coverage"],
+    surfaces: ["ci", "coverage", "changed_file_selection", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_coverage_baseline.mjs"),
+      skillRel("scripts/coverage_baseline.mjs"),
+      skillRel("config/coverage_baseline.json"),
+      skillRel("package.json"),
+      skillRel("package-lock.json"),
+      skillRel("tests/ive/run.mjs"),
+      ...COVERAGE_TARGETS,
+    ],
+    changedFilePatterns: [
+      ...COVERAGE_TARGETS.map(exactRepoPathPattern),
+      /^\.agent\/skills\/iterative-planner\/tests\/test_coverage_baseline\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/coverage_baseline\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/coverage_baseline\.json$/,
+      /^\.agent\/skills\/iterative-planner\/package(-lock)?\.json$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "gate-or-delete-census",
+    category: "ci",
+    label: "E4 no-new-ungated-tests census guard",
+    command: ["node", join(TESTS_ROOT, "test_gate_or_delete_census.mjs")],
+    phases: ["e4", "test-governance", "planner-core"],
+    surfaces: ["ci", "test_governance", "changed_file_selection", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_gate_or_delete_census.mjs"),
+      skillRel("scripts/test_gate_census.mjs"),
+      skillRel("config/test_gate_census.json"),
+      skillRel("tests/ive/run.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_.*\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/test_gate_census\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/test_gate_census\.json$/,
+    ],
+  }),
+  suite({
     id: "ontology-invariants",
     category: "ontology",
     label: "Ontology invariants",
     command: ["node", join(SCRIPTS_DIR, "rule_engine.mjs"), "check-invariants", "--json"],
+    acceptsPlanTarget: true,
     fixtures: [skillRel("scripts/rule_engine.mjs")],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/scripts\/rule_engine\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/prolog\//,
       /^reports\/user_story_audit\/story_registry\.json$/,
+    ],
+  }),
+  suite({
+    id: "prolog-value-audit",
+    category: "ontology",
+    label: "E8-2 Prolog prove-or-lose value audit",
+    command: ["node", join(TESTS_ROOT, "test_prolog_value_audit.mjs")],
+    phases: ["prolog-value-audit", "e8-2", "ontology", "deletion-wave", "autocoder-v2"],
+    surfaces: ["ontology", "prolog", "gate_survival", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_prolog_value_audit.mjs"),
+      skillRel("scripts/prolog_value_audit.mjs"),
+      skillRel("scripts/lib/prolog_value_audit.mjs"),
+      skillRel("prolog"),
+      skillRel("packs/tokenomics/rules.pl"),
+      "reports/ive/gate_survival/gate_survival.json",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_prolog_value_audit\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/prolog_value_audit\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/prolog_value_audit\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/prolog\//,
+      /^\.agent\/skills\/iterative-planner\/packs\/tokenomics\/rules\.pl$/,
+      /^\.agent\/skills\/iterative-planner\/config\/(determinism|gates)\.json$/,
+      /^reports\/ive\/gate_survival\/gate_survival\.json$/,
     ],
   }),
   suite({
@@ -142,8 +289,103 @@ const DEFAULT_SUITES = [
       skillRel("scripts/bootstrap.mjs"),
       skillRel("scripts/transition.mjs"),
       skillRel("scripts/verify_gate.mjs"),
+      skillRel("scripts/lib/guidance_reminder.mjs"),
+      skillRel("scripts/lib/gate_verdict.mjs"),
+      skillRel("scripts/lib/checklist_runner.mjs"),
       skillRel("scripts/lib/determinism.mjs"),
-      skillRel("scripts/lib/plan_integrity.mjs"),
+      skillRel("scripts/lib/plan_refresh.mjs"),
+      skillRel("scripts/lib/gate_input_snapshot.mjs"),
+      skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("scripts/lib/degraded_coverage.mjs"),
+      skillRel("scripts/lib/bootstrap_status_context.mjs"),
+      skillRel("scripts/lib/semantic_substrate.mjs"),
+      skillRel("scripts/lib/semantic_engine.mjs"),
+      skillRel("scripts/lib/rule_commands.mjs"),
+      skillRel("prolog/invariants.pl"),
+      skillRel("prolog/transitions.pl"),
+      skillRel("config/gates.json"),
+      skillRel("config/failure-codes.json"),
+      skillRel("config/degraded_coverage_census.json"),
+      skillRel("analyzers/pattern-grep.yaml"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_transition_gate_flows\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(bootstrap|transition|verify_gate)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(determinism|plan_refresh|gate_input_snapshot|fact_loader|guidance_reminder|gate_verdict|checklist_runner|degraded_coverage|bootstrap_status_context|semantic_substrate|semantic_engine|rule_commands)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/prolog\/(invariants|transitions)\.pl$/,
+      /^\.agent\/skills\/iterative-planner\/config\/(gates|failure-codes|degraded_coverage_census)\.json$/,
+      /^\.agent\/skills\/iterative-planner\/analyzers\/pattern-grep\.yaml$/,
+      /^\.agent\/skills\/iterative-planner\/checklists\//,
+    ],
+  }),
+  suite({
+    id: "transition-dry-run-equivalence",
+    category: "structured_plan",
+    label: "Authoritative transition dry-run is non-writing and verdict-equivalent across every registered gate",
+    command: ["node", join(TESTS_ROOT, "test_transition_dry_run_equivalence.mjs")],
+    timeoutMs: 600000,
+    phases: ["state-machine", "gate-lifecycle", "planner-core", "preflight-authority"],
+    surfaces: ["state_machine", "transition_gates", "planner_core", "semantic_gate", "documentation", "migration"],
+    fixtures: [
+      skillRel("tests/test_transition_dry_run_equivalence.mjs"),
+      skillRel("scripts/transition.mjs"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("scripts/audit_runner.mjs"),
+      skillRel("scripts/rule_engine.mjs"),
+      skillRel("scripts/lib/autonomous_driver.mjs"),
+      skillRel("scripts/lib/checklist_runner.mjs"),
+      skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("scripts/lib/gate_verdict.mjs"),
+      skillRel("scripts/lib/gate_input_snapshot.mjs"),
+      skillRel("scripts/lib/guidance_packet.mjs"),
+      skillRel("scripts/lib/plan_utils.mjs"),
+      skillRel("scripts/lib/repair_packet.mjs"),
+      skillRel("scripts/lib/rule_commands.mjs"),
+      skillRel("mcp_server.mjs"),
+      skillRel("config/gates.json"),
+      skillRel("config/.checklist_integrity"),
+      skillRel("checklists/validate-to-close.yaml"),
+      skillRel("SKILL.md"),
+      skillRel("MIGRATION.md"),
+      skillRel("references/CLAUDE.template.md"),
+      skillRel("references/prompt-contracts.md"),
+      skillRel("references/rule-engine-guide.md"),
+      skillRel("references/scripts_registry.md"),
+      ".agent/rules.md",
+      ".agent/ADAPTATION-GUIDE.md",
+      ".agent/workflows/safe-plan.md",
+      "README.md",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_transition_dry_run_equivalence\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(transition|verify_gate|audit_runner|rule_engine)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(autonomous_driver|checklist_runner|fact_loader|gate_verdict|guidance_packet|plan_utils|repair_packet|rule_commands)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/(mcp_server\.mjs|SKILL\.md|MIGRATION\.md)$/,
+      /^\.agent\/skills\/iterative-planner\/config\/gates\.json$/,
+      /^\.agent\/skills\/iterative-planner\/config\/\.checklist_integrity$/,
+      /^\.agent\/skills\/iterative-planner\/checklists\/validate-to-close\.yaml$/,
+      /^\.agent\/skills\/iterative-planner\/references\/(CLAUDE\.template|prompt-contracts|rule-engine-guide|scripts_registry)\.md$/,
+      /^\.agent\/(rules|ADAPTATION-GUIDE)\.md$/,
+      /^\.agent\/workflows\/safe-plan\.md$/,
+      /^README\.md$/,
+    ],
+  }),
+  suite({
+    id: "lifecycle-journey-proof",
+    category: "structured_plan",
+    label: "Deterministic full planner lifecycle journey proof (J13/J14 Tier 1)",
+    command: ["node", join(TESTS_ROOT, "test_lifecycle_journey_proof.mjs")],
+    timeoutMs: 240000,
+    phases: ["full-lifecycle", "lifecycle-journey", "j13", "j14", "planner-core"],
+    surfaces: ["state_machine", "transition_gates", "planner_core", "ive_runner", "program_manager", "story_registry"],
+    fixtures: [
+      skillRel("tests/test_lifecycle_journey_proof.mjs"),
+      skillRel("tests/helpers/env.mjs"),
+      skillRel("scripts/bootstrap.mjs"),
+      skillRel("scripts/transition.mjs"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("scripts/lib/determinism.mjs"),
       skillRel("scripts/lib/plan_refresh.mjs"),
       skillRel("scripts/lib/fact_loader.mjs"),
       skillRel("prolog/invariants.pl"),
@@ -151,32 +393,288 @@ const DEFAULT_SUITES = [
       skillRel("config/gates.json"),
     ],
     changedFilePatterns: [
-      /^\.agent\/skills\/iterative-planner\/tests\/test_transition_gate_flows\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_lifecycle_journey_proof\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_ive_conformance_runner\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/(bootstrap|transition|verify_gate)\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(determinism|plan_integrity|plan_refresh|fact_loader)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/gate_input_snapshot\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/prolog\/(invariants|transitions)\.pl$/,
       /^\.agent\/skills\/iterative-planner\/config\/gates\.json$/,
-      /^\.agent\/skills\/iterative-planner\/checklists\//,
+      /^plans\/programs\/ive-trust-repair\/program_packet\.json$/,
+    ],
+  }),
+  suite({
+    id: "committed-dogfood-lifecycle-replay",
+    category: "structured_plan",
+    label: "Committed dogfood lifecycle current-code replay (Tier 2/L2)",
+    command: ["node", join(TESTS_ROOT, "test_dogfood_lifecycle_replay.mjs")],
+    timeoutMs: 300000,
+    phases: ["committed-lifecycle-replay", "lifecycle-replay", "tier2", "l2", "planner-core"],
+    surfaces: ["state_machine", "transition_gates", "planner_core", "prolog", "ive_runner", "program_manager", "committed_artifacts"],
+    fixtures: [
+      skillRel("tests/test_dogfood_lifecycle_replay.mjs"),
+      skillRel("scripts/dogfood_lifecycle_replay.mjs"),
+      skillRel("scripts/lib/dogfood_lifecycle_replay.mjs"),
+      skillRel("scripts/lib/gate_input_snapshot.mjs"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("scripts/lib/prolog.mjs"),
+      skillRel("prolog/transitions.pl"),
+      skillRel("config/gates.json"),
+      "plans/plan_2026-07-06_a562d891f2f965d0",
+      "plans/plan_2026-07-07_d07f86dd2adff3da",
+      "plans/plan_2026-07-09_09ac37d240a5fc72",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_dogfood_lifecycle_replay\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(dogfood_lifecycle_replay|verify_gate)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(dogfood_lifecycle_replay|gate_input_snapshot|fact_loader|prolog)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/prolog\/transitions\.pl$/,
+      /^\.agent\/skills\/iterative-planner\/config\/gates\.json$/,
+      /^plans\/plan_2026-07-(06_a562d891f2f965d0|07_d07f86dd2adff3da|09_09ac37d240a5fc72)\//,
+      /^plans\/programs\/ive-trust-repair\/program_packet\.json$/,
+    ],
+  }),
+  suite({
+    id: "l3-autonomous-dogfood-harness",
+    category: "structured_plan",
+    label: "Deterministic L3 headless-agent harness countersign proof",
+    command: ["node", join(TESTS_ROOT, "test_autonomous_dogfood_run.mjs")],
+    timeoutMs: 120000,
+    phases: ["l3-harness", "autonomous-dogfood", "tier3", "l3", "planner-core"],
+    surfaces: ["headless_agent", "state_machine", "transition_gates", "planner_core", "ive_runner", "ci", "receipt"],
+    fixtures: [
+      skillRel("tests/test_autonomous_dogfood_run.mjs"),
+      skillRel("scripts/autonomous_dogfood_run.mjs"),
+      skillRel("scripts/lib/autonomous_dogfood_run.mjs"),
+      skillRel("scripts/lib/dogfood_lifecycle_replay.mjs"),
+      skillRel("scripts/transition.mjs"),
+      skillRel("config/gates.json"),
+      ".github/workflows/l3-autonomous-dogfood.yml",
+      "docs/ci/l3-autonomous-dogfood.md",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_autonomous_dogfood_run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/autonomous_dogfood_run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(autonomous_dogfood_run|dogfood_lifecycle_replay)\.mjs$/,
+      /^\.github\/workflows\/l3-autonomous-dogfood\.yml$/,
+      /^docs\/ci\/l3-autonomous-dogfood\.md$/,
+      /^reports\/ive\/autonomous_dogfood_runs\//,
+      /^plans\/programs\/ive-trust-repair\/program_packet\.json$/,
+    ],
+  }),
+  suite({
+    id: "clean-checkout-conformance",
+    category: "release",
+    label: "Exact committed revision reproduces canonical story, invariant, findings, and project-health proof",
+    command: ["node", join(SCRIPTS_DIR, "clean_checkout_conformance.mjs"), "--ref", "HEAD", "--json"],
+    timeoutMs: 180000,
+    phases: ["clean-checkout", "release", "planner-core", "story-evidence"],
+    surfaces: ["git", "story_registry", "project_health", "release", "planner_core", "traceability"],
+    fixtures: [
+      skillRel("scripts/clean_checkout_conformance.mjs"),
+      skillRel("tests/test_clean_checkout_conformance.mjs"),
+      skillRel("tests/ive/run.mjs"),
+      skillRel("scripts/story_registry.mjs"),
+      skillRel("scripts/rule_engine.mjs"),
+      skillRel("scripts/planner_findings.mjs"),
+      skillRel("scripts/project_health.mjs"),
+      ".agent/workflows/release.md",
+      "docs/ive-redesign/17_release_lane.md",
+      "reports/user_story_audit/story_registry.json",
+      ".gitignore",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/scripts\/clean_checkout_conformance\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_clean_checkout_conformance\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(story_registry|rule_engine|planner_findings|project_health)\.mjs$/,
+      /^\.agent\/workflows\/release\.md$/,
+      /^docs\/ive-redesign\/17_release_lane\.md$/,
+      /^reports\/user_story_audit\/story_registry\.json$/,
+      /^reports\/ive\/test_runs\/[^/]+-story-proof-[^/]+\//,
+      /^\.gitignore$/,
+    ],
+  }),
+  suite({
+    id: "clean-checkout-conformance-regression",
+    category: "release",
+    label: "Seeded red/green, invalid-ref, cleanup, registration, portability, and release-contract guard",
+    command: ["node", join(TESTS_ROOT, "test_clean_checkout_conformance.mjs")],
+    timeoutMs: 60000,
+    phases: ["clean-checkout", "release", "planner-core", "story-evidence"],
+    surfaces: ["git", "story_registry", "release", "planner_core", "test_governance"],
+    fixtures: [
+      skillRel("tests/test_clean_checkout_conformance.mjs"),
+      skillRel("scripts/clean_checkout_conformance.mjs"),
+      skillRel("tests/ive/run.mjs"),
+      ".agent/workflows/release.md",
+      "docs/ive-redesign/17_release_lane.md",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/scripts\/clean_checkout_conformance\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_clean_checkout_conformance\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^\.agent\/workflows\/release\.md$/,
+      /^docs\/ive-redesign\/17_release_lane\.md$/,
+    ],
+  }),
+  suite({
+    id: "weekly-l3-launchd-seat",
+    category: "ci",
+    label: "Weekly L3 launchd template, Claude seat discovery, and operator boundary",
+    command: ["node", join(TESTS_ROOT, "test_weekly_l3_launchd.mjs")],
+    phases: ["weekly-l3", "launchd", "local-operator-lane"],
+    surfaces: ["config", "orchestration", "local_ci", "headless_agent", "receipt"],
+    fixtures: [
+      skillRel("tests/test_weekly_l3_launchd.mjs"),
+      skillRel("tests/ive/run.mjs"),
+      "tools/ci/run-weekly-l3-autonomous-dogfood.mjs",
+      "docs/ci/com.ive-studio.weekly-l3-dogfood.plist.template",
+      "docs/ci/l3-autonomous-dogfood.md",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_weekly_l3_launchd\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^tools\/ci\/run-weekly-l3-autonomous-dogfood\.mjs$/,
+      /^docs\/ci\/com\.ive-studio\.weekly-l3-dogfood\.plist\.template$/,
+      /^docs\/ci\/l3-autonomous-dogfood\.md$/,
+    ],
+  }),
+  suite({
+    id: "l3-autonomous-dogfood-receipt-freshness",
+    category: "advisory",
+    label: "Latest real L3 receipt freshness (advisory only)",
+    command: ["node", join(SCRIPTS_DIR, "autonomous_dogfood_run.mjs"), "freshness", "--json"],
+    phases: ["l3-freshness", "autonomous-dogfood", "tier3", "l3", "advisory"],
+    surfaces: ["headless_agent", "receipt", "freshness", "advisory"],
+    required: false,
+    run: runJsonAdvisoryStatus,
+    fixtures: [
+      skillRel("scripts/autonomous_dogfood_run.mjs"),
+      skillRel("scripts/lib/autonomous_dogfood_run.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/scripts\/autonomous_dogfood_run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/autonomous_dogfood_run\.mjs$/,
+      /^reports\/ive\/autonomous_dogfood_runs\//,
+    ],
+  }),
+  suite({
+    id: "transition-env-cleanup",
+    category: "structured_plan",
+    label: "Planner transition and gate entrypoints restore temporary process.env targeting",
+    command: ["node", join(TESTS_ROOT, "test_transition_env_cleanup.mjs")],
+    timeoutMs: 120000,
+    phases: ["state-machine", "planner-core", "local-ci-parity"],
+    surfaces: ["state_machine", "transition_gates", "test_env", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_transition_env_cleanup.mjs"),
+      skillRel("tests/helpers/env.mjs"),
+      skillRel("scripts/lib/env_scope.mjs"),
+      skillRel("scripts/transition.mjs"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("scripts/close_guard.mjs"),
+      skillRel("scripts/test_baseline.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_transition_env_cleanup\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/helpers\/env\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/env_scope\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(transition|verify_gate|close_guard|test_baseline)\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "reflection-verdict-routing",
+    category: "structured_plan",
+    label: "Reflection verdict routing and close-signal normalization",
+    command: ["node", join(TESTS_ROOT, "test_reflection_verdict_routing.mjs")],
+    timeoutMs: 120000,
+    phases: ["reflection-verdict-routing", "close-signals", "e8-8", "planner-core"],
+    surfaces: ["transition_gates", "close_signals", "kb_signoff", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_reflection_verdict_routing.mjs"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("scripts/lib/plan_refresh.mjs"),
+      skillRel("scripts/lib/kb_signoff.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_reflection_verdict_routing\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/verify_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(plan_refresh|kb_signoff)\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "local-ci-parity",
+    category: "ci",
+    label: "Local/CI subprocess env parity and command argv assertions",
+    command: ["node", join(TESTS_ROOT, "test_local_ci_parity_helpers.mjs")],
+    phases: ["stage1", "ci-enforcement", "local-ci-parity", "autocoder-v2"],
+    surfaces: ["ci", "test_env", "subprocess", "runner"],
+    fixtures: [
+      skillRel("tests/test_local_ci_parity_helpers.mjs"),
+      skillRel("tests/helpers/env.mjs"),
+      skillRel("tests/ive/run.mjs"),
+      skillRel("scripts/lib/autonomous_driver.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_local_ci_parity_helpers\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/helpers\/env\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/test_run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_ive_conformance_runner\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/autonomous_driver\.mjs$/,
     ],
   }),
   suite({
     id: "knowledge-triggers",
     category: "active_ontology",
-    label: "Knowledge Trigger obligations, insight injection, capture, and promotion",
+    label: "Knowledge Trigger obligations, ranked insight injection, capture, and promotion",
     command: ["node", join(TESTS_ROOT, "test_knowledge_triggers.mjs")],
-    phases: ["knowledge-triggers", "active-knowledge", "planner-memory"],
-    surfaces: ["knowledge_triggers", "active_ontology", "obligation_gate", "insight_injection"],
+    phases: ["knowledge-triggers", "active-knowledge", "planner-memory", "e4-6", "ranked-knowledge-injection"],
+    surfaces: ["knowledge_triggers", "active_ontology", "obligation_gate", "insight_injection", "ranked_retrieval"],
     fixtures: [
       skillRel("tests/test_knowledge_triggers.mjs"),
+      skillRel("tests/fixtures/real_episodes/mac_mini_quant_episodes.json"),
       skillRel("scripts/knowledge_triggers.mjs"),
       skillRel("scripts/lib/knowledge_triggers.mjs"),
+      skillRel("scripts/lib/journal_memory.mjs"),
+      skillRel("scripts/lib/agent_journal.mjs"),
+      skillRel("scripts/lib/ive_real_episode_corpus.mjs"),
       skillRel("config/knowledge_triggers.json"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_knowledge_triggers\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/real_episodes\/mac_mini_quant_episodes\.json$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/knowledge_triggers\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/knowledge_triggers\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(knowledge_triggers|journal_memory|agent_journal|ive_real_episode_corpus)\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/config\/knowledge_triggers\.json$/,
+    ],
+  }),
+  suite({
+    id: "context-packet",
+    category: "active_ontology",
+    label: "Context packet: bounded planning retrieval with provenance and noise exclusion",
+    command: ["node", join(TESTS_ROOT, "test_context_packet.mjs")],
+    phases: ["context-packet", "planner-memory", "retrieval"],
+    surfaces: ["context_packet", "knowledge_resolver", "program_packet", "agent_journal", "persona_signals"],
+    fixtures: [
+      skillRel("tests/test_context_packet.mjs"),
+      skillRel("scripts/context_packet.mjs"),
+      skillRel("scripts/lib/context_packet.mjs"),
+      skillRel("scripts/knowledge_resolver.mjs"),
+      skillRel("scripts/lib/knowledge_hub.mjs"),
+      skillRel("scripts/lib/agent_journal.mjs"),
+      skillRel("scripts/lib/program_packet.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_context_packet\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/context_packet\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/context_packet\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/knowledge_resolver\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(knowledge_hub|agent_journal|program_packet)\.mjs$/,
+      /^plans\/programs\//,
+      /^plans\/knowledge\/agent_journal\.jsonl$/,
     ],
   }),
   suite({
@@ -184,36 +682,94 @@ const DEFAULT_SUITES = [
     category: "active_ontology",
     label: "Agent journal advisory memory and ontology facts",
     command: ["node", join(TESTS_ROOT, "test_agent_journal.mjs")],
-    phases: ["planner-memory", "ontology", "migration-parity"],
+    phases: ["planner-memory", "ontology", "migration-parity", "e4-5", "bi-temporal-journal"],
     surfaces: ["agent_journal", "fact_loader", "prolog", "planner_core"],
     fixtures: [
       skillRel("tests/test_agent_journal.mjs"),
       skillRel("scripts/journal.mjs"),
       skillRel("scripts/lib/agent_journal.mjs"),
+      skillRel("scripts/lib/journal_memory.mjs"),
       skillRel("scripts/lib/fact_loader.mjs"),
       skillRel("prolog/invariants.pl"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_agent_journal\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/journal\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(agent_journal|fact_loader)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(agent_journal|journal_memory|fact_loader)\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/prolog\/invariants\.pl$/,
       /^plans\/knowledge\/agent_journal\.jsonl$/,
     ],
   }),
   suite({
-    id: "persona-manifest",
-    category: "escalation",
-    label: "Persona manifest verifier",
-    command: ["node", join(SCRIPTS_DIR, "persona_manifest_verify.mjs"), "verify", "--strict", "--json"],
+    id: "decision-anchor-lifecycle",
+    category: "active_ontology",
+    label: "Decision anchors: journal lifecycle, stale retirement, and capped projections",
+    command: ["node", join(TESTS_ROOT, "test_decision_anchors.mjs")],
+    phases: ["decision-anchors", "journal-projections", "planner-memory", "e4-7", "capped-projections"],
+    surfaces: ["decision_anchors", "agent_journal", "fact_loader", "validate_to_close", "planner_core"],
     fixtures: [
-      skillRel("scripts/persona_manifest_verify.mjs"),
-      skillRel("config/persona_manifest.json"),
+      skillRel("tests/test_decision_anchors.mjs"),
+      skillRel("scripts/decision_anchors.mjs"),
+      skillRel("scripts/lib/decision_anchors.mjs"),
+      skillRel("scripts/lib/agent_journal.mjs"),
+      skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("checklists/validate-to-close.yaml"),
+      skillRel("references/decision-anchoring.md"),
     ],
     changedFilePatterns: [
-      /^\.agent\/skills\/iterative-planner\/scripts\/persona_manifest_verify\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/config\/persona_manifest\.json$/,
-      /^\.agent\/skills\/iterative-planner\/packs\//,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_decision_anchors\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/decision_anchors\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(decision_anchors|agent_journal|fact_loader)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/checklists\/validate-to-close\.yaml$/,
+      /^\.agent\/skills\/iterative-planner\/references\/decision-anchoring\.md$/,
+      /^plans\/knowledge\/agent_journal\.jsonl$/,
+    ],
+  }),
+  suite({
+    id: "auditor-pack-engine",
+    category: "escalation",
+    label: "Shared auditor pack engine",
+    command: ["node", join(TESTS_ROOT, "test_auditor_pack_engine.mjs")],
+    phases: ["persona-packs", "autocoder-v2", "e5-1"],
+    surfaces: ["persona_packs", "prolog", "normalization"],
+    fixtures: [
+      skillRel("tests/test_auditor_pack_engine.mjs"),
+      skillRel("scripts/lib/auditor_pack_engine.mjs"),
+      skillRel("scripts/lib/audit_types.mjs"),
+      skillRel("scripts/lib/pack_severity.mjs"),
+      skillRel("scripts/lib/prolog.mjs"),
+      skillRel("packs/ux_ui/rules.pl"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_auditor_pack_engine\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/auditor_pack_engine\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/packs\/(wiring_auditor|assumptions_challenger|traceability|config_integrity|ux_ui|quant|quant_target|tokenomics|_template)\/index\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/packs\/(wiring_auditor|assumptions_challenger|traceability|config_integrity|ux_ui|quant|quant_target|tokenomics|_template)\/rules\.pl$/,
+    ],
+  }),
+  suite({
+    id: "persona-authority-project-health",
+    category: "escalation",
+    label: "Persona authority project shape and bootstrap status receipts",
+    command: ["node", join(TESTS_ROOT, "test_persona_authority_project_health.mjs")],
+    phases: ["persona-authority", "planner-policy", "project-health", "j7"],
+    surfaces: ["persona_packs", "planner_policy", "bootstrap", "project_health", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_persona_authority_project_health.mjs"),
+      skillRel("scripts/audit_runner.mjs"),
+      skillRel("scripts/bootstrap.mjs"),
+      skillRel("scripts/lib/persona_activation_authority.mjs"),
+      skillRel("scripts/lib/persona_adaptation.mjs"),
+      skillRel("scripts/lib/planner_policy.mjs"),
+      skillRel("config/planner_policy.schema.json"),
+      "planner.policy.yaml",
+    ],
+    changedFilePatterns: [
+      /^planner\.policy\.ya?ml$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_persona_authority_project_health\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(audit_runner|bootstrap)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(persona_activation_authority|persona_adaptation|planner_policy)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/planner_policy\.schema\.json$/,
     ],
   }),
   suite({
@@ -221,11 +777,183 @@ const DEFAULT_SUITES = [
     category: "structured_plan",
     label: "Program manager tests",
     command: ["node", join(TESTS_ROOT, "test_program_manager.mjs")],
-    fixtures: [skillRel("tests/test_program_manager.mjs"), skillRel("scripts/program_manager.mjs")],
+    timeoutMs: 300000,
+    fixtures: [
+      skillRel("tests/test_program_manager.mjs"),
+      skillRel("scripts/program_manager.mjs"),
+      skillRel("scripts/lib/gate_satisfiability.mjs"),
+      skillRel("scripts/lib/lifecycle_delivery_evidence.mjs"),
+      skillRel("scripts/lib/program_disposition.mjs"),
+      skillRel("scripts/lib/program_packet.mjs"),
+      skillRel("scripts/lib/remote_mode.mjs"),
+      skillRel("config/program_packet.schema.json"),
+      skillRel("prolog/programs.pl"),
+    ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/scripts\/program_manager\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/gate_satisfiability\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/lifecycle_delivery_evidence\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/program_disposition\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/program_packet\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/remote_mode\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/program_packet\.schema\.json$/,
+      /^\.agent\/skills\/iterative-planner\/prolog\/programs\.pl$/,
       /^\.agent\/skills\/iterative-planner\/tests\/test_program_manager\.mjs$/,
       /^plans\/programs\//,
+    ],
+  }),
+  suite({
+    id: "lifecycle-reconciler",
+    category: "structured_plan",
+    label: "J9 lifecycle reconciler: shipped-open tickets and cross-program duplicate scope",
+    command: ["node", join(TESTS_ROOT, "test_lifecycle_reconciler.mjs")],
+    phases: ["j9", "T-INTAKE-B6D19965", "program-manager", "lifecycle-reconciliation"],
+    surfaces: ["program_manager", "bootstrap", "planner_core", "lifecycle_reconciliation"],
+    fixtures: [
+      skillRel("tests/test_lifecycle_reconciler.mjs"),
+      skillRel("scripts/lifecycle_reconciler.mjs"),
+      skillRel("scripts/lib/lifecycle_delivery_evidence.mjs"),
+      skillRel("scripts/lib/lifecycle_reconciler.mjs"),
+      skillRel("scripts/program_manager.mjs"),
+      skillRel("scripts/bootstrap.mjs"),
+      "plans/programs/ive-trust-repair/program_packet.json",
+      "plans/programs/ive-consolidation-rectification/program_packet.json",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_lifecycle_reconciler\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lifecycle_reconciler\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/lifecycle_delivery_evidence\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/lifecycle_reconciler\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(program_manager|bootstrap)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^plans\/programs\//,
+    ],
+  }),
+  suite({
+    id: "deterministic-findings-schema",
+    category: "structured_plan",
+    label: "FI1 normalized deterministic findings schema and emitters",
+    command: ["node", join(TESTS_ROOT, "test_deterministic_findings.mjs")],
+    testClass: TEST_CLASS_FUNCTIONAL_PROOF,
+    phases: ["findings-to-intake", "fi1", "program-manager", "us-091", "planner-core"],
+    surfaces: [
+      "findings_bridge",
+      "program_manager",
+      "ive_conformance",
+      "scoreboard",
+      "ritual_replay",
+      "rule_engine",
+      "project_health",
+      "planner_core",
+    ],
+    fixtures: [
+      skillRel("tests/test_deterministic_findings.mjs"),
+      skillRel("scripts/lib/deterministic_findings.mjs"),
+      skillRel("tests/ive/run.mjs"),
+      skillRel("scripts/lib/scoreboard.mjs"),
+      skillRel("scripts/lib/ritual_replay.mjs"),
+      skillRel("scripts/lib/rule_commands.mjs"),
+      skillRel("scripts/project_health.mjs"),
+      "plans/programs/findings-to-intake/program_packet.json",
+      "reports/user_story_audit/story_registry.json",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_deterministic_findings\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/deterministic_findings\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(scoreboard|ritual_replay|rule_commands)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/project_health\.mjs$/,
+      /^plans\/programs\/findings-to-intake\/program_packet\.json$/,
+      /^reports\/user_story_audit\/story_registry\.json$/,
+    ],
+  }),
+  suite({
+    id: "findings-triage-intake",
+    category: "structured_plan",
+    label: "FI2 findings triage creates evidence-attached Program Manager intake",
+    command: ["node", join(TESTS_ROOT, "test_program_manager_findings_triage.mjs")],
+    testClass: TEST_CLASS_FUNCTIONAL_PROOF,
+    phases: ["findings-to-intake", "fi2", "program-manager", "us-091", "planner-core"],
+    surfaces: [
+      "findings_bridge",
+      "program_manager",
+      "ive_conformance",
+      "scoreboard",
+      "cli_determinism",
+      "planner_core",
+    ],
+    fixtures: [
+      skillRel("tests/test_program_manager_findings_triage.mjs"),
+      skillRel("scripts/program_manager.mjs"),
+      skillRel("scripts/lib/deterministic_findings.mjs"),
+      skillRel("tests/ive/run.mjs"),
+      skillRel("tests/test_cli_determinism.mjs"),
+      "plans/programs/findings-to-intake/program_packet.json",
+      "reports/user_story_audit/story_registry.json",
+      "reports/ive/scoreboard/scoreboard-2026-07-07T17-40-11-369Z/scoreboard.json",
+      "reports/ive/test_runs/scoreboard-2026-07-07T17-40-11-369Z-conformance/manifest.json",
+      "reports/ive/test_runs/scoreboard-2026-07-07T17-40-11-369Z-conformance/logs/cli-determinism.stdout.log",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_program_manager_findings_triage\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/program_manager\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/deterministic_findings\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_cli_determinism\.mjs$/,
+      /^plans\/programs\/findings-to-intake\/program_packet\.json$/,
+      /^reports\/user_story_audit\/story_registry\.json$/,
+      /^reports\/ive\/scoreboard\/scoreboard-2026-07-07T17-40-11-369Z\/scoreboard\.json$/,
+      /^reports\/ive\/test_runs\/scoreboard-2026-07-07T17-40-11-369Z-conformance\//,
+    ],
+  }),
+  suite({
+    id: "repo-state-stamps",
+    category: "structured_plan",
+    label: "J11 repo-state stamps on receipts and dirty-input proof warnings",
+    command: ["node", join(TESTS_ROOT, "test_receipt_repo_state_stamp.mjs")],
+    phases: ["j11", "T-INTAKE-34C0058D", "repo-state-stamp", "receipt-provenance"],
+    surfaces: ["repo_state_stamp", "transition_gates", "program_manager", "ive_runner", "lifecycle_reconciliation", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_receipt_repo_state_stamp.mjs"),
+      skillRel("scripts/lib/repo_state_stamp.mjs"),
+      skillRel("scripts/lib/determinism.mjs"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("scripts/program_manager.mjs"),
+      skillRel("scripts/lib/lifecycle_reconciler.mjs"),
+      skillRel("tests/ive/run.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_repo_state_stamp\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_receipt_repo_state_stamp\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/repo_state_stamp\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/determinism\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/verify_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/program_manager\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/lifecycle_reconciler\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "story-registry-merge-guard",
+    category: "structured_plan",
+    label: "Story registry merge and executed-proof guard",
+    command: ["node", join(TESTS_ROOT, "test_story_registry_merge_guard.mjs")],
+    phases: ["stage1", "structured-plan", "merge-guard"],
+    surfaces: ["story_registry", "program_manager", "conformance"],
+    fixtures: [
+      skillRel("tests/test_story_registry_merge_guard.mjs"),
+      skillRel("scripts/story_registry.mjs"),
+      skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("scripts/lib/prolog.mjs"),
+      skillRel("scripts/lib/sanitize.mjs"),
+      skillRel("prolog/stories.pl"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_story_registry_merge_guard\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/story_registry\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(fact_loader|rule_commands)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/prolog\/(stories|invariants)\.pl$/,
+      /^reports\/user_story_audit\/story_registry\.json$/,
     ],
   }),
   suite({
@@ -237,11 +965,13 @@ const DEFAULT_SUITES = [
       skillRel("tests/test_program_packet_design_to_ready_gate.mjs"),
       skillRel("scripts/program_manager.mjs"),
       skillRel("scripts/lib/program_packet.mjs"),
+      skillRel("config/program_packet_known_debt_profiles.json"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_program_packet_design_to_ready_gate\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/program_manager\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/program_packet\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/program_packet_known_debt_profiles\.json$/,
       /^\.agent\/skills\/iterative-planner\/prolog\/programs\.pl$/,
       /^plans\/programs\//,
     ],
@@ -280,6 +1010,254 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
+    id: "autocoder-metrics",
+    category: "projection",
+    label: "Autocoder outcome metrics: ceremony, proof, autonomy, cost, retry, and false-green scoreboard",
+    command: ["node", join(TESTS_ROOT, "test_autocoder_metrics.mjs")],
+    fixtures: [
+      skillRel("tests/test_autocoder_metrics.mjs"),
+      skillRel("tests/fixtures/autocoder_outcomes/real_history_replay_manifest.json"),
+      skillRel("scripts/autocoder_metrics.mjs"),
+      skillRel("scripts/lib/behavior_report.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_autocoder_metrics\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/autocoder_outcomes\/real_history_replay_manifest\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/autocoder_metrics\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/behavior_report\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "behavior-report",
+    category: "projection",
+    label: "IVE behavior report: taxonomy, shadow-canary, advisory audit, and autocoder scoreboard",
+    command: ["node", join(TESTS_ROOT, "test_behavior_report.mjs")],
+    fixtures: [
+      skillRel("tests/test_behavior_report.mjs"),
+      skillRel("scripts/behavior_report.mjs"),
+      skillRel("scripts/autocoder_metrics.mjs"),
+      skillRel("scripts/lib/behavior_report.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_behavior_report\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/behavior_report\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/autocoder_metrics\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/behavior_report\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "ab-task-benchmark",
+    category: "projection",
+    label: "A/B task benchmark v1: planner-off vs planner-wrapped replay",
+    command: ["node", join(TESTS_ROOT, "test_ab_task_benchmark.mjs")],
+    phases: ["ab-task-benchmark", "e2-6", "scoreboard-sample", "autocoder-v2"],
+    surfaces: ["projection", "ab_task_benchmark", "scenario", "scoreboard", "autocoder_v2"],
+    fixtures: [
+      skillRel("tests/test_ab_task_benchmark.mjs"),
+      skillRel("tests/fixtures/real_episodes/mac_mini_quant_episodes.json"),
+      skillRel("scripts/ab_task_benchmark.mjs"),
+      skillRel("scripts/lib/ab_task_benchmark.mjs"),
+      skillRel("scripts/lib/ive_real_episode_corpus.mjs"),
+      skillRel("references/ab-task-benchmark.md"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_ab_task_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/real_episodes\/mac_mini_quant_episodes\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/ab_task_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/ab_task_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/dispatcher_v1\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/ive_real_episode_corpus\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/references\/ab-task-benchmark\.md$/,
+    ],
+  }),
+  suite({
+    id: "ideation-quality-benchmark",
+    category: "ideation",
+    label: "Insight velocity ideation-quality benchmark",
+    command: ["node", join(TESTS_ROOT, "test_ideation_quality_benchmark.mjs")],
+    phases: ["ideation-quality-benchmark", "insight-velocity", "e2", "test-switch", "autocoder-v2"],
+    surfaces: ["ideation_quality", "insight_velocity", "scoreboard", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_ideation_quality_benchmark.mjs"),
+      skillRel("tests/fixtures/ideation_quality/corpus.json"),
+      skillRel("scripts/ideation_quality_benchmark.mjs"),
+      skillRel("scripts/lib/ideation_quality_benchmark.mjs"),
+      skillRel("scripts/lib/scoreboard.mjs"),
+      "docs/ive-redesign/18_ideation_quality_benchmark.md",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_ideation_quality_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/ideation_quality\//,
+      /^\.agent\/skills\/iterative-planner\/scripts\/ideation_quality_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/ideation_quality_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/scoreboard\.mjs$/,
+      docsIvePattern("18_ideation_quality_benchmark.md"),
+    ],
+  }),
+  suite({
+    id: "pack-guard-benchmark",
+    category: "knowledge_pack",
+    label: "Pack guard conformance and ignored-pack benchmark",
+    command: ["node", join(TESTS_ROOT, "test_pack_guard_benchmark.mjs")],
+    phases: ["pack-guard-benchmark", "knowledge-packs", "scoreboard", "planner-core", "program-manager", "autocoder-v2"],
+    surfaces: ["knowledge_pack", "pack_guard", "scoreboard", "planner_core", "program_manager"],
+    fixtures: [
+      skillRel("tests/test_pack_guard_benchmark.mjs"),
+      skillRel("tests/fixtures/pack_guard_benchmark/corpus.json"),
+      skillRel("scripts/lib/pack_guard_benchmark.mjs"),
+      skillRel("scripts/lib/scoreboard.mjs"),
+      skillRel("scripts/lib/ontology_pack_guard_contract.mjs"),
+      skillRel("scripts/lib/knowledge_receipt.mjs"),
+      skillRel("scripts/lib/task_focus_contract.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_pack_guard_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/pack_guard_benchmark\//,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/pack_guard_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/scoreboard\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/ontology_pack_guard_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/knowledge_receipt\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/task_focus_contract\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "insight-velocity-report",
+    category: "ideation",
+    label: "Insight Velocity focused current-code report",
+    command: ["node", join(TESTS_ROOT, "test_insight_velocity_report.mjs")],
+    phases: ["insight-velocity-report", "insight-velocity", "e2", "test-switch", "autocoder-v2"],
+    surfaces: ["ideation_quality", "insight_velocity", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_insight_velocity_report.mjs"),
+      skillRel("scripts/insight_velocity_report.mjs"),
+      skillRel("scripts/ideation_quality_benchmark.mjs"),
+      skillRel("scripts/lib/ideation_quality_benchmark.mjs"),
+      skillRel("scripts/ritual_replay.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_insight_velocity_report\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/insight_velocity_report\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/ideation_quality_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/ideation_quality_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/ritual_replay\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "ttinsights-report",
+    category: "ideation",
+    label: "TTInsights ontology-guided planner improvement report",
+    command: ["node", join(TESTS_ROOT, "test_ttinsights_report.mjs")],
+    phases: ["ttinsights-report", "insight-velocity", "planner-core", "program-manager", "autocoder-v2"],
+    surfaces: ["ttinsights", "ontology", "insight_velocity", "program_manager", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_ttinsights_report.mjs"),
+      skillRel("scripts/ttinsights_report.mjs"),
+      skillRel("scripts/lib/ttinsights_report.mjs"),
+      skillRel("scripts/insight_velocity_report.mjs"),
+      skillRel("scripts/autocoder_metrics.mjs"),
+      skillRel("scripts/behavior_report.mjs"),
+      skillRel("scripts/gate_survival.mjs"),
+      skillRel("scripts/prolog_value_audit.mjs"),
+      skillRel("scripts/rule_engine.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_ttinsights_report\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/ttinsights_report\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/ttinsights_report\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/insight_velocity_report\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/autocoder_metrics\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/behavior_report\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/gate_survival\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/prolog_value_audit\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/rule_engine\.mjs$/,
+      /^plans\/programs\/ive-ttinsights-engine\//,
+    ],
+  }),
+  suite({
+    id: "scoreboard-cli",
+    category: "projection",
+    label: "Scoreboard CLI: E2 test-switch fail-closed metrics gate",
+    command: ["node", join(TESTS_ROOT, "test_scoreboard.mjs")],
+    phases: ["scoreboard", "e2-5", "e2-7", "e2-8", "test-switch", "convergence-metrics", "reuse-discipline", "autocoder-v2"],
+    surfaces: ["scoreboard", "test_switch", "ci", "convergence_metrics", "reuse_discipline", "autocoder_v2"],
+    fixtures: [
+      skillRel("tests/test_scoreboard.mjs"),
+      skillRel("scripts/scoreboard.mjs"),
+      skillRel("scripts/lib/scoreboard.mjs"),
+      skillRel("scripts/lib/plan_metrics.mjs"),
+      skillRel("scripts/ritual_replay.mjs"),
+      skillRel("scripts/lib/ritual_replay.mjs"),
+      skillRel("scripts/seeded_defect_harness.mjs"),
+      skillRel("scripts/lib/reuse_before_create_gate.mjs"),
+      skillRel("scripts/real_telemetry_false_reds.mjs"),
+      skillRel("scripts/lib/ab_task_benchmark.mjs"),
+      skillRel("scripts/lib/ideation_quality_benchmark.mjs"),
+      skillRel("scripts/lib/pack_guard_benchmark.mjs"),
+      skillRel("tests/fixtures/pack_guard_benchmark/corpus.json"),
+      skillRel("references/convergence-metrics.md"),
+      skillRel("references/planning-rigor.md"),
+      "plans/programs/ive-autocoder-v2/baselines/baseline-2026-06-12.json",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_scoreboard\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/scoreboard\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/scoreboard\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/plan_metrics\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/ritual_replay\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/ritual_replay\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/seeded_defect_harness\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/reuse_before_create_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/ideation_quality_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/pack_guard_benchmark\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/pack_guard_benchmark\//,
+      /^\.agent\/skills\/iterative-planner\/references\/(convergence-metrics|planning-rigor)\.md$/,
+      /^plans\/programs\/ive-autocoder-v2\/baselines\/baseline-2026-06-12\.json$/,
+    ],
+  }),
+  suite({
+    id: "seeded-defect-harness",
+    category: "projection",
+    label: "Seeded-defect corpus: false-green catch-rate harness",
+    command: ["node", join(TESTS_ROOT, "test_seeded_defect_harness.mjs")],
+    phases: ["false-green", "planner-core", "e2-8", "duplicate-capability", "reuse-discipline", "autocoder-v2"],
+    surfaces: ["seeded_defects", "false_green", "planner_core", "ive_runner", "reuse_before_create"],
+    fixtures: [
+      skillRel("tests/test_seeded_defect_harness.mjs"),
+      skillRel("scripts/seeded_defect_harness.mjs"),
+      skillRel("scripts/lib/evidence_verifier.mjs"),
+      skillRel("scripts/lib/ive_reflection_diff.mjs"),
+      skillRel("scripts/lib/reuse_before_create_gate.mjs"),
+      skillRel("packs/quant/leakage_proof.mjs"),
+      skillRel("packs/quant/calibration_gate.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_seeded_defect_harness\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/seeded_defect_harness\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/reuse_before_create_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(evidence_verifier|ive_reflection_diff|run_record|plan_utils)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/packs\/quant\/(leakage_proof|calibration_gate)\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "planner-truth-packet",
+    category: "projection",
+    label: "Planner truth packet: dogfood false-green measurement across health/story/ontology/North Star surfaces",
+    command: ["node", join(TESTS_ROOT, "test_planner_truth_packet.mjs")],
+    phases: ["false-green", "planner-core", "dogfood-health", "program-manager"],
+    surfaces: ["false_green", "planner_core", "story_registry", "north_star", "program_manager"],
+    fixtures: [
+      skillRel("tests/test_planner_truth_packet.mjs"),
+      skillRel("scripts/planner_truth_packet.mjs"),
+      skillRel("scripts/lib/planner_truth_packet.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_planner_truth_packet\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/planner_truth_packet\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/planner_truth_packet\.mjs$/,
+    ],
+  }),
+  suite({
     id: "false-failure-ledger",
     category: "projection",
     label: "Verifier resilience: false-failure ledger (block-then-pass-unchanged self-clear detection)",
@@ -291,6 +1269,32 @@ const DEFAULT_SUITES = [
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_gate_false_failure_ledger\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/gate_false_failure_ledger\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "gate-survival-analysis",
+    category: "projection",
+    label: "Gate survival analysis: E2-4 KEEP/DEMOTE/DELETE evidence feed",
+    command: ["node", join(TESTS_ROOT, "test_gate_survival.mjs")],
+    phases: ["gate-survival", "false-red", "planner-core", "autocoder-v2"],
+    surfaces: ["gate_survival", "false_red", "planner_core", "ive_runner"],
+    fixtures: [
+      skillRel("tests/test_gate_survival.mjs"),
+      skillRel("scripts/gate_survival.mjs"),
+      skillRel("scripts/lib/behavior_report.mjs"),
+      skillRel("config/gates.json"),
+      skillRel("config/failure-codes.json"),
+      skillRel("checklists"),
+      skillRel("prolog"),
+      skillRel("scripts/transition.mjs"),
+      skillRel("scripts/lib/checklist_runner.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_gate_survival\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/gate_survival\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/behavior_report\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/gates\.json$/,
+      /^reports\/ive\/gate_survival\//,
     ],
   }),
   suite({
@@ -347,6 +1351,47 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
+    id: "ritual-replay",
+    category: "projection",
+    label: "Real-work ritual replay: current-code ritual percentage over real telemetry",
+    command: ["node", join(TESTS_ROOT, "test_ritual_replay.mjs")],
+    phases: ["ritual-replay", "real-telemetry", "e2-9", "test-switch", "autocoder-v2"],
+    surfaces: ["real_telemetry", "ritual_replay", "scoreboard", "planner_core", "ive_runner"],
+    fixtures: [
+      skillRel("tests/test_ritual_replay.mjs"),
+      skillRel("scripts/ritual_replay.mjs"),
+      skillRel("scripts/lib/ritual_replay.mjs"),
+      skillRel("scripts/lib/behavior_report.mjs"),
+      skillRel("tests/fixtures/real_telemetry"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_ritual_replay\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/ritual_replay\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(ritual_replay|behavior_report)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/real_telemetry\//,
+    ],
+  }),
+  suite({
+    id: "real-telemetry-false-red-exports",
+    category: "projection",
+    label: "Real-telemetry false-red exports: 25+ provenance fixtures and per-gate false_red.json",
+    command: ["node", join(TESTS_ROOT, "test_real_telemetry_false_red_exports.mjs")],
+    phases: ["false-red", "real-telemetry", "planner-core", "autocoder-v2"],
+    surfaces: ["real_telemetry", "false_red", "planner_core", "ive_runner"],
+    fixtures: [
+      skillRel("tests/test_real_telemetry_false_red_exports.mjs"),
+      skillRel("scripts/real_telemetry_false_reds.mjs"),
+      skillRel("scripts/gate_false_failure_ledger.mjs"),
+      skillRel("scripts/replay_telemetry.mjs"),
+      skillRel("tests/fixtures/real_telemetry"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_real_telemetry_false_red_exports\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/real_telemetry_false_reds\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/real_telemetry\//,
+    ],
+  }),
+  suite({
     id: "capability-probe",
     category: "projection",
     label: "Verifier resilience: capability probe (never require proof from a sensor detected as off)",
@@ -375,26 +1420,6 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
-    id: "spot-check-invariants",
-    category: "ontology",
-    label: "Spot-check invariants and manual audit parity",
-    command: ["node", join(TESTS_ROOT, "test_spot_check_invariants.mjs")],
-    fixtures: [
-      skillRel("tests/test_spot_check_invariants.mjs"),
-      skillRel("scripts/rule_engine.mjs"),
-      skillRel("scripts/lib/rule_commands.mjs"),
-      skillRel("scripts/lib/fact_loader.mjs"),
-      skillRel("scripts/lib/spot_check.mjs"),
-      skillRel("prolog/invariants.pl"),
-    ],
-    changedFilePatterns: [
-      /^\.agent\/skills\/iterative-planner\/tests\/test_spot_check_invariants\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/rule_engine\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(rule_commands|fact_loader|spot_check)\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/prolog\/invariants\.pl$/,
-    ],
-  }),
-  suite({
     id: "red-team-depth-gate",
     category: "structured_plan",
     label: "GATE-ETR-008 red-team vector depth and scaffold rejection",
@@ -405,14 +1430,16 @@ const DEFAULT_SUITES = [
       skillRel("tests/test_repair_packet.mjs"),
       skillRel("scripts/lib/plan_utils.mjs"),
       skillRel("scripts/lib/repair_packet.mjs"),
+      skillRel("scripts/lib/guidance_reminder.mjs"),
+      skillRel("scripts/gate_prepare.mjs"),
       skillRel("scripts/verify_gate.mjs"),
       skillRel("config/gate_templates/GATE-ETR-008.json"),
       skillRel("examples/passing/GATE-ETR-008.md"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_repair_packet\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(plan_utils|repair_packet)\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/verify_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(plan_utils|repair_packet|guidance_reminder)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(gate_prepare|verify_gate)\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/config\/gate_templates\/GATE-ETR-008\.json$/,
       /^\.agent\/skills\/iterative-planner\/examples\/passing\/GATE-ETR-008\.md$/,
     ],
@@ -487,6 +1514,25 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
+    id: "mcp-connector-smoke",
+    category: "test_coverage",
+    label: "MCP/connector smoke parity: real stdio handshake over transport/auth/schema boundaries (T-INTAKE-9C223A3C)",
+    command: ["node", join(TESTS_ROOT, "test_mcp_connector_smoke.mjs")],
+    surfaces: ["mcp", "connector", "wiring"],
+    fixtures: [
+      skillRel("tests/test_mcp_connector_smoke.mjs"),
+      skillRel("tests/fixtures/mcp_connector/happy_handshake.json"),
+      skillRel("mcp_server.mjs"),
+      skillRel("config/mcp_tools.json"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_mcp_connector_smoke\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/mcp_connector\//,
+      /^\.agent\/skills\/iterative-planner\/mcp_server\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/mcp_tools\.json$/,
+    ],
+  }),
+  suite({
     id: "annotation-discipline-gate",
     category: "structured_plan",
     label: "GATE-PLN-ANN-001 annotation discipline",
@@ -503,6 +1549,22 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/tests\/test_annotation_discipline_gate\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/annotation_discipline\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/verify_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/annotation_parser\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "annotation-parser-cli-contract",
+    category: "structured_plan",
+    label: "Annotation parser combined JSON validation contract",
+    command: ["node", join(TESTS_ROOT, "test_annotation_parser_cli.mjs")],
+    phases: ["stage1", "annotation-parser", "cli-contract", "semantic-gates"],
+    surfaces: ["planner_runtime", "annotations", "cli_transport", "validation"],
+    fixtures: [
+      skillRel("tests/test_annotation_parser_cli.mjs"),
+      skillRel("scripts/annotation_parser.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_annotation_parser_cli\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/annotation_parser\.mjs$/,
     ],
   }),
@@ -534,6 +1596,35 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/autonomous_driver\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/tests\/test_capability_connectivity\.mjs$/,
       /^apps\/ive-visualizer\//,
+    ],
+  }),
+  suite({
+    id: "advisor-task-intake-routing",
+    category: "orchestration",
+    label: "Advisor orchestration and proportional task-intake routing",
+    command: ["node", join(TESTS_ROOT, "test_advise.mjs")],
+    phases: ["advisor", "task-intake", "guidance-first", "semantic-gates"],
+    surfaces: ["planner_core", "orchestration", "task_intake", "guidance_packet"],
+    fixtures: [
+      skillRel("tests/test_advise.mjs"),
+      skillRel("scripts/advise.mjs"),
+      skillRel("scripts/task_intake.mjs"),
+      skillRel("scripts/planner_preflight.mjs"),
+      skillRel("scripts/lib/planner_policy.mjs"),
+      skillRel("scripts/lib/plan_shape.mjs"),
+      skillRel("scripts/lib/task_focus_contract.mjs"),
+      skillRel("scripts/lib/triage.mjs"),
+      skillRel("scripts/lib/guidance_packet.mjs"),
+      skillRel("scripts/lib/guidance_reminder.mjs"),
+      skillRel("config/orchestrator_rules.yaml"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_advise\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(advise|task_intake|planner_preflight)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(planner_policy|plan_shape|task_focus_contract|triage|guidance_packet|guidance_reminder)\.mjs$/,
+      /^planner\.policy\.yaml$/,
+      /^\.agent\/skills\/iterative-planner\/config\/orchestrator_rules\.yaml$/,
+      /^plans\/programs\/guidance-first\//,
     ],
   }),
   suite({
@@ -613,12 +1704,11 @@ const DEFAULT_SUITES = [
     id: "quant-archetype-accomplices",
     category: "quant",
     label: "e06 archetype accomplices and residual scope-gap PLAN reopen",
-    command: ["node", join(TESTS_ROOT, "test_archetype_accomplice_conformance.mjs")],
+    command: ["node", join(TESTS_ROOT, "test_archetype_accomplices.mjs")],
     phases: ["stage1", "e06", "quant-results-validation", "visualizer"],
     surfaces: ["quant", "semantic_gate", "validation", "bootstrap", "ontology", "visualizer"],
     fixtures: [
       skillRel("tests/test_archetype_accomplices.mjs"),
-      skillRel("tests/test_archetype_accomplice_conformance.mjs"),
       skillRel("tests/test_quant_results_validation.mjs"),
       skillRel("packs/quant/archetype_accomplices.mjs"),
       skillRel("packs/quant/index.mjs"),
@@ -647,7 +1737,6 @@ const DEFAULT_SUITES = [
     phases: ["stage1", "t10", "quant-results-validation", "visualizer"],
     surfaces: ["quant", "semantic_gate", "validation", "visualizer", "browser"],
     fixtures: [
-      skillRel("tests/test_betting_market_pack.mjs"),
       skillRel("tests/test_betting_market_conformance.mjs"),
       skillRel("tests/test_quant_results_validation.mjs"),
       skillRel("packs/quant/betting_market.mjs"),
@@ -675,7 +1764,6 @@ const DEFAULT_SUITES = [
     phases: ["stage1", "t11", "quant-results-validation", "visualizer"],
     surfaces: ["quant", "semantic_gate", "validation", "visualizer", "browser"],
     fixtures: [
-      skillRel("tests/test_crypto_execution_pack.mjs"),
       skillRel("tests/test_crypto_execution_conformance.mjs"),
       skillRel("tests/test_quant_results_validation.mjs"),
       skillRel("packs/quant/crypto_execution.mjs"),
@@ -703,14 +1791,12 @@ const DEFAULT_SUITES = [
     phases: ["stage1", "t12", "tokenomics", "semantic-gates", "visualizer"],
     surfaces: ["tokenomics", "semantic_gate", "ontology", "visualizer", "browser"],
     fixtures: [
-      skillRel("tests/test_tokenomics_pack.mjs"),
       skillRel("tests/test_tokenomics_conformance.mjs"),
       skillRel("packs/tokenomics/index.mjs"),
       skillRel("packs/tokenomics/rules.pl"),
       skillRel("scripts/audit_runner.mjs"),
       skillRel("config/gates.json"),
       skillRel("config/ontology_namespace.json"),
-      skillRel("config/persona_manifest.json"),
       "apps/ive-visualizer/scripts/generate-live-payload.mjs",
       "apps/ive-visualizer/src/data/visualizerPayload.js",
       "apps/ive-visualizer/tests/northstar-dogfood.spec.mjs",
@@ -720,36 +1806,7 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/tests\/test_tokenomics_conformance\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/packs\/tokenomics\//,
       /^\.agent\/skills\/iterative-planner\/scripts\/audit_runner\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/config\/(gates|ontology_namespace|persona_manifest)\.json$/,
-      /^apps\/ive-visualizer\//,
-    ],
-  }),
-  suite({
-    id: "isolated-adversarial-auditor",
-    category: "orchestration",
-    label: "e05 isolated adversarial auditor and single-writer orchestration",
-    command: ["node", join(TESTS_ROOT, "test_isolated_adversarial_auditor_conformance.mjs")],
-    phases: ["stage4", "e05", "orchestration", "semantic-gates", "visualizer"],
-    surfaces: ["orchestration", "persona_gate", "semantic_gate", "ontology", "visualizer", "browser"],
-    fixtures: [
-      skillRel("tests/test_agent_orchestration.mjs"),
-      skillRel("tests/test_isolated_adversarial_auditor.mjs"),
-      skillRel("tests/test_isolated_adversarial_auditor_conformance.mjs"),
-      skillRel("scripts/lib/agent_orchestration.mjs"),
-      skillRel("scripts/lib/isolated_adversarial_auditor.mjs"),
-      skillRel("scripts/audit_runner.mjs"),
-      skillRel("config/agent_orchestration.json"),
-      skillRel("config/ontology_namespace.json"),
-      "apps/ive-visualizer/scripts/generate-live-payload.mjs",
-      "apps/ive-visualizer/src/data/visualizerPayload.js",
-      "apps/ive-visualizer/tests/northstar-dogfood.spec.mjs",
-    ],
-    changedFilePatterns: [
-      /^\.agent\/skills\/iterative-planner\/tests\/test_agent_orchestration\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/tests\/test_isolated_adversarial_auditor.*\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(agent_orchestration|isolated_adversarial_auditor)\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/audit_runner\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/config\/(agent_orchestration|ontology_namespace)\.json$/,
+      /^\.agent\/skills\/iterative-planner\/config\/(gates|ontology_namespace)\.json$/,
       /^apps\/ive-visualizer\//,
     ],
   }),
@@ -809,18 +1866,6 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/packs\/quant\/(leakage_proof|calibration_gate|forecastability)\.mjs$/,
       docsIvePattern("research_memory_packets.md"),
       /^plans\/programs\/ive-ontology-memory\/program_packet\.json$/,
-    ],
-  }),
-  suite({
-    id: "persona-manifest-tests",
-    category: "escalation",
-    label: "Persona manifest tests",
-    command: ["node", join(TESTS_ROOT, "test_persona_manifest_verify.mjs")],
-    fixtures: [skillRel("tests/test_persona_manifest_verify.mjs")],
-    changedFilePatterns: [
-      /^\.agent\/skills\/iterative-planner\/tests\/test_persona_manifest_verify\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/persona_manifest_verify\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/config\/persona_manifest\.json$/,
     ],
   }),
   suite({
@@ -943,8 +1988,30 @@ const DEFAULT_SUITES = [
       "apps/ive-visualizer/src/App.jsx",
       "apps/ive-visualizer/src/styles.css",
       "apps/ive-visualizer/src/data/visualizerPayload.js",
+      "apps/ive-visualizer/public/ive-graph-payload.json",
+      "plans/programs/guidance-first/program_packet.json",
     ],
-    changedFilePatterns: [/^apps\/ive-visualizer\//, docsIvePattern("08_visualizer_ui.md"), docsIvePattern("15_visualizer_mvp.md")],
+    changedFilePatterns: [
+      /^apps\/ive-visualizer\//,
+      /^plans\/programs\/guidance-first\/program_packet\.json$/,
+      docsIvePattern("08_visualizer_ui.md"),
+      docsIvePattern("15_visualizer_mvp.md"),
+    ],
+  }),
+  suite({
+    id: "frontend-journey-conformance",
+    category: "test_coverage",
+    label: "Browser/frontend automation conformance journey (T-INTAKE-2C7A79A9)",
+    command: ["node", join(TESTS_ROOT, "test_frontend_journey_conformance.mjs")],
+    surfaces: ["frontend", "ux_ui", "browser"],
+    fixtures: [
+      skillRel("tests/test_frontend_journey_conformance.mjs"),
+      skillRel("tests/fixtures/frontend_journey/dashboard.html"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_frontend_journey_conformance\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/frontend_journey\//,
+    ],
   }),
   suite({
     id: "ripple-check",
@@ -953,6 +2020,28 @@ const DEFAULT_SUITES = [
     command: ["node", join(SCRIPTS_DIR, "ripple_check.mjs")],
     fixtures: [skillRel("scripts/ripple_check.mjs")],
     changedFilePatterns: [/^\.agent\/skills\/iterative-planner\//, /^docs\/ive-redesign\//],
+  }),
+  suite({
+    id: "workspace-artifact-inventory",
+    category: "cli_contract",
+    label: "Workspace artifact inventory: read-only registry and source-project proof",
+    command: ["node", join(TESTS_ROOT, "test_workspace_artifact_inventory.mjs")],
+    phases: ["workspace-artifact-inventory", "core.workspace-inventory", "registry-inventory", "planner-core"],
+    surfaces: ["workspace_inventory", "registry", "planner_core", "cli_contract"],
+    fixtures: [
+      skillRel("tests/test_workspace_artifact_inventory.mjs"),
+      skillRel("scripts/workspace_artifact_inventory.mjs"),
+      skillRel("scripts/lib/workspace_artifact_inventory.mjs"),
+      skillRel("config/.project_registry.json"),
+      skillRel("references/scripts_registry.md"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_workspace_artifact_inventory\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/workspace_artifact_inventory\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/workspace_artifact_inventory\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/\.project_registry\.json$/,
+      /^\.agent\/skills\/iterative-planner\/references\/scripts_registry\.md$/,
+    ],
   }),
   suite({
     id: "core-packet-contract",
@@ -967,6 +2056,512 @@ const DEFAULT_SUITES = [
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_ive_packet_contract\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/ive_packet_contract\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "work-order-contract",
+    category: "structured_plan",
+    label: "Work-order schema and deterministic validator",
+    command: ["node", join(TESTS_ROOT, "test_work_order_contract.mjs")],
+    phases: ["core.work-order-contract", "autocoder-v2"],
+    surfaces: ["structured_plan", "contract_language", "work_order", "planner_core"],
+    fixtures: [
+      skillRel("config/work_order.schema.json"),
+      skillRel("tests/test_work_order_contract.mjs"),
+      skillRel("tests/fixtures/work_orders/golden.basic.json"),
+      skillRel("tests/fixtures/work_orders/golden.recipe-profile.json"),
+      skillRel("tests/fixtures/work_orders/invalid.recipe-profile-missing-dry-run.json"),
+      skillRel("scripts/work_order_validate.mjs"),
+      skillRel("scripts/lib/work_order_contract.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/config\/work_order\.schema\.json$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_work_order_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/work_orders\//,
+      /^\.agent\/skills\/iterative-planner\/scripts\/work_order_validate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/work_order_contract\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "plan-artifact-renderer",
+    category: "projection",
+    label: "Plan artifact JSON renderer and migration measurement",
+    command: ["node", join(TESTS_ROOT, "test_plan_artifact_renderer.mjs")],
+    phases: ["core.plan-artifact-renderer", "projection", "autocoder-v2", "e8-x"],
+    surfaces: ["projection", "structured_plan", "planner_core", "migration"],
+    fixtures: [
+      skillRel("tests/test_plan_artifact_renderer.mjs"),
+      skillRel("scripts/plan_artifact_renderer.mjs"),
+      skillRel("scripts/lib/plan_artifact_renderer.mjs"),
+      skillRel("scripts/lib/plan_contract.mjs"),
+      skillRel("scripts/lib/plan_utils.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_plan_artifact_renderer\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/plan_artifact_renderer\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/plan_artifact_renderer\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/transition\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "recipe-promotion",
+    category: "structured_plan",
+    label: "E4-8 recipe promotion: repeatable operational flow to confirmed recipe draft",
+    command: ["node", join(TESTS_ROOT, "test_recipe_promotion.mjs")],
+    phases: ["core.recipe-promotion", "recipe-promotion", "e4-8", "action-layer-maturity", "autocoder-v2"],
+    surfaces: ["structured_plan", "recipe", "close_signals", "journal_telemetry", "orchestration", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_recipe_promotion.mjs"),
+      skillRel("scripts/lib/recipe_promotion.mjs"),
+      skillRel("scripts/lib/plan_refresh.mjs"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("scripts/close_signals.mjs"),
+      skillRel("scripts/recipe_bootstrap.mjs"),
+      skillRel("scripts/recipe_validate.mjs"),
+      skillRel("scripts/lib/recipe_utils.mjs"),
+      skillRel("scripts/lib/agent_journal.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_recipe_promotion\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/recipe_promotion\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/plan_refresh\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/verify_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/close_signals\.mjs$/,
+      /^plans\/knowledge\/agent_journal\.jsonl$/,
+      /^plans\/plan_[^/]+\/telemetry\/events\.jsonl$/,
+    ],
+  }),
+  suite({
+    id: "evidence-preflight",
+    category: "structured_plan",
+    label: "Read-only evidence preflight for hotspot transition gates",
+    command: ["node", join(TESTS_ROOT, "test_evidence_preflight.mjs")],
+    phases: ["evidence-preflight", "gate-hotspots", "ritual-reduction", "planner-core"],
+    surfaces: ["evidence_preflight", "transition_gates", "close_signals", "verification_matrix", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_evidence_preflight.mjs"),
+      skillRel("scripts/evidence_preflight.mjs"),
+      skillRel("scripts/lib/evidence_preflight.mjs"),
+      skillRel("scripts/lib/verification_matrix.mjs"),
+      skillRel("scripts/lib/plan_refresh.mjs"),
+      skillRel("references/scripts_registry.md"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_evidence_preflight\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/evidence_preflight\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/evidence_preflight\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/verification_matrix\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/references\/scripts_registry\.md$/,
+    ],
+  }),
+  suite({
+    id: "preplanning-scaffolding",
+    category: "structured_plan",
+    label: "Pre-planning scaffold gate for North Star, story registry, and Program Packet context",
+    command: ["node", join(TESTS_ROOT, "test_preplanning_scaffolding.mjs")],
+    phases: ["preplanning-scaffolding", "planner-core", "ritual-reduction", "traceability"],
+    surfaces: ["transition", "preplanning_scaffolding", "story_registry", "program_manager", "north_star", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_preplanning_scaffolding.mjs"),
+      skillRel("scripts/lib/preplanning_scaffolding.mjs"),
+      skillRel("scripts/transition.mjs"),
+      skillRel("scripts/lib/plan_utils.mjs"),
+      skillRel("scripts/lib/plan_refresh.mjs"),
+      skillRel("config/failure-codes.json"),
+      skillRel("SKILL.md"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_preplanning_scaffolding\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/preplanning_scaffolding\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/transition\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/plan_utils\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/plan_refresh\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/failure-codes\.json$/,
+      /^\.agent\/skills\/iterative-planner\/SKILL\.md$/,
+    ],
+  }),
+  suite({
+    id: "incident-contract",
+    category: "structured_plan",
+    label: "Incident rectification contract: front door, preflight registry, and fail-closed closeout",
+    command: ["node", join(TESTS_ROOT, "test_incident_contract.mjs")],
+    phases: ["incident-contract", "planner-core", "quant", "orchestration"],
+    surfaces: ["incident_contract", "evidence_preflight", "verify_gate", "retro", "advisor"],
+    fixtures: [
+      skillRel("tests/test_incident_contract.mjs"),
+      skillRel("scripts/incident_contract.mjs"),
+      skillRel("scripts/lib/incident_contract.mjs"),
+      skillRel("config/incident_preflight_plugins.json"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("scripts/lib/evidence_preflight.mjs"),
+      ".agent/workflows/retro.md",
+      ".agent/workflows/advisor.md",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_incident_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/incident_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/incident_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/incident_preflight_plugins\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/verify_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/evidence_preflight\.mjs$/,
+      /^\.agent\/workflows\/(retro|advisor)\.md$/,
+    ],
+  }),
+  suite({
+    id: "pack-contract",
+    category: "structured_plan",
+    label: "Reusable pack contract schema and CI enforcement",
+    command: ["node", join(TESTS_ROOT, "test_pack_contract.mjs")],
+    phases: ["core.pack-contract", "pack-contract", "e5-2", "autocoder-v2"],
+    surfaces: ["contract_language", "persona_packs", "pack_contract", "ci", "planner_core"],
+    fixtures: [
+      skillRel("config/pack_contract.schema.json"),
+      skillRel("tests/test_pack_contract.mjs"),
+      skillRel("tests/fixtures/pack_contract/goldens.json"),
+      skillRel("tests/fixtures/pack_contract/seeded_defects.json"),
+      skillRel("tests/fixtures/pack_contract/incomplete_pack/pack_contract.json"),
+      skillRel("scripts/pack_contract_validate.mjs"),
+      skillRel("scripts/lib/pack_contract.mjs"),
+      skillRel("packs/_template/README.md"),
+      skillRel("packs/app_dev_tesseract/pack_contract.json"),
+      skillRel("packs/quant/pack_contract.json"),
+      skillRel("packs/quant_target/pack_contract.json"),
+      skillRel("packs/tokenomics/pack_contract.json"),
+      skillRel("packs/ux_ui/pack_contract.json"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/config\/pack_contract\.schema\.json$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_pack_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/pack_contract\//,
+      /^\.agent\/skills\/iterative-planner\/scripts\/pack_contract_validate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/pack_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/packs\/_template\/README\.md$/,
+      /^\.agent\/skills\/iterative-planner\/packs\/(app_dev_tesseract|quant|quant_target|tokenomics|ux_ui)\/pack_contract\.json$/,
+    ],
+  }),
+  suite({
+    id: "app-dev-tesseract-pack",
+    category: "knowledge_pack",
+    label: "App-dev tesseract pack checker, seeded defects, and loader activation",
+    command: ["node", join(TESTS_ROOT, "test_app_dev_tesseract_pack.mjs")],
+    phases: ["core.app-dev-tesseract-pack", "app-dev-tesseract", "e5-4", "autocoder-v2"],
+    surfaces: ["knowledge_pack", "pack_contract", "app_dev", "seeded_defects", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_app_dev_tesseract_pack.mjs"),
+      skillRel("scripts/app_dev_tesseract_check.mjs"),
+      skillRel("scripts/lib/app_dev_tesseract_pack.mjs"),
+      skillRel("knowledge_packs/app_dev_tesseract/pack.json"),
+      skillRel("knowledge_packs/app_dev_tesseract/pitfalls.json"),
+      skillRel("knowledge_packs/app_dev_tesseract/constraints.json"),
+      skillRel("knowledge_packs/app_dev_tesseract/obligations.json"),
+      skillRel("knowledge_packs/app_dev_tesseract/calibration.json"),
+      skillRel("packs/app_dev_tesseract/pack_contract.json"),
+      skillRel("tests/fixtures/pack_contract/goldens.json"),
+      skillRel("tests/fixtures/pack_contract/seeded_defects.json"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_app_dev_tesseract_pack\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/app_dev_tesseract_check\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/app_dev_tesseract_pack\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/knowledge_packs\/app_dev_tesseract\//,
+      /^\.agent\/skills\/iterative-planner\/packs\/app_dev_tesseract\/pack_contract\.json$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/pack_contract\//,
+    ],
+  }),
+  suite({
+    id: "recipe-contract",
+    category: "structured_plan",
+    label: "Recipe contract: read compatibility, promoted work-order profile, and dry-run fail-closed runner",
+    command: ["node", join(TESTS_ROOT, "test_recipe_validate.mjs")],
+    phases: ["core.recipe-contract", "recipe-contract", "e3-6", "autocoder-v2"],
+    surfaces: ["structured_plan", "contract_language", "recipe", "work_order", "orchestration", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_recipe_validate.mjs"),
+      skillRel("tests/fixtures/recipes/canonical/recipes/sample-flow/recipe.json"),
+      skillRel("tests/fixtures/recipes/legacy/recipes/legacy-python/runner.json"),
+      skillRel("tests/fixtures/recipes/legacy/recipes/legacy-string-runner/runner.json"),
+      skillRel("tests/fixtures/recipes/discovery_review/recipes/discovery_review.json"),
+      skillRel("scripts/recipe_validate.mjs"),
+      skillRel("scripts/recipe_runner.mjs"),
+      skillRel("scripts/recipe_bootstrap.mjs"),
+      skillRel("scripts/recipe_discovery.mjs"),
+      skillRel("scripts/planner.mjs"),
+      skillRel("scripts/lib/recipe_utils.mjs"),
+      skillRel("scripts/lib/work_order_contract.mjs"),
+      skillRel("config/work_order.schema.json"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_recipe_validate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/recipes\//,
+      /^\.agent\/skills\/iterative-planner\/scripts\/recipe_(validate|runner|bootstrap|discovery|resolver)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/planner\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/recipe_utils\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/work_order_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/work_order\.schema\.json$/,
+    ],
+  }),
+  suite({
+    id: "recipe-resolver",
+    category: "structured_plan",
+    label: "E6-7 recipe-first ranked resolver and legacy side-by-side proof",
+    command: ["node", join(TESTS_ROOT, "test_recipe_resolver.mjs")],
+    phases: ["core.recipe-resolver", "recipe-resolver", "e6-7", "autocoder-v2"],
+    surfaces: ["structured_plan", "recipe", "resolver", "ranked_retrieval", "orchestration", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_recipe_resolver.mjs"),
+      skillRel("scripts/recipe_resolver.mjs"),
+      skillRel("scripts/recipe_runner.mjs"),
+      skillRel("scripts/lib/recipe_utils.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_recipe_resolver\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/recipe_(resolver|runner)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/recipe_utils\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "reuse-before-create-gate",
+    category: "structured_plan",
+    label: "E6-8 reuse-before-create gate and duplicate capability guard",
+    command: ["node", join(TESTS_ROOT, "test_reuse_before_create_gate.mjs")],
+    phases: ["core.reuse-before-create", "reuse-before-create", "e6-8", "autocoder-v2"],
+    surfaces: ["structured_plan", "recipe", "reuse_gate", "orchestration", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_reuse_before_create_gate.mjs"),
+      skillRel("tests/test_transition_gate_flows.mjs"),
+      skillRel("tests/fixtures/recipe_fleet/alpha_project/recipes/daily-runner/recipe.json"),
+      skillRel("tests/fixtures/recipe_fleet/beta_project/recipes/daily-runner/recipe.json"),
+      skillRel("scripts/reuse_before_create.mjs"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("scripts/lib/reuse_before_create_gate.mjs"),
+      skillRel("scripts/lib/recipe_utils.mjs"),
+      skillRel("scripts/recipe_fleet_audit.mjs"),
+      skillRel("config/failure-codes.json"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_reuse_before_create_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_transition_gate_flows\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/recipe_fleet\/(alpha|beta)_project\/recipes\/daily-runner\/recipe\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/reuse_before_create\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/verify_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/reuse_before_create_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/recipe_utils\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/recipe_fleet_audit\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/failure-codes\.json$/,
+    ],
+  }),
+  suite({
+    id: "claims-evidence-contract",
+    category: "structured_plan",
+    label: "Claims/evidence schema, receipt projection, and bounce protocol",
+    command: ["node", join(TESTS_ROOT, "test_claims_evidence_contract.mjs")],
+    phases: ["core.claims-evidence-contract", "autocoder-v2"],
+    surfaces: ["structured_plan", "contract_language", "claims_evidence", "receipt", "planner_core"],
+    fixtures: [
+      skillRel("config/claims_evidence.schema.json"),
+      skillRel("tests/test_claims_evidence_contract.mjs"),
+      skillRel("tests/fixtures/claims_evidence/golden.basic.json"),
+      skillRel("scripts/claims_evidence_validate.mjs"),
+      skillRel("scripts/lib/claims_evidence_contract.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/config\/claims_evidence\.schema\.json$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_claims_evidence_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/claims_evidence\//,
+      /^\.agent\/skills\/iterative-planner\/scripts\/claims_evidence_validate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/claims_evidence_contract\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "claim-briefing-compiler",
+    category: "structured_plan",
+    label: "E6-2 claim compiler: work-order to closed-question briefing",
+    command: ["node", join(TESTS_ROOT, "test_claim_briefing_compiler.mjs")],
+    phases: ["core.claim-briefing-compiler", "claim-briefing-compiler", "e6-2", "autocoder-v2"],
+    surfaces: ["structured_plan", "contract_language", "claim_briefing", "work_order", "pack_contract", "persona_execute", "planner_core"],
+    fixtures: [
+      skillRel("config/claim_briefing.schema.json"),
+      skillRel("tests/test_claim_briefing_compiler.mjs"),
+      skillRel("tests/fixtures/work_orders/golden.claim-briefing.json"),
+      skillRel("scripts/persona_execute.mjs"),
+      skillRel("scripts/lib/claim_briefing_compiler.mjs"),
+      skillRel("scripts/lib/work_order_contract.mjs"),
+      skillRel("scripts/lib/pack_contract.mjs"),
+      skillRel("packs/app_dev_tesseract/pack_contract.json"),
+      skillRel("packs/quant/pack_contract.json"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/config\/claim_briefing\.schema\.json$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_claim_briefing_compiler\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/work_orders\/golden\.claim-briefing\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/persona_execute\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/claim_briefing_compiler\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "rubric-admin-runner",
+    category: "structured_plan",
+    label: "E6-3 rubric administrator runner and sycophancy suite",
+    command: ["node", join(TESTS_ROOT, "test_rubric_admin_runner.mjs")],
+    phases: ["core.rubric-admin-runner", "rubric-admin-runner", "e6-3", "autocoder-v2"],
+    surfaces: ["structured_plan", "rubric_admin", "sycophancy", "claim_briefing", "claims_evidence", "role_provider", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_rubric_admin_runner.mjs"),
+      skillRel("tests/fixtures/rubric_admin/sycophancy_suite.json"),
+      skillRel("scripts/rubric_admin_runner.mjs"),
+      skillRel("scripts/lib/rubric_admin_runner.mjs"),
+      skillRel("scripts/lib/claim_briefing_compiler.mjs"),
+      skillRel("scripts/lib/claims_evidence_contract.mjs"),
+      skillRel("scripts/lib/role_provider_runtime.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_rubric_admin_runner\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/rubric_admin\//,
+      /^\.agent\/skills\/iterative-planner\/scripts\/rubric_admin_runner\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/rubric_admin_runner\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/dispatcher_v1\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(claim_briefing_compiler|claims_evidence_contract|role_provider_runtime)\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "delivery-receipt-assembler",
+    category: "structured_plan",
+    label: "E6-4 delivery receipt assembler, dispute escalation, and scoreboard telemetry",
+    command: ["node", join(TESTS_ROOT, "test_delivery_receipt_assembler.mjs")],
+    phases: ["core.delivery-receipt-assembler", "delivery-receipt-assembler", "e6-4", "autocoder-v2"],
+    surfaces: ["structured_plan", "receipt", "delivery_receipt", "claims_evidence", "rubric_admin", "escalation_protocol", "role_provider", "scoreboard", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_delivery_receipt_assembler.mjs"),
+      skillRel("tests/fixtures/delivery_receipt/e6_4.dispute.json"),
+      skillRel("scripts/delivery_receipt_assemble.mjs"),
+      skillRel("scripts/lib/delivery_receipt_assembler.mjs"),
+      skillRel("scripts/lib/claims_evidence_contract.mjs"),
+      skillRel("scripts/lib/escalation_protocol.mjs"),
+      skillRel("scripts/lib/role_provider_runtime.mjs"),
+      skillRel("scripts/lib/scoreboard.mjs"),
+      "docs/autocoder-delivery-receipts.md",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_delivery_receipt_assembler\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/delivery_receipt\//,
+      /^\.agent\/skills\/iterative-planner\/scripts\/delivery_receipt_assemble\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/delivery_receipt_assembler\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/dispatcher_v1\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(claims_evidence_contract|escalation_protocol|role_provider_runtime|scoreboard)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/claims_evidence\.schema\.json$/,
+      /^docs\/autocoder-delivery-receipts\.md$/,
+    ],
+  }),
+  suite({
+    id: "dispatcher-v1",
+    category: "structured_plan",
+    label: "E6-5 dispatcher v1 end-to-end cheap-agent receipt proof",
+    command: ["node", join(TESTS_ROOT, "test_dispatcher_v1.mjs")],
+    phases: ["core.dispatcher-v1", "dispatcher-v1", "e6-5", "e6-7", "autocoder-v2"],
+    surfaces: ["structured_plan", "dispatcher", "work_order", "claim_briefing", "rubric_admin", "delivery_receipt", "ab_task_benchmark", "role_provider", "recipe", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_dispatcher_v1.mjs"),
+      skillRel("tests/fixtures/real_episodes/mac_mini_quant_episodes.json"),
+      skillRel("scripts/dispatcher_v1.mjs"),
+      skillRel("scripts/recipe_runner.mjs"),
+      skillRel("scripts/lib/dispatcher_v1.mjs"),
+      skillRel("scripts/lib/recipe_utils.mjs"),
+      skillRel("scripts/lib/work_order_contract.mjs"),
+      skillRel("scripts/lib/claim_briefing_compiler.mjs"),
+      skillRel("scripts/lib/rubric_admin_runner.mjs"),
+      skillRel("scripts/lib/delivery_receipt_assembler.mjs"),
+      skillRel("scripts/lib/ab_task_benchmark.mjs"),
+      "docs/autocoder-dispatcher-v1.md",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_dispatcher_v1\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/dispatcher_v1\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/recipe_runner\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/dispatcher_v1\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/recipe_utils\.mjs$/,
+      /^docs\/autocoder-dispatcher-v1\.md$/,
+    ],
+  }),
+  suite({
+    id: "presentation-contract",
+    category: "structured_plan",
+    label: "Presentation contract: verbatim render surfaces and write-authority matrix",
+    command: ["node", join(TESTS_ROOT, "test_presentation_contract.mjs")],
+    phases: ["core.presentation-contract", "presentation-contract", "e3-5", "autocoder-v2"],
+    surfaces: ["structured_plan", "contract_language", "presentation_contract", "write_authority", "planner_core"],
+    fixtures: [
+      skillRel("config/presentation_contract.schema.json"),
+      skillRel("tests/test_presentation_contract.mjs"),
+      skillRel("tests/fixtures/work_orders/golden.basic.json"),
+      skillRel("tests/fixtures/claims_evidence/golden.basic.json"),
+      skillRel("scripts/lib/presentation_contract.mjs"),
+      skillRel("scripts/lib/claims_evidence_contract.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/config\/presentation_contract\.schema\.json$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_presentation_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/presentation_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/claims_evidence_contract\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "verification-truth",
+    category: "structured_plan",
+    label: "Structured verification status truth for close gates",
+    command: ["node", join(TESTS_ROOT, "test_verification_truth.mjs")],
+    phases: ["core.verification-truth", "verification-truth", "close-truth"],
+    surfaces: ["verification_truth", "verification_md", "ontology_serializer", "fact_loader", "rule_engine", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_verification_truth.mjs"),
+      skillRel("config/verification_status_vocabulary.json"),
+      skillRel("config/proof_status_reader_census.json"),
+      skillRel("config/mcp_tools.json"),
+      skillRel("scripts/proof_status_census.mjs"),
+      skillRel("scripts/lib/verification_truth.mjs"),
+      skillRel("scripts/lib/verification_status_vocabulary.mjs"),
+      skillRel("scripts/lib/verification_strategy.mjs"),
+      skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("scripts/ontology_serializer.mjs"),
+      skillRel("scripts/lib/rule_commands.mjs"),
+      skillRel("prolog/invariants.pl"),
+      skillRel("prolog/transitions.pl"),
+      skillRel("prolog/verification_statuses.pl"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_verification_truth\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/verification_status_vocabulary\.json$/,
+      /^\.agent\/skills\/iterative-planner\/config\/proof_status_reader_census\.json$/,
+      /^\.agent\/skills\/iterative-planner\/config\/mcp_tools\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/proof_status_census\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/verification_truth\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/verification_status_vocabulary\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/verification_strategy\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/fact_loader\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/ontology_serializer\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/rule_commands\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/prolog\/verification_statuses\.pl$/,
+    ],
+  }),
+  suite({
+    id: "escalation-protocol",
+    category: "structured_plan",
+    label: "E3-4 escalation protocol: schema bounce, verifier disagreement, budget stop, and telemetry",
+    command: ["node", join(TESTS_ROOT, "test_escalation_protocol.mjs")],
+    phases: ["core.escalation-protocol", "escalation-protocol", "e3-4", "autocoder-v2"],
+    surfaces: ["structured_plan", "escalation_protocol", "provider_runtime", "scoreboard", "autocoder_v2"],
+    fixtures: [
+      skillRel("tests/test_escalation_protocol.mjs"),
+      skillRel("tests/fixtures/escalation_protocol/transcripts.json"),
+      skillRel("scripts/lib/escalation_protocol.mjs"),
+      skillRel("scripts/lib/claims_evidence_contract.mjs"),
+      skillRel("scripts/lib/role_provider_runtime.mjs"),
+      skillRel("scripts/lib/scoreboard.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_escalation_protocol\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/escalation_protocol\//,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/escalation_protocol\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/scoreboard\.mjs$/,
     ],
   }),
   suite({
@@ -1016,23 +2611,82 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
+    id: "irreversible-action-contract",
+    category: "safety",
+    label: "Irreversible external actions require a direct typed human token",
+    command: ["node", join(TESTS_ROOT, "test_irreversible_action_contract.mjs")],
+    phases: ["safety", "irreversible-actions", "planner-core"],
+    surfaces: ["safety", "config", "orchestration", "structured_plan"],
+    fixtures: [
+      skillRel("tests/test_irreversible_action_contract.mjs"),
+      skillRel("config/irreversible_action_registry.json"),
+      skillRel("config/irreversible_action_registry.schema.json"),
+      skillRel("scripts/lib/irreversible_action_contract.mjs"),
+      skillRel("scripts/irreversible_action_gate.mjs"),
+      skillRel("scripts/lib/triage.mjs"),
+      skillRel("SKILL.md"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_irreversible_action_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/irreversible_action_registry(?:\.schema)?\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/irreversible_action_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/irreversible_action_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/triage\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/SKILL\.md$/,
+    ],
+  }),
+  suite({
     id: "migration-bootstrap",
     category: "migration",
     label: "IVE migration bootstrap",
     command: ["node", join(TESTS_ROOT, "test_ive_migration_bootstrap.mjs")],
-    phases: ["0.5", "migration.bootstrap"],
+    // Transactional upgrade fixtures clone and prove several Git repositories.
+    // Dropbox-backed worktrees can exceed ten minutes under contention without
+    // indicating a hang, so keep the governed wrapper above the observed ceiling.
+    timeoutMs: 900000,
+    phases: ["0.5", "migration.bootstrap", "e4-4", "kernel"],
     surfaces: ["migration", "structured_plan"],
     fixtures: [
       skillRel("tests/test_ive_migration_bootstrap.mjs"),
       skillRel("scripts/migrate.mjs"),
       skillRel("scripts/bootstrap.mjs"),
       skillRel("scripts/lib/ive_migration_bootstrap.mjs"),
+      skillRel("scripts/lib/managed_upgrade_transaction.mjs"),
+      skillRel("scripts/lib/migration_source_pin.mjs"),
+      skillRel("scripts/lib/bootstrap_self_heal.mjs"),
+      skillRel("scripts/pre_commit_policy.mjs"),
+      skillRel("config/managed_upgrade_transaction.json"),
+      skillRel("scripts/lib/degraded_coverage.mjs"),
+      skillRel("scripts/lib/bootstrap_status_context.mjs"),
+      skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("config/degraded_coverage_census.json"),
+      skillRel("analyzers/pattern-grep.yaml"),
+      skillRel("config/irreversible_action_registry.json"),
+      skillRel("config/irreversible_action_registry.schema.json"),
+      skillRel("scripts/lib/irreversible_action_contract.mjs"),
+      skillRel("scripts/irreversible_action_gate.mjs"),
+      skillRel("tests/test_irreversible_action_contract.mjs"),
+      skillRel("SKILL.md"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_ive_migration_bootstrap\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/migrate\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/bootstrap\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/ive_migration_bootstrap\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/managed_upgrade_transaction\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/migration_source_pin\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/bootstrap_self_heal\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/pre_commit_policy\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/managed_upgrade_transaction\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(degraded_coverage|bootstrap_status_context|fact_loader)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/degraded_coverage_census\.json$/,
+      /^\.agent\/skills\/iterative-planner\/analyzers\/pattern-grep\.yaml$/,
+      /^\.agent\/skills\/iterative-planner\/config\/irreversible_action_registry(?:\.schema)?\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/irreversible_action_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/irreversible_action_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_irreversible_action_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/SKILL\.md$/,
+      /^docs\/autocoder-kernel-demo\.md$/,
       docsIvePattern("10_migration.md"),
       docsIvePattern("09_roadmap.md"),
     ],
@@ -1047,9 +2701,10 @@ const DEFAULT_SUITES = [
     fixtures: [
       skillRel("scripts/ive_release_handoff.mjs"),
       skillRel("scripts/lib/ive_release_handoff.mjs"),
+      skillRel("scripts/autonomous_dogfood_run.mjs"),
+      skillRel("scripts/lib/autonomous_dogfood_run.mjs"),
       skillRel("scripts/lib/ive_migration_bootstrap.mjs"),
       skillRel("scripts/lib/ive_projection.mjs"),
-      skillRel("tests/test_ive_release_handoff.mjs"),
       "docs/ive-redesign/17_release_lane.md",
       "plans/programs/ive-runtime-build/program_packet.json",
     ],
@@ -1106,6 +2761,7 @@ const DEFAULT_SUITES = [
       skillRel("scripts/lib/fact_loader.mjs"),
       skillRel("profiles/quant_alpha.profile.json"),
       skillRel("knowledge_packs/machine_learning/pack.json"),
+      skillRel("knowledge_packs/machine_learning/obligations.json"),
       skillRel("knowledge_packs/machine_learning/pitfalls.json"),
       skillRel("knowledge_packs/machine_learning/opportunities.json"),
       skillRel("knowledge_packs/machine_learning/constraints.json"),
@@ -1119,6 +2775,11 @@ const DEFAULT_SUITES = [
       skillRel("knowledge_packs/ux_ui_experience/pack.json"),
       skillRel("knowledge_packs/coaching_methodology/pack.json"),
       skillRel("knowledge_packs/software_engineering_methodology/pack.json"),
+      skillRel("knowledge_packs/app_dev_tesseract/pack.json"),
+      skillRel("knowledge_packs/app_dev_tesseract/pitfalls.json"),
+      skillRel("knowledge_packs/app_dev_tesseract/constraints.json"),
+      skillRel("knowledge_packs/app_dev_tesseract/obligations.json"),
+      skillRel("knowledge_packs/app_dev_tesseract/calibration.json"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_ive_profile_knowledge_packs\.mjs$/,
@@ -1140,7 +2801,6 @@ const DEFAULT_SUITES = [
     surfaces: ["cli", "json", "stdout", "tty", "path", "conformance"],
     fixtures: [
       skillRel("tests/test_cli_determinism.mjs"),
-      skillRel("tests/test_emit_json_cli.mjs"),
       skillRel("scripts/lib/emit_json.mjs"),
       skillRel("scripts/knowledge_packs.mjs"),
       skillRel("scripts/project_ive.mjs"),
@@ -1150,7 +2810,22 @@ const DEFAULT_SUITES = [
       skillRel("scripts/ive_packet_validator.mjs"),
       skillRel("scripts/check_profile.mjs"),
       skillRel("scripts/journal.mjs"),
+      skillRel("scripts/decision_anchors.mjs"),
       skillRel("scripts/thrashing_detector.mjs"),
+      skillRel("scripts/ab_task_benchmark.mjs"),
+      skillRel("scripts/lib/ab_task_benchmark.mjs"),
+      skillRel("scripts/ideation_quality_benchmark.mjs"),
+      skillRel("scripts/lib/ideation_quality_benchmark.mjs"),
+      skillRel("scripts/ttinsights_report.mjs"),
+      skillRel("scripts/lib/ttinsights_report.mjs"),
+      skillRel("scripts/scoreboard.mjs"),
+      skillRel("scripts/lib/scoreboard.mjs"),
+      skillRel("scripts/ritual_replay.mjs"),
+      skillRel("scripts/lib/ritual_replay.mjs"),
+      skillRel("scripts/rubric_admin_runner.mjs"),
+      skillRel("scripts/lib/rubric_admin_runner.mjs"),
+      skillRel("scripts/delivery_receipt_assemble.mjs"),
+      skillRel("scripts/lib/delivery_receipt_assembler.mjs"),
       skillRel("scripts/ive_release_handoff.mjs"),
       skillRel("scripts/lib/ive_release_handoff.mjs"),
     ],
@@ -1158,8 +2833,8 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/tests\/test_cli_determinism\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/tests\/test_emit_json_cli\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/emit_json\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/(knowledge_packs|project_ive|reflection_guide|validate_reflection|ive_packet_validator|check_profile|journal|thrashing_detector|ive_release_handoff)\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(ive_projection|ive_release_handoff)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(knowledge_packs|project_ive|reflection_guide|validate_reflection|ive_packet_validator|check_profile|journal|decision_anchors|thrashing_detector|ab_task_benchmark|ideation_quality_benchmark|ttinsights_report|dispatcher_v1|scoreboard|ritual_replay|rubric_admin_runner|delivery_receipt_assemble|ive_release_handoff|autonomous_dogfood_run)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(ive_projection|ab_task_benchmark|ideation_quality_benchmark|ttinsights_report|dispatcher_v1|scoreboard|ritual_replay|rubric_admin_runner|delivery_receipt_assembler|ive_release_handoff|autonomous_dogfood_run)\.mjs$/,
     ],
   }),
   suite({
@@ -1179,6 +2854,7 @@ const DEFAULT_SUITES = [
       skillRel("scripts/ontology_serializer.mjs"),
     ],
     changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_archetype_accomplices\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/tests\/test_quant_results_validation\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/claim_ledger\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/quant_results_validation\.mjs$/,
@@ -1186,6 +2862,64 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/run_record\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/packs\/quant\/leakage_proof\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/ontology_serializer\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "adversarial-evidence-rerun",
+    category: "quant",
+    label: "IVE result-bearing close fresh-context adversarial evidence rerun",
+    command: ["node", join(TESTS_ROOT, "test_adversarial_evidence_executor.mjs")],
+    phases: ["stage1", "t06", "provenance", "quant-results-validation", "adversarial-rerun", "semantic-gates"],
+    surfaces: ["planner_core", "fresh_context", "verification_ledger", "quant_results_validation", "transition_gates", "ontology"],
+    fixtures: [
+      skillRel("tests/test_adversarial_evidence_executor.mjs"),
+      skillRel("scripts/adversarial_evidence_executor.mjs"),
+      skillRel("scripts/lib/quant_results_validation.mjs"),
+      skillRel("scripts/lib/plan_refresh.mjs"),
+      skillRel("scripts/ontology_serializer.mjs"),
+      skillRel("scripts/transition.mjs"),
+      skillRel("config/state.schema.json"),
+      skillRel("config/failure-codes.json"),
+      skillRel("checklists/validate-to-close.yaml"),
+      skillRel("SKILL.md"),
+      skillRel("MIGRATION.md"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_adversarial_evidence_executor\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/adversarial_evidence_executor\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "quant-gate-hardening",
+    category: "quant",
+    label: "IVE quant gate hardening: scale, run-class, and leakage fixture gates",
+    command: ["node", join(TESTS_ROOT, "test_quant_gate_hardening.mjs")],
+    phases: ["stage1", "quant-results-validation", "semantic-gates"],
+    surfaces: ["quant", "semantic_gate", "prolog", "conformance"],
+    fixtures: [
+      skillRel("tests/test_quant_gate_hardening.mjs"),
+      skillRel("tests/fixtures/quant/negative_leakage_guard_fires.json"),
+      skillRel("scripts/lib/quant_gate_hardening.mjs"),
+      skillRel("scripts/lib/quant_persona_gate.mjs"),
+      skillRel("packs/quant/leakage_proof.mjs"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("scripts/ontology_serializer.mjs"),
+      skillRel("prolog/invariants.pl"),
+      skillRel("config/determinism.json"),
+      skillRel("config/failure-codes.json"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_quant_gate_hardening\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/quant\/negative_leakage_guard_fires\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/quant_gate_hardening\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/quant_persona_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/packs\/quant\/leakage_proof\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/verify_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/fact_loader\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/ontology_serializer\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/prolog\/invariants\.pl$/,
+      /^\.agent\/skills\/iterative-planner\/config\/(determinism|failure-codes)\.json$/,
     ],
   }),
   suite({
@@ -1223,17 +2957,124 @@ const DEFAULT_SUITES = [
       skillRel("scripts/hooks/pre-push"),
       skillRel("scripts/hooks/pre_push_conformance.mjs"),
       skillRel("scripts/snapshot_branch_protection.mjs"),
+      skillRel("tests/test_pack_contract.mjs"),
+      skillRel("scripts/pack_contract_validate.mjs"),
+      skillRel("scripts/lib/pack_contract.mjs"),
+      skillRel("config/pack_contract.schema.json"),
       ".github/workflows/ive-conformance.yml",
       ".github/branch-protection.snapshot.json",
+      "tests/test_escalation_triggers.mjs",
+      "tests/test_loop_guards.mjs",
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_ci_enforcement_contracts\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/hooks\/(install|pre_push_conformance)\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/hooks\/pre-push$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/snapshot_branch_protection\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_pack_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/pack_contract_validate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/pack_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/pack_contract\.schema\.json$/,
       /^\.github\/workflows\/ive-conformance\.yml$/,
       /^\.github\/branch-protection\.snapshot\.json$/,
+      /^tests\/test_escalation_triggers\.mjs$/,
+      /^tests\/test_loop_guards\.mjs$/,
       /^apps\/ive-visualizer\//,
+    ],
+  }),
+  suite({
+    id: "fresh-context-reviewer",
+    category: "ci",
+    label: "Fresh-context PR reviewer: pack-derived closed questions and fail-honest provider boundary",
+    command: ["node", join(TESTS_ROOT, "test_fresh_context_reviewer.mjs")],
+    phases: ["stage1", "ci-enforcement", "e1-2", "fresh-context-reviewer", "autocoder-v2"],
+    surfaces: ["ci", "github", "reviewer_agent", "persona_packs", "conformance"],
+    fixtures: [
+      skillRel("tests/test_fresh_context_reviewer.mjs"),
+      skillRel("scripts/fresh_context_reviewer.mjs"),
+      skillRel("scripts/lib/fresh_context_reviewer.mjs"),
+      skillRel("scripts/lib/role_provider_runtime.mjs"),
+      skillRel("scripts/lib/provider_client.mjs"),
+      skillRel("packs/wiring_auditor/index.mjs"),
+      skillRel("packs/assumptions_challenger/index.mjs"),
+      skillRel("packs/traceability/index.mjs"),
+      skillRel("packs/config_integrity/index.mjs"),
+      ".github/reviewer/config.json",
+      ".github/workflows/fresh-context-reviewer.yml",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_fresh_context_reviewer\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/fresh_context_reviewer\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/fresh_context_reviewer\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/role_provider_runtime\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/provider_client\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/packs\/(wiring_auditor|assumptions_challenger|traceability|config_integrity)\/index\.mjs$/,
+      /^\.github\/reviewer\/config\.json$/,
+      /^\.github\/workflows\/fresh-context-reviewer\.yml$/,
+    ],
+  }),
+  suite({
+    id: "role-provider-runtime",
+    category: "ci",
+    label: "Role-provider runtime: cheap/frontier binding, fail-honest provider errors, and cost ledger telemetry",
+    command: ["node", join(TESTS_ROOT, "test_role_provider_runtime.mjs")],
+    phases: ["stage1", "ci-enforcement", "e6-1", "role-provider-runtime", "autocoder-v2"],
+    surfaces: ["ci", "provider_runtime", "cost_telemetry", "conformance"],
+    fixtures: [
+      skillRel("tests/test_role_provider_runtime.mjs"),
+      skillRel("scripts/lib/role_provider_runtime.mjs"),
+      skillRel("scripts/lib/provider_client.mjs"),
+      "docs/role-provider-runtime.md",
+      ".github/reviewer/config.json",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_role_provider_runtime\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/role_provider_runtime\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/provider_client\.mjs$/,
+      /^docs\/role-provider-runtime\.md$/,
+      /^\.github\/reviewer\/config\.json$/,
+    ],
+  }),
+  suite({
+    id: "llm-run-telemetry",
+    category: "ci",
+    label: "LLM run telemetry: canonical ledger, privacy controls, IDE adapters, and reports",
+    command: ["node", join(TESTS_ROOT, "test_llm_run_telemetry.mjs")],
+    phases: ["stage1", "ci-enforcement", "telemetry", "autocoder-v2"],
+    surfaces: ["provider_runtime", "telemetry", "privacy", "conformance"],
+    fixtures: [
+      skillRel("tests/test_llm_run_telemetry.mjs"),
+      skillRel("scripts/lib/llm_run_telemetry.mjs"),
+      skillRel("scripts/lib/role_provider_runtime.mjs"),
+      skillRel("scripts/lib/interface_telemetry.mjs"),
+      skillRel("scripts/telemetry.mjs"),
+      skillRel("scripts/lib/provider_client.mjs"),
+      skillRel("config/determinism.json"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_llm_run_telemetry\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/llm_run_telemetry\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/role_provider_runtime\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/interface_telemetry\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/telemetry\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/provider_client\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/determinism\.json$/,
+    ],
+  }),
+  suite({
+    id: "ive-conformance-runner-meta",
+    category: "ci",
+    label: "IVE conformance runner meta-test is default-gated",
+    command: ["node", join(TESTS_ROOT, "test_ive_conformance_runner.mjs")],
+    phases: ["stage1", "ci-enforcement", "runner-meta", "autocoder-v2"],
+    surfaces: ["ci", "conformance", "runner"],
+    fixtures: [
+      skillRel("tests/test_ive_conformance_runner.mjs"),
+      skillRel("tests/ive/run.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_ive_conformance_runner\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
     ],
   }),
   suite({
@@ -1337,6 +3178,32 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/tests\/test_reflection_invariants\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(reflection_validation|reflection_guide|fact_loader)\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/prolog\/invariants\.pl$/,
+    ],
+  }),
+  suite({
+    id: "adversarial-idea-barrenness",
+    category: "reflection",
+    label: "ADV-LLM-005 / I-050 novel-insight floor",
+    command: ["node", join(TESTS_ROOT, "test_adversarial_idea_barrenness.mjs")],
+    phases: ["4.6", "adversarial", "idea-barrenness", "i-050", "semantic-gates"],
+    surfaces: ["reflection", "semantic_gate", "ontology", "verify_gate", "fact_loader"],
+    fixtures: [
+      skillRel("tests/test_adversarial_idea_barrenness.mjs"),
+      skillRel("tests/ive/fixtures/adversarial/idea_barrenness/barren.json"),
+      skillRel("tests/ive/fixtures/adversarial/idea_barrenness/non_barren.json"),
+      skillRel("scripts/lib/novel_insight_floor.mjs"),
+      skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("prolog/invariants.pl"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_adversarial_idea_barrenness\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/ive\/fixtures\/adversarial\/idea_barrenness\/.+\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(novel_insight_floor|fact_loader)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/verify_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/prolog\/invariants\.pl$/,
+      docsIvePattern("11a_adversarial_llm_scenarios.md"),
+      docsIvePattern("07a_active_ontology_file.md"),
     ],
   }),
   suite({
@@ -1444,6 +3311,106 @@ function statusForReport({ issues = [], warningCount = 0, skippedCount = 0 } = {
   return "PASS";
 }
 
+function roundScore(value, digits = 4) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Number(n.toFixed(digits));
+}
+
+function statusScore(status) {
+  const normalized = String(status || "").trim().toUpperCase();
+  if (normalized === "PASS") return 1;
+  if (normalized === "WARN" || normalized === "WARNING") return 0.75;
+  if (normalized === "SKIPPED" || normalized === "SKIP") return 0.5;
+  if (normalized === "NOT_APPLICABLE" || normalized === "NOT-APPLICABLE") return null;
+  return 0;
+}
+
+function averageScore(rows) {
+  const scored = rows
+    .map((row) => Number(row?.score))
+    .filter((score) => Number.isFinite(score));
+  if (scored.length === 0) return null;
+  return roundScore(scored.reduce((sum, score) => sum + score, 0) / scored.length);
+}
+
+function isInsightVelocitySuite(result) {
+  const tokens = [
+    result?.id,
+    result?.name,
+    result?.category,
+    ...(Array.isArray(result?.surfaces) ? result.surfaces : []),
+    ...(Array.isArray(result?.phases) ? result.phases : []),
+  ].map((value) => String(value || "").toLowerCase());
+  return tokens.some((token) =>
+    token.includes("insight_velocity")
+    || token.includes("insight-velocity")
+    || token.includes("ideation_quality")
+    || token.includes("ideation-quality")
+  );
+}
+
+function isRitualSuite(result) {
+  const tokens = [
+    result?.id,
+    result?.name,
+    result?.category,
+    ...(Array.isArray(result?.surfaces) ? result.surfaces : []),
+    ...(Array.isArray(result?.phases) ? result.phases : []),
+  ].map((value) => String(value || "").toLowerCase());
+  return tokens.some((token) =>
+    token.includes("ritual_replay")
+    || token.includes("ritual-replay")
+    || token.includes("anti_ritual")
+    || token.includes("anti-ritual")
+  );
+}
+
+function buildQualityScores(results) {
+  const scoredRows = results.map((result) => ({
+    id: result.id,
+    status: result.status,
+    score: statusScore(result.status),
+  }));
+  const ivRows = scoredRows.filter((row) => {
+    const result = results.find((candidate) => candidate.id === row.id);
+    return result && isInsightVelocitySuite(result);
+  });
+  const ritualRows = scoredRows.filter((row) => {
+    const result = results.find((candidate) => candidate.id === row.id);
+    return result && isRitualSuite(result);
+  });
+  const qualityScore = averageScore(scoredRows);
+  const ivScore = averageScore(ivRows);
+  const ritualScore = averageScore(ritualRows);
+  return {
+    quality_score: {
+      current: qualityScore,
+      scale: "0..1",
+      source_status: qualityScore === null ? "not_scored" : "scored",
+      scored_suite_count: scoredRows.filter((row) => row.score !== null).length,
+      total_suite_count: results.length,
+      method: "Average suite status score: PASS=1, WARN=0.75, SKIPPED=0.5, FAIL/TIMEOUT/NOT_IMPLEMENTED=0; NOT_APPLICABLE is excluded.",
+    },
+    iv_score: {
+      current: ivScore,
+      scale: "0..1",
+      source_status: ivRows.length === 0 ? "not_selected" : ivScore === null ? "not_scored" : "scored",
+      scored_suite_count: ivRows.filter((row) => row.score !== null).length,
+      total_suite_count: ivRows.length,
+      method: "Average status score for selected Insight Velocity / ideation-quality suites.",
+    },
+    ritual_score: {
+      current: ritualScore,
+      scale: "0..1",
+      source_status: ritualRows.length === 0 ? "not_selected" : ritualScore === null ? "not_scored" : "scored",
+      scored_suite_count: ritualRows.filter((row) => row.score !== null).length,
+      total_suite_count: ritualRows.length,
+      method: "Average status score for selected ritual replay / anti-ritual suites.",
+    },
+  };
+}
+
 function patternMatches(pattern, file) {
   if (pattern instanceof RegExp) return pattern.test(file);
   if (typeof pattern === "string") {
@@ -1475,23 +3442,25 @@ function missingRequiredFixtures(item, repoRoot = REPO_ROOT) {
     .filter((fixture) => fixture && !existsSync(resolve(repoRoot, fixture)));
 }
 
-function commandEnv() {
-  return {
-    ...process.env,
-    CODEX_THREAD_ID: "",
-    _PLANNER_PLAN_TARGET: "",
+function commandEnv(overrides = {}) {
+  return plannerSubprocessEnv({
     PLANNER_SKIP_SELF_HEAL: process.env.PLANNER_SKIP_SELF_HEAL || "1",
-  };
+    ...overrides,
+  });
 }
 
-function runExitCodeCheck(command, { timeoutMs = DEFAULT_TIMEOUT_MS, cwd = undefined } = {}) {
+function runExitCodeCheck(command, {
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  cwd = undefined,
+  envOverrides = {},
+} = {}) {
   try {
     const stdout = execFileSync(command[0], command.slice(1), {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
       timeout: timeoutMs,
       cwd,
-      env: commandEnv(),
+      env: commandEnv(envOverrides),
     });
     return {
       status: "PASS",
@@ -1512,6 +3481,32 @@ function runExitCodeCheck(command, { timeoutMs = DEFAULT_TIMEOUT_MS, cwd = undef
       stderr_excerpt: captureExcerpt(err.stderr || ""),
       raw_stdout: (err.stdout || "").toString(),
       raw_stderr: (err.stderr || err.message || "").toString(),
+    };
+  }
+}
+
+function runJsonAdvisoryStatus(command, options = {}) {
+  const result = runExitCodeCheck(command, options);
+  if (result.status !== "PASS") return result;
+  try {
+    const payload = JSON.parse(result.raw_stdout || "{}");
+    const status = String(payload.status || "FAIL").toUpperCase();
+    if (!["PASS", "WARN"].includes(status)) {
+      return { ...result, status: "FAIL", exit_code: 1, status_reason: "invalid_advisory_status" };
+    }
+    return {
+      ...result,
+      status,
+      status_reason: payload.reason || "",
+      stdout_excerpt: captureExcerpt(result.raw_stdout),
+    };
+  } catch (error) {
+    return {
+      ...result,
+      status: "FAIL",
+      exit_code: 1,
+      status_reason: "invalid_advisory_json",
+      stderr_excerpt: captureExcerpt(error.message),
     };
   }
 }
@@ -1580,7 +3575,8 @@ function runDocContractCheck(command) {
 }
 
 function runDocsContractsAggregate(_command, options) {
-  const docSuites = DEFAULT_SUITES.filter((item) => item.id === "doc-contract-mvp" || item.id === "doc-contract-multi-ide");
+  const docContractIds = new Set(["doc-contract-mvp", "doc-contract-multi-ide"]);
+  const docSuites = DEFAULT_SUITES.filter((item) => docContractIds.has(item.id));
   const results = docSuites.map((item) => executeSuite(item, options));
   const failed = results.filter((result) => result.status !== "PASS");
   return {
@@ -1630,16 +3626,27 @@ function executeSuite(item, options = {}) {
     };
   } else {
     const runner = item.run || runExitCodeCheck;
-    const itemTimeoutMs = Number.isFinite(item.timeout_ms) && item.timeout_ms > 0
-      ? item.timeout_ms
-      : options.timeoutMs;
-    result = runner(item.command, { ...options, timeoutMs: itemTimeoutMs });
+    const itemTimeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+      ? options.timeoutMs
+      : Number.isFinite(item.timeout_ms) && item.timeout_ms > 0
+        ? item.timeout_ms
+        : DEFAULT_TIMEOUT_MS;
+    const envOverrides = item.accepts_plan_target === true && options.planTarget
+      ? { _PLANNER_PLAN_TARGET: options.planTarget }
+      : {};
+    result = runner(item.command, {
+      ...options,
+      timeoutMs: itemTimeoutMs,
+      envOverrides,
+    });
   }
 
   return {
     id: item.id,
     name: item.id,
     category: item.category,
+    test_class: item.test_class || TEST_CLASS_FUNCTIONAL_PROOF,
+    test_class_label: item.test_class_label || TEST_CLASS_LABELS[item.test_class] || TEST_CLASS_LABELS[TEST_CLASS_FUNCTIONAL_PROOF],
     label: item.label,
     required: item.required !== false,
     command: item.display_command,
@@ -1666,7 +3673,7 @@ function selectedByOnly(item, filters) {
   if (!filters.length) return true;
   return filters.some((filter) => {
     const normalized = String(filter || "").trim();
-    return normalized === item.id || normalized === item.name || normalized === item.category;
+    return normalized === item.id || normalized === item.name || normalized === item.category || normalized === item.test_class;
   });
 }
 
@@ -1689,12 +3696,228 @@ function selectSuites(suites = DEFAULT_SUITES, only = [], phase = "all", changed
   );
 }
 
+function profileConfigError(message, code = "invalid_release_profile") {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function uniqueNonEmptyStrings(values, fieldName) {
+  if (!Array.isArray(values)) {
+    throw profileConfigError(`${fieldName} must be an array`);
+  }
+  const normalized = values.map((value) => String(value || "").trim());
+  if (normalized.some((value) => !value)) {
+    throw profileConfigError(`${fieldName} must contain non-empty strings`);
+  }
+  if (new Set(normalized).size !== normalized.length) {
+    throw profileConfigError(`${fieldName} must not contain duplicate suite IDs`);
+  }
+  return normalized;
+}
+
+function readReleaseProfiles(configPath = RELEASE_PROFILES_PATH) {
+  let parsed;
+  try {
+    parsed = JSON.parse(readFileSync(configPath, "utf-8"));
+  } catch (error) {
+    throw profileConfigError(`Unable to read release profile config: ${error.message}`, "release_profile_config_unavailable");
+  }
+  if (parsed?.schema_version !== 1 || !parsed.profiles || typeof parsed.profiles !== "object" || Array.isArray(parsed.profiles)) {
+    throw profileConfigError("Release profile config must use schema_version 1 and contain a profiles object");
+  }
+  return parsed;
+}
+
+function resolveReleaseProfile({
+  profileId,
+  suites = DEFAULT_SUITES,
+  config = null,
+  configPath = RELEASE_PROFILES_PATH,
+} = {}) {
+  const normalizedProfileId = String(profileId || "").trim();
+  if (!normalizedProfileId) {
+    throw profileConfigError("A release profile ID is required", "release_profile_required");
+  }
+  const catalogIds = suites.map((item) => item.id);
+  if (new Set(catalogIds).size !== catalogIds.length) {
+    throw profileConfigError("IVE suite catalog contains duplicate suite IDs", "duplicate_catalog_suite_id");
+  }
+  const catalogById = new Map(suites.map((item) => [item.id, item]));
+  const source = config || readReleaseProfiles(configPath);
+  const definition = source.profiles?.[normalizedProfileId];
+  if (!definition || typeof definition !== "object" || Array.isArray(definition)) {
+    throw profileConfigError(`Unknown release profile: ${normalizedProfileId}`, "unknown_release_profile");
+  }
+
+  if (!Array.isArray(definition.selection_rules) || definition.selection_rules.length === 0) {
+    throw profileConfigError(`${normalizedProfileId}.selection_rules must be a non-empty array`);
+  }
+  const selectionRules = definition.selection_rules.map((rule, index) => {
+    if (!rule || typeof rule !== "object" || Array.isArray(rule)) {
+      throw profileConfigError(`${normalizedProfileId}.selection_rules[${index}] must be an object`);
+    }
+    const testClass = String(rule.test_class || "").trim();
+    const surface = String(rule.surface || "").trim();
+    if (!testClass || !surface) {
+      throw profileConfigError(`${normalizedProfileId}.selection_rules[${index}] requires test_class and surface`);
+    }
+    return { test_class: testClass, surface };
+  });
+
+  const mustIncludeIds = uniqueNonEmptyStrings(
+    definition.must_include_suite_ids,
+    `${normalizedProfileId}.must_include_suite_ids`
+  );
+  const missingMustIncludes = mustIncludeIds.filter((suiteId) => !catalogById.has(suiteId));
+  if (missingMustIncludes.length > 0) {
+    throw profileConfigError(
+      `${normalizedProfileId} references missing must-include suites: ${missingMustIncludes.join(", ")}`,
+      "missing_must_include_suite"
+    );
+  }
+
+  if (!Array.isArray(definition.exclusions)) {
+    throw profileConfigError(`${normalizedProfileId}.exclusions must be an array`);
+  }
+  const exclusionIds = new Set();
+  const explicitExclusions = definition.exclusions.map((entry, index) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      throw profileConfigError(`${normalizedProfileId}.exclusions[${index}] must be an object`);
+    }
+    const suiteId = String(entry.suite_id || "").trim();
+    const reason = String(entry.reason || "").trim();
+    const owner = String(entry.owner || "").trim();
+    const reviewBy = String(entry.review_by || "").trim();
+    if (!suiteId || !reason || !owner || !/^\d{4}-\d{2}-\d{2}$/.test(reviewBy)) {
+      throw profileConfigError(
+        `${normalizedProfileId}.exclusions[${index}] requires suite_id, reason, owner, and ISO review_by`
+      );
+    }
+    if (!catalogById.has(suiteId)) {
+      throw profileConfigError(`${normalizedProfileId} excludes unknown suite: ${suiteId}`, "unknown_excluded_suite");
+    }
+    if (exclusionIds.has(suiteId)) {
+      throw profileConfigError(`${normalizedProfileId} excludes ${suiteId} more than once`, "duplicate_excluded_suite");
+    }
+    exclusionIds.add(suiteId);
+    return { suite_id: suiteId, reason, owner, review_by: reviewBy };
+  });
+
+  const selectedByRule = suites.filter((item) => selectionRules.some((rule) =>
+    item.test_class === rule.test_class && (item.surfaces || []).includes(rule.surface)
+  ));
+  const selectedIdSet = new Set([
+    ...selectedByRule.map((item) => item.id),
+    ...mustIncludeIds,
+  ]);
+  for (const suiteId of exclusionIds) selectedIdSet.delete(suiteId);
+
+  const excludedMustIncludes = mustIncludeIds.filter((suiteId) => exclusionIds.has(suiteId));
+  if (excludedMustIncludes.length > 0) {
+    throw profileConfigError(
+      `${normalizedProfileId} excludes must-include suites: ${excludedMustIncludes.join(", ")}`,
+      "excluded_must_include_suite"
+    );
+  }
+  const selectedSuites = suites.filter((item) => selectedIdSet.has(item.id));
+  if (selectedSuites.length === 0) {
+    throw profileConfigError(`${normalizedProfileId} selected zero suites`, "empty_release_profile");
+  }
+  const optionalSelected = selectedSuites.filter((item) => item.required === false).map((item) => item.id);
+  if (optionalSelected.length > 0) {
+    throw profileConfigError(
+      `${normalizedProfileId} selected non-required suites: ${optionalSelected.join(", ")}`,
+      "optional_release_suite"
+    );
+  }
+
+  const omittedByRule = suites
+    .filter((item) => !selectedIdSet.has(item.id) && !exclusionIds.has(item.id))
+    .map((item) => ({ suite_id: item.id, reason: "not_selected_by_profile_rule" }));
+  const partitionedIds = [
+    ...selectedSuites.map((item) => item.id),
+    ...explicitExclusions.map((entry) => entry.suite_id),
+    ...omittedByRule.map((entry) => entry.suite_id),
+  ];
+  if (partitionedIds.length !== suites.length || new Set(partitionedIds).size !== suites.length) {
+    throw profileConfigError(`${normalizedProfileId} does not partition the complete suite catalog`, "incomplete_profile_partition");
+  }
+
+  return {
+    id: normalizedProfileId,
+    description: String(definition.description || "").trim(),
+    selection_rules: selectionRules,
+    must_include_suite_ids: mustIncludeIds,
+    selected_suite_ids: selectedSuites.map((item) => item.id),
+    explicit_exclusions: explicitExclusions,
+    omitted_by_rule: omittedByRule,
+    catalog_suite_count: suites.length,
+    selected_suite_count: selectedSuites.length,
+    explicit_exclusion_count: explicitExclusions.length,
+    omitted_by_rule_count: omittedByRule.length,
+    selected_suites: selectedSuites,
+  };
+}
+
+function validateProfileArgs(args) {
+  if (!args.profile) return;
+  const incompatible = [];
+  if (args.only.length > 0) incompatible.push("--only");
+  if (args.phase !== "all") incompatible.push("--phase");
+  if (args.changedFiles.length > 0) incompatible.push("--changed-files");
+  if (!args.writeManifest) incompatible.push("--no-manifest");
+  if (incompatible.length > 0) {
+    throw profileConfigError(
+      `--profile cannot be combined with ${incompatible.join(", ")}`,
+      "unsafe_release_profile_narrowing"
+    );
+  }
+}
+
+function profileFailureReport(error, profileId = null) {
+  return {
+    schema_version: SCHEMA_VERSION,
+    run_id: null,
+    run_started_at: null,
+    run_finished_at: new Date().toISOString(),
+    ok: false,
+    status: "FAIL",
+    overall_status: "fail",
+    profile: profileId ? { id: profileId } : null,
+    checks: [],
+    results: [],
+    scores: buildQualityScores([]),
+    summary: {
+      total: 0,
+      passed: 0,
+      warned: 0,
+      skipped: 0,
+      not_applicable: 0,
+      not_implemented: 0,
+      failed: 1,
+      functional_proof_tests: 0,
+      quality_score_evaluations: 0,
+      quality_score: null,
+      iv_score: null,
+      ritual_score: null,
+    },
+    issues: [{
+      code: error?.code || "invalid_release_profile",
+      suite_id: null,
+      message: error?.message || String(error),
+    }],
+  };
+}
+
 function normalizeResult(item, result) {
   const status = String(result.status || "FAIL").trim().toUpperCase();
   return {
     id: result.id || item.id,
     name: result.name || result.id || item.id,
     category: result.category || item.category,
+    test_class: normalizeTestClass(result.test_class || item.test_class),
+    test_class_label: result.test_class_label || TEST_CLASS_LABELS[normalizeTestClass(result.test_class || item.test_class)],
     label: result.label || item.label,
     required: result.required !== false && item.required !== false,
     command: result.command || item.display_command,
@@ -1756,6 +3979,14 @@ function writeRunArtifacts(report, {
   const logsDir = join(reportDir, "logs");
   try {
     mkdirSync(logsDir, { recursive: true });
+    const artifactRepoStateStamp = buildRepoStateStamp({
+      cwd: repoRoot,
+      invocation: {
+        command: "tests/ive/run.mjs",
+        run_id: report.run_id,
+        phase: report.phase,
+      },
+    });
     for (const result of report.results) {
       const stdoutPath = join(logsDir, `${result.id}.stdout.log`);
       const stderrPath = join(logsDir, `${result.id}.stderr.log`);
@@ -1765,7 +3996,10 @@ function writeRunArtifacts(report, {
       result.stdout_log = repoRelPath(stdoutPath, repoRoot);
       result.stderr_log = repoRelPath(stderrPath, repoRoot);
       result.proof_artifact = repoRelPath(artifactPath, repoRoot);
-      writeFileSync(artifactPath, JSON.stringify(publicResult(result), null, 2) + "\n");
+      writeFileSync(artifactPath, JSON.stringify({
+        ...publicResult(result),
+        repo_state_stamp: report.repo_state_stamp || artifactRepoStateStamp,
+      }, null, 2) + "\n");
     }
 
     const manifestPath = join(reportDir, "manifest.json");
@@ -1775,6 +4009,8 @@ function writeRunArtifacts(report, {
       id: result.id,
       surface: result.surfaces?.[0] || result.category,
       category: result.category,
+      test_class: result.test_class,
+      test_class_label: result.test_class_label,
       status: result.manifest_status,
       status_reason: result.status_reason || "",
       required: result.required,
@@ -1783,6 +4019,7 @@ function writeRunArtifacts(report, {
       stdout_log: result.stdout_log,
       stderr_log: result.stderr_log,
     }));
+    report.findings = findingsFromIveReport(report);
     const manifest = {
       schema_version: SCHEMA_VERSION,
       run_id: report.run_id,
@@ -1790,8 +4027,12 @@ function writeRunArtifacts(report, {
       changed_files: report.changed_files,
       suites: report.suites,
       overall_status: report.overall_status,
+      scores: report.scores,
       summary: report.summary,
       issues: report.issues,
+      findings: report.findings,
+      repo_state_stamp: report.repo_state_stamp || artifactRepoStateStamp,
+      ...(report.profile ? { profile: report.profile } : {}),
     };
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
     return { ok: true, manifest_path: report.manifest_path, report_dir: report.report_dir };
@@ -1806,13 +4047,39 @@ function runConformance({
   phase = "all",
   changedFiles = [],
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  minimumTimeoutMs = null,
   executeCommand = executeSuite,
   writeManifest = false,
   runId = null,
   repoRoot = REPO_ROOT,
   reportRoot = REPORT_ROOT,
+  profile = null,
+  planTarget = null,
 } = {}) {
+  if (profile) {
+    const activeIds = suites.map((item) => item.id);
+    const governedIds = Array.isArray(profile.selected_suite_ids) ? profile.selected_suite_ids : [];
+    if (
+      activeIds.length !== governedIds.length
+      || activeIds.some((suiteId, index) => suiteId !== governedIds[index])
+    ) {
+      throw profileConfigError(
+        `${profile.id || "release profile"} suite execution does not match its governed selection`,
+        "release_profile_selection_mismatch"
+      );
+    }
+  }
   const runStartedAt = new Date().toISOString();
+  const sourceRepoStateStamp = profile
+    ? buildRepoStateStamp({
+      cwd: repoRoot,
+      invocation: {
+        command: "tests/ive/run.mjs",
+        profile: profile.id,
+        phase,
+      },
+    })
+    : null;
   const normalizedChangedFiles = splitChangedFiles(changedFiles);
   const baseSelected = suites.filter((item) => selectedByOnly(item, only) && selectedByPhase(item, phase));
   const selected = normalizedChangedFiles.length
@@ -1828,13 +4095,22 @@ function runConformance({
     });
   }
 
-  const results = selected.map((item) => normalizeResult(
-    item,
-    executeCommand(item, {
-      timeoutMs: Number.isFinite(item.timeout_ms) && item.timeout_ms > 0 ? item.timeout_ms : timeoutMs,
+  const results = selected.map((item) => {
+    const declaredTimeoutMs = Number.isFinite(item.timeout_ms) && item.timeout_ms > 0
+      ? item.timeout_ms
+      : timeoutMs;
+    const effectiveTimeoutMs = Number.isFinite(minimumTimeoutMs) && minimumTimeoutMs > 0
+      ? Math.max(declaredTimeoutMs, minimumTimeoutMs)
+      : declaredTimeoutMs;
+    return normalizeResult(
+      item,
+      executeCommand(item, {
+      timeoutMs: effectiveTimeoutMs,
       repoRoot,
-    })
-  ));
+      planTarget,
+      })
+    );
+  });
 
   if (baseSelected.length > 0 && normalizedChangedFiles.length > 0 && selected.length === 0) {
     results.push(syntheticNotApplicableResult(normalizedChangedFiles));
@@ -1879,6 +4155,13 @@ function runConformance({
         missing_fixtures: result.missing_fixtures || [],
       });
     }
+    if (profile && result.status !== "PASS") {
+      issues.push({
+        code: "profile_suite_non_pass",
+        suite_id: result.id,
+        message: `${profile.id} requires PASS but ${result.id} reported ${result.status}`,
+      });
+    }
   }
 
   const passedCount = results.filter((result) => result.status === "PASS").length;
@@ -1887,6 +4170,7 @@ function runConformance({
   const overallStatus = status === "FAIL"
     ? "fail"
     : warningCount > 0 || skippedCount > 0 ? "warn" : allNotApplicable ? "not_applicable" : "pass";
+  const scores = buildQualityScores(results);
   const report = {
     schema_version: SCHEMA_VERSION,
     run_id: sanitizeRunId(runId),
@@ -1905,6 +4189,8 @@ function runConformance({
     not_applicable_count: notApplicableCount,
     not_implemented_count: notImplementedCount,
     categories: [...new Set(results.map((result) => result.category))],
+    test_classes: [...new Set(results.map((result) => result.test_class))],
+    scores,
     results,
     checks: results,
     summary: {
@@ -1915,8 +4201,29 @@ function runConformance({
       not_applicable: notApplicableCount,
       not_implemented: notImplementedCount,
       failed: results.filter((result) => FAILING_STATUSES.has(result.status) || result.status === "FAIL").length,
+      functional_proof_tests: results.filter((result) => result.test_class === TEST_CLASS_FUNCTIONAL_PROOF).length,
+      quality_score_evaluations: results.filter((result) => result.test_class === TEST_CLASS_QUALITY_SCORE).length,
+      quality_score: scores.quality_score.current,
+      iv_score: scores.iv_score.current,
+      ritual_score: scores.ritual_score.current,
     },
     issues,
+    ...(profile ? {
+      profile: {
+        id: profile.id,
+        description: profile.description,
+        selection_rules: profile.selection_rules,
+        must_include_suite_ids: profile.must_include_suite_ids,
+        selected_suite_ids: profile.selected_suite_ids,
+        explicit_exclusions: profile.explicit_exclusions,
+        omitted_by_rule: profile.omitted_by_rule,
+        catalog_suite_count: profile.catalog_suite_count,
+        selected_suite_count: profile.selected_suite_count,
+        explicit_exclusion_count: profile.explicit_exclusion_count,
+        omitted_by_rule_count: profile.omitted_by_rule_count,
+      },
+      repo_state_stamp: sourceRepoStateStamp,
+    } : {}),
   };
 
   if (writeManifest) {
@@ -1933,6 +4240,9 @@ function runConformance({
     }
   }
 
+  if (!Array.isArray(report.findings)) {
+    report.findings = findingsFromIveReport(report);
+  }
   report.results = report.results.map(publicResult);
   report.checks = report.results;
 
@@ -1954,6 +4264,8 @@ function listSuites(suites = DEFAULT_SUITES) {
     suites: suites.map((item) => ({
       id: item.id,
       category: item.category,
+      test_class: item.test_class,
+      test_class_label: item.test_class_label,
       label: item.label,
       required: item.required !== false,
       phases: item.phases || [],
@@ -1973,8 +4285,11 @@ function parseArgs(argv = []) {
     phase: "all",
     changedFiles: [],
     runId: null,
+    profile: null,
+    planTarget: null,
     writeManifest: true,
     timeoutMs: DEFAULT_TIMEOUT_MS,
+    minimumTimeoutMs: null,
     help: false,
   };
 
@@ -1991,13 +4306,22 @@ function parseArgs(argv = []) {
     else if (arg.startsWith("--changed-files=")) parsed.changedFiles.push(arg.slice("--changed-files=".length));
     else if (arg === "--run-id") parsed.runId = argv[++index] || null;
     else if (arg.startsWith("--run-id=")) parsed.runId = arg.slice("--run-id=".length) || null;
+    else if (arg === "--profile") parsed.profile = argv[++index] || null;
+    else if (arg.startsWith("--profile=")) parsed.profile = arg.slice("--profile=".length) || null;
+    else if (arg === "--plan-target") parsed.planTarget = argv[++index] || null;
+    else if (arg.startsWith("--plan-target=")) parsed.planTarget = arg.slice("--plan-target=".length) || null;
     else if (arg === "--no-manifest") parsed.writeManifest = false;
     else if (arg === "--timeout-ms") parsed.timeoutMs = Number.parseInt(argv[++index] || "", 10);
     else if (arg.startsWith("--timeout-ms=")) parsed.timeoutMs = Number.parseInt(arg.slice("--timeout-ms=".length), 10);
+    else if (arg === "--minimum-timeout-ms") parsed.minimumTimeoutMs = Number.parseInt(argv[++index] || "", 10);
+    else if (arg.startsWith("--minimum-timeout-ms=")) parsed.minimumTimeoutMs = Number.parseInt(arg.slice("--minimum-timeout-ms=".length), 10);
   }
 
   if (!Number.isFinite(parsed.timeoutMs) || parsed.timeoutMs <= 0) {
     parsed.timeoutMs = DEFAULT_TIMEOUT_MS;
+  }
+  if (!Number.isFinite(parsed.minimumTimeoutMs) || parsed.minimumTimeoutMs <= 0) {
+    parsed.minimumTimeoutMs = null;
   }
 
   return parsed;
@@ -2011,6 +4335,9 @@ function usage() {
   node .agent/skills/iterative-planner/tests/ive/run.mjs --phase <phase-id> [--json]
   node .agent/skills/iterative-planner/tests/ive/run.mjs --changed-files <file-list> [--json]
   node .agent/skills/iterative-planner/tests/ive/run.mjs --run-id <stable-id> [--json]
+  node .agent/skills/iterative-planner/tests/ive/run.mjs --minimum-timeout-ms <milliseconds> [--json]
+  node .agent/skills/iterative-planner/tests/ive/run.mjs --profile <profile-id> [--json]
+  node .agent/skills/iterative-planner/tests/ive/run.mjs --plan-target <plan-dir-name> [--json]
   node .agent/skills/iterative-planner/tests/ive/run.mjs --no-manifest [--json]`;
 }
 
@@ -2018,8 +4345,13 @@ function printText(report) {
   if (report.status === "LIST") {
     console.log(`IVE conformance suites: ${report.suite_count}`);
     for (const item of report.suites) {
-      console.log(`  - ${item.id} [${item.category}] ${item.command}`);
+      console.log(`  - ${item.id} [${item.category}; ${item.test_class}] ${item.command}`);
     }
+    return;
+  }
+  if (report.status === "FAIL" && !report.run_started_at) {
+    console.log("IVE conformance runner: FAIL");
+    for (const issue of report.issues || []) console.log(`  ${issue.code}: ${issue.message}`);
     return;
   }
 
@@ -2027,6 +4359,9 @@ function printText(report) {
   console.log(`  started:  ${report.run_started_at}`);
   console.log(`  finished: ${report.run_finished_at}`);
   console.log(`  checks:   ${report.summary.passed} passed / ${report.summary.failed} failed`);
+  console.log(`  quality score: ${report.scores.quality_score.current ?? "n/a"} (${report.scores.quality_score.source_status})`);
+  console.log(`  IV score:      ${report.scores.iv_score.current ?? "n/a"} (${report.scores.iv_score.source_status})`);
+  console.log(`  ritual score:  ${report.scores.ritual_score.current ?? "n/a"} (${report.scores.ritual_score.source_status})`);
   console.log();
   for (const result of report.results) {
     const icon = result.status === "PASS" ? "PASS" : result.status === "SKIPPED" ? "SKIP" : "FAIL";
@@ -2045,17 +4380,36 @@ function main(argv = process.argv.slice(2)) {
     return 0;
   }
 
-  const report = args.list
-    ? listSuites(DEFAULT_SUITES)
-    : runConformance({
-      suites: DEFAULT_SUITES,
-      only: args.only,
-      phase: args.phase,
-      changedFiles: args.changedFiles,
-      timeoutMs: args.timeoutMs,
-      runId: args.runId,
-      writeManifest: args.writeManifest,
-    });
+  let report;
+  try {
+    validateProfileArgs(args);
+    const profile = args.profile
+      ? resolveReleaseProfile({ profileId: args.profile, suites: DEFAULT_SUITES })
+      : null;
+    const suites = profile ? profile.selected_suites : DEFAULT_SUITES;
+    report = args.list
+      ? {
+        ...listSuites(suites),
+        ...(profile ? { profile: {
+          ...profile,
+          selected_suites: undefined,
+        } } : {}),
+      }
+      : runConformance({
+        suites,
+        only: args.only,
+        phase: args.phase,
+        changedFiles: args.changedFiles,
+        timeoutMs: args.timeoutMs,
+        minimumTimeoutMs: args.minimumTimeoutMs,
+        runId: args.runId,
+        writeManifest: args.writeManifest,
+        profile,
+        planTarget: args.planTarget,
+      });
+  } catch (error) {
+    report = profileFailureReport(error, args.profile);
+  }
 
   if (args.json) emitJson(report);
   else printText(report);
@@ -2070,6 +4424,8 @@ export {
   DEFAULT_SUITES,
   listSuites,
   parseArgs,
+  readReleaseProfiles,
+  resolveReleaseProfile,
   runConformance,
   selectSuites,
 };

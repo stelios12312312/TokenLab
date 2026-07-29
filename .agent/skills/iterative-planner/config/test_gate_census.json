@@ -1,0 +1,851 @@
+{
+  "schema_version": 1,
+  "id": "DMC-T-INTAKE-D0585FC9-E4",
+  "ticket_ref": "T-INTAKE-D0585FC9",
+  "measured_at": "2026-07-12",
+  "source_review": ".agent/skills/iterative-planner/feedback/2026-07-08-kimi-testing-review.md",
+  "counting_rule": "Top-level tests/test_*.mjs files minus distinct test filenames directly present in DEFAULT_SUITES commands; fixture-only references do not count.",
+  "starting_counts": {
+    "total_top_level_tests": 228,
+    "directly_gated": 111,
+    "ungated": 117
+  },
+  "probe_summary": {
+    "pass": 92,
+    "fail": 23,
+    "timeout_60s": 2
+  },
+  "disposition_summary": {
+    "fix_and_gate": 1,
+    "delete": 116,
+    "unspecified": 0
+  },
+  "additional_governed_cleanup": [
+    {
+      "file": "test_archetype_accomplice_conformance.mjs",
+      "disposition": "delete",
+      "rationale": "superseded_surface: the aggregate only spawned test_archetype_accomplices.mjs plus the already-direct test_quant_results_validation.mjs; the suite now runs the accomplice contract directly and avoids duplicate execution."
+    }
+  ],
+  "rows": [
+    {
+      "file": "test_adversarial_posture_contract.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_adversarial_posture_contract.mjs — path precedence and posture coverage.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_advisor_live_render.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_advisor_live_render.mjs — End-to-end test that the supervisor verdict\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_advisor_supervisor.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_advisor_supervisor.mjs — Integration smoke for the advisor supervisor wiring.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_agent_orchestration.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_agent_orchestration.mjs - e05 single-writer orchestration contract.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_annotation_hints.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Focused tests for annotation_hints.mjs.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_annotation_quality.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Focused tests for annotation_quality.mjs.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_archetype_accomplices.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "fix_and_gate",
+      "rationale": "required_consumer_repair: the governed quant-archetype-accomplices aggregate invoked this passing contract indirectly; retain it and make it the suite's direct command while deleting the redundant aggregate wrapper."
+    },
+    {
+      "file": "test_archetype_compiler_matrix.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce removed listArchetypeAcceptanceScenarios export; the legacy contract has drifted and is not worth restoring."
+    },
+    {
+      "file": "test_archetype_gate_canonicalization.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_archetype_gate_canonicalization.mjs — Deterministic alias and proof-label coverage for plan gates.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_archetype_gate_matrix.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce removed listArchetypeAcceptanceScenarios export; the legacy contract has drifted and is not worth restoring."
+    },
+    {
+      "file": "test_archetype_ontology_diagnostics_matrix.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce removed listArchetypeAcceptanceScenarios export; the legacy contract has drifted and is not worth restoring."
+    },
+    {
+      "file": "test_archetype_preflight_scenarios.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_archetype_preflight_scenarios.mjs — Registry-driven routing coverage for representative archetype tasks.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_betting_market_pack.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Focused coverage for T-INTAKE-63D151BC betting-market clean-room pack.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_bootstrap_registry.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce missing story_registry fixture; the legacy contract has drifted and is not worth restoring."
+    },
+    {
+      "file": "test_bootstrap_state_surface.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"@planner:module = bootstrap_state_surface_test\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_checklist_runner_yaml_lists.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_checklist_runner_yaml_lists.mjs — Ensure the standalone checklist runner\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_chore_shape.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce stale chore-shape behavior assertion; the legacy contract has drifted and is not worth restoring."
+    },
+    {
+      "file": "test_close_signal_defaults.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Regression coverage for close-signal defaults at the JS -> Prolog seam.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_commit_msg_hook.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce stale hook output assertion; the legacy contract has drifted and is not worth restoring."
+    },
+    {
+      "file": "test_consolidation_receipt.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_consolidation_receipt.mjs - R4 before/after consolidation receipt contract.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_convention_inducer.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"convention inducer\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_conventions_cli.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"conventions cli\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_crypto_execution_pack.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Focused coverage for T-INTAKE-8547774C crypto execution-realism pack.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_discovery_policy.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_discovery_policy.mjs — bounded repo-local discovery policy coverage.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_discovery_policy_scaffold.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_discovery_policy_scaffold.mjs — additive scaffold suggestions for planner.discovery.json.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_emit_json_cli.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "superseded_surface: compatibility wrapper delegates entirely to the already-governed test_cli_determinism.mjs suite."
+    },
+    {
+      "file": "test_episode_source_harvest.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_episode_source_harvest.mjs - Direct-local episode source harvest contracts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_gate_doc_sources.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_gate_doc_sources.mjs — Guard against I-014 false positives when\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_gate_registry.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_gate_registry.mjs — contract coverage for the normalized gate registry helper.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_generate_tests.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the 2026-07-12 direct probe failed for \"generate tests\"; this ungoverned legacy contract has no acceptance owner and is not worth repairing."
+    },
+    {
+      "file": "test_github_ticket_review.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_github_ticket_review.mjs — GitHub ticket review CLI contracts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_health_delta_ack.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_health_delta_ack.mjs — Regression tests for intentional health-delta acknowledgement parsing.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_incident_close_gates.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_incident_close_gates.mjs — ticket-scoped fail-closed incident closeout contracts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_incident_orchestration.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_incident_orchestration.mjs — ticket-scoped incident front-door contracts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_incident_persona_activation.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_incident_persona_activation.mjs — ticket-scoped domain pack activation contracts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_incident_preflight_plugins.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_incident_preflight_plugins.mjs — ticket-scoped incident preflight plugin contracts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_issue_history_cache.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_issue_history_cache.mjs — deterministic GitHub Issue history cache contracts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_issue_history_facts.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_issue_history_facts.mjs — ontology facts over deterministic GitHub Issue cache.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_ive_release_handoff.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_ive_release_handoff.mjs - IVE Runtime Phase 6 release-handoff proof.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_kb_relevance.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_kb_relevance.mjs — F-05 contract: knowledge_resolver must expose a\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_knowledge_benchmark.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the 2026-07-12 direct probe failed for \"test_knowledge_benchmark.mjs — contract coverage for knowledge_benchmark.mjs summary metrics.\"; this ungoverned legacy contract has no acceptance owner and is not worth repairing."
+    },
+    {
+      "file": "test_knowledge_promotion.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_knowledge_promotion.mjs — promote-knowledge scaffolds host-owned KB overlays additively.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_knowledge_receipt.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_knowledge_receipt.mjs - Knowledge Receipt helper contracts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_knowledge_resolver.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the 2026-07-12 direct probe failed for \"test_knowledge_resolver.mjs — thematic coverage for deterministic knowledge discovery.\"; this ungoverned legacy contract has no acceptance owner and is not worth repairing."
+    },
+    {
+      "file": "test_learned_obligations_schema.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_learned_obligations_schema.mjs\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_markdown_table_parser.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_markdown_table_parser.mjs — shared markdown table parser regressions.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_migration.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the 2026-07-12 direct probe failed for \"test_migration.mjs — User journey test for migration flow.\"; this ungoverned legacy contract has no acceptance owner and is not worth repairing."
+    },
+    {
+      "file": "test_migration_wave_policy.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce drifted verify-fleet classification counts; the legacy contract has drifted and is not worth restoring."
+    },
+    {
+      "file": "test_mistake_mitigation_linter.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_mistake_mitigation_linter.mjs — active mistake guard/hook lint contracts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_ontology_context.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"ontology context\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_ontology_fix_supervisor.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_ontology_fix_supervisor.mjs — Phase B integration tests for the\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_ontology_inducer.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"ontology inducer\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_ontology_live_render.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_ontology_live_render.mjs — End-to-end test that the Suggested Fixes\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_ontology_pack_guard_contract.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Focused coverage for ontology-to-pack guard contract records and surfaces.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_ontology_schema.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce removed ontology schema path; the legacy contract has drifted and is not worth restoring."
+    },
+    {
+      "file": "test_parallel_plan_targeting.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_parallel_plan_targeting.mjs — Regression coverage for parallel plan\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_path_classifiers.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_path_classifiers.mjs — Path-classification contract for the test-evidence gate.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_persona_artifacts.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_persona_artifacts.mjs — focused coverage for persona summaries and ontology facts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_persona_execution.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Focused coverage for persona_execute.mjs.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_persona_manifest_ci.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Focused coverage for the persona manifest CI backstop.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_plan_metrics.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the 2026-07-12 direct probe failed for \"test_plan_metrics.mjs — focused regression coverage for Phase 0.5 plan metrics capture.\"; this ungoverned legacy contract has no acceptance owner and is not worth repairing."
+    },
+    {
+      "file": "test_plan_shape.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_plan_shape.mjs — v7.3.0 plan-shape detection contract.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_planner_dogfood_routing.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_planner_dogfood_routing.mjs — advisor/steward routing for planner dogfood incidents.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_planner_e2e_regressions.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Realistic end-to-end regressions for recent planner anti-ritual failures.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_planner_findings.mjs",
+      "observed_status": "TIMEOUT_60S",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the broad legacy smoke \"test_planner_findings.mjs — regression coverage for the deterministic findings script.\" exceeded the 60-second row budget and duplicates governed integration coverage; retaining it would break the 420-second battery envelope."
+    },
+    {
+      "file": "test_planner_hygiene.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_planner_hygiene.mjs — focused regression coverage for planner_hygiene.mjs\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_planner_score_health_closeout.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_planner_score_health_closeout.mjs - score-health closeout runbook contract tests.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_planner_script_smoke.mjs",
+      "observed_status": "TIMEOUT_60S",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the broad legacy smoke \"test_planner_script_smoke.mjs — Smoke coverage for planner utility scripts\" exceeded the 60-second row budget and duplicates governed integration coverage; retaining it would break the 420-second battery envelope."
+    },
+    {
+      "file": "test_planner_support_contracts.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_planner_support_contracts.mjs\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_program_idea_intake.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_program_idea_intake.mjs — Program Manager idea-to-ticket intake contracts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_program_packet_lightweight.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_program_packet_lightweight.mjs — the lightweight child-plan tier.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_project_health_story_registry.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_project_health_story_registry.mjs — project_health consumes canonical\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_project_lifecycle.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce missing legacy version fixture; the legacy contract has drifted and is not worth restoring."
+    },
+    {
+      "file": "test_proof_telemetry.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_proof_telemetry.mjs — focused regression coverage for planner proof telemetry.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_proportionality.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_proportionality.mjs — the ceremony-to-substance signal.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_quant_exploration_persona.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_quant_exploration_persona.mjs - focused coverage for aggressive exploration guidance.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_quant_ive_knowledge_packs.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_quant_ive_knowledge_packs.mjs - IVE fact-route coverage for quant packs.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_quant_persona_gate.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_quant_persona_gate.mjs - deterministic quant/persona ticket gate contracts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_real_project_benchmark_manifest.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_real_project_benchmark_manifest.mjs — contract coverage for registry-backed real-project benchmark cohorts.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_recipe_fleet_audit.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the 2026-07-12 direct probe failed for \"test_recipe_fleet_audit.mjs — Fixture proof for read-only recipe fleet audit.\"; this ungoverned legacy contract has no acceptance owner and is not worth repairing."
+    },
+    {
+      "file": "test_red_team_artifact_contracts.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_red_team_artifact_contracts.mjs — structured anti-pattern artifact coverage.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_red_team_depth_gate.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_red_team_depth_gate.mjs — Ensure execute-to-reflect grades red-team\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_reflect_gate_reflection_enforcement.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the 2026-07-12 direct probe failed for \"reflect gate reflection enforcement\"; this ungoverned legacy contract has no acceptance owner and is not worth repairing."
+    },
+    {
+      "file": "test_reflection_guide.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"reflection guide\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_repair_packet_examples.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_repair_packet_examples.mjs - Staleness defense for repair-surface examples.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_repo_state_stamp.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"@planner:module = repo_state_stamp_test\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_retro_promotion_incident_guards.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the 2026-07-12 direct probe failed for \"test_retro_promotion_incident_guards.mjs — ticket-scoped retro promotion guard contracts.\"; this ungoverned legacy contract has no acceptance owner and is not worth repairing."
+    },
+    {
+      "file": "test_retro_recurrence_check.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the 2026-07-12 direct probe failed for \"test_retro_recurrence_check.mjs — deterministic retro/mistake recurrence guard contracts.\"; this ungoverned legacy contract has no acceptance owner and is not worth repairing."
+    },
+    {
+      "file": "test_retro_registry.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_retro_registry.mjs — smoke coverage for the structured retro archive loader and CLI.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_ritual_contracts.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"ritual contracts\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_root_instruction_renderer.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"root instruction renderer\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_semantic_hygiene.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Focused tests for semantic graph hygiene facts and insight induction.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_semantic_maintenance.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Focused coverage for fleet semantic maintenance and safe host repair.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_session_persistence.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the 2026-07-12 direct probe failed for \"test_session_persistence.mjs — e07 disk-first session funnel regressions.\"; this ungoverned legacy contract has no acceptance owner and is not worth repairing."
+    },
+    {
+      "file": "test_shape_ripple.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_shape_ripple.mjs — v7.3.1 shape-conditional gates ripple to PLAN/ETR/VAL.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_sidekick.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"sidekick\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_source_parity_guard.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_source_parity_guard.mjs — source-kit parity close guard coverage.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_story_registry_prune.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_story_registry_prune.mjs — contract coverage for safe stale-ref pruning.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_supervisor_migration_parity.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_supervisor_migration_parity.mjs — Phase D test: verify migrate.mjs\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_supervisor_redteam.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_supervisor_redteam.mjs — Regression test for the red-team audit findings\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_supervisor_runner.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_supervisor_runner.mjs — Unit tests for lib/supervisor_runner.mjs.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_task_focus_contract.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"Focused coverage for the Task Focus Contract steering controller.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_test_run_record.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test run record\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_thrashing_detector.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"thrashing detector\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_thrashing_thresholds.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"thrashing thresholds\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_tokenomics_pack.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_tokenomics_pack.mjs - Contract coverage for the tokenomics persona pack.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_traceability_engine.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_traceability_engine.mjs — Focused coverage for the annotation-connected\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_triage.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_triage.mjs — v7.4.4 generalised triage contract.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_unused_script_invariant.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce drifted unused-script invariant semantics; the legacy contract has drifted and is not worth restoring."
+    },
+    {
+      "file": "test_v7_4_1_bugfixes.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_v7_4_1_bugfixes.mjs — Tennis incident bug fixes.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_v7_4_2_bugfixes.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce missing legacy current-plan fixture; the legacy contract has drifted and is not worth restoring."
+    },
+    {
+      "file": "test_validate_mini_reflection.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"validate mini reflection\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_validate_reflection.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"validate reflection\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_verification_strategy.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"verification strategy\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_version_routing.mjs",
+      "observed_status": "PASS",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "obsolete_ungoverned_surface: the ad-hoc probe passed, but \"test_version_routing.mjs — Contract coverage for Phase 6 version routing.\" has no direct IVE owner or current acceptance requirement; deleting it avoids false-confidence furniture and unbudgeted duplicate battery cost."
+    },
+    {
+      "file": "test_workflow_migration_inventory.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": false,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: the 2026-07-12 direct probe failed for \"test_workflow_migration_inventory.mjs — Contract coverage for Phase 6 workflow inventory.\"; this ungoverned legacy contract has no acceptance owner and is not worth repairing."
+    },
+    {
+      "file": "test_workflow_registry.mjs",
+      "observed_status": "FAIL",
+      "kimi_sample": true,
+      "disposition": "delete",
+      "rationale": "broken_not_worth_repair: Kimi and 2026-07-12 probes both reproduce stale compact-menu assertion; the legacy contract has drifted and is not worth restoring."
+    }
+  ]
+}

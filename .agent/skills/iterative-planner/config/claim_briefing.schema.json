@@ -1,0 +1,239 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iterative-planner.local/schemas/claim_briefing.schema.json",
+  "title": "Iterative Planner Claim Briefing",
+  "description": "Downward cheap-agent briefing compiled from a validated work-order and selected pack rubrics. Every question is closed, answerable from a declared contract, and linked to a source claim.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "return_type",
+    "work_order",
+    "context_refs",
+    "packs",
+    "claims",
+    "summary"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [1]
+    },
+    "return_type": {
+      "type": "string",
+      "const": "claim_briefing"
+    },
+    "work_order": {
+      "type": "object",
+      "required": ["goal", "budget"],
+      "properties": {
+        "id": { "type": ["string", "null"] },
+        "goal": { "type": "string", "minLength": 1 },
+        "budget": { "type": "object" }
+      },
+      "additionalProperties": true
+    },
+    "context_refs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "kind", "ref"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "kind": { "type": "string", "minLength": 1 },
+          "ref": { "type": "string", "minLength": 1 },
+          "description": { "type": ["string", "null"] }
+        },
+        "additionalProperties": true
+      }
+    },
+    "packs": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["pack_id", "rubric_count", "rubric_ids"],
+        "properties": {
+          "pack_id": { "type": "string", "minLength": 1 },
+          "contract_ref": { "type": ["string", "null"] },
+          "rubric_count": { "type": "integer", "minimum": 1 },
+          "rubric_ids": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "statement", "context_refs", "questions"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+          },
+          "statement": { "type": "string", "minLength": 1 },
+          "consumer": { "type": ["string", "null"] },
+          "context_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          },
+          "questions": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "$ref": "#/$defs/question" }
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "pack_count",
+        "claim_count",
+        "question_count",
+        "proof_obligation_question_count",
+        "pack_rubric_question_count",
+        "context_ref_count"
+      ],
+      "properties": {
+        "pack_count": { "type": "integer", "minimum": 1 },
+        "claim_count": { "type": "integer", "minimum": 1 },
+        "question_count": { "type": "integer", "minimum": 1 },
+        "proof_obligation_question_count": { "type": "integer", "minimum": 1 },
+        "pack_rubric_question_count": { "type": "integer", "minimum": 1 },
+        "context_ref_count": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "question": {
+      "type": "object",
+      "required": [
+        "id",
+        "claim_id",
+        "source_type",
+        "question",
+        "closed_question",
+        "allowed_answers",
+        "answer_contract",
+        "context_refs"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+        },
+        "claim_id": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+        },
+        "source_type": {
+          "type": "string",
+          "enum": ["proof_obligation", "pack_rubric"]
+        },
+        "method": {
+          "type": "string",
+          "enum": ["executed", "deterministic", "rubric"]
+        },
+        "pack_id": { "type": "string" },
+        "rubric_id": { "type": "string" },
+        "question": { "type": "string", "minLength": 1 },
+        "closed_question": { "type": "boolean", "const": true },
+        "allowed_answers": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "answer_contract": {
+          "type": "object",
+          "required": ["type"],
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["run_command", "cite_line", "compare_value", "allowed_answer"]
+            }
+          },
+          "additionalProperties": true
+        },
+        "context_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "schema_version": 1,
+      "return_type": "claim_briefing",
+      "work_order": {
+        "id": "wo_example",
+        "goal": "Compile a validated work-order into closed-question cheap-agent instructions.",
+        "budget": {
+          "max_tokens": 12000,
+          "max_cost_usd": 0,
+          "max_time_minutes": 20
+        }
+      },
+      "context_refs": [
+        {
+          "id": "plan",
+          "kind": "plan",
+          "ref": "plans/example/plan.md"
+        }
+      ],
+      "packs": [
+        {
+          "pack_id": "quant",
+          "contract_ref": ".agent/skills/iterative-planner/packs/quant/pack_contract.json",
+          "rubric_count": 2,
+          "rubric_ids": ["calibration_uncertainty", "temporal_leakage"]
+        }
+      ],
+      "claims": [
+        {
+          "id": "briefing_valid",
+          "statement": "The claim briefing schema enforces closed questions.",
+          "consumer": "cheap-agent dispatcher",
+          "context_refs": ["input:plan"],
+          "questions": [
+            {
+              "id": "q_briefing_valid_deterministic_1",
+              "claim_id": "briefing_valid",
+              "source_type": "proof_obligation",
+              "method": "deterministic",
+              "question": "Does the deterministic check for claim 'briefing_valid' pass?",
+              "closed_question": true,
+              "allowed_answers": ["pass", "fail"],
+              "answer_contract": {
+                "type": "compare_value",
+                "expected": "pass",
+                "check": "validateClaimBriefing(briefing).ok"
+              },
+              "context_refs": ["input:plan"]
+            }
+          ]
+        }
+      ],
+      "summary": {
+        "pack_count": 1,
+        "claim_count": 1,
+        "question_count": 1,
+        "proof_obligation_question_count": 1,
+        "pack_rubric_question_count": 0,
+        "context_ref_count": 1
+      }
+    }
+  ]
+}

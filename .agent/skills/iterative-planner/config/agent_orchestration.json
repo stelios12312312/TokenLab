@@ -66,16 +66,6 @@
       "tools": ["Read", "Grep"],
       "writes_shared_state": false,
       "allow_nested_agents": false
-    },
-    {
-      "id": "isolated_adversarial_auditor",
-      "phase": "VALIDATE",
-      "authority": "adversarial_auditor",
-      "model": "gpt-5-mini",
-      "effort": "medium",
-      "tools": ["Read", "Grep"],
-      "writes_shared_state": false,
-      "allow_nested_agents": false
     }
   ]
 }

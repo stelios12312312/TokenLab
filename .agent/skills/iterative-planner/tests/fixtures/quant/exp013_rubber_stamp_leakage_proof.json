@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "artifact_type": "exp013_leakage_proof",
+  "generated_at": "2026-07-05T00:00:00Z",
+  "split_evidence": {
+    "method": "walk_forward",
+    "train": {
+      "start": "2024-06-01",
+      "end": "2025-01-31"
+    },
+    "validation": {
+      "start": "2025-02-01",
+      "end": "2025-05-31"
+    },
+    "final_oos": {
+      "start": "2025-06-01",
+      "end": "2025-09-30"
+    },
+    "embargo_days": 0,
+    "folds": [
+      {
+        "train_end": "2025-01-31",
+        "test_start": "2025-02-01",
+        "test_end": "2025-05-31"
+      },
+      {
+        "train_end": "2025-05-31",
+        "test_start": "2025-06-01",
+        "test_end": "2025-09-30"
+      }
+    ],
+    "known_at_time_boundary": "Declared only: no computed assertion provenance is present."
+  },
+  "source_leakage_scan": {
+    "status": "pass",
+    "findings": [],
+    "checks": [
+      "stage2_selection_fields_forbidden_pattern_scan",
+      "one_candle_signal_lag",
+      "ordered_train_validation_replay_windows"
+    ]
+  }
+}

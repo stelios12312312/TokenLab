@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "pack_id": "incomplete_pack",
+  "rubrics": [
+    {
+      "id": "open_prompt",
+      "question": "What should this pack do?",
+      "closed_question": false,
+      "allowed_answers": ["anything"]
+    }
+  ],
+  "checkers": [
+    {
+      "id": "manual_checker",
+      "deterministic": false,
+      "seeded_defect_ids": ["missing-defect"]
+    }
+  ],
+  "calibration_ref": ".agent/skills/iterative-planner/packs/quant/calibration.json",
+  "goldens_ref": ".agent/skills/iterative-planner/tests/fixtures/pack_contract/goldens.json",
+  "serves_projects": ["example"]
+}

@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portable-agent-kit.invalid/schemas/irreversible_action_registry.schema.json",
+  "title": "Irreversible action registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "overlay_path",
+    "supported_modes",
+    "preview_modes",
+    "confirmation",
+    "persona_obligations",
+    "action_classes"
+  ],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "const": 1 },
+    "overlay_path": { "type": "string", "minLength": 1 },
+    "supported_modes": {
+      "type": "array",
+      "minItems": 3,
+      "uniqueItems": true,
+      "items": { "enum": ["draft", "dry_run", "execute"] }
+    },
+    "preview_modes": {
+      "type": "array",
+      "minItems": 2,
+      "uniqueItems": true,
+      "items": { "enum": ["draft", "dry_run"] }
+    },
+    "confirmation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_source",
+        "generated_must_be",
+        "delegated_must_be",
+        "require_actor",
+        "require_recorded_at",
+        "require_context_binding",
+        "max_age_seconds",
+        "max_future_skew_seconds",
+        "text_hash",
+        "intent_policy"
+      ],
+      "properties": {
+        "required_source": { "const": "direct_user_input" },
+        "generated_must_be": { "const": false },
+        "delegated_must_be": { "const": false },
+        "require_actor": { "const": true },
+        "require_recorded_at": { "const": true },
+        "require_context_binding": { "const": true },
+        "max_age_seconds": { "type": "integer", "minimum": 1 },
+        "max_future_skew_seconds": { "type": "integer", "minimum": 0 },
+        "text_hash": { "const": "sha256" },
+        "intent_policy": { "const": "bounded_affirmative_v1" }
+      }
+    },
+    "persona_obligations": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "action_classes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/action_class" }
+    }
+  },
+  "$defs": {
+    "action_class": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "aliases",
+        "intent_phrases",
+        "required_fields"
+      ],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "label": { "type": "string", "minLength": 1 },
+        "aliases": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "intent_phrases": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "confirmation_token": {
+          "type": "string",
+          "minLength": 1,
+          "deprecated": true,
+          "description": "Compatibility-only project overlay field. Ignored and removed from normalized runtime data."
+        },
+        "required_fields": {
+          "type": "array",
+          "minItems": 2,
+          "uniqueItems": true,
+          "items": { "enum": ["target", "payload_ref"] }
+        }
+      }
+    }
+  }
+}

@@ -6,10 +6,19 @@ description: Upgrade and annotate all planner-enabled projects to the latest ver
 
 Upgrades every discovered planner project to the latest version, bootstraps `@planner:` annotations, and generates per-project review checklists. Run this from the Iterative Planner source repository.
 
+This workflow is fleet-only. It uses the source repo's cached project registry
+as a batch orchestration surface for `scan`, `upgrade-all`, `annotate-all`,
+`verify-fleet`, and migration-wave review. A single downstream project does not
+need to register with the source repo to run `setup <path>`, `upgrade <path>`,
+`verify <path>`, or IVE migration commands by explicit path. Stale registry
+paths are fleet drift: refresh the cache with `scan`, but do not report them as
+per-project migration failures.
+
 ## Prerequisites
 
 - You must be in the Iterative Planner source repo (the one with the canonical `.agent/skills/iterative-planner/`)
 - Node.js available at `/opt/homebrew/bin/node` or on PATH
+- The cached project registry is only for fleet/batch commands. Do not require a target project to be registered before running individual migration commands against its path.
 
 ## Phase 1: Discover Projects
 
@@ -19,19 +28,19 @@ Upgrades every discovered planner project to the latest version, bootstraps `@pl
    ```
    Paste the output. This finds all projects with `.agent/skills/iterative-planner/SKILL.md` under standard directories.
 
-2. **Review the project list**. Confirm with the user which projects to include. If all are correct, proceed.
+2. **Review the project list**. Confirm with the user which projects to include. If all are correct, proceed. Missing or stale paths in this list are fleet cache drift only; they do not block an individual project from being migrated by explicit path.
 
 ## Phase 2: Upgrade All
 
 3. **Upgrade all projects** to the latest planner version:
    ```bash
-   node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade-all
+   node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade-all --commit
    ```
    Paste the full output. Every project should show `UPGRADE COMPLETE — X.Y.Z → <latest>`.
 
 4. **Check for failures**. If any project failed:
    - Note the failure reason
-   - Attempt individual upgrade: `node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade "<path>"`
+   - Attempt individual upgrade: `node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade "<path>" --commit`
    - If still failing, skip it and note it for the user
    - If a project was previously hard-blocked on repeated gate retries, run `node .agent/skills/iterative-planner/scripts/bootstrap.mjs fix-stuck` in that repo after the upgrade to detect any history-poisoned plans before retrying transitions
 
@@ -83,6 +92,7 @@ Upgrades every discovered planner project to the latest version, bootstraps `@pl
    - 0 validation artifacts = no validation files detected
    - 0 audit passes = no red_team_notes.md
    - stale root instruction front doors = run `migrate.mjs setup "<path>"` so the current planner snapshot is visible to operators
+   - stale project-registry paths = fleet cache drift only; run `migrate.mjs scan` from the source repo, not per-project repair
    - missing PostToolUse telemetry hook or zero stored telemetry history = run `cd "<path>" && sh .agent/skills/iterative-planner/scripts/hooks/run-node.sh .agent/skills/iterative-planner/scripts/hooks/install.mjs --trace-hook`
 
 10. **Generate consolidation task list**. For each project, note what manual work remains:

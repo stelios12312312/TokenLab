@@ -6,9 +6,17 @@
 // by default; use --write to persist persona_execution.json/md in the target plan.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { basename, join } from "path";
+import { basename, join, resolve } from "path";
 import { getPaths, getSkillPath, resolvePlanTarget } from "./lib/plan_utils.mjs";
 import { inferPersonaAdaptation } from "./lib/persona_adaptation.mjs";
+import {
+  compileClaimBriefingFromFiles,
+  renderClaimBriefingMarkdown,
+} from "./lib/claim_briefing_compiler.mjs";
+import {
+  PACK_CONTRACT_FILENAME,
+  defaultPacksDir,
+} from "./lib/pack_contract.mjs";
 import {
   buildProjectContext,
   collectPhaseGuidance,
@@ -42,6 +50,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     strictUnderfit: false,
     phase: DEFAULT_PHASE,
     plan: null,
+    briefing: false,
+    workOrder: null,
+    packIds: [],
   };
 
   for (let i = 0; i < argv.length; i++) {
@@ -52,6 +63,9 @@ function parseArgs(argv = process.argv.slice(2)) {
     else if (arg === "--strict-underfit") flags.strictUnderfit = true;
     else if (arg === "--phase" && argv[i + 1]) flags.phase = normalizePhase(argv[++i]);
     else if (arg === "--plan" && argv[i + 1]) flags.plan = argv[++i];
+    else if (arg === "--briefing") flags.briefing = true;
+    else if (arg === "--work-order" && argv[i + 1]) flags.workOrder = argv[++i];
+    else if (arg === "--pack" && argv[i + 1]) flags.packIds.push(argv[++i]);
     else {
       throw new Error(`Unknown argument: ${arg}`);
     }
@@ -128,6 +142,7 @@ function configObligations(adaptation, flags) {
     BLOCKING_ADAPTATION_STATUSES.has(status) ||
     strictUnderfit;
 
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Persona adaptation status is a role/configuration lifecycle enum.
   if (missingConfig || status !== "satisfied") {
     obligations.push({
       id: "persona_config_status",
@@ -259,6 +274,7 @@ async function roleProjection({ cwd, skillPath, auditConfig, plan, flags }) {
 function buildStatus({ adaptation, roleResult, obligations }) {
   if (roleResult.audit_error) return "blocked_audit_error";
   if (obligations.some((entry) => entry.blocking)) return "blocked";
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Persona adaptation status is a role/configuration lifecycle enum.
   if (adaptation?.status && adaptation.status !== "satisfied") return adaptation.status;
   return "ok";
 }
@@ -315,6 +331,37 @@ function writeArtifacts(report) {
   return [jsonPath, mdPath];
 }
 
+function selectBriefingPackIds(personaReport, flags) {
+  const explicit = unique(flags.packIds || []);
+  if (explicit.length > 0) return explicit;
+
+  const packsDir = defaultPacksDir();
+  return unique([
+    ...toArray(personaReport?.packs?.active),
+    ...toArray(personaReport?.packs?.loaded),
+  ]).filter((packId) => existsSync(join(packsDir, packId, PACK_CONTRACT_FILENAME)));
+}
+
+function resolveBriefingWorkOrderPath({ cwd, plan, flags }) {
+  if (flags.workOrder) return resolve(cwd, flags.workOrder);
+  if (plan?.present && plan?.path) return join(plan.path, "work_order.json");
+  return null;
+}
+
+function writeBriefingArtifacts(briefing, plan, cwd) {
+  if (!plan?.present || !plan?.path) {
+    briefing.write_status = "skipped_no_plan";
+    return [];
+  }
+  mkdirSync(plan.path, { recursive: true });
+  const jsonPath = join(plan.path, "claim_briefing.json");
+  const mdPath = join(plan.path, "claim_briefing.md");
+  writeFileSync(jsonPath, JSON.stringify(briefing, null, 2) + "\n", "utf-8");
+  writeFileSync(mdPath, renderClaimBriefingMarkdown(briefing), "utf-8");
+  briefing.write_status = "written";
+  return [jsonPath, mdPath].map((path) => path.replace(`${cwd}/`, ""));
+}
+
 export async function buildPersonaExecutionReport({
   cwd = process.cwd(),
   flags = {},
@@ -325,6 +372,9 @@ export async function buildPersonaExecutionReport({
     strictUnderfit: Boolean(flags.strictUnderfit),
     phase: normalizePhase(flags.phase || DEFAULT_PHASE),
     plan: flags.plan || null,
+    briefing: Boolean(flags.briefing),
+    workOrder: flags.workOrder || null,
+    packIds: unique(flags.packIds || []),
   };
   const paths = getPaths(cwd);
   const skillPath = getSkillPath(import.meta.url);
@@ -437,18 +487,103 @@ export async function buildPersonaExecutionReport({
   return report;
 }
 
+export async function buildPersonaBriefingReport({
+  cwd = process.cwd(),
+  flags = {},
+} = {}) {
+  const personaReport = await buildPersonaExecutionReport({
+    cwd,
+    flags: {
+      ...flags,
+      write: false,
+      briefing: false,
+    },
+  });
+  if ((personaReport.summary?.blocking || 0) > 0) {
+    return {
+      schema_version: VERSION,
+      return_type: "claim_briefing_error",
+      status: "FAIL",
+      phase: normalizePhase(flags.phase || DEFAULT_PHASE),
+      plan: personaReport.plan,
+      persona_projection: {
+        status: personaReport.status,
+        packs: personaReport.packs,
+        blocking_obligations: personaReport.summary?.blocking || 0,
+      },
+      work_order_path: null,
+      selected_pack_ids: unique(flags.packIds || []),
+      errors: [{
+        code: "persona_projection_blocked",
+        path: "persona_projection.blocking_obligations",
+        message: "Claim briefing compilation is blocked until persona execution has no blocking obligations.",
+      }],
+      warnings: [],
+      write_status: "not_written",
+      artifacts_written: [],
+    };
+  }
+  const packIds = selectBriefingPackIds(personaReport, flags);
+  const workOrderPath = resolveBriefingWorkOrderPath({ cwd, plan: personaReport.plan, flags });
+  const result = compileClaimBriefingFromFiles({
+    workOrderPath,
+    packIds,
+  });
+
+  if (!result.ok) {
+    return {
+      schema_version: VERSION,
+      return_type: "claim_briefing_error",
+      status: "FAIL",
+      phase: normalizePhase(flags.phase || DEFAULT_PHASE),
+      plan: personaReport.plan,
+      persona_projection: {
+        status: personaReport.status,
+        packs: personaReport.packs,
+        blocking_obligations: personaReport.summary?.blocking || 0,
+      },
+      work_order_path: workOrderPath,
+      selected_pack_ids: packIds,
+      errors: result.errors,
+      warnings: result.warnings,
+      write_status: "not_written",
+      artifacts_written: [],
+    };
+  }
+
+  const briefing = {
+    ...result.briefing,
+    persona_projection: {
+      status: personaReport.status,
+      phase: personaReport.phase,
+      packs: personaReport.packs,
+      blocking_obligations: personaReport.summary?.blocking || 0,
+    },
+    write_status: flags.write ? "pending" : "not_requested",
+    artifacts_written: [],
+  };
+  if (flags.write) {
+    briefing.artifacts_written = writeBriefingArtifacts(briefing, personaReport.plan, cwd);
+  }
+  return briefing;
+}
+
 function printHelp() {
   console.log(`persona_execute.mjs - deterministic persona execution guidance
 
 Usage:
   node persona_execute.mjs [--json] [--write] [--plan <plan-dir>] [--phase <phase>] [--strict-underfit]
+  node persona_execute.mjs --briefing [--json] [--write] [--work-order <path>] [--pack <pack-id> ...]
 
 Options:
   --json              Print machine-readable JSON.
-  --write             Write persona_execution.json and persona_execution.md to the target plan.
+  --write             Write persona_execution.* or claim_briefing.* artifacts to the target plan.
   --plan <plan-dir>   Use an explicit planner target instead of the active plan.
   --phase <phase>     Guidance phase to project. Default: execute.
   --strict-underfit   Treat advisory underfit statuses as blocking at exit.
+  --briefing          Emit a claim_briefing compiled from work_order.json and selected pack rubrics.
+  --work-order <path> Use an explicit work-order path for --briefing.
+  --pack <pack-id>    Select a pack contract for --briefing. Repeatable.
 `);
 }
 
@@ -463,13 +598,20 @@ if (isMain) {
         process.exitCode = 0;
         return;
       }
-      const report = await buildPersonaExecutionReport({ flags });
+      const report = flags.briefing
+        ? await buildPersonaBriefingReport({ flags })
+        : await buildPersonaExecutionReport({ flags });
       if (flags.json) {
         console.log(JSON.stringify(report, null, 2));
       } else {
-        console.log(renderMarkdown(report));
+        console.log(flags.briefing && report.return_type === "claim_briefing"
+          ? renderClaimBriefingMarkdown(report)
+          : renderMarkdown(report));
       }
-      process.exitCode = report.summary.blocking > 0 ? 1 : 0;
+      const blockingCount = report.return_type === "claim_briefing"
+        ? report.persona_projection?.blocking_obligations || 0
+        : report.summary?.blocking || 0;
+      process.exitCode = report.return_type === "claim_briefing_error" || blockingCount > 0 ? 1 : 0;
     } catch (error) {
       console.error(`ERROR: ${error.message}`);
       process.exitCode = 2;

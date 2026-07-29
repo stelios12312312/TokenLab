@@ -8,6 +8,7 @@ import {
   buildIveUserVerdict,
   renderIveUserVerdictText,
 } from "./lib/ive_user_verdict.mjs";
+import { normalizeVerificationStatus } from "./lib/verification_status_vocabulary.mjs";
 
 function parseArgs(argv = []) {
   const args = {
@@ -51,7 +52,8 @@ async function main(argv = process.argv.slice(2)) {
     const verdict = buildIveUserVerdict(readPacket(args.packet));
     if (args.json) console.log(JSON.stringify(verdict, null, 2));
     else process.stdout.write(renderIveUserVerdictText(verdict));
-    return verdict.status === "FAIL" ? 1 : 0;
+    const status = normalizeVerificationStatus(verdict.status, "gate");
+    return status.valid && status.token !== "UNKNOWN" && status.kind !== "fail" ? 0 : 1;
   } catch (error) {
     const result = {
       ok: false,

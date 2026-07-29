@@ -30,16 +30,21 @@ import {
   resolveAuthorityProfile,
   resolveProofPosture,
 } from "./lib/planner_phase_routing.mjs";
-import { resolveAntiRitualAssessment } from "./lib/anti_ritual_contract.mjs";
+import { resolveAntiRitualAssessment, resolveRitualMinimizationLadder } from "./lib/anti_ritual_contract.mjs";
 import { applyRecipeResolutionToClassification, resolveRecipeRequest } from "./lib/recipe_utils.mjs";
 import { deriveTaskProfileContract, evaluateSemanticUpkeepContract } from "./lib/task_profile_contracts.mjs";
+import { deriveTaskFocusContract, summarizeTaskFocusContract } from "./lib/task_focus_contract.mjs";
+import {
+  buildOntologyPackGuardContract,
+  renderOntologyPackGuardSummary,
+} from "./lib/ontology_pack_guard_contract.mjs";
 import { resolveKnowledgeFromContext } from "./knowledge_resolver.mjs";
 import {
   decidePersonaPackActivation,
+  renderPersonaAuthoritySummary,
   resolvePersonaAuthorityPlanContext,
   summarizePersonaAuthority,
 } from "./lib/persona_activation_authority.mjs";
-import { loadAsyncDriftSummary, loadDriftLlmConfig, publicDriftConfig } from "./lib/llm_drift_client.mjs";
 
 const args = process.argv.slice(2);
 const flags = {
@@ -102,7 +107,6 @@ function buildTicketIntakeComplianceContract(classification) {
       "acceptance_criteria_refs",
       "verification_refs",
       "deterministic_status",
-      "deepseek_advisory_status",
       "retro_recurrence_status",
       "retro_recurrence_blocking_count",
       "retro_recurrence_advisory_count",
@@ -274,23 +278,38 @@ const payload = {
   draft_promotion_contract: knowledgeResolution?.draft_promotion_contract || null,
   recipe_resolution: recipeResolution,
   knowledge_resolution: knowledgeResolution,
-  advisory_engines: {
-    llm_drift: {
-      ...publicDriftConfig(loadDriftLlmConfig(process.env, { cwd })),
-      authority: "advisory_fail_open",
-      deterministic_checks_authoritative: true,
-    },
-  },
-  llm_drift_latest: usePlanContext ? loadAsyncDriftSummary(target.planDir) : null,
   ...classification,
 };
 payload.ticket_intake_compliance = buildTicketIntakeComplianceContract(classification);
 
+const focusContract = deriveTaskFocusContract({
+  cwd,
+  planDir: usePlanContext ? target.planDir : null,
+  goalText: goal,
+  intentContract: intentContractInfo?.parsed || null,
+  plannedFiles,
+  planShape: personaAuthorityContext.plan_shape,
+  triage: classification,
+  forcedPacks: auditConfig.force_packs || [],
+});
+payload.ontology_pack_guard_contract = buildOntologyPackGuardContract({
+  phase: "preflight",
+  goalText: goal,
+  taskFocusContract: focusContract,
+  plannedFiles,
+  sourceFacts: uniqueList([
+    `goal_source:${goalSource}`,
+    ...Object.entries(classification.signals || {})
+      .filter(([, value]) => value === true || (typeof value === "number" && value > 0))
+      .map(([key, value]) => `signal:${key}=${value}`),
+  ]),
+});
 const taskProfileContract = deriveTaskProfileContract({
   goalText: goal,
   classification,
   plannedFiles,
   recipeResolution,
+  taskFocusContract: focusContract,
 });
 const semanticUpkeepContract = evaluateSemanticUpkeepContract({
   planContent,
@@ -298,6 +317,7 @@ const semanticUpkeepContract = evaluateSemanticUpkeepContract({
   classification,
   plannedFiles,
   recipeResolution,
+  taskFocusContract: focusContract,
 });
 const authorityProfile = resolveAuthorityProfile({
   state: usePlanContext ? stateJson?.state : "explore",
@@ -330,7 +350,16 @@ const antiRitual = resolveAntiRitualAssessment({
   },
   activePlanPoisoned,
 });
+const ritualLadder = resolveRitualMinimizationLadder({
+  goalText: goal,
+  plannedFiles,
+  classification,
+  recipeResolution,
+  ticketIntakeCompliance: payload.ticket_intake_compliance,
+  activePlanPoisoned,
+});
 payload.authority_profile = authorityProfile;
+payload.focus_contract = focusContract;
 payload.task_profile = taskProfileContract.task_profile;
 payload.semantic_upkeep = semanticUpkeepContract.semantic_upkeep;
 payload.validation_bundle = taskProfileContract.validation_bundle;
@@ -366,6 +395,7 @@ payload.recommended_path_reason = (
   antiRitual.recommended_action === "recover_then_lightweight"
 ) ? `Anti-ritual contract: ${antiRitual.detail}` : (knowledgeResolution?.recommended_path_reason || postureRoute.reason);
 payload.anti_ritual = antiRitual;
+payload.ritual_ladder = ritualLadder;
 payload.persona_activation_authority = summarizePersonaAuthority(
   uniqueList([...(auditConfig.roles || []), ...(auditConfig.force_packs || [])])
     .filter((role) => role !== "core")
@@ -373,6 +403,8 @@ payload.persona_activation_authority = summarizePersonaAuthority(
       planShape: personaAuthorityContext.plan_shape,
       forcePacks: auditConfig.force_packs || [],
       evidence: ["planner_preflight"],
+      taskFocusContract: focusContract,
+      suppressUnspecifiedDomainPacks: true,
     }))
 );
 
@@ -390,31 +422,25 @@ if (flags.json) {
   }
   console.log(`Flow: ${payload.flow.mode} (${payload.flow.reason})`);
   console.log(`Evidence: ${payload.evidence.mode} (${payload.evidence.reason})`);
+  console.log(summarizeTaskFocusContract(payload.focus_contract));
+  const personaAuthoritySummary = renderPersonaAuthoritySummary(payload.persona_activation_authority);
+  if (personaAuthoritySummary) console.log(personaAuthoritySummary);
+  const guardSummary = renderOntologyPackGuardSummary(payload.ontology_pack_guard_contract);
+  if (guardSummary) console.log(guardSummary);
   console.log(`Task profile: ${payload.task_profile.id} | validation bundle=${payload.validation_bundle.id} | strictness=${payload.strictness_mode}`);
   console.log(`Workflow: ${payload.workflow.recommended} [${payload.escalation_reason}]`);
   console.log(`Authority / posture / path: ${payload.authority_profile.phase} / ${payload.audit_posture} / ${payload.recommended_path}`);
+  console.log(`Ritual ladder: ${payload.ritual_ladder.selected_step} (${payload.ritual_ladder.status}) - ${payload.ritual_ladder.summary}`);
+  if (payload.ritual_ladder.non_skippable.length > 0) {
+    console.log(`Non-skippable proof: ${payload.ritual_ladder.non_skippable.map((entry) => entry.id).join(", ")}`);
+  }
   if (payload.persona_activation_authority?.suppressed_packs?.length > 0) {
     console.log(`Persona authority: active=${payload.persona_activation_authority.active_packs.join(", ") || "none"} suppressed=${payload.persona_activation_authority.suppressed_packs.join(", ")}`);
-  }
-  if (payload.advisory_engines?.llm_drift) {
-    const provider = payload.advisory_engines.llm_drift;
-    const phaseList = (provider.phases || []).join(",") || "none";
-    if (provider.configured) {
-      const label = provider.using_deepseek_alias || /deepseek/i.test(provider.base_url || "") ? "DeepSeek" : "OpenAI-compatible";
-      console.log(`Advisory engines: LLM drift ${label} active (${provider.model || "unknown model"} @ ${provider.base_url || "unknown base"}, phases=${phaseList}, fail-open advisory)`);
-    } else {
-      console.log(`Advisory engines: LLM drift inactive (missing ${provider.missing.join(", ")}; deterministic planner checks only)`);
-    }
   }
   console.log(`Recovery: ${payload.recovery.mode}${payload.recovery.command ? ` -> ${payload.recovery.command}` : ""}`);
   if (payload.anti_ritual?.status !== "clean") {
     console.log(`Anti-ritual: ${payload.anti_ritual.status} (${payload.anti_ritual.recommended_action})`);
     console.log(`  ${payload.anti_ritual.detail}`);
-  }
-  if (payload.llm_drift_latest) {
-    const jobs = payload.llm_drift_latest.jobs || {};
-    const latest = payload.llm_drift_latest.latest_report;
-    console.log(`LLM drift maintenance: jobs=${jobs.total || 0} pending=${jobs.pending || 0} completed=${jobs.completed || 0}${latest ? ` latest=${latest.classification || latest.status || "unknown"}` : ""}`);
   }
   if (payload.knowledge_resolution?.recommended_entrypoint?.value) {
     console.log(

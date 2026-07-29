@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "return_type": "claims_evidence",
+  "bounce": {
+    "attempt": 0,
+    "max_bounces": 2
+  },
+  "claims": [
+    {
+      "id": "claim_unknown_method",
+      "statement": "This claim uses an unsupported verification method.",
+      "type": "proof",
+      "evidence_refs": [
+        ".agent/skills/iterative-planner/tests/test_claims_evidence_contract.mjs"
+      ],
+      "verification_method": "trust_me",
+      "cost": {
+        "tokens": 10,
+        "usd": 0,
+        "wall_clock_ms": 1
+      }
+    }
+  ]
+}

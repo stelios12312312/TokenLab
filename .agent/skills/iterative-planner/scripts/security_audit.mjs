@@ -148,6 +148,7 @@ function runAudit(projectRoot = process.cwd()) {
   return {
     generated_at: new Date().toISOString(),
     project_root: projectRoot,
+    // proof-status-lint: exempt T-INTAKE-B07B8898 -- Local security-check result is derived from boolean predicates and issue counts.
     status: checks.every((entry) => entry.status === "PASS") ? "PASS" : "FAIL",
     interface_config_ok: interfaceLoad.ok,
     interface_config_issues: interfaceLoad.issues || [],
@@ -175,6 +176,7 @@ function main() {
     console.log(`Security audit ${result.status}: ${result.checks.length} checks`);
     for (const entry of result.checks) console.log(`${entry.status}: ${entry.id} ${entry.label}`);
   }
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Local security-audit aggregate is derived from its check issue counts.
   process.exit(result.status === "PASS" ? 0 : 1);
 }
 

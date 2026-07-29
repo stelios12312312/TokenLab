@@ -7,6 +7,10 @@ description: Safe, regression-proof code change — combines iterative planning 
 Use when you want to make any code change with built-in regression protection.
 Invocation: describe what you want done, then add `/safe-change`.
 
+## Ambient Persona Context
+
+At workflow start, use the ambient persona and IVE block from `bootstrap.mjs status` when `planner.policy.yaml` keeps `persona.ambient` or `ive.ambient` enabled (default). Carry domain persona obligations through EXPLORE, PLAN, implementation proof, and closeout. Persona guidance can add required evidence, but transition gates, rule-engine checks, tests, and Program Packet validation decide whether the work may advance.
+
 // turbo-all
 
 ## Phase 0: Deterministic Preflight
@@ -18,12 +22,16 @@ Invocation: describe what you want done, then add `/safe-change`.
 2. **If the resolver finds a known or nearly-known recipe, leave `/safe-change` and use `/recipe-tidy` first**:
    - `primary_resolution.route=execute_known_recipe` → execute or lightly adapt the known recipe
    - `primary_resolution.route=recipe_tidy` → normalize the recipe folder, registries, and parameters first
-3. **Run the shared preflight before choosing a branch**:
+3. **Run the shared work-preflight before choosing a branch**:
+   ```bash
+   node .agent/skills/iterative-planner/scripts/planner.mjs work-preflight --goal "<task>" --json
+   ```
+4. **If you need the lower-level diagnostic payload, run planner preflight**:
    ```bash
    node .agent/skills/iterative-planner/scripts/planner_preflight.mjs --goal "<task>" --json
    ```
-4. **Honor the returned contract instead of inventing a fresh routing heuristic**:
-   - `flow.mode=lightweight` → use the Lightweight branch below
+5. **Honor the returned contract instead of inventing a fresh routing heuristic**:
+   - `flow.mode=lightweight` → use the normal plan spine with scaled/empty obligations
    - `flow.mode=full` → bootstrap the full iterative planner branch below
    - `recovery.mode=recover_poison_then_*` → preserve the poisoned plan first, then continue in the returned flow
    - `workflow.recommended=/safe-change-power` → the change is shared-surface enough that the stronger wrapper is preferred
@@ -38,14 +46,14 @@ The table below describes the expected `planner_preflight.mjs` classifications f
 
 | Scope | Flow |
 |-------|------|
-| ≤3 files, ≤30 lines, no new abstractions, or a single-file static/UI deliverable (even if the file is long) | **Lightweight**: use `task.md` + `implementation_plan.md` + `walkthrough.md`. Skip bootstrap. Still run Phase 2. |
+| ≤3 files, ≤30 lines, no new abstractions, or a single-file static/UI deliverable (even if the file is long) | **Lightweight**: use the normal plan spine with scaled/empty obligations and `summary.md` close proof. Still run Phase 2. |
 | >3 files, new abstractions, or shared modules | **Full**: bootstrap iterative planner, create `plans/` state files, follow full protocol |
 | Active plan is history-poisoned, but the remaining work is now a simple single-file/static/UI fix | Preserve the old plan with `bootstrap.mjs recover-poison` or `bootstrap.mjs abandon`, then continue via **Lightweight** |
 | BLOCK/DEPRECATE patterns | **Always** grep for ALL instantiation sites before choosing blocking mechanism. If test infra constructs the blocked class, use a test-only bypass gate — never unconditional raise in constructors. |
 
 ## Phase 1: PLAN & IMPLEMENT (Iterative Planner)
 
-1. **Read the skill file** at `.agent/skills/iterative-planner/SKILL.md` — follow its full protocol (or lightweight flow per Scope Routing above).
+1. **Read the skill file** at `.agent/skills/iterative-planner/SKILL.md` — follow its full protocol with scope-scaled obligations per Scope Routing above.
 2. Execute the iterative planner state machine for the requested change:
    - **EXPLORE**: Read tech debt register, grep for affected code, trace blast radius, check test coverage. Minimum 3 findings. **Adjacency Discovery**: list all files in the same package + importers.
      - WordPress/CMS missing-content reports must record three things before backend rewrites are considered: ask exactly "Are there any active migrations, recent plugin uninstalls, or major structural changes active on the site right now?", inspect the exact broken URL via `curl` or browser/raw HTML, and preserve CPT/data structure unless direct DB proof shows the current structure is the failing node.
@@ -76,7 +84,7 @@ The table below describes the expected `planner_preflight.mjs` classifications f
    - Define the change pattern in abstract terms (what invariant was enforced?)
    - **For each file in the GENERALIZE checklist**, search for the same pattern/anti-pattern
    - **Silent Degradation Scan**: for each config param that gates behavior, verify there's a warning/error when the prerequisite is missing (no silent no-ops)
-   - **Log ALL call-sites** found to `implementation_plan.md`, even unchanged ones — undocumented call-sites are a regression risk
+   - **Log ALL call-sites** found to `plans/<plan>/plan.md` or `findings.md`, even unchanged ones — undocumented call-sites are a regression risk
    - If new instances found → fix them before proceeding
 5. **REGRESSION-GATE** (Phase 5 of the red-team skill):
    - **Run the full test suite and paste the output** — do NOT just state "tests pass". Show the actual output.
@@ -111,7 +119,7 @@ The table below describes the expected `planner_preflight.mjs` classifications f
     ```
 8. Push to remote.
 9. Update `plans/knowledge/tech-debt.md` if structural fragility was found.
-   - **Fallback**: If `plans/knowledge/` doesn't exist, document tech debt in `walkthrough.md` under a "## Tech Debt" section.
+   - **Fallback**: If `plans/knowledge/` doesn't exist, document tech debt in `summary.md` under a "## Tech Debt" section.
 10. Update knowledge base (mistakes, patterns, gotchas) per the iterative planner's CLOSE protocol.
 11. **Generate close summary** (recommended):
     ```bash
@@ -122,7 +130,7 @@ The table below describes the expected `planner_preflight.mjs` classifications f
 
 | If... | Then... |
 |-------|---------|
-| Change is simple (1-2 files) or is a one-file static/UI deliverable | Route to Lightweight, then still run Phase 2 |
+| Change is simple (1-2 files) or is a one-file static/UI deliverable | Route to Lightweight on the normal plan spine, then still run Phase 2 |
 | A full plan is history-poisoned but the remaining work is now simple | Preserve the old plan with `recover-poison` or `abandon`, then continue in Lightweight |
 | Change touches shared/core modules | Trace all dependents, full GENERALIZE sweep |
 | A regression appears | Revert immediately, analyze, fix coupling |

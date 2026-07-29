@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // test_leakage_proof.mjs — t08 artifact-backed leakage/temporal proof.
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
@@ -9,7 +9,12 @@ import { fileURLToPath } from "url";
 import { evaluateLeakageProofArtifact } from "../packs/quant/leakage_proof.mjs";
 import { createSession } from "../scripts/lib/prolog.mjs";
 import { loadStoryFacts } from "../scripts/lib/fact_loader.mjs";
-import { generateLiveGraphPayload } from "../../../../apps/ive-visualizer/scripts/generate-live-payload.mjs";
+let generateLiveGraphPayload = null;
+try {
+  ({ generateLiveGraphPayload } = await import("../../../../apps/ive-visualizer/scripts/generate-live-payload.mjs"));
+} catch {
+  // Optional app fixture is not present in every planner installation.
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -49,6 +54,26 @@ function validArtifact(overrides = {}) {
       artifact: "reports/quant/source-leakage.json",
       findings: [],
     },
+    computed_assertions: [
+      {
+        id: "temporal_order",
+        status: "pass",
+        computed: true,
+        provenance: {
+          source_artifact: "stage0_audit.json",
+          algorithm: "compare train, validation, and final_oos window boundaries",
+        },
+      },
+      {
+        id: "known_at_time_boundary",
+        status: "pass",
+        computed: true,
+        provenance: {
+          source_artifact: "stage0_audit.json",
+          algorithm: "verify feature availability boundary exists for each split",
+        },
+      },
+    ],
     ...overrides,
   };
 }
@@ -108,6 +133,15 @@ function scenarioQu006FindingFails() {
   assert(blockerCodes(result).includes("source_leakage_scan_qu006"), "QU-006 blocker is explicit");
 }
 
+function scenarioDeclaredOnlyExp013ProofFails() {
+  const fixturePath = join(testDir, "fixtures", "quant", "exp013_rubber_stamp_leakage_proof.json");
+  const artifact = JSON.parse(readFileSync(fixturePath, "utf-8"));
+  const result = evaluateLeakageProofArtifact(artifact);
+  const codes = blockerCodes(result);
+  assert(result.pass === false, "declared-only EXP-013 leakage proof fails");
+  assert(codes.includes("computed_assertions_missing"), "missing computed assertions are named blockers");
+}
+
 function scenarioDerivedTimeSeriesTagFiresHr004() {
   const tmp = mkdtempSync(join(tmpdir(), "planner-leakage-story-"));
   try {
@@ -149,6 +183,10 @@ function scenarioDerivedTimeSeriesTagFiresHr004() {
 }
 
 function scenarioLivePayloadSurfacesLeakageInvariant() {
+  if (!generateLiveGraphPayload) {
+    console.log("  SKIP: live payload visualizer app not present");
+    return;
+  }
   const payload = generateLiveGraphPayload({
     repoRoot,
     invariantResult: {
@@ -180,6 +218,7 @@ scenarioValidArtifactPasses();
 scenarioMissingFoldAndEmbargoFail();
 scenarioBadTemporalOrderFails();
 scenarioQu006FindingFails();
+scenarioDeclaredOnlyExp013ProofFails();
 scenarioDerivedTimeSeriesTagFiresHr004();
 scenarioLivePayloadSurfacesLeakageInvariant();
 

@@ -90,6 +90,7 @@ function main(argv = process.argv) {
     });
     if (json) console.log(serializeJsonCompatibleYaml(result).trimEnd());
     else console.log(formatProjectLifecycleText(result));
+    // proof-status-lint: exempt T-INTAKE-B07B8898 -- Project command result is synthesized from operation errors for CLI exit routing.
     return result.status === "FAIL" ? 1 : 0;
   }
 

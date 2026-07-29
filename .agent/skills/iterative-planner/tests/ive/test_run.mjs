@@ -11,7 +11,8 @@ import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { tmpdir } from "os";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
-import { DEFAULT_SUITES, runConformance } from "./run.mjs";
+import { DEFAULT_SUITES, parseArgs, resolveReleaseProfile, runConformance } from "./run.mjs";
+import { plannerSubprocessEnv } from "../helpers/env.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const TEST_DIR = dirname(__filename);
@@ -23,6 +24,9 @@ const LIVE_SMOKE_ONLY = ["doc-contract-mvp", "doc-contract-multi-ide"];
 let passed = 0;
 let failed = 0;
 let runCounter = 0;
+
+const parsedPlanTarget = parseArgs(["--plan-target", "plan_2026-07-26_af667363c7b6a04a"]);
+assert(parsedPlanTarget.planTarget === "plan_2026-07-26_af667363c7b6a04a", "runner parses an explicit ontology plan target");
 
 function assert(condition, label) {
   if (condition) {
@@ -40,7 +44,7 @@ function runRunner({ env = {}, args = null } = {}) {
     const stdout = execFileSync(NODE, [RUNNER, ...finalArgs], {
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, ...env, CODEX_THREAD_ID: "", _PLANNER_PLAN_TARGET: "" },
+      env: plannerSubprocessEnv(env),
       maxBuffer: 20 * 1024 * 1024,
     });
     return { exit_code: 0, stdout, stderr: "", parsed: tryParse(stdout) };
@@ -87,6 +91,8 @@ function createVisualizerFixtureRepo({ fakePlaywrightExitCode = null } = {}) {
   writeFileEnsured(join(appRoot, "src", "App.jsx"), "export default function App() { return null; }\n");
   writeFileEnsured(join(appRoot, "src", "styles.css"), "body { margin: 0; }\n");
   writeFileEnsured(join(appRoot, "src", "data", "visualizerPayload.js"), "export const visualizerPayload = {};\n");
+  writeFileEnsured(join(appRoot, "public", "ive-graph-payload.json"), "{}\n");
+  writeFileEnsured(join(root, "plans", "programs", "guidance-first", "program_packet.json"), "{}\n");
 
   if (fakePlaywrightExitCode !== null) {
     const binName = process.platform === "win32" ? "playwright.cmd" : "playwright";
@@ -100,7 +106,130 @@ function createVisualizerFixtureRepo({ fakePlaywrightExitCode = null } = {}) {
   return root;
 }
 
+function syntheticProfileSuite(id, {
+  surfaces = ["planner_core"],
+  testClass = "functional_proof_test",
+  required = true,
+} = {}) {
+  return {
+    id,
+    name: id,
+    category: "synthetic",
+    test_class: testClass,
+    test_class_label: "Functional proof test",
+    label: id,
+    command: ["node", "-e", "process.exit(0)"],
+    display_command: "node -e process.exit(0)",
+    required,
+    phases: ["default"],
+    surfaces,
+    fixtures: [],
+    changed_file_patterns: [],
+  };
+}
+
 console.log("\nIVE conformance runner — confidence tests\n");
+
+// Stable release-profile contract: the catalog is fully partitioned, unsafe
+// narrowing fails before execution, and every selected non-PASS blocks.
+console.log("Scenario 0: governed core-release profile");
+{
+  const profile = resolveReleaseProfile({ profileId: "core-release" });
+  const partition = [
+    ...profile.selected_suite_ids,
+    ...profile.explicit_exclusions.map((entry) => entry.suite_id),
+    ...profile.omitted_by_rule.map((entry) => entry.suite_id),
+  ];
+  assert(profile.selected_suite_ids.length > 0, "core-release selects a non-empty suite set");
+  assert(profile.must_include_suite_ids.every((suiteId) => profile.selected_suite_ids.includes(suiteId)), "every must-include suite is selected");
+  assert(profile.explicit_exclusions.length === 1, "core-release has one explicit future-surface exclusion");
+  assert(profile.explicit_exclusions.every((entry) => entry.reason && entry.owner && /^\d{4}-\d{2}-\d{2}$/.test(entry.review_by)), "explicit exclusions carry reason, owner, and review date");
+  assert(partition.length === DEFAULT_SUITES.length && new Set(partition).size === DEFAULT_SUITES.length, "profile partitions the complete suite catalog exactly once");
+
+  let unknownRejected = false;
+  try {
+    resolveReleaseProfile({ profileId: "does-not-exist" });
+  } catch (error) {
+    unknownRejected = error?.code === "unknown_release_profile";
+  }
+  assert(unknownRejected, "unknown profile fails closed");
+
+  const tinyCatalog = [
+    syntheticProfileSuite("stable-a"),
+    syntheticProfileSuite("future-b"),
+  ];
+  const tinyConfig = {
+    schema_version: 1,
+    profiles: {
+      tiny: {
+        selection_rules: [{ test_class: "functional_proof_test", surface: "planner_core" }],
+        must_include_suite_ids: ["stable-a"],
+        exclusions: [{
+          suite_id: "future-b",
+          reason: "future surface",
+          owner: "plans/programs/future/program_packet.json",
+          review_by: "2026-10-01",
+        }],
+      },
+    },
+  };
+  const tinyProfile = resolveReleaseProfile({
+    profileId: "tiny",
+    suites: tinyCatalog,
+    config: tinyConfig,
+  });
+  assert(tinyProfile.selected_suite_ids.join(",") === "stable-a", "rule selection honors an explicit exclusion");
+
+  let malformedRejected = false;
+  try {
+    resolveReleaseProfile({
+      profileId: "tiny",
+      suites: tinyCatalog,
+      config: {
+        schema_version: 1,
+        profiles: {
+          tiny: {
+            selection_rules: [],
+            must_include_suite_ids: ["missing"],
+            exclusions: [],
+          },
+        },
+      },
+    });
+  } catch {
+    malformedRejected = true;
+  }
+  assert(malformedRejected, "malformed or incomplete profile fails closed");
+
+  const nonPass = runConformance({
+    suites: tinyProfile.selected_suites,
+    profile: tinyProfile,
+    writeManifest: false,
+    executeCommand: (item) => ({
+      id: item.id,
+      category: item.category,
+      label: item.label,
+      required: true,
+      command: item.display_command,
+      status: "SKIPPED",
+      status_reason: "synthetic_non_pass",
+      exit_code: 0,
+      timed_out: false,
+      started_at: "2026-07-23T00:00:00.000Z",
+      finished_at: "2026-07-23T00:00:00.001Z",
+      stdout_excerpt: "",
+      stderr_excerpt: "",
+    }),
+  });
+  assert(nonPass.status === "FAIL" && nonPass.issues.some((issue) => issue.code === "profile_suite_non_pass"), "selected non-PASS status blocks the profile");
+
+  const narrowed = runRunner({ args: ["--profile", "core-release", "--only", "ontology-invariants", "--json"] });
+  assert(narrowed.exit_code === 1, "profile plus --only exits non-zero");
+  assert(narrowed.parsed?.issues?.[0]?.code === "unsafe_release_profile_narrowing", "unsafe profile narrowing explains the failure");
+
+  const noManifest = runRunner({ args: ["--profile", "core-release", "--no-manifest", "--json"] });
+  assert(noManifest.exit_code === 1, "profile cannot suppress its manifest");
+}
 
 // Meta-guard: the research-memory packet seam is CI-real only if the suite is
 // required and a red command fails the aggregate.
@@ -138,6 +267,9 @@ console.log("Scenario A: live tree PASS");
   assert(!!r.parsed, "runner emits parseable JSON");
   assert(["PASS", "WARN"].includes(r.parsed?.status), "JSON status is PASS or WARN");
   assert(r.parsed?.summary?.failed === 0, "summary.failed is 0");
+  assert(r.parsed?.scores?.quality_score?.current !== undefined, "quality_score is always reported");
+  assert(r.parsed?.scores?.iv_score?.current !== undefined, "IV score is always reported");
+  assert(r.parsed?.scores?.ritual_score?.current !== undefined, "ritual score is always reported");
   assert(Array.isArray(r.parsed?.checks) && r.parsed.checks.length >= 2, "smoke checks array has at least 2 entries");
   assert(r.parsed?.checks?.some((c) => c.name === "doc-contract-multi-ide"), "doc-contract-multi-ide check is present");
   if (r.parsed?.status === "WARN") {
@@ -150,6 +282,9 @@ console.log("Scenario A: live tree PASS");
   assert(typeof r.parsed?.manifest_path === "string" && existsSync(join(REPO_ROOT, r.parsed.manifest_path)), "manifest_path exists on disk");
   const manifest = JSON.parse(readFileSync(join(REPO_ROOT, r.parsed.manifest_path), "utf-8"));
   assert(["pass", "warn"].includes(manifest.overall_status), "manifest overall_status is lower-case pass or warn");
+  assert(manifest.scores?.quality_score?.current === r.parsed.scores.quality_score.current, "manifest preserves quality_score");
+  assert(manifest.scores?.iv_score?.current === r.parsed.scores.iv_score.current, "manifest preserves IV score");
+  assert(manifest.scores?.ritual_score?.current === r.parsed.scores.ritual_score.current, "manifest preserves ritual score");
   assert(manifest.suites?.every((suite) => typeof suite.status === "string" && suite.proof_artifact), "manifest suites include status and proof_artifact");
   assert(r.parsed?.checks?.every((c) => c.stdout_log && existsSync(join(REPO_ROOT, c.stdout_log))), "each check has a stdout log");
 }
@@ -175,7 +310,7 @@ console.log("\nScenario B: synthetic FAIL via IVE_RUNNER_INJECT_FAILURE");
 console.log("\nScenario C: JSON shape contract");
 {
   const r = runRunner();
-  const required_top = ["schema_version", "run_id", "run_started_at", "run_finished_at", "checks", "summary", "status", "overall_status", "manifest_path"];
+  const required_top = ["schema_version", "run_id", "run_started_at", "run_finished_at", "checks", "scores", "summary", "status", "overall_status", "manifest_path"];
   for (const k of required_top) {
     assert(r.parsed && (k in r.parsed), `top-level field ${k} is present`);
   }
@@ -206,7 +341,7 @@ console.log("\nScenario D: unknown-check injection does not silence real checks"
 // Scenario E: changed files outside IVE surfaces are explicit not_applicable
 console.log("\nScenario E: changed-files not_applicable contract");
 {
-  const r = runRunner({ args: ["--run-id", `ive-runner-test-${++runCounter}`, "--changed-files", "README.md", "--json"] });
+  const r = runRunner({ args: ["--run-id", `ive-runner-test-${++runCounter}`, "--changed-files", "outside/irrelevant.txt", "--json"] });
   assert(r.exit_code === 0, "outside changed files exit 0");
   assert(r.parsed?.overall_status === "not_applicable", "outside changed files are not_applicable");
   assert(r.parsed?.checks?.[0]?.status_reason === "changed_files_outside_declared_ive_surfaces", "not_applicable includes a reason");

@@ -283,7 +283,7 @@ if (wantsHook("commit-msg") && existsSync(commitMsgSource)) {
 // LLMs share filesystem access with scripts — chmod 600 raises the bar for tampering.
 // These files are in the skill config directory, not the plan working area.
 const skillConfigDir = join(hookSourceDir, "..", "..", "config");
-const SECRET_FILES = [".config_integrity", ".checklist_integrity"];
+const SECRET_FILES = [".checklist_integrity"];
 for (const f of SECRET_FILES) {
   const p = join(skillConfigDir, f);
   if (existsSync(p)) {

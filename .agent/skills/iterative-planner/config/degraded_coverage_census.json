@@ -1,0 +1,229 @@
+{
+  "schema_version": 1,
+  "ticket_ref": "T-INTAKE-403EBA12",
+  "evidence_validity": "degraded_coverage",
+  "waiver_registry_path": ".agent/degraded_coverage_waivers.json",
+  "allowed_dispositions": [
+    "report_degraded_coverage",
+    "already_fail_closed",
+    "already_visible",
+    "intentionally_not_applicable",
+    "dominated_by_prior_failure"
+  ],
+  "required_resolution_kinds": [
+    "build_substrate",
+    "record_governed_waiver"
+  ],
+  "checks": [
+    {
+      "id": "core_prolog_rule_bundle",
+      "name": "Core Prolog rule bundle",
+      "source_path": ".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs",
+      "source_anchor": "const prologDir = join(skillPath, \"prolog\")",
+      "selection_predicate": "Every semantic rule-engine command and transition requires the core Prolog bundle.",
+      "cause_class": "missing_or_invalid_managed_substrate",
+      "disposition": "report_degraded_coverage",
+      "evaluator": "core_prolog_rule_bundle",
+      "exits": [
+        {
+          "kind": "build_substrate",
+          "action": "Restore the managed .agent/skills/iterative-planner/prolog/*.pl rule bundle, then rerun the semantic command."
+        },
+        {
+          "kind": "record_governed_waiver",
+          "action": "Record a typed, approved, time-bounded entry in .agent/degraded_coverage_waivers.json."
+        }
+      ]
+    },
+    {
+      "id": "canonical_repository_ontology_facts",
+      "name": "Canonical repository ontology facts",
+      "source_path": ".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs",
+      "source_anchor": "buildOntologyFacts({ cwd, dryRun: true })",
+      "selection_predicate": "The semantic rule engine loads repository facts for every invariant or transition evaluation.",
+      "cause_class": "missing_or_invalid_substrate",
+      "disposition": "report_degraded_coverage",
+      "evaluator": "canonical_repository_ontology_facts",
+      "exits": [
+        {
+          "kind": "build_substrate",
+          "action": "Create or repair the required .agent/ontology/facts/*.yaml sources, then run node .agent/skills/iterative-planner/scripts/ontology_cli.mjs build."
+        },
+        {
+          "kind": "record_governed_waiver",
+          "action": "Record a typed, approved, time-bounded entry in .agent/degraded_coverage_waivers.json."
+        }
+      ]
+    },
+    {
+      "id": "project_specific_prolog_rules",
+      "name": "Project-specific Prolog rules",
+      "source_path": ".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs",
+      "source_anchor": "Error loading project.pl",
+      "selection_predicate": "Selected only when prolog/project.pl exists in the host project.",
+      "cause_class": "invalid_selected_substrate",
+      "disposition": "report_degraded_coverage",
+      "evaluator": "runtime_failure_only",
+      "exits": [
+        {
+          "kind": "build_substrate",
+          "action": "Repair the selected prolog/project.pl source so it loads under the reserved-predicate policy."
+        },
+        {
+          "kind": "record_governed_waiver",
+          "action": "Record a typed, approved, time-bounded entry in .agent/degraded_coverage_waivers.json."
+        }
+      ]
+    },
+    {
+      "id": "active_plan_ontology_fallback",
+      "name": "Active-plan persisted ontology fallback",
+      "source_path": ".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs",
+      "source_anchor": "ontology_facts.pl",
+      "selection_predicate": "Only selected when no same-invocation transient ontology facts are available.",
+      "cause_class": "missing_optional_compatibility_fallback",
+      "disposition": "intentionally_not_applicable",
+      "reason": "The authoritative transition path supplies transient facts; the on-disk file is a backward-compatible supplement and makes no independent coverage claim."
+    },
+    {
+      "id": "transition_gate_registry",
+      "name": "Transition gate registry",
+      "source_path": ".agent/skills/iterative-planner/scripts/transition.mjs",
+      "source_anchor": "FATAL: config/gates.json is missing",
+      "selection_predicate": "Every transition requires the canonical gate registry.",
+      "cause_class": "missing_configuration",
+      "disposition": "already_fail_closed",
+      "reason": "Transition exits before evaluation when the registry or guide-first contract is unavailable."
+    },
+    {
+      "id": "transition_health_scanner",
+      "name": "Transition health scanner",
+      "source_path": ".agent/skills/iterative-planner/scripts/transition.mjs",
+      "source_anchor": "GATE-HLT-001",
+      "selection_predicate": "Selected by gates.json health_scan for quick or full health gates.",
+      "cause_class": "missing_substrate_or_runtime_failure",
+      "disposition": "already_fail_closed",
+      "reason": "A missing or failed health scanner produces GATE-HLT-001 and blocks the transition."
+    },
+    {
+      "id": "transition_health_baseline",
+      "name": "Transition health baseline",
+      "source_path": ".agent/skills/iterative-planner/scripts/transition.mjs",
+      "source_anchor": "GATE-HLT-004",
+      "selection_predicate": "Selected for full health delta gates.",
+      "cause_class": "missing_fixture",
+      "disposition": "already_fail_closed",
+      "reason": "A missing baseline emits GATE-HLT-004 rather than claiming a clean delta."
+    },
+    {
+      "id": "persona_audit_configuration",
+      "name": "Persona audit configuration and packs",
+      "source_path": ".agent/skills/iterative-planner/scripts/audit_runner.mjs",
+      "source_anchor": "GATE-PER-003",
+      "selection_predicate": "Selected whenever gates.json marks persona_audit compulsory.",
+      "cause_class": "missing_configuration_or_pack",
+      "disposition": "already_fail_closed",
+      "reason": "Compulsory persona resolution emits stable GATE-PER failures when configured packs cannot load."
+    },
+    {
+      "id": "transition_checklist_source",
+      "name": "Transition checklist source",
+      "source_path": ".agent/skills/iterative-planner/scripts/lib/checklist_runner.mjs",
+      "source_anchor": "Checklist file not found",
+      "selection_predicate": "Every registered transition selects its matching checklist.",
+      "cause_class": "missing_or_invalid_configuration",
+      "disposition": "report_degraded_coverage",
+      "evaluator": "registered_gate_checklists",
+      "exits": [
+        {
+          "kind": "build_substrate",
+          "action": "Restore the missing registered gate checklist under .agent/skills/iterative-planner/checklists and refresh its integrity baseline."
+        },
+        {
+          "kind": "record_governed_waiver",
+          "action": "Record a typed, approved, time-bounded entry in .agent/degraded_coverage_waivers.json."
+        }
+      ]
+    },
+    {
+      "id": "story_registry_absence",
+      "name": "Story registry coverage",
+      "source_path": ".agent/skills/iterative-planner/scripts/project_health.mjs",
+      "source_anchor": "No story_registry.json found",
+      "selection_predicate": "Project health always evaluates story coverage.",
+      "cause_class": "missing_fixture",
+      "disposition": "already_visible",
+      "reason": "Project health emits an explicit warning that story coverage is unknown."
+    },
+    {
+      "id": "project_health_analyzer_configuration",
+      "name": "Project health analyzer configuration",
+      "source_path": ".agent/skills/iterative-planner/scripts/project_health.mjs",
+      "source_anchor": "Failed to parse analyzer",
+      "selection_predicate": "Analyzer YAML files present in managed or project analyzer directories are selected for loading.",
+      "cause_class": "invalid_configuration",
+      "disposition": "report_degraded_coverage",
+      "evaluator": "project_health_analyzer_configuration",
+      "exits": [
+        {
+          "kind": "build_substrate",
+          "action": "Repair or restore the named analyzer YAML and rerun project health."
+        },
+        {
+          "kind": "record_governed_waiver",
+          "action": "Record a typed, approved, time-bounded entry in .agent/degraded_coverage_waivers.json."
+        }
+      ]
+    },
+    {
+      "id": "project_health_story_registry_runner",
+      "name": "Project health story-registry runner",
+      "source_path": ".agent/skills/iterative-planner/scripts/project_health.mjs",
+      "source_anchor": "!existsSync(registryPath) || !existsSync(scriptPath)",
+      "selection_predicate": "Selected when a story registry exists and project health is asked to validate it.",
+      "cause_class": "missing_managed_substrate",
+      "disposition": "report_degraded_coverage",
+      "evaluator": "story_registry_runner",
+      "exits": [
+        {
+          "kind": "build_substrate",
+          "action": "Restore .agent/skills/iterative-planner/scripts/story_registry.mjs, then rerun project health."
+        },
+        {
+          "kind": "record_governed_waiver",
+          "action": "Record a typed, approved, time-bounded entry in .agent/degraded_coverage_waivers.json."
+        }
+      ]
+    },
+    {
+      "id": "project_health_analyzer_execution",
+      "name": "Project health analyzer execution",
+      "source_path": ".agent/skills/iterative-planner/scripts/project_health.mjs",
+      "source_anchor": "Analyzer '${key}' failed",
+      "selection_predicate": "A loaded and enabled analyzer is selected unless quick-mode or explicit enablement excludes it.",
+      "cause_class": "runtime_failure",
+      "disposition": "already_visible",
+      "reason": "Runtime failures are emitted explicitly and the analyzer is excluded from analyzers_ran, preventing a count-based full-run claim."
+    },
+    {
+      "id": "suggestion_engine_feature_flag",
+      "name": "Suggestion engine",
+      "source_path": ".agent/skills/iterative-planner/scripts/lib/rule_commands.mjs",
+      "source_anchor": "suggestion_engine",
+      "selection_predicate": "Selected only when the explicit suggestion_engine feature flag is enabled.",
+      "cause_class": "explicit_feature_disable",
+      "disposition": "intentionally_not_applicable",
+      "reason": "An explicit disabled flag means the capability was not selected and makes no coverage claim."
+    },
+    {
+      "id": "planning_only_provenance_subchecks",
+      "name": "Planning-only provenance subchecks",
+      "source_path": ".agent/skills/iterative-planner/scripts/verify_gate.mjs",
+      "source_anchor": "planningOnly",
+      "selection_predicate": "Selected only after the parent planning-only structural handoff is valid.",
+      "cause_class": "parent_structural_failure",
+      "disposition": "dominated_by_prior_failure",
+      "reason": "When the parent structure is invalid, its hard failure already prevents a proof claim; child provenance checks cannot create an independent result."
+    }
+  ]
+}

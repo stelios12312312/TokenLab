@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "fixture_type": "negative_leakage_guard",
+  "known_bad": true,
+  "input": {
+    "decision_time": "2026-07-05T10:00:00Z",
+    "snapshot_time": "2026-07-05T10:00:00Z",
+    "reason": "snapshot_time equals decision_time and must be treated as synthesized/unverifiable for serious run classes"
+  },
+  "observed": {
+    "guard_fired": true,
+    "status": "blocked"
+  },
+  "capture_time_provenance": {
+    "timestamp_source": "fixture:synthetic_known_bad_snapshot",
+    "synthesized_timestamp_handling": "fail_closed",
+    "unverifiable_timestamp_handling": "fail_closed"
+  }
+}

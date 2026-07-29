@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "defects": [
+    {
+      "id": "quant-seeded-leakage-missing-temporal-split",
+      "pack_id": "quant",
+      "checker_id": "quant_temporal_leakage_checker",
+      "description": "A quant claim omits temporal split and leakage proof."
+    },
+    {
+      "id": "quant-seeded-calibration-missing",
+      "pack_id": "quant",
+      "checker_id": "quant_calibration_checker",
+      "description": "A quant result claim omits calibration and uncertainty evidence."
+    },
+    {
+      "id": "quant-target-seeded-undefined-objective",
+      "pack_id": "quant_target",
+      "checker_id": "quant_target_objective_checker",
+      "description": "A target optimization plan lacks an explicit target and controls."
+    },
+    {
+      "id": "quant-target-seeded-hyperparameter-surface",
+      "pack_id": "quant_target",
+      "checker_id": "quant_target_search_checker",
+      "description": "A search plan hides the hyperparameter surface and validation split."
+    },
+    {
+      "id": "tokenomics-seeded-unlock-authority-missing",
+      "pack_id": "tokenomics",
+      "checker_id": "tokenomics_unlock_checker",
+      "description": "A tokenomics plan omits unlock authority and vesting evidence."
+    },
+    {
+      "id": "tokenomics-seeded-incentive-source-missing",
+      "pack_id": "tokenomics",
+      "checker_id": "tokenomics_incentive_checker",
+      "description": "A staking/APY claim omits the incentive source and advisory boundary."
+    },
+    {
+      "id": "ux-ui-seeded-no-render-proof",
+      "pack_id": "ux_ui",
+      "checker_id": "ux_ui_render_checker",
+      "description": "A UI change closes without rendered journey or screenshot proof."
+    },
+    {
+      "id": "ux-ui-seeded-responsive-gap",
+      "pack_id": "ux_ui",
+      "checker_id": "ux_ui_responsive_checker",
+      "description": "A UI change omits mobile/responsive state coverage."
+    },
+    {
+      "id": "app-dev-seeded-fetch-missing-error-state",
+      "pack_id": "app_dev_tesseract",
+      "checker_id": "app_dev_async_state_checker",
+      "description": "An async fetch path has loading/empty hints but omits error-state handling."
+    },
+    {
+      "id": "app-dev-seeded-env-duplicate-read",
+      "pack_id": "app_dev_tesseract",
+      "checker_id": "app_dev_env_reader_checker",
+      "description": "The same environment variable is read from multiple app modules instead of one owner."
+    },
+    {
+      "id": "app-dev-seeded-webhook-missing-idempotency",
+      "pack_id": "app_dev_tesseract",
+      "checker_id": "app_dev_webhook_checker",
+      "description": "A webhook route accepts POSTs without signature/secret, idempotency, or retry semantics."
+    },
+    {
+      "id": "app-dev-seeded-migration-no-journey-test",
+      "pack_id": "app_dev_tesseract",
+      "checker_id": "app_dev_migration_journey_checker",
+      "description": "A migration/backfill path lacks dry-run, rollback, checkpoint, or before/after journey proof."
+    }
+  ]
+}

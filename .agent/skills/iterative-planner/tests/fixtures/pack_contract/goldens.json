@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {
+      "id": "quant-temporal-leakage-golden",
+      "pack_id": "quant",
+      "description": "Closed proof fixture for temporal leakage and calibration checks."
+    },
+    {
+      "id": "quant-target-objective-golden",
+      "pack_id": "quant_target",
+      "description": "Closed proof fixture for quantitative target and claim-shape checks."
+    },
+    {
+      "id": "tokenomics-unlock-golden",
+      "pack_id": "tokenomics",
+      "description": "Closed proof fixture for token supply, vesting, unlock, and incentive-source checks."
+    },
+    {
+      "id": "ux-ui-viewport-golden",
+      "pack_id": "ux_ui",
+      "description": "Closed proof fixture for browser/rendered-state and responsive evidence checks."
+    },
+    {
+      "id": "app-dev-tesseract-golden",
+      "pack_id": "app_dev_tesseract",
+      "description": "Closed proof fixture for async state coverage, env-owner, webhook delivery, and migration journey checks."
+    }
+  ]
+}

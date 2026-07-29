@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "goal": "Validate that duplicate claim ids are rejected before work-order dispatch.",
+  "inputs": [
+    {
+      "id": "fixture",
+      "ref": "plans/programs/ive-autocoder-v2/program_packet.json"
+    }
+  ],
+  "constraints": [
+    "Return only deterministic validation results."
+  ],
+  "claims_to_produce": [
+    {
+      "id": "same_claim",
+      "statement": "The first claim statement."
+    },
+    {
+      "id": "same_claim",
+      "statement": "The second claim statement."
+    }
+  ],
+  "proof_obligations": [
+    {
+      "claim_id": "same_claim",
+      "method": "deterministic",
+      "check": "Claim ids are unique."
+    }
+  ],
+  "stop_conditions": [
+    "Stop after validator output is produced."
+  ],
+  "budget": {
+    "max_tokens": 4000,
+    "max_cost_usd": 0,
+    "max_time_minutes": 5
+  }
+}

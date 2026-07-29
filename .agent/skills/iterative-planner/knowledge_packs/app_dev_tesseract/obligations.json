@@ -1,0 +1,149 @@
+{
+  "schema_version": 1,
+  "obligations": [
+    {
+      "id": "APPDEV-OBL-ASYNC-STATES",
+      "title": "Async loading, error, and empty state proof",
+      "subject_id": "pack_app_dev_async_states",
+      "mode": "artifact_review",
+      "severity": "required",
+      "required_by_phase": "plan",
+      "applies_when": {
+        "text_any": [
+          "fetch(",
+          "axios",
+          "api call",
+          "async request"
+        ]
+      },
+      "satisfied_by": {
+        "any": [
+          {
+            "id": "async_state_validation_ref",
+            "kind": "validation_ref_terms_any",
+            "terms": [
+              "loading state",
+              "error state",
+              "empty state"
+            ]
+          },
+          {
+            "id": "async_state_artifact",
+            "kind": "artifact_exists_any",
+            "paths": [
+              "reports/app-dev/async-states.json",
+              "reports/app-dev/rendered-journey.json"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "APPDEV-OBL-ENV-OWNER",
+      "title": "Single environment variable owner proof",
+      "subject_id": "pack_app_dev_env_owner",
+      "mode": "artifact_review",
+      "severity": "required",
+      "required_by_phase": "plan",
+      "applies_when": {
+        "text_any": [
+          "process.env",
+          "os.getenv",
+          "getenv("
+        ]
+      },
+      "satisfied_by": {
+        "any": [
+          {
+            "id": "env_owner_validation_ref",
+            "kind": "validation_ref_terms_any",
+            "terms": [
+              "env owner",
+              "configuration owner",
+              "single-read"
+            ]
+          },
+          {
+            "id": "env_owner_artifact",
+            "kind": "artifact_exists_any",
+            "paths": [
+              "reports/app-dev/env-owner.json"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "APPDEV-OBL-WEBHOOK-DELIVERY",
+      "title": "Webhook signature, idempotency, and retry proof",
+      "subject_id": "pack_app_dev_webhook_delivery",
+      "mode": "artifact_review",
+      "severity": "required",
+      "required_by_phase": "plan",
+      "applies_when": {
+        "text_any": [
+          "webhook",
+          "register_rest_route",
+          "router.post"
+        ]
+      },
+      "satisfied_by": {
+        "any": [
+          {
+            "id": "webhook_delivery_validation_ref",
+            "kind": "validation_ref_terms_any",
+            "terms": [
+              "webhook idempotency",
+              "retry",
+              "signature"
+            ]
+          },
+          {
+            "id": "webhook_delivery_artifact",
+            "kind": "artifact_exists_any",
+            "paths": [
+              "reports/app-dev/webhook-delivery.json"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "APPDEV-OBL-MIGRATION-JOURNEY",
+      "title": "Migration/backfill journey proof",
+      "subject_id": "pack_app_dev_migration_journey",
+      "mode": "artifact_review",
+      "severity": "required",
+      "required_by_phase": "plan",
+      "applies_when": {
+        "text_any": [
+          "migration",
+          "backfill",
+          "import",
+          "upgrade"
+        ]
+      },
+      "satisfied_by": {
+        "any": [
+          {
+            "id": "migration_journey_validation_ref",
+            "kind": "validation_ref_terms_any",
+            "terms": [
+              "dry-run",
+              "rollback",
+              "journey test",
+              "before/after"
+            ]
+          },
+          {
+            "id": "migration_journey_artifact",
+            "kind": "artifact_exists_any",
+            "paths": [
+              "reports/app-dev/migration-journey.json"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

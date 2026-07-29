@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Planner Policy",
+  "description": "Project-level planner defaults preserved at the repository root as planner.policy.yaml, planner.policy.yml, or planner.policy.json.",
+  "type": "object",
+  "required": [
+    "version",
+    "default_route",
+    "verification",
+    "story_registry",
+    "persona",
+    "ive",
+    "session",
+    "transition_output"
+  ],
+  "additionalProperties": true,
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "shape": {
+      "type": ["string", "null"],
+      "description": "Optional declared project shape for planner-core authority decisions, for example planner-core. When set, it wins over fallback inference."
+    },
+    "domain": {
+      "type": ["string", "null"],
+      "description": "Optional declared project domain for consumer repositories, for example quant or frontend. Used when shape is absent."
+    },
+    "default_route": {
+      "type": "string",
+      "enum": ["auto", "lightweight", "full"],
+      "description": "Default routing preference for actionable engineering work. Questions, read-only actions, and ask-user decisions are not overridden."
+    },
+    "verification": {
+      "type": "object",
+      "required": ["compact_by_default"],
+      "additionalProperties": true,
+      "properties": {
+        "compact_by_default": {
+          "type": "boolean",
+          "description": "When true, low-risk doc/config/chore/static shapes may receive the compact verification scaffold."
+        }
+      }
+    },
+    "story_registry": {
+      "type": "object",
+      "required": ["enforced_for"],
+      "additionalProperties": true,
+      "properties": {
+        "enforced_for": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1
+          },
+          "description": "Work families that require story-registry traceability by default."
+        }
+      }
+    },
+    "persona": {
+      "type": "object",
+      "required": ["ambient", "surface_on_session_start"],
+      "additionalProperties": true,
+      "properties": {
+        "ambient": {
+          "type": "boolean",
+          "description": "When true, domain persona obligations are active as ambient project context."
+        },
+        "surface_on_session_start": {
+          "type": "boolean",
+          "description": "When true, bootstrap status surfaces ambient persona context at session start."
+        }
+      }
+    },
+    "ive": {
+      "type": "object",
+      "required": ["ambient", "surface_on_session_start"],
+      "additionalProperties": true,
+      "properties": {
+        "ambient": {
+          "type": "boolean",
+          "description": "When true, IVE invariant awareness is active as ambient project context."
+        },
+        "surface_on_session_start": {
+          "type": "boolean",
+          "description": "When true, bootstrap status surfaces recent IVE invariant status at session start."
+        }
+      }
+    },
+    "session": {
+      "type": "object",
+      "required": ["kb_reads_required"],
+      "additionalProperties": true,
+      "properties": {
+        "kb_reads_required": {
+          "type": "boolean",
+          "description": "When false, skip-planner tasks do not require session-start KB reads."
+        }
+      }
+    },
+    "transition_output": {
+      "type": "string",
+      "enum": ["minimal", "full"],
+      "description": "Preferred transition-output verbosity for project-local workflows."
+    }
+  }
+}

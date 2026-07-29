@@ -15,9 +15,13 @@
 import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { createSession } from "../../scripts/lib/prolog.mjs";
-import { makeFinding, makeConstraint, SEVERITY } from "../../scripts/lib/audit_types.mjs";
-import { downgradeForShape as shapeAwareSeverity } from "../../scripts/lib/pack_severity.mjs";
+import { makeConstraint } from "../../scripts/lib/audit_types.mjs";
+import {
+  assertStoryFacts,
+  formatPhaseGuidance,
+  normalizePackFinding,
+  runPrologPackAudit,
+} from "../../scripts/lib/auditor_pack_engine.mjs";
 
 const __filename  = fileURLToPath(import.meta.url);
 const __dirname   = dirname(__filename);
@@ -144,7 +148,7 @@ const RULE_DEFS = [
     id: "UX-002",
     name: "Critical flow consistency",
     rationale: "High-priority UX journeys must have code implementation and test coverage to prevent regressions.",
-    false_positive: "Flows intentionally excluded from scope — document in ux_metadata.json `excluded_flows`.",
+    false_positive: "Flows intentionally excluded from scope, or stories still marked NOT_IMPLEMENTED before implementation begins.",
     remediation: "Add code_refs and test_refs to HIGH priority UX stories.",
     engine: "prolog",
   },
@@ -229,70 +233,22 @@ const uxUiPack = {
   },
 
   async audit(context) {
-    // Own session to avoid polluting shared state
-    const session = createSession();
-
-    // Re-assert base story facts
-    if (context.storyRegistry && Array.isArray(context.storyRegistry.stories)) {
-      for (const s of context.storyRegistry.stories) {
-        if (!s.id) continue;
-        // sanitize() returns a quoted atom — use directly without extra quotes
-        const id = sanitize(s.id);
-        session.consult(`story(${id}, ${sanitize(s.title || "untitled")}, ${sanitize(s.priority || "medium")}, ${sanitize(s.status || "unknown")}).`);
-        if (Array.isArray(s.code_refs)) {
-          for (const ref of s.code_refs)
-            session.consult(`code_ref(${id}, ${sanitize(ref)}).`);
-        }
-        if (Array.isArray(s.test_refs)) {
-          for (const ref of s.test_refs)
-            session.consult(`test_ref(${id}, ${sanitize(ref)}).`);
-        }
-        if (Array.isArray(s.postconditions)) {
-          for (const p of s.postconditions) {
-            try { session.consult(`postcondition(${id}, ${p}).`); } catch { /* skip malformed */ }
-          }
-        }
-        if (Array.isArray(s.tags)) {
-          for (const t of s.tags) {
-            session.consult(`story_tag(${id}, ${sanitize(t)}).`);
-          }
-        }
-      }
-    }
-
-    // Collect UX-specific facts
-    collectUxFacts(context, session);
-
-    // Load Prolog rules
-    let rulesText;
-    try {
-      rulesText = readFileSync(RULES_FILE, "utf-8");
-    } catch (e) {
-      return [{ _error: `Could not load ux_ui rules.pl: ${e.message}` }];
-    }
-
-    try {
-      session.consult(rulesText);
-    } catch (e) {
-      return [{ _error: `Failed to load ux_ui Prolog rules: ${e.message}` }];
-    }
-
-    // Query all violations
-    const rawFindings = [];
-    try {
-      for (const ans of session.query("ux_violation(RuleId, Subject, Detail, Severity)")) {
-        rawFindings.push({
-          ruleId:   String(ans.RuleId   || "UX-???"),
-          subject:  String(ans.Subject  || "project"),
-          detail:   String(ans.Detail   || ""),
-          severity: String(ans.Severity || "MEDIUM"),
+    return runPrologPackAudit(context, {
+      packId: this.id,
+      rulesFile: RULES_FILE,
+      rulesLabel: "ux_ui",
+      query: "ux_violation(RuleId, Subject, Detail, Severity)",
+      defaultRuleId: "UX-???",
+      defaultSeverity: "MEDIUM",
+      collectFacts: (ctx, session) => {
+        assertStoryFacts(session, ctx.storyRegistry, {
+          sanitize,
+          include: ["code_refs", "test_refs", "postconditions", "tags"],
+          rawPostconditions: true,
         });
-      }
-    } catch (e) {
-      if (process.env.DEBUG) console.error(`[ux_ui] Prolog query error: ${e.message}`);
-    }
-
-    return rawFindings;
+        collectUxFacts(ctx, session);
+      },
+    });
   },
 
   getPhaseGuidance(phase, _context) {
@@ -325,8 +281,7 @@ const uxUiPack = {
         "Check that loading and empty states render appropriately for data-dependent views.",
       ],
     };
-    const lines = guidance[phase];
-    return lines ? lines.map((l, i) => `${i + 1}. ${l}`).join("\n") : null;
+    return formatPhaseGuidance(guidance, phase);
   },
 
   getPlanConstraints(context) {
@@ -396,55 +351,28 @@ const uxUiPack = {
   },
 
   normalizeFinding(raw, context) {
-    if (raw._error) {
-      return makeFinding({
-        id:             "UX-ERR",
-        role:           "ux_ui",
-        severity:       SEVERITY.MEDIUM,
-        category:       "pack_error",
-        story_refs:     [],
-        evidence:       raw._error,
-        recommendation: "Check that packs/ux_ui/rules.pl is present and valid Prolog.",
-      });
-    }
-
-    const rule = RULE_DEFS.find(r => r.id === raw.ruleId) || {};
-
-    // Subject could be a story id, "project", or a pair term like "pair(us_001, us_002)"
-    // RP-016: Guard against undefined subject (missing Prolog binding).
-    const subjectStr  = String(raw.subject ?? "unknown");
-    const isPair      = subjectStr.startsWith("pair(");
-    const isProject   = subjectStr === "project";
-    const storyRefs   = isPair || isProject ? [] : [subjectStr];
-    const subjectSlug = subjectStr.replace(/\W/g, "_");
-
-    // v7.4.2: shape-conditional severity downgrade. UX-001 (a11y coverage)
-    // shouldn't fire HIGH on backend / refactor / integration / config / docs
-    // plans that don't touch UI surfaces — the project-level a11y demand is
-    // real but doesn't apply to those plan shapes.
-    const severity = shapeAwareSeverity({
-      ruleId: raw.ruleId,
-      defaultSeverity: raw.severity || SEVERITY.MEDIUM,
-      planShape: context?.planShape,
-      downgrades: {
+    return normalizePackFinding(raw, context, {
+      packId: this.id,
+      rules: RULE_DEFS,
+      defaultSeverity: "MEDIUM",
+      category: (finding) => ruleCategory(finding.ruleId),
+      errorId: "UX-ERR",
+      errorRecommendation: "Check that packs/ux_ui/rules.pl is present and valid Prolog.",
+      severityDowngrades: {
         "UX-001": ["bug-fix", "regression", "integration", "refactor", "migration", "planner-core", "docs"],
       },
-    });
-
-    return makeFinding({
-      id:             `${raw.ruleId}-${subjectSlug}`,
-      role:           "ux_ui",
-      severity,
-      category:       ruleCategory(raw.ruleId),
-      story_refs:     storyRefs,
-      evidence:       raw.detail || `${raw.ruleId} violation for ${raw.subject}`,
-      recommendation: rule.remediation || "See ux_ui pack documentation.",
-      meta: {
+      storyRefs: (finding) => {
+        const subjectStr = String(finding.subject ?? "unknown");
+        return subjectStr.startsWith("pair(") || subjectStr === "project" ? [] : [subjectStr];
+      },
+      slug: (finding) => String(finding.subject ?? "unknown").replace(/\W/g, "_"),
+      fallbackRecommendation: "See ux_ui pack documentation.",
+      meta: (finding, _context, rule) => ({
         ux: {
-          rule_id:        raw.ruleId,
+          rule_id:        finding.ruleId,
           false_positive: rule.false_positive,
         },
-      },
+      }),
     });
   },
 };

@@ -1,0 +1,198 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://iterative-planner.local/schemas/claims_evidence.schema.json",
+  "title": "Iterative Planner Claims/Evidence Return",
+  "description": "Upward execution contract for returning validated claims, evidence references, verification methods, finite costs, and bounded bounce metadata from cheap execution agents.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "return_type",
+    "claims",
+    "bounce"
+  ],
+  "properties": {
+    "schema_version": {
+      "type": "integer",
+      "enum": [1],
+      "description": "Claims/evidence schema version."
+    },
+    "return_type": {
+      "type": "string",
+      "const": "claims_evidence",
+      "description": "Discriminator for cheap-agent upward returns."
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Validated claims produced by the execution agent.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "statement",
+          "type",
+          "evidence_refs",
+          "verification_method",
+          "cost"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_-]*$"
+          },
+          "statement": {
+            "type": "string",
+            "minLength": 1
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence_refs": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "verification_method": {
+            "type": "string",
+            "enum": ["executed", "deterministic", "rubric", "escalated", "none"]
+          },
+          "cost": {
+            "$ref": "#/$defs/cost"
+          }
+        },
+        "additionalProperties": true
+      }
+    },
+    "bounce": {
+      "type": "object",
+      "required": ["attempt", "max_bounces"],
+      "description": "Bounded retry metadata for invalid cheap-agent returns.",
+      "properties": {
+        "attempt": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "max_bounces": {
+          "type": "integer",
+          "minimum": 1
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "$defs": {
+    "cost": {
+      "type": "object",
+      "required": ["tokens", "usd", "wall_clock_ms"],
+      "properties": {
+        "tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "usd": {
+          "type": "number",
+          "minimum": 0
+        },
+        "wall_clock_ms": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": true
+    },
+    "receipt_projection": {
+      "type": "object",
+      "required": [
+        "schema_version",
+        "receipt_type",
+        "claims",
+        "cost_ledger",
+        "invalid_claim_count"
+      ],
+      "properties": {
+        "schema_version": {
+          "type": "integer",
+          "enum": [1]
+        },
+        "receipt_type": {
+          "type": "string",
+          "const": "claims_evidence_receipt"
+        },
+        "claims": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "type",
+              "statement",
+              "verification_method",
+              "evidence_refs",
+              "cost"
+            ],
+            "properties": {
+              "id": { "type": "string" },
+              "type": { "type": "string" },
+              "statement": { "type": "string" },
+              "verification_method": {
+                "type": "string",
+                "enum": ["executed", "deterministic", "rubric", "escalated", "none"]
+              },
+              "evidence_refs": {
+                "type": "array",
+                "items": { "type": "string" }
+              },
+              "cost": { "$ref": "#/$defs/cost" }
+            },
+            "additionalProperties": false
+          }
+        },
+        "cost_ledger": {
+          "type": "object",
+          "required": ["claim_count", "total"],
+          "properties": {
+            "claim_count": { "type": "integer", "minimum": 0 },
+            "total": { "$ref": "#/$defs/cost" }
+          },
+          "additionalProperties": false
+        },
+        "invalid_claim_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": true,
+  "examples": [
+    {
+      "schema_version": 1,
+      "return_type": "claims_evidence",
+      "bounce": {
+        "attempt": 0,
+        "max_bounces": 2
+      },
+      "claims": [
+        {
+          "id": "claim_fixture_validated",
+          "statement": "The claims/evidence contract fixture passes deterministic validation.",
+          "type": "implementation",
+          "evidence_refs": [
+            ".agent/skills/iterative-planner/tests/test_claims_evidence_contract.mjs"
+          ],
+          "verification_method": "executed",
+          "cost": {
+            "tokens": 120,
+            "usd": 0,
+            "wall_clock_ms": 10
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -8,7 +8,8 @@ import { existsSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
-import { makeConstraint, makeFinding, SEVERITY } from "../../scripts/lib/audit_types.mjs";
+import { makeConstraint, SEVERITY } from "../../scripts/lib/audit_types.mjs";
+import { formatPhaseGuidance, normalizePackFinding } from "../../scripts/lib/auditor_pack_engine.mjs";
 import { createSession } from "../../scripts/lib/prolog.mjs";
 
 const PACK_ID = "tokenomics";
@@ -127,7 +128,7 @@ const SCOPE_TERMS = [
 
 const PATH_TERMS = [
   "tokenomics", "tokenlab", "token-lab", "tokens", "vesting",
-  "emissions", "treasury", "governance", "staking", "dao",
+  "emissions", "treasury", "governance-token", "staking", "governance-dao",
 ];
 
 const SUPPLY_GROUPS = Object.freeze([
@@ -578,10 +579,6 @@ function findingsForAnalysis(analysis, context) {
   return findings.filter((finding) => phaseAllowsFinding(finding.ruleId, context));
 }
 
-function guidanceLines(lines) {
-  return lines.map((line, index) => `${index + 1}. ${line}`).join("\n");
-}
-
 const tokenomicsPack = {
   id: PACK_ID,
 
@@ -626,8 +623,7 @@ const tokenomicsPack = {
         "Reject closeout if financial/legal language survived without explicit advisory boundaries and qualified-review ownership.",
       ],
     };
-    const lines = guidance[String(phase || "").toLowerCase()];
-    return lines ? guidanceLines(lines) : null;
+    return formatPhaseGuidance(guidance, phase);
   },
 
   getPlanConstraints(context) {
@@ -650,25 +646,25 @@ const tokenomicsPack = {
   },
 
   normalizeFinding(raw) {
-    const rule = RULE_DEFS.find((entry) => entry.id === raw.ruleId) || {};
-    return makeFinding({
-      id: raw.ruleId || "TK-UNKNOWN",
-      role: PACK_ID,
-      severity: raw.severity || SEVERITY.HIGH,
-      category: raw.category || "tokenomics",
-      story_refs: raw.story_refs || [],
-      evidence: raw.detail || `${raw.ruleId || "TK"} tokenomics finding`,
-      recommendation: raw.recommendation || rule.remediation || "Add the missing tokenomics assumptions and review boundaries.",
-      meta: {
+    return normalizePackFinding(raw, undefined, {
+      packId: PACK_ID,
+      rules: RULE_DEFS,
+      defaultSeverity: SEVERITY.HIGH,
+      id: (finding) => finding.ruleId || "TK-UNKNOWN",
+      category: (finding) => finding.category || "tokenomics",
+      storyRefs: (finding) => finding.story_refs || [],
+      fallbackEvidence: (finding) => finding.detail || `${finding.ruleId || "TK"} tokenomics finding`,
+      fallbackRecommendation: "Add the missing tokenomics assumptions and review boundaries.",
+      meta: (finding, _context, rule) => ({
         tokenomics: {
-          rule_id: raw.ruleId,
-          missing_groups: raw.missing || [],
+          rule_id: finding.ruleId,
+          missing_groups: finding.missing || [],
           false_positive: rule.false_positive,
-          prolog_rule: raw.prolog_rule || null,
-          invariant_id: raw.category || null,
+          prolog_rule: finding.prolog_rule || null,
+          invariant_id: finding.category || null,
           advisory_boundary: "Not financial or legal advice; live token launches and investment decisions require qualified review.",
         },
-      },
+      }),
     });
   },
 

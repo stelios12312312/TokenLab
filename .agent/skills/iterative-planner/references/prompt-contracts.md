@@ -14,7 +14,7 @@ Each workflow/transition point has a set of **invariant instructions** that must
 
 **Fixed command template:**
 ```
-node <skill-path>/scripts/verify_gate.mjs explore-to-plan
+node <skill-path>/scripts/transition.mjs explore-to-plan --dry-run
 ```
 
 ## Contract: PLAN Phase

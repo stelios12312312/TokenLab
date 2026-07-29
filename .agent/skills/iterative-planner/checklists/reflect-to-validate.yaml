@@ -39,9 +39,9 @@ items:
   - id: progress-complete
     check: json_field_equals
     path: "{plan-dir}/state.json"
-    field: "close_signals.progress.satisfied"
+    field: "close_signals.progress.blocking_satisfied"
     equals: true
-    description: "Structured close signal confirms all progress items are complete before VALIDATE"
+    description: "Structured close signal confirms no substantive blocking progress remains before VALIDATE"
 
   - id: kb-updated
     check: json_field_equals

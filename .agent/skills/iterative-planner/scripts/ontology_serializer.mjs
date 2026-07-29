@@ -47,13 +47,34 @@ import {
   loadFindingsLedger,
   loadIntentContract,
 } from "./lib/plan_utils.mjs";
-import { computeLearnedObligationsSignal } from "./lib/learned_obligations.mjs";
+import { computePlanLearnedObligationsSignal } from "./lib/learned_obligations.mjs";
 import { computeMistakeRegistrySignal, loadMistakeRegistry } from "./lib/mistake_registry.mjs";
 import { loadRetroRegistry } from "./lib/retro_registry.mjs";
 import { extractPersonaPackId, summarizePersonaArtifacts } from "./lib/persona_artifacts.mjs";
 import { computeVerificationObligationSynthesis } from "./lib/verification_obligations.mjs";
+import {
+  criterionMatchesVerificationRow,
+  extractSuccessCriteria,
+  getTableCell,
+  normalizeMatrixText,
+  selectCriterionStoryTable,
+} from "./lib/verification_matrix.mjs";
+import { loadPlanWorkOrder } from "./lib/work_order_contract.mjs";
+import { compileQuantGateHardeningFacts } from "./lib/quant_gate_hardening.mjs";
 import { computeQuantResultsValidationSignal } from "./lib/quant_results_validation.mjs";
 import { computeReviewIntake } from "./lib/review_intake.mjs";
+import { compileJournalMemoryFacts } from "./lib/journal_memory.mjs";
+import { collectIssueHistoryFactBundle } from "./lib/issue_history_facts.mjs";
+import {
+  normalizePresentationResult,
+  normalizeVerificationMode,
+  syncLedgerFromStrategy,
+} from "./lib/verification_truth.mjs";
+import {
+  deriveAntiRecurrencePresentationStatus,
+  verificationStatusIsPass,
+} from "./lib/verification_status_vocabulary.mjs";
+import { readEffectiveVerificationStrategy } from "./lib/verification_strategy.mjs";
 
 // Sanitization delegated to shared lib/sanitize.mjs:
 //   sanitize()    = sanitizeAtom    — free-text labels, descriptions
@@ -72,6 +93,24 @@ function safeRead(filePath) {
     if (st.size > MAX_BYTES) return null;
     return readFileSync(filePath, "utf-8");
   } catch { return null; }
+}
+
+function closeSignalRequiredAtom(signal) {
+  if (typeof signal?.required === "boolean") return signal.required ? "true" : "false";
+  return "unknown";
+}
+
+function closeSignalSatisfiedAtom(signal) {
+  if (signal && typeof signal === "object" && signal.required === false) return "not_required";
+  if (typeof signal?.satisfied === "boolean") return signal.satisfied ? "true" : "false";
+  return "unknown";
+}
+
+function closeSignalStatusValue(signal, fallbackWhenPresent = "not_required") {
+  if (!signal || typeof signal !== "object") return "unknown";
+  if (signal.status) return signal.status;
+  if (signal.required === false) return "not_required";
+  return fallbackWhenPresent;
 }
 
 function safeReadJson(filePath) {
@@ -165,6 +204,58 @@ function loadVerificationLedger(planDir) {
     obligations: Array.isArray(parsed.obligations) ? parsed.obligations.filter(Boolean) : [],
     evidence: Array.isArray(parsed.evidence) ? parsed.evidence.filter(Boolean) : [],
     waivers: Array.isArray(parsed.waivers) ? parsed.waivers.filter(Boolean) : [],
+  };
+}
+
+function verificationSubjectAliasKey(subjectId) {
+  const raw = String(subjectId || "").trim();
+  if (!raw) return null;
+  const knownPrefixes = [
+    "plan:verification-obligation-synthesis:",
+    "verification-obligation-synthesis:",
+    "verification_obligation_synthesis:",
+  ];
+  const prefix = knownPrefixes.find((candidate) => raw.toLowerCase().startsWith(candidate));
+  const leaf = prefix ? raw.slice(prefix.length) : raw;
+  return leaf.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function buildVerificationSubjectCanonicalizer(ledger) {
+  const ids = [];
+  const explicitAliases = new Map();
+  for (const subject of ledger?.subjects || []) {
+    const subjectId = firstNonEmptyString(subject?.id, subject?.subject_id);
+    ids.push(subjectId);
+    for (const alias of asStringList(subject?.aliases)) {
+      ids.push(alias);
+      if (subjectId) explicitAliases.set(alias, subjectId);
+    }
+  }
+  for (const obligation of ledger?.obligations || []) ids.push(firstNonEmptyString(obligation?.subject, obligation?.subject_id));
+  for (const evidence of ledger?.evidence || []) ids.push(firstNonEmptyString(evidence?.subject, evidence?.subject_id));
+  for (const waiver of ledger?.waivers || []) ids.push(firstNonEmptyString(waiver?.subject, waiver?.subject_id));
+
+  const byKey = new Map();
+  for (const id of ids.filter(Boolean)) {
+    const key = verificationSubjectAliasKey(id);
+    if (!key) continue;
+    const current = byKey.get(key);
+    // Prefer the exact leaf-form authored subject over the planner synthesis
+    // prefix. Otherwise use the shortest deterministic spelling.
+    const preferred = id === key
+      ? id
+      : (!current || id.length < current.length ? id : current);
+    byKey.set(key, preferred);
+  }
+
+  return (subjectId) => {
+    const raw = String(subjectId || "").trim();
+    if (!raw) return raw;
+    if (explicitAliases.has(raw)) return explicitAliases.get(raw);
+    const key = verificationSubjectAliasKey(raw);
+    const isSynthesis = /^plan:verification-obligation-synthesis:/i.test(raw);
+    if (!isSynthesis && !ids.includes(raw)) return raw;
+    return byKey.get(key) || raw;
   };
 }
 
@@ -393,13 +484,8 @@ function extractAntiRecurrenceMarkdownEvidence(verificationContent) {
   const section = extractMarkdownSection(verificationContent, "Anti-Recurrence Guard");
   if (!section.trim()) return { satisfied: false, guardTypes: [] };
 
-  const passRecorded = /(^|\n)\s*[-*]?\s*.*\bPASS\b/m.test(section) && !/(^|\n)\s*[-*]?\s*.*\bFAIL\b/m.test(section);
-  const guardTypeLines = section
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => /^guard types?\s*:/i.test(line))
-    .map((line) => line.replace(/^guard types?\s*:/i, "").trim());
-  const guardTypes = collectAntiRecurrenceGuardTypes(guardTypeLines);
+  const { passRecorded, guardValues } = deriveAntiRecurrencePresentationStatus(section);
+  const guardTypes = collectAntiRecurrenceGuardTypes(guardValues);
 
   return {
     satisfied: passRecorded && guardTypes.length > 0,
@@ -428,45 +514,6 @@ function extractGoals(planContent) {
   }
 
   return goals;
-}
-
-// ---------------------------------------------------------------------------
-// Success criteria extraction from plan.md
-// ---------------------------------------------------------------------------
-
-function extractSuccessCriteria(planContent) {
-  if (!planContent) return [];
-  const criteria = [];
-
-  // Match ## Success Criteria section
-  const section = planContent.match(/^## Success Criteria\s*\n([\s\S]*?)(?=\n## |\n$)/m);
-  if (!section) return criteria;
-
-  const lines = section[1].split("\n");
-  for (const line of lines) {
-    // Match numbered list items: "1. Some criterion"
-    const match = line.match(/^\s*(\d+)\.\s+(.+)/);
-    if (match) {
-      const num = match[1];
-      const label = match[2].trim();
-      criteria.push({
-        id: `sc_${num}`,
-        label: label.slice(0, 200),
-      });
-    }
-    // Match bulleted list items: "- Some criterion"
-    const bulletMatch = line.match(/^\s*[-*]\s+(.+)/);
-    if (bulletMatch && !match) {
-      const idx = criteria.length + 1;
-      const label = bulletMatch[1].trim();
-      criteria.push({
-        id: `sc_${idx}`,
-        label: label.slice(0, 200),
-      });
-    }
-  }
-
-  return criteria;
 }
 
 function normalizePath(filePath) {
@@ -499,7 +546,7 @@ function mapCriteriaToGoals(goals, criteria) {
 // Criterion-to-story mapping
 // ---------------------------------------------------------------------------
 
-function mapCriteriaToStories(criteria, stories, planContent) {
+function mapCriteriaToStories(criteria, stories, planContent, workOrder = null) {
   const links = [];
   const seen = new Set();
   const explicitlyLinkedCriteria = new Set();
@@ -514,27 +561,22 @@ function mapCriteriaToStories(criteria, stories, planContent) {
   // Strategy 1: @planner:proves annotations link files → criteria
   // (handled separately via annotation facts)
 
-  // Strategy 2: Verification Strategy table maps criteria → stories
-  if (planContent) {
-    const verSection = planContent.match(/^## Verification Strategy\s*\n([\s\S]*?)(?=\n## |\n$)/m);
-    if (verSection) {
-      // Parse markdown table rows
-      const rows = verSection[1].split("\n").filter(l => l.includes("|") && !l.match(/^\s*\|?\s*[-:]+/));
-      for (const row of rows) {
-        const cells = row.split("|").map(c => c.trim()).filter(Boolean);
-        if (cells.length >= 2) {
-          const criterionLabel = cells[0].toLowerCase();
-          // Try to match criterion by label substring
-          for (const c of criteria) {
-            if (c.label.toLowerCase().includes(criterionLabel) ||
-                criterionLabel.includes(c.label.toLowerCase().slice(0, 20))) {
-              // Check if any story is referenced in the row
-              for (const s of stories) {
-                const rowText = cells.join(" ").toLowerCase();
-                if (rowText.includes(s.id.toLowerCase())) {
-                  addLink(c.id, s.id, { explicit: true });
-                }
-              }
+  // Strategy 2: shared Verification Strategy reader maps criteria -> stories.
+  const table = selectCriterionStoryTable(planContent, { workOrder });
+  if (table?.header) {
+    const headerCells = table.header.map((cell) => normalizeMatrixText(cell));
+    const criterionColumn = headerCells.findIndex((cell) => cell.includes("criterion"));
+    const storyColumn = headerCells.findIndex((cell) => cell.includes("story linkage") || cell === "story");
+    if (criterionColumn >= 0 && storyColumn >= 0) {
+      for (const row of table.rows || []) {
+        const criterionCell = getTableCell(row, criterionColumn);
+        const storyCell = getTableCell(row, storyColumn);
+        const rowText = `${storyCell} ${(row.cells || []).join(" ")}`.toLowerCase();
+        for (const c of criteria) {
+          if (!criterionMatchesVerificationRow(c, criterionCell)) continue;
+          for (const s of stories) {
+            if (rowText.includes(String(s.id || "").toLowerCase())) {
+              addLink(c.id, s.id, { explicit: true });
             }
           }
         }
@@ -679,11 +721,10 @@ function extractVerificationResults(planDir) {
 
   for (const row of rows) {
     const criterion = row[criterionColumn] || row[0] || "";
-    const result = normalizeTableCell(row[resultColumn] || "");
-    const passed = /pass|yes|ok|✓|✅/.test(result);
+    const status = normalizePresentationResult(row[resultColumn] || "");
     results.push({
       criterion: normalizeTableFactValue(criterion),
-      passed,
+      status: status.valid ? status.canonical : status.token,
       evidence: normalizeTableFactValue(row[evidenceColumn] || row[row.length - 1] || ""),
     });
   }
@@ -749,11 +790,6 @@ function extractActiveMistakeResponse(planContent) {
     .filter((entry) => entry.mistake_id && entry.guard);
 }
 
-function statusImpliesSatisfied(value) {
-  const normalized = normalizeTableCell(value);
-  return ["pass", "passed", "ok", "success", "verified", "done", "completed", "recorded"].includes(normalized);
-}
-
 function extractActiveMistakeEvidence(verificationContent) {
   const section = extractMarkdownSection(verificationContent, "Active Mistake Evidence");
   const { header, rows } = parseMarkdownTable(section);
@@ -774,7 +810,7 @@ function extractActiveMistakeEvidence(verificationContent) {
         hook: normalizeTableFactValue(row[hookColumn]),
         status,
         evidence,
-        satisfied: statusImpliesSatisfied(status) || (normalizeTableCell(status) !== "pending" && Boolean(evidence.trim())),
+        satisfied: verificationStatusIsPass(status, "presentation"),
       };
     })
     .filter((entry) => entry.mistake_id && entry.hook);
@@ -784,7 +820,14 @@ function extractActiveMistakeEvidence(verificationContent) {
 // Main serializer
 // ---------------------------------------------------------------------------
 
-export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, annotations }) {
+export function serializeToFacts({
+  cwd,
+  storyRegistry,
+  planDir,
+  planContent,
+  annotations,
+  quantResultsValidationOverride = null,
+}) {
   const facts = [];
   const meta = {
     goals: 0,
@@ -808,6 +851,7 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     persona_constraints: 0,
     persona_findings: 0,
     review_intake_items: 0,
+    quant_gate_hardening: 0,
     quant_results_validation: 0,
     intent_contracts: 0,
     intent_deliverables: 0,
@@ -815,6 +859,14 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     recipe_capabilities: 0,
     recipe_contracts: 0,
     recipe_discovery_candidates: 0,
+    journal_memory_records: 0,
+    issue_history_caches: 0,
+    issue_history_invalid_caches: 0,
+    issue_history_records: 0,
+    issue_history_labels: 0,
+    issue_history_comments: 0,
+    issue_history_decisions: 0,
+    issue_history_blocker_resolutions: 0,
   };
 
   facts.push("% ==========================================================");
@@ -822,27 +874,71 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
   facts.push(`% Generated by ontology_serializer.mjs`);
   facts.push("% ==========================================================");
   facts.push("");
+  const journalMemory = compileJournalMemoryFacts({ cwd });
+  facts.push("% --- Journal-memory substrate facts ---");
+  for (const fact of journalMemory.facts || []) facts.push(fact);
+  meta.journal_memory_records = journalMemory.records?.length || 0;
+  facts.push("");
+
+  const issueHistory = collectIssueHistoryFactBundle({ cwd });
+  facts.push("% --- GitHub issue-history cache facts ---");
+  for (const fact of issueHistory.facts || []) facts.push(fact);
+  meta.issue_history_caches = issueHistory.meta?.caches || 0;
+  meta.issue_history_invalid_caches = issueHistory.meta?.invalid_caches || 0;
+  meta.issue_history_records = issueHistory.meta?.records || 0;
+  meta.issue_history_labels = issueHistory.meta?.labels || 0;
+  meta.issue_history_comments = issueHistory.meta?.comments || 0;
+  meta.issue_history_decisions = issueHistory.meta?.decisions || 0;
+  meta.issue_history_blocker_resolutions = issueHistory.meta?.blocker_resolutions || 0;
+  facts.push("");
 
   // --- 1. Business goals ---
   const goals = extractGoals(planContent);
   const verificationContent = planDir ? (safeRead(join(planDir, "verification.md")) || "") : "";
-  const verificationLedger = loadVerificationLedger(planDir);
+  const planStateJson = planDir ? (safeReadJson(join(planDir, "state.json")) || {}) : {};
+  const workOrderInfo = planDir ? loadPlanWorkOrder(planDir) : { parsed: null, error: null };
+  const workOrder = workOrderInfo.error ? null : workOrderInfo.parsed;
+  const effectiveVerificationStrategy = planDir
+    ? readEffectiveVerificationStrategy({ cwd, planDir, planContent })
+    : null;
+  const traceabilityPlanContent = effectiveVerificationStrategy?.ok
+    ? effectiveVerificationStrategy.compatibility_plan_content
+    : planContent;
+  const rawVerificationLedger = loadVerificationLedger(planDir);
+  const verificationLedger = rawVerificationLedger && effectiveVerificationStrategy?.ok
+    ? syncLedgerFromStrategy({
+        strategy: effectiveVerificationStrategy.document || effectiveVerificationStrategy.strategy,
+        existingLedger: { ...rawVerificationLedger, present: true },
+        successCriteria: extractSuccessCriteria(traceabilityPlanContent),
+      })
+    : rawVerificationLedger;
+  const canonicalVerificationSubject = buildVerificationSubjectCanonicalizer(verificationLedger);
+  const emittedVerificationAliases = new Set();
+  const recordVerificationAlias = (original, canonical) => {
+    if (!original || !canonical || original === canonical) return;
+    const key = `${original}=>${canonical}`;
+    if (emittedVerificationAliases.has(key)) return;
+    emittedVerificationAliases.add(key);
+    facts.push(`verification_subject_alias(${sanitizeId(original)}, ${sanitizeId(canonical)}).`);
+  };
   const retroRegistry = loadRetroRegistry({ cwd });
   const mistakeRegistry = loadMistakeRegistry();
   const mistakeSignal = computeMistakeRegistrySignal({
     planDir,
-    stateJson: { goal: goals[0]?.label || null },
+    stateJson: planStateJson,
     planContent,
     storyRegistry,
   });
-  const learnedObligations = computeLearnedObligationsSignal({
+  const learnedObligations = computePlanLearnedObligationsSignal({
+    cwd,
     planDir,
-    stateJson: { goal: goals[0]?.label || null },
+    stateJson: planStateJson,
     planContent,
     verificationContent,
     verificationLedger,
     storyRegistry,
     mistakeSignal,
+    requiredAtOrBefore: "close",
   });
   const antiRecurrenceTriggerTerms = collectAntiRecurrenceTriggerTerms(goals[0]?.label || null, planContent);
   const antiRecurrenceMarkdownEvidence = extractAntiRecurrenceMarkdownEvidence(verificationContent);
@@ -856,13 +952,14 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     planContent,
     storyRegistry,
   });
-  const quantResultsValidation = computeQuantResultsValidationSignal({
-    planDir,
-    planContent,
-    verificationContent,
-    reflectionContent: planDir ? safeRead(join(planDir, "reflection.md")) : "",
-    summaryContent: planDir ? safeRead(join(planDir, "summary.md")) : "",
-  });
+  const quantResultsValidation = quantResultsValidationOverride || computeQuantResultsValidationSignal({
+      planDir,
+      projectRoot: cwd,
+      planContent,
+      verificationContent,
+      reflectionContent: planDir ? safeRead(join(planDir, "reflection.md")) : "",
+      summaryContent: planDir ? safeRead(join(planDir, "summary.md")) : "",
+    });
   const reviewIntake = computeReviewIntake({
     cwd,
     planDir,
@@ -874,7 +971,7 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
   if (goals.length > 0) facts.push("");
 
   // --- 2. Success criteria ---
-  const criteria = extractSuccessCriteria(planContent);
+  const criteria = extractSuccessCriteria(planContent, { workOrder });
   for (const c of criteria) {
     facts.push(`success_criterion(${sanitizeId(c.id)}, ${sanitize(c.label)}).`);
     // Also emit arity-1 form for invariants.pl HR-011 and pack compatibility
@@ -893,7 +990,7 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
 
   // --- 4. Criterion → story links ---
   const stories = storyRegistry?.stories || [];
-  const criterionStoryLinks = mapCriteriaToStories(criteria, stories, planContent);
+  const criterionStoryLinks = mapCriteriaToStories(criteria, stories, traceabilityPlanContent, workOrder);
   for (const link of criterionStoryLinks) {
     facts.push(`criterion_story(${sanitizeId(link.criterionId)}, ${sanitize(link.storyId)}).`);
     meta.criterion_story_links++;
@@ -973,7 +1070,7 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
   if (planDir) {
     const results = extractVerificationResults(planDir);
     for (const r of results) {
-      facts.push(`verification_result(${sanitize(r.criterion)}, ${r.passed}, ${sanitize(r.evidence)}).`);
+      facts.push(`verification_result_status(${sanitize(r.criterion)}, ${sanitize(r.status)}, ${sanitize(r.evidence)}).`);
       meta.verification_results++;
     }
     if (results.length > 0) facts.push("");
@@ -1270,9 +1367,11 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
   // --- 13. Learned verification obligations (registry-backed semantic bridge) ---
   if (learnedObligations.required) {
     for (const obligation of learnedObligations.active_obligations || []) {
-      facts.push(`verification_subject(${sanitizeId(obligation.subject_id)}, ${sanitizeEnumAtom("plan_guard")}).`);
+      const subjectId = canonicalVerificationSubject(obligation.subject_id);
+      recordVerificationAlias(obligation.subject_id, subjectId);
+      facts.push(`verification_subject(${sanitizeId(subjectId)}, ${sanitizeEnumAtom("plan_guard")}).`);
       facts.push(`verification_mode(${sanitizeEnumAtom(obligation.verification_mode)}).`);
-      facts.push(`verification_obligation(${sanitizeId(`vo_${obligation.id}`)}, ${sanitizeId(obligation.subject_id)}, ${sanitizeEnumAtom(obligation.verification_mode)}, ${sanitizeEnumAtom(obligation.severity || "warn_then_fail")}).`);
+      facts.push(`verification_obligation(${sanitizeId(`vo_${obligation.id}`)}, ${sanitizeId(subjectId)}, ${sanitizeEnumAtom(obligation.verification_mode)}, ${sanitizeEnumAtom(obligation.severity || "warn_then_fail")}).`);
       facts.push(`obligation_source(${sanitizeId(`vo_${obligation.id}`)}, ${sanitizeEnumAtom("learned_obligation")}, ${sanitizeId(obligation.id)}).`);
       facts.push(`obligation_required_by_phase(${sanitizeId(`vo_${obligation.id}`)}, ${sanitizeEnumAtom(obligation.required_by_phase || "reflect")}).`);
       meta.verification_subjects++;
@@ -1280,10 +1379,10 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
       meta.verification_obligations++;
 
       for (const family of obligation.matched_trigger_families || []) {
-        facts.push(`subject_capability(${sanitizeId(obligation.subject_id)}, ${sanitizeId(`learned_trigger:${family}`)}).`);
+        facts.push(`subject_capability(${sanitizeId(subjectId)}, ${sanitizeId(`learned_trigger:${family}`)}).`);
       }
       if (obligation.source_mistake) {
-        facts.push(`subject_capability(${sanitizeId(obligation.subject_id)}, ${sanitizeId(`source_mistake:${obligation.source_mistake}`)}).`);
+        facts.push(`subject_capability(${sanitizeId(subjectId)}, ${sanitizeId(`source_mistake:${obligation.source_mistake}`)}).`);
         facts.push(`obligation_source_mistake(${sanitizeId(`vo_${obligation.id}`)}, ${sanitizeId(obligation.source_mistake)}).`);
       }
       if (obligation.source_registry_degraded) {
@@ -1294,7 +1393,7 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
       }
 
       if (obligation.status === "verification_md" || obligation.status === "verification_ledger") {
-        facts.push(`verification_evidence(${sanitizeId(`ev_${obligation.id}`)}, ${sanitizeId(obligation.subject_id)}, ${sanitizeEnumAtom(obligation.verification_mode)}, ${sanitizeEnumAtom("passed")}).`);
+        facts.push(`verification_evidence(${sanitizeId(`ev_${obligation.id}`)}, ${sanitizeId(subjectId)}, ${sanitizeEnumAtom(obligation.verification_mode)}, ${sanitizeEnumAtom("passed")}).`);
         facts.push(`evidence_command(${sanitizeId(`ev_${obligation.id}`)}, ${sanitize(
           obligation.status === "verification_ledger"
             ? "verification_ledger.json"
@@ -1309,25 +1408,28 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
 
   // --- 14. Synthesized verification obligations (planner-owned semantic bridge) ---
   if (verificationObligationSynthesis.required) {
-    for (const obligation of verificationObligationSynthesis.obligations || []) {
+    for (const obligation of verificationObligationSynthesis.obligations) {
       const obligationId = `vos_${obligation.id}`;
-      const subjectId = `plan:verification-obligation-synthesis:${obligation.id}`;
+      const generatedSubjectId = `plan:verification-obligation-synthesis:${obligation.id}`;
+      const subjectId = canonicalVerificationSubject(generatedSubjectId);
+      const verificationMode = normalizeVerificationMode(obligation.verification_mode);
+      recordVerificationAlias(generatedSubjectId, subjectId);
       facts.push(`verification_subject(${sanitizeId(subjectId)}, ${sanitizeEnumAtom("plan_guard")}).`);
-      facts.push(`verification_mode(${sanitizeEnumAtom(obligation.verification_mode)}).`);
-      facts.push(`verification_obligation(${sanitizeId(obligationId)}, ${sanitizeId(subjectId)}, ${sanitizeEnumAtom(obligation.verification_mode)}, ${sanitizeEnumAtom("required")}).`);
+      facts.push(`verification_mode(${sanitizeEnumAtom(verificationMode)}).`);
+      facts.push(`verification_obligation(${sanitizeId(obligationId)}, ${sanitizeId(subjectId)}, ${sanitizeEnumAtom(verificationMode)}, ${sanitizeEnumAtom("required")}).`);
       facts.push(`obligation_source(${sanitizeId(obligationId)}, ${sanitizeEnumAtom("planner_synthesis")}, ${sanitizeId(obligation.id)}).`);
       facts.push(`obligation_required_by_phase(${sanitizeId(obligationId)}, ${sanitizeEnumAtom("plan")}).`);
       meta.verification_subjects++;
       meta.verification_modes++;
       meta.verification_obligations++;
 
-      for (const packId of obligation.matched_persona_packs || []) {
+      for (const packId of obligation.matched_persona_packs) {
         facts.push(`obligation_source(${sanitizeId(obligationId)}, ${sanitizeEnumAtom("persona_pack")}, ${sanitizeId(packId)}).`);
       }
-      for (const tag of obligation.matched_story_tags || []) {
+      for (const tag of obligation.matched_story_tags) {
         facts.push(`obligation_source(${sanitizeId(obligationId)}, ${sanitizeEnumAtom("story_tag")}, ${sanitizeId(tag)}).`);
       }
-      for (const filePath of obligation.matched_files || []) {
+      for (const filePath of obligation.matched_files) {
         facts.push(`subject_capability(${sanitizeId(subjectId)}, ${sanitizeId(`boundary:${filePath}`)}).`);
       }
 
@@ -1391,8 +1493,13 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     }
 
     for (const subject of verificationLedger.subjects) {
-      const subjectId = firstNonEmptyString(subject?.id, subject?.subject_id);
-      if (!subjectId) continue;
+      const rawSubjectId = firstNonEmptyString(subject?.id, subject?.subject_id);
+      if (!rawSubjectId) continue;
+      const subjectId = canonicalVerificationSubject(rawSubjectId);
+      recordVerificationAlias(rawSubjectId, subjectId);
+      for (const alias of asStringList(subject?.aliases)) {
+        recordVerificationAlias(alias, subjectId);
+      }
 
       const kind = firstNonEmptyString(subject?.kind, subject?.type, "generic");
       emit(`verification_subject(${sanitizeId(subjectId)}, ${sanitizeEnumAtom(kind)}).`);
@@ -1426,7 +1533,9 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
 
     for (const obligation of verificationLedger.obligations) {
       const obligationId = firstNonEmptyString(obligation?.id, obligation?.obligation_id);
-      const subjectId = firstNonEmptyString(obligation?.subject, obligation?.subject_id);
+      const rawSubjectId = firstNonEmptyString(obligation?.subject, obligation?.subject_id);
+      const subjectId = canonicalVerificationSubject(rawSubjectId);
+      recordVerificationAlias(rawSubjectId, subjectId);
       const mode = firstNonEmptyString(obligation?.mode);
       if (!obligationId || !subjectId || !mode) continue;
 
@@ -1449,7 +1558,9 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
 
     for (const evidence of verificationLedger.evidence) {
       const evidenceId = firstNonEmptyString(evidence?.id, evidence?.evidence_id);
-      const subjectId = firstNonEmptyString(evidence?.subject, evidence?.subject_id);
+      const rawSubjectId = firstNonEmptyString(evidence?.subject, evidence?.subject_id);
+      const subjectId = canonicalVerificationSubject(rawSubjectId);
+      recordVerificationAlias(rawSubjectId, subjectId);
       const mode = firstNonEmptyString(evidence?.mode);
       if (!evidenceId || !subjectId || !mode) continue;
 
@@ -1482,7 +1593,9 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
 
     for (const waiver of verificationLedger.waivers) {
       const waiverId = firstNonEmptyString(waiver?.id, waiver?.waiver_id);
-      const subjectId = firstNonEmptyString(waiver?.subject, waiver?.subject_id);
+      const rawSubjectId = firstNonEmptyString(waiver?.subject, waiver?.subject_id);
+      const subjectId = canonicalVerificationSubject(rawSubjectId);
+      recordVerificationAlias(rawSubjectId, subjectId);
       const mode = firstNonEmptyString(waiver?.mode);
       if (!waiverId || !subjectId || !mode) continue;
 
@@ -1552,8 +1665,8 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
 
   // --- 16. Review intake close signal (optional / additive) ---
   if (reviewIntake) {
-    facts.push(`review_intake_required(${reviewIntake.required ? "true" : "false"}).`);
-    facts.push(`review_intake_satisfied(${reviewIntake.satisfied ? "true" : "false"}).`);
+    facts.push(`review_intake_required(${closeSignalRequiredAtom(reviewIntake)}).`);
+    facts.push(`review_intake_satisfied(${closeSignalSatisfiedAtom(reviewIntake)}).`);
     facts.push(`review_intake_unresolved_required_count(${Number(reviewIntake.unresolved_required_count || 0)}).`);
     for (const item of Array.isArray(reviewIntake.items) ? reviewIntake.items : []) {
       facts.push(`review_item(${sanitizeId(item.id)}, ${sanitizeEnumAtom(item.source_kind || "unknown")}, ${item.required ? "true" : "false"}).`);
@@ -1572,11 +1685,38 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     facts.push("");
   }
 
-  // --- 17. Quant results validation close signal (optional / additive) ---
+  // --- 17. Quant gate hardening facts (optional / additive) ---
+  try {
+    const quantGateFacts = compileQuantGateHardeningFacts({ cwd, planDir, planContent });
+    if (Array.isArray(quantGateFacts?.facts) && quantGateFacts.facts.length > 0) {
+      facts.push(...quantGateFacts.facts);
+      facts.push("");
+      meta.quant_gate_hardening++;
+    }
+  } catch {
+    facts.push("quant_optimization_scale_required(false).");
+    facts.push("quant_optimization_scale_status('error').");
+    facts.push("quant_run_class_interpretive(false).");
+    facts.push("quant_run_class_quick_evidence(false).");
+    facts.push("quant_run_class_discovered_budget_unknown(true).");
+    facts.push("quant_leakage_proof_artifact_required(false).");
+    facts.push("quant_leakage_proof_artifact_status('error').");
+    facts.push("quant_leakage_proof_artifact_row_count(0).");
+    facts.push("");
+  }
+
+  // --- 18. Quant results validation close signal (optional / additive) ---
   if (quantResultsValidation) {
-    facts.push(`quant_results_validation_required(${quantResultsValidation.required ? "true" : "false"}).`);
-    facts.push(`quant_results_validation_satisfied(${quantResultsValidation.satisfied ? "true" : "false"}).`);
-    facts.push(`quant_results_validation_status(${sanitizeEnumAtom(quantResultsValidation.status || "not_required")}).`);
+    facts.push(`quant_results_validation_required(${closeSignalRequiredAtom(quantResultsValidation)}).`);
+    facts.push(`quant_results_validation_satisfied(${closeSignalSatisfiedAtom(quantResultsValidation)}).`);
+    facts.push(`quant_results_validation_status(${sanitizeEnumAtom(closeSignalStatusValue(quantResultsValidation))}).`);
+    facts.push(`quant_results_evidence_validity(${sanitizeEnumAtom(quantResultsValidation.evidence_validity || "not_required")}).`);
+    facts.push(`quant_results_claim_support_allowed(${quantResultsValidation.claim_support_allowed === true ? "true" : "false"}).`);
+    facts.push(`quant_results_numeric_output_reportable(${quantResultsValidation.numeric_output_reportable === true ? "true" : "false"}).`);
+    const environmentReceipt = quantResultsValidation.environment_preflight_receipt || null;
+    facts.push(`quant_results_environment_preflight_status(${sanitizeEnumAtom(environmentReceipt?.status || "not_available")}).`);
+    facts.push(`quant_results_environment_preflight_performed(${environmentReceipt?.performed === true ? "true" : "false"}).`);
+    facts.push(`quant_results_environment_preflight_probe_count(${Number.isInteger(environmentReceipt?.probe_count) ? environmentReceipt.probe_count : 0}).`);
     if (quantResultsValidation.run_class) {
       facts.push(`quant_results_run_class(${sanitizeEnumAtom(quantResultsValidation.run_class)}).`);
     }
@@ -1623,7 +1763,7 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
     facts.push("");
   }
 
-  // --- 18. Persona artifacts (optional / additive) ---
+  // --- 19. Persona artifacts (optional / additive) ---
   if (personaArtifacts.summary.present) {
     const personaFacts = [];
     const seenFacts = new Set();
@@ -1690,7 +1830,15 @@ export function serializeToFacts({ cwd, storyRegistry, planDir, planContent, ann
   // --- 19. Completeness marker ---
   facts.push(`ontology_loaded(${meta.goals}, ${meta.criteria}, ${meta.audit_passes}).`);
 
-  return { facts: facts.join("\n"), meta };
+  const emittedVerificationFacts = new Set();
+  const dedupedFacts = facts.filter((fact) => {
+    if (!/^verification_(?:subject|mode|obligation|evidence|waiver|supported|ledger|obligation_tracking)/.test(fact)) return true;
+    if (emittedVerificationFacts.has(fact)) return false;
+    emittedVerificationFacts.add(fact);
+    return true;
+  });
+
+  return { facts: dedupedFacts.join("\n"), meta };
 }
 
 // ---------------------------------------------------------------------------

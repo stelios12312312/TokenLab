@@ -28,7 +28,7 @@ console.log("\nReal-Telemetry Replay Harness\n");
 // 1. Replay every real fixture: the live rule must reproduce every recorded verdict,
 //    and every recorded stream's hash chain must be intact.
 const results = replayFixtures(fixturesDir);
-assert(results.length >= 8, `replays all real fixtures (got ${results.length})`);
+assert(results.length >= 25, `replays the expanded E2-3 real fixture corpus (got ${results.length})`);
 let totalGts = 0, totalMatched = 0;
 for (const r of results) {
   totalGts += r.gate_transitions; totalMatched += r.matched;

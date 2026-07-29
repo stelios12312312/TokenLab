@@ -1,0 +1,113 @@
+{
+  "orchestrator_rules": {
+    "version": 1,
+    "selection_model": "grouped_templates_v1",
+    "match_contract": "Rules may only inspect derived routing, version routing, story context, and escalation context. They must not classify raw goal text.",
+    "groups": [
+      {
+        "id": "agent_a_primary",
+        "selection": "first_match",
+        "required_match": true,
+        "rules": [
+          {
+            "id": "agent_a_recover_poison",
+            "reason": "Honor poison-recovery ownership from planner_preflight before any other orchestration choice.",
+            "match": {
+              "recovery_modes_prefix_any": [
+                "recover_poison"
+              ]
+            },
+            "emit": {
+              "template": "agent_a_recover_poison"
+            }
+          },
+          {
+            "id": "agent_a_advisor_first",
+            "reason": "When the derived front door is advisor-first, keep the broader situation report as the first move.",
+            "match": {
+              "front_door_modes_any": [
+                "advisor_first"
+              ]
+            },
+            "emit": {
+              "template": "agent_a_advisor_first"
+            }
+          },
+          {
+            "id": "agent_a_continue_active_plan",
+            "reason": "If an active plan already owns the work, continue that plan instead of re-routing it.",
+            "match": {
+              "front_door_modes_any": [
+                "continue_active_plan"
+              ],
+              "active_plan_present": true
+            },
+            "emit": {
+              "template": "agent_a_continue_active_plan"
+            }
+          },
+          {
+            "id": "agent_a_direct_workflow",
+            "reason": "Otherwise compose the exact upstream workflow recommendation without reclassifying raw task text.",
+            "match": {
+              "front_door_modes_any": [
+                "direct_workflow"
+              ]
+            },
+            "emit": {
+              "template": "agent_a_direct_workflow"
+            }
+          }
+        ]
+      },
+      {
+        "id": "downstream_followups",
+        "selection": "append_all",
+        "required_match": false,
+        "rules": [
+          {
+            "id": "agent_b_story_verification",
+            "reason": "When story linkage exists and Agent B is enabled, queue post-close story verification.",
+            "match": {
+              "agent_b_enabled": true,
+              "story_ids_present": true
+            },
+            "emit": {
+              "template": "agent_b_story_verification"
+            }
+          },
+          {
+            "id": "agent_c_post_retro_review",
+            "reason": "When the upstream workflow is /retro and Agent C is enabled, queue post-retro knowledge stewardship.",
+            "match": {
+              "agent_c_enabled": true,
+              "workflows_any": [
+                "/retro"
+              ]
+            },
+            "emit": {
+              "template": "agent_c_post_retro_review"
+            }
+          }
+        ]
+      },
+      {
+        "id": "audit_followups",
+        "selection": "append_all",
+        "required_match": false,
+        "rules": [
+          {
+            "id": "required_non_advisor_audits",
+            "reason": "Escalation guidance should surface non-optional follow-up audits, excluding /advisor itself.",
+            "match": {
+              "required_audits_present": true
+            },
+            "emit": {
+              "template": "required_non_advisor_audits"
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -128,6 +128,7 @@ function main(argv = process.argv.slice(2)) {
   const report = run(argv);
   if (args.json) emitJson(report);
   else printText(report);
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Validate or capture operation result enum is generated locally from operation errors.
   return report.status === "FAIL" ? 1 : 0;
 }
 

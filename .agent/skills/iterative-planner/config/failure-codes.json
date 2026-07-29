@@ -6,12 +6,15 @@
     "GATE-EXP-001": {
       "gate": "explore-to-plan",
       "check": "findings_minimum",
-      "message": "Fewer than 3 indexed findings in findings.md"
+      "message": "Fewer than 3 indexed findings in findings.md",
+      "severity": "advisory",
+      "classification_reason": "Finding count is planning ritual; substantive semantic checks remain authoritative."
     },
     "GATE-EXP-002": {
       "gate": "explore-to-plan",
       "check": "root_cause",
-      "message": "No root cause analysis found in findings \u2014 add 'Root Cause: N/A' if feature work"
+      "message": "No root cause analysis found in findings \u2014 add 'Root Cause: N/A' if feature work",
+      "severity": "advisory"
     },
     "GATE-EXP-003": {
       "gate": "explore-to-plan",
@@ -22,12 +25,14 @@
     "GATE-EXP-004": {
       "gate": "explore-to-plan",
       "check": "adjacency_discovery",
-      "message": "No adjacency discovery markers \u2014 add 'Adjacency: N/A' if single-file change"
+      "message": "No adjacency discovery markers \u2014 add 'Adjacency: N/A' if single-file change",
+      "severity": "advisory"
     },
     "GATE-EXP-005": {
       "gate": "explore-to-plan",
       "check": "health_report",
-      "message": "Health report missing or stale"
+      "message": "Health report missing or stale",
+      "severity": "advisory"
     },
     "GATE-EXP-006": {
       "gate": "explore-to-plan",
@@ -38,12 +43,14 @@
     "GATE-EXP-009": {
       "gate": "explore-to-plan",
       "check": "findings_depth",
-      "message": "Findings are shallow \u2014 headings without substance (RT-005)"
+      "message": "Findings are shallow \u2014 headings without substance (RT-005)",
+      "severity": "advisory"
     },
     "GATE-EXP-010": {
       "gate": "explore-to-plan",
       "check": "kb_read_proof",
-      "message": "KB read proof missing \u2014 [KB_DIGEST:<hash>] not found in findings.md (RT-003)"
+      "message": "KB read proof missing \u2014 [KB_DIGEST:<hash>] not found in findings.md (RT-003)",
+      "severity": "advisory"
     },
     "GATE-EXP-011": {
       "gate": "explore-to-plan",
@@ -62,6 +69,64 @@
       "check": "intent_contract",
       "message": "User-facing or deliverable-heavy goals require a meaningful intent_contract.json with user, JTBD, outcomes, and required deliverables"
     },
+    "GATE-EXP-015": {
+      "gate": "explore-to-plan",
+      "check": "assumption_ledger",
+      "message": "Legacy assumption ledger or VERIFIED/VIOLATED assumption probe evidence is missing; current replay softens legacy-inferred rows when current EXPLORE gate behavior no longer emits this code",
+      "current_replay_policy": "softened_legacy_inference",
+      "policy_ref": "T-INTAKE-B916F936",
+      "severity": "advisory"
+    },
+    "GATE-EXP-016": {
+      "gate": "explore-to-plan",
+      "check": "diagnostic_findings_structure",
+      "message": "Legacy diagnostic findings/root-cause/adjacency evidence is missing; current replay softens legacy-inferred rows when current EXPLORE gate behavior no longer emits this code",
+      "current_replay_policy": "softened_legacy_inference",
+      "policy_ref": "T-INTAKE-B916F936",
+      "severity": "advisory"
+    },
+    "GATE-EXP-017": {
+      "gate": "explore-to-plan",
+      "check": "preplanning_north_star",
+      "message": "Pre-planning scaffolding could not find an explicit North Star contract in the plan intent contract, project manifesto, or planner manifesto",
+      "severity": "advisory"
+    },
+    "GATE-EXP-018": {
+      "gate": "explore-to-plan",
+      "check": "preplanning_story_registry",
+      "message": "Pre-planning scaffolding could not find a usable story registry baseline at or above the configured active/draft story minimum"
+    },
+    "GATE-EXP-019": {
+      "gate": "explore-to-plan",
+      "check": "preplanning_program_context",
+      "message": "Pre-planning scaffolding found a related open Program Packet but the plan does not declare Program Packet/ticket context",
+      "severity": "advisory"
+    },
+    "GATE-EXP-020": {
+      "gate": "explore-to-plan",
+      "check": "quant_optimization_scale_contract_content",
+      "message": "Quant optimization/search plans need numeric Optimization Scale Contract content: trial budget/completion, unique parameter count, dimensions, coverage, and interpretation boundary",
+      "compatibility_window": {
+        "policy": "warn_one_version",
+        "warn_through_policy_version": 1,
+        "enforce_from_policy_version": 2
+      }
+    },
+    "GATE-EXP-021": {
+      "gate": "explore-to-plan",
+      "check": "quant_run_class_scale_consistency",
+      "message": "Interpretive quant run classes cannot be declared when referenced configs/artifacts show quick/probe-scale evidence",
+      "compatibility_window": {
+        "policy": "warn_one_version",
+        "warn_through_policy_version": 1,
+        "enforce_from_policy_version": 2
+      }
+    },
+    "GATE-EXP-022": {
+      "gate": "explore-to-plan",
+      "check": "quant_leakage_negative_fixture_provenance",
+      "message": "Quant leakage/temporal proof rows must link a checked-in negative fixture that fires and declares capture-time provenance"
+    },
     "GATE-PLN-001": {
       "gate": "plan-to-execute",
       "check": "problem_statement",
@@ -70,12 +135,14 @@
     "GATE-PLN-002": {
       "gate": "plan-to-execute",
       "check": "files_listed",
-      "message": "Files to modify not listed or still template"
+      "message": "Files to modify not listed or still template",
+      "severity": "advisory"
     },
     "GATE-PLN-003": {
       "gate": "plan-to-execute",
       "check": "steps_defined",
-      "message": "Execution steps missing or still template"
+      "message": "Execution steps missing or still template",
+      "severity": "advisory"
     },
     "GATE-PLN-004": {
       "gate": "plan-to-execute",
@@ -102,14 +169,19 @@
     },
     "GATE-PLN-008": {
       "gate": "plan-to-execute",
-      "check": "approval_nonce",
-      "message": "User approval nonce not found \u2014 add [APPROVED:<nonce>] to decisions.md (RT-002)"
+      "check": "user_approval_nonce",
+      "message": "Plan approval nonce missing or invalid"
     },
     "GATE-PLN-009": {
       "gate": "plan-to-execute",
       "check": "orphan_feature_resolved",
       "message": "Unresolved [ORPHAN_FEATURE] in plan.md \u2014 add [STORY_CREATED: US-NNN] or [MAPPED_TO: US-NNN]",
       "severity": "warn"
+    },
+    "GATE-PLN-010": {
+      "gate": "plan-to-execute",
+      "check": "approval_envelope_integrity",
+      "message": "Historical plan-approval envelope integrity mismatch; retired in current replay unless emitted by archived telemetry"
     },
     "GATE-PLN-012": {
       "gate": "plan-to-execute",
@@ -134,7 +206,9 @@
     "GATE-PLN-016": {
       "gate": "plan-to-execute",
       "check": "criterion_story_traceability",
-      "message": "Plans with success criteria and story_registry.json must map each criterion to explicit story IDs in Verification Strategy"
+      "message": "Plans with success criteria and story_registry.json should map each criterion to explicit story IDs in Verification Strategy",
+      "severity": "advisory",
+      "classification_reason": "Story-link formatting is traceability guidance; missing semantic or proof evidence remains hard at the evidence and invariant layers."
     },
     "GATE-PLN-017": {
       "gate": "plan-to-execute",
@@ -156,35 +230,81 @@
       "check": "semantic_upkeep_contract_complete",
       "message": "Semantic Upkeep Contract must be filled with concrete task profile, ontology/story actions, validation bundle, strictness, and close-blocker detail"
     },
+    "GATE-PLN-021": {
+      "gate": "plan-to-execute",
+      "check": "kb_learning_reference",
+      "message": "Plan must reference relevant KB learnings via [KB_APPLIED] or explicitly mark them not applicable",
+      "severity": "advisory"
+    },
     "GATE-PLN-032": {
       "gate": "plan-to-execute",
       "check": "quant_persona_gate",
       "message": "Quant-shaped work must satisfy the hard quant persona gate before EXECUTE: what happened, target/outcome, data lineage, temporal/leakage handling, controls, and quant verification proof"
     },
+    "GATE-PLN-033": {
+      "gate": "plan-to-execute",
+      "check": "reuse_before_create",
+      "message": "Plans proposing new scripts must reuse existing recipes, capabilities, runner commands, or annotated planner capabilities when an exact duplicate exists"
+    },
+    "GATE-PLN-035": {
+      "gate": "plan-to-execute",
+      "check": "quant_optimization_scale_contract_content",
+      "message": "Quant optimization/search plans need numeric Optimization Scale Contract content before EXECUTE",
+      "compatibility_window": {
+        "policy": "warn_one_version",
+        "warn_through_policy_version": 1,
+        "enforce_from_policy_version": 2
+      }
+    },
+    "GATE-PLN-036": {
+      "gate": "plan-to-execute",
+      "check": "quant_run_class_scale_consistency",
+      "message": "Interpretive quant run classes cannot advance when referenced configs/artifacts show quick:true or below-threshold budgets",
+      "compatibility_window": {
+        "policy": "warn_one_version",
+        "warn_through_policy_version": 1,
+        "enforce_from_policy_version": 2
+      }
+    },
+    "GATE-PLN-037": {
+      "gate": "plan-to-execute",
+      "check": "quant_leakage_negative_fixture_provenance",
+      "message": "Quant leakage/temporal proof rows must link a checked-in firing negative fixture, and serious run classes must fail closed for synthesized or unverifiable timestamps"
+    },
+    "GATE-PLN-038": {
+      "gate": "plan-to-execute",
+      "check": "live_learned_obligation_evidence",
+      "message": "Learned verification obligations due by PLAN require passing live structured evidence or an approved waiver; guard declarations alone are not evidence"
+    },
     "GATE-ETR-001": {
       "gate": "execute-to-reflect",
       "check": "red_team_notes_exist",
-      "message": "red_team_notes.md artifact missing \u2014 document 3 attack vectors before REFLECT"
+      "message": "red_team_notes.md artifact missing \u2014 document 3 attack vectors before REFLECT",
+      "severity": "advisory"
     },
     "GATE-ETR-002": {
       "gate": "execute-to-reflect",
       "check": "red_team_notes_not_empty",
-      "message": "red_team_notes.md is empty \u2014 must contain adversarial analysis"
+      "message": "red_team_notes.md is empty \u2014 must contain adversarial analysis",
+      "severity": "advisory"
     },
     "GATE-ETR-003": {
       "gate": "execute-to-reflect",
       "check": "red_team_min_vectors",
-      "message": "Fewer than 3 attack vectors documented in red_team_notes.md"
+      "message": "Fewer than 3 attack vectors documented in red_team_notes.md",
+      "severity": "advisory"
     },
     "GATE-ETR-004": {
       "gate": "execute-to-reflect",
       "check": "red_team_mitigations",
-      "message": "No mitigation documentation for attack vectors \u2014 each vector must have a Mitigation section"
+      "message": "No mitigation documentation for attack vectors \u2014 each vector must have a Mitigation section",
+      "severity": "advisory"
     },
     "GATE-ETR-008": {
       "gate": "execute-to-reflect",
       "check": "red_team_depth",
-      "message": "Red-team vectors are shallow \u2014 each must have Attack, Impact, and Mitigation content (RT-006)"
+      "message": "Red-team vectors are shallow \u2014 each must have Attack, Impact, and Mitigation content (RT-006)",
+      "severity": "advisory"
     },
     "GATE-ETR-005": {
       "gate": "execute-to-reflect",
@@ -232,12 +352,14 @@
     "GATE-REF-003": {
       "gate": "reflect-to-validate",
       "check": "progress_complete",
-      "message": "Uncompleted items remain in progress.md before VALIDATE"
+      "message": "Uncompleted items remain in progress.md before VALIDATE",
+      "severity": "advisory"
     },
     "GATE-REF-004": {
       "gate": "reflect-to-validate",
       "check": "kb_updated",
-      "message": "Knowledge base/semantic record not updated before VALIDATE"
+      "message": "Knowledge base/semantic record not updated before VALIDATE",
+      "severity": "advisory"
     },
     "GATE-REF-016": {
       "gate": "reflect-to-validate",
@@ -247,12 +369,38 @@
     "GATE-REF-017": {
       "gate": "reflect-to-validate",
       "check": "quant_results_validation",
-      "message": "Quant/model/betting result claims require a satisfied quant_results_validation.json close signal before VALIDATE"
+      "message": "Quant/model/betting result claims require a satisfied quant_results_validation.json and a valid claimed-source environment receipt before VALIDATE"
     },
     "GATE-REF-018": {
       "gate": "reflect-to-validate",
       "check": "quant_persona_gate",
       "message": "Quant-shaped work must preserve the hard quant persona gate before VALIDATE"
+    },
+    "GATE-REF-019": {
+      "gate": "reflect-to-validate",
+      "check": "recipe_promotion_disposition",
+      "message": "Repeatable operational flows should have an explicit recipe-promotion disposition before VALIDATE",
+      "severity": "warn"
+    },
+    "GATE-REF-020": {
+      "gate": "reflect-to-validate",
+      "check": "novel_insight_floor",
+      "message": "Ideation-shaped plans need a novel decision, lesson, or self-generated risk before VALIDATE, unless explicitly waived as execution-only",
+      "severity": "advisory"
+    },
+    "GATE-REF-021": {
+      "gate": "reflect-to-validate",
+      "check": "substantive_progress_complete",
+      "message": "Substantive unfinished implementation, test, or proof work remains before VALIDATE",
+      "next": "Complete the blocking progress item or return the plan to EXECUTE, then rerun node .agent/skills/iterative-planner/scripts/transition.mjs reflect-to-validate.",
+      "why": "Advancing with substantive unfinished work would create a false completion claim; administrative lifecycle items remain advisory under GATE-REF-003."
+    },
+    "GATE-VAL-023": {
+      "gate": "validate-to-close",
+      "check": "opportunity_disposition",
+      "message": "High-confidence stewardship opportunities lack a recorded disposition before close",
+      "severity": "advisory",
+      "classification_reason": "Opportunity-queue administration is not delivery or proof integrity and must not block otherwise valid close evidence."
     },
     "GATE-REF-006": {
       "gate": "reflect-to-validate",
@@ -268,6 +416,11 @@
       "gate": "reflect-to-validate",
       "check": "persona_audit_findings",
       "message": "Persona audit findings exceed fail_on threshold"
+    },
+    "GATE-REF-011": {
+      "gate": "reflect-to-close",
+      "check": "evidence_chain",
+      "message": "Reflect-to-close evidence chain is broken or missing verification links"
     },
     "GATE-VAL-001": {
       "gate": "validate-to-close",
@@ -339,7 +492,7 @@
     "GATE-VAL-016": {
       "gate": "validate-to-close",
       "check": "quant_results_validation",
-      "message": "Quant/model/betting result claims require a satisfied quant_results_validation.json close signal before close"
+      "message": "Result-bearing plans require satisfied quant_results_validation, a valid claimed-source environment receipt, and fresh-process reproduction of selected risk-bearing cited evidence within recorded tolerance before close"
     },
     "GATE-VAL-017": {
       "gate": "validate-to-close",
@@ -356,10 +509,22 @@
       "check": "ava_defects",
       "message": "Active AVA-discovered defects or unsafe AVA sandbox artifacts must be resolved and anchored before close"
     },
+    "GATE-VAL-021": {
+      "gate": "validate-to-close",
+      "check": "recipe_promotion_disposition",
+      "message": "Repeatable operational flows should have an explicit recipe-promotion disposition before close",
+      "severity": "warn"
+    },
+    "GATE-VAL-022": {
+      "gate": "validate-to-close",
+      "check": "incident_closeout",
+      "message": "Incident-shaped repair plans require incident_contract.json plus PASS evidence for required incident closeout gates and preflight rows before close"
+    },
     "GATE-NTF-001": {
       "gate": "notify-user",
       "check": "kb_notification",
-      "message": "KB notification gate not satisfied"
+      "message": "KB notification gate not satisfied",
+      "severity": "advisory"
     },
     "GATE-NTF-002": {
       "gate": "notify-user",
@@ -376,42 +541,69 @@
     "GATE-CHK-001": {
       "gate": "checklist",
       "check": "file_exists",
-      "message": "Required file missing"
+      "message": "Required file missing",
+      "severity": "advisory"
     },
     "GATE-CHK-002": {
       "gate": "checklist",
       "check": "file_not_empty",
-      "message": "File empty or only boilerplate"
+      "message": "File empty or only boilerplate",
+      "severity": "advisory"
     },
     "GATE-CHK-003": {
       "gate": "checklist",
       "check": "min_headings",
-      "message": "Insufficient markdown headings"
+      "message": "Insufficient markdown headings",
+      "severity": "advisory"
     },
     "GATE-CHK-004": {
       "gate": "checklist",
       "check": "contains_string",
-      "message": "Required string not found in file"
+      "message": "Required string not found in file",
+      "severity": "advisory"
     },
     "GATE-CHK-005": {
       "gate": "checklist",
       "check": "not_contains_string",
-      "message": "Template text still present"
+      "message": "Template text still present",
+      "severity": "advisory"
     },
     "GATE-CHK-006": {
       "gate": "checklist",
       "check": "min_lines",
-      "message": "Insufficient content lines"
+      "message": "Insufficient content lines",
+      "severity": "advisory"
     },
     "GATE-CHK-007": {
       "gate": "checklist",
       "check": "json_field",
-      "message": "Required JSON field missing"
+      "message": "Required JSON field missing",
+      "severity": "advisory"
     },
     "GATE-CHK-008": {
       "gate": "checklist",
       "check": "command_succeeds",
-      "message": "Command check failed"
+      "message": "Required proof command failed",
+      "why": "A required exercised-system or proof command failed, so the transition cannot claim that behavior as verified."
+    },
+    "GATE-CHK-009": {
+      "gate": "checklist",
+      "check": "legacy_checklist_failure",
+      "message": "Legacy checklist failure row without a stable row-level code",
+      "severity": "advisory"
+    },
+    "GATE-CHK-010": {
+      "gate": "checklist",
+      "check": "legacy_checklist_integrity",
+      "message": "Checklist integrity or path-safety contract failed",
+      "next": "Run node .agent/skills/iterative-planner/scripts/migrate.mjs verify . and restore the governed checklist or path boundary.",
+      "why": "Executing a modified checklist or an escaped path could bypass shared transition safety controls."
+    },
+    "GATE-CHK-011": {
+      "gate": "checklist",
+      "check": "structured_semantic_signal",
+      "message": "Required structured semantic or proof signal is not satisfied",
+      "why": "The structured close signal represents semantic or proof readiness, not document presence, and must be true before advancement."
     },
     "GATE-SEM-001": {
       "gate": "semantic",
@@ -422,7 +614,61 @@
       "gate": "semantic",
       "check": "invariant_violation",
       "message": "Story invariant violation detected",
+      "next": "node .agent/skills/iterative-planner/scripts/rule_engine.mjs check-invariants",
+      "why": "Invariant violations are semantic or proof-integrity defects and cannot advance safely."
+    },
+    "GATE-SEM-003": {
+      "gate": "semantic",
+      "check": "prolog_js_divergence",
+      "message": "Unexplained Prolog semantic blocking remains while JavaScript gate checks pass",
+      "next": "node .agent/skills/iterative-planner/scripts/rule_engine.mjs check-invariants",
+      "why": "Unknown, mixed, missing-structure, engine-level, or sensitive semantic differences may indicate gate weakening and must remain fail-closed."
+    },
+    "GATE-SEM-004": {
+      "gate": "semantic",
+      "check": "reverse_prolog_js_divergence",
+      "message": "JavaScript gate checks failed while Prolog semantic checks passed",
       "severity": "warn"
+    },
+    "GATE-PRS-001": {
+      "gate": "persona",
+      "check": "persona_audit_findings",
+      "message": "Persona audit findings exceeded the configured fail threshold"
+    },
+    "GATE-PRS-TRACE": {
+      "gate": "persona",
+      "check": "traceability_pack",
+      "message": "Traceability persona pack reported missing proof, audit, or evidence coverage"
+    },
+    "GATE-PRS-WIR": {
+      "gate": "persona",
+      "check": "wiring_auditor_pack",
+      "message": "Wiring auditor persona pack reported an unwired integration or pipeline surface"
+    },
+    "GATE-PRS-TOK": {
+      "gate": "persona",
+      "check": "tokenomics_pack",
+      "message": "Tokenomics persona pack reported missing supply, incentive, liquidity, treasury, governance, or claim-boundary evidence"
+    },
+    "GATE-PRS-QT": {
+      "gate": "persona",
+      "check": "quant_target_pack",
+      "message": "Quant target persona pack reported missing target, temporal, leakage, or claim semantics"
+    },
+    "GATE-PRS-QRP": {
+      "gate": "persona",
+      "check": "quant_research_protocol_pack",
+      "message": "Quant research protocol persona pack reported missing research-protocol evidence"
+    },
+    "GATE-PRS-QUANT": {
+      "gate": "persona",
+      "check": "quant_pack",
+      "message": "Quant persona pack reported missing model, data, leakage, or verification evidence"
+    },
+    "GATE-PRS-UX": {
+      "gate": "persona",
+      "check": "ux_ui_pack",
+      "message": "UX/UI persona pack reported missing accessibility, visual-state, or browser-journey evidence"
     },
     "GATE-HLT-001": {
       "gate": "health",
@@ -439,16 +685,44 @@
       "check": "new_failures",
       "message": "New health failures introduced since baseline"
     },
+    "GATE-COV-001": {
+      "gate": "coverage",
+      "check": "census_invalid",
+      "message": "Degraded-coverage census is missing, malformed, or no longer anchored to its source checks",
+      "next": "Repair .agent/skills/iterative-planner/config/degraded_coverage_census.json, then rerun node .agent/skills/iterative-planner/scripts/rule_engine.mjs check-invariants --smoke",
+      "why": "An invalid census cannot distinguish a selected-but-unrun check from an intentional non-applicable path."
+    },
+    "GATE-COV-002": {
+      "gate": "coverage",
+      "check": "waiver_invalid",
+      "message": "Degraded-coverage waiver is invalid, unknown, duplicate, expired, unapproved, or redundant",
+      "next": "Repair or remove the invalid entry in .agent/degraded_coverage_waivers.json, then rerun the attempted command",
+      "why": "An ungoverned waiver could convert missing evidence into an implicit full-coverage claim."
+    },
+    "GATE-COV-003": {
+      "gate": "coverage",
+      "check": "selected_check_degraded",
+      "message": "A selected check did not run because required substrate, fixtures, or configuration were unavailable",
+      "severity": "advisory",
+      "next": "Build the named substrate or record a typed governed waiver in .agent/degraded_coverage_waivers.json",
+      "why": "A check that did not run cannot support a full-coverage claim."
+    },
     "GATE-SRC-001": {
       "gate": "source-state",
       "check": "state_mismatch",
       "message": "Current state does not match expected gate source",
-      "severity": "warn"
+      "next": "node .agent/skills/iterative-planner/scripts/bootstrap.mjs status",
+      "why": "Running a gate from the wrong canonical phase would corrupt lifecycle history."
     },
     "GATE-SRC-002": {
       "gate": "source-state",
       "check": "nonce_invalid",
       "message": "Transition nonce missing or invalid \u2014 state.json may have been modified directly (RT-001)"
+    },
+    "GATE-TMP-002": {
+      "gate": "tamper",
+      "check": "tamper_fingerprint",
+      "message": "Historical tamper-fingerprint mismatch; retired in current replay unless emitted by archived telemetry"
     },
     "GATE-CHN-001": {
       "gate": "chain",
@@ -458,12 +732,16 @@
     "GATE-TRC-001": {
       "gate": "trace-audit",
       "check": "trace_file_exists",
-      "message": "tool_trace.jsonl missing \u2014 trace capture may not be configured"
+      "message": "tool_trace.jsonl missing \u2014 trace capture may not be configured",
+      "severity": "advisory"
     },
     "GATE-TRC-002": {
       "gate": "trace-audit",
       "check": "kb_read_coverage",
-      "message": "Knowledge base files not read during EXPLORE \u2014 agent may have skipped KB"
+      "message": "Knowledge base files not read during EXPLORE \u2014 current replay softens this row only when the same transition shows unsupported trace capture",
+      "current_replay_policy": "softened_when_trace_capture_unsupported",
+      "policy_ref": "T-INTAKE-B916F936",
+      "severity": "advisory"
     },
     "GATE-TRC-003": {
       "gate": "trace-audit",
@@ -474,7 +752,8 @@
     "GATE-TRC-004": {
       "gate": "trace-audit",
       "check": "plan_reread",
-      "message": "plan.md not re-read within 15 tool calls during EXECUTE \u2014 agent may be drifting"
+      "message": "plan.md not re-read within 15 tool calls during EXECUTE \u2014 agent may be drifting",
+      "severity": "advisory"
     },
     "GATE-TRC-005": {
       "gate": "trace-audit",
@@ -485,12 +764,14 @@
     "GATE-TRC-006": {
       "gate": "trace-audit",
       "check": "findings_read",
-      "message": "findings.md not read during PLAN phase \u2014 agent planned without reviewing findings"
+      "message": "findings.md not read during PLAN phase \u2014 agent planned without reviewing findings",
+      "severity": "advisory"
     },
     "GATE-TRC-007": {
       "gate": "trace-audit",
       "check": "verification_read",
-      "message": "verification.md not read during REFLECT \u2014 agent reflected without checking results"
+      "message": "verification.md not read during REFLECT \u2014 agent reflected without checking results",
+      "severity": "advisory"
     },
     "GATE-TRC-008": {
       "gate": "trace-audit",
@@ -515,18 +796,6 @@
       "message": "Recent reads targeted a non-active plans/plan_* directory \u2014 verify the active plan via plans/ACTIVE_PLAN.md before continuing",
       "severity": "warn"
     },
-    "GATE-TMP-001": {
-      "gate": "guard",
-      "check": "tamper_fingerprint_missing",
-      "message": "No signed tamper fingerprint is stored yet; the next successful transition will refresh it",
-      "severity": "warn"
-    },
-    "GATE-TMP-002": {
-      "gate": "guard",
-      "check": "tamper_fingerprint_mismatch",
-      "message": "Signed tamper fingerprint does not match current sensitive planner artifacts; intentional edits are refreshed by a successful transition",
-      "severity": "warn"
-    },
     "GATE-GAR-001": {
       "gate": "guard",
       "check": "post_close_blocked",
@@ -539,17 +808,113 @@
       "message": "Gate has exceeded total failure threshold (10). Fix the underlying issue then reset with: node bootstrap.mjs reset-circuit-breaker <gate>",
       "exit_code": 2
     },
+    "GATE-CONTRACT-001": {
+      "gate": "transition-contract",
+      "check": "uncoded_fail",
+      "message": "A FAIL result reached transition normalization without a stable code",
+      "why": "Uncoded blockers cannot be repaired, measured, or audited deterministically."
+    },
+    "GATE-PREP-001": {
+      "gate": "gate-prepare",
+      "check": "structural_action",
+      "message": "Attempted-gate preparation wrote a truthful structural scaffold",
+      "severity": "advisory"
+    },
+    "GATE-PREP-002": {
+      "gate": "gate-prepare",
+      "check": "prepare_unavailable",
+      "message": "Attempted-gate preparation was unavailable; authoritative checks still ran",
+      "severity": "advisory"
+    },
+    "GATE-RIT-001": {
+      "gate": "ritual",
+      "check": "workflow_contract",
+      "message": "Workflow ritual contract formatting or sequence issue",
+      "severity": "advisory"
+    },
+    "TOOL-RIT-001": {
+      "gate": "ritual",
+      "check": "tool_execution",
+      "message": "ritual_lint failed before producing a trustworthy semantic result",
+      "severity": "tool_error",
+      "next": "Retry the same transition with --dry-run; if TOOL-RIT-001 repeats, report the code and receipt.",
+      "why": "Tool execution failure is infrastructure evidence, not a semantic lifecycle failure, and must not consume a transition attempt."
+    },
+    "GATE-KT-001": {
+      "gate": "knowledge-trigger",
+      "check": "required_evidence",
+      "message": "A trusted learned obligation is missing required structured evidence",
+      "why": "A learned proof obligation backed by a real recurrence guard must not be silently bypassed."
+    },
+    "GATE-RCH-001": {
+      "gate": "reachability",
+      "check": "audit_error",
+      "message": "The compulsory state-space reachability audit could not establish safe transition paths"
+    },
+    "GATE-SEM-005": {
+      "gate": "semantic",
+      "check": "engine_unavailable",
+      "message": "The mandatory semantic rule engine could not run",
+      "next": "node .agent/skills/iterative-planner/scripts/rule_engine.mjs check-invariants",
+      "why": "Advancing without semantic verification would create a proof-integrity false green."
+    },
+    "GATE-ORC-001": {
+      "gate": "orchestration",
+      "check": "whitelist_integrity",
+      "message": "Agent orchestration whitelist or single-writer policy is invalid"
+    },
+    "GATE-AUD-001": {
+      "gate": "audit",
+      "check": "decision_log_persistence",
+      "message": "The immutable decision log could not be persisted"
+    },
+    "GATE-STA-001": {
+      "gate": "state",
+      "check": "lock_unavailable",
+      "message": "The canonical state lock could not be acquired"
+    },
+    "GATE-STA-002": {
+      "gate": "state",
+      "check": "persistence_failed",
+      "message": "Canonical state persistence failed"
+    },
+    "GATE-RUN-001": {
+      "gate": "runtime",
+      "check": "unexpected_exception",
+      "message": "The transition runtime raised an unexpected exception"
+    },
+    "GATE-PLAN-001": {
+      "gate": "plan-target",
+      "check": "plan_unresolved",
+      "message": "No canonical plan target could be resolved"
+    },
+    "GATE-RETRY-001": {
+      "gate": "retry",
+      "check": "same_gate_thrash",
+      "message": "A repeated same-gate failure remains unresolved after targeted diagnosis"
+    },
+    "GATE-RETRY-002": {
+      "gate": "retry",
+      "check": "configured_cooldown",
+      "message": "An explicitly configured retry cooldown is still active"
+    },
+    "GATE-HLT-004": {
+      "gate": "health",
+      "check": "baseline_unavailable",
+      "message": "Health baseline is missing or explicitly unavailable",
+      "severity": "advisory"
+    },
+    "GATE-PLN-034": {
+      "gate": "plan-to-execute",
+      "check": "opportunity_disposition",
+      "message": "High-confidence stewardship opportunities lack a recorded disposition",
+      "severity": "advisory"
+    },
     "GATE-PTE-012": {
       "gate": "plan-to-execute",
       "severity": "warn",
       "description": "mistakes-consulted: no M-0NN reference found in findings.md \u2014 agent did not cross-reference past mistakes before planning",
       "remediation": "Add at least one M-NNN reference from plans/knowledge/mistakes.md to findings.md, or write M-000: N/A if no past mistakes are relevant"
-    },
-    "GATE-ETR-011": {
-      "gate": "execute-to-reflect",
-      "severity": "warn",
-      "description": "parity-check-documented: no Parity section in verification.md \u2014 agent did not verify paired implementation files are in sync",
-      "remediation": "Run /parity-audit and document results under ## Parity Check in verification.md, or write Parity: N/A if project has no parity-registry.md"
     }
   }
 }

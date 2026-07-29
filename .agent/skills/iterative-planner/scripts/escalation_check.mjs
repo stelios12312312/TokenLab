@@ -4,6 +4,8 @@
 // Usage:
 //   node escalation_check.mjs              Run all checks, output recommendations
 //   node escalation_check.mjs --json       Output as JSON (machine-readable)
+//   node escalation_check.mjs execute-required [--json] [--synthetic <label>]
+//                                           Run REQUIRED executable audits and record coverage
 //   node escalation_check.mjs log <type>   Record that an audit was run (red-team|regression|retro|user-story)
 //   node escalation_check.mjs log-workflow </workflow> <recommended|launched|completed> [source_workflow]
 //   node escalation_check.mjs log-recommendation </workflow> [source_workflow]
@@ -18,7 +20,7 @@
 // Output: a list of escalation recommendations with severity (REQUIRED / RECOMMENDED / OPTIONAL)
 
 import { readFileSync, writeFileSync, renameSync, existsSync, mkdirSync, readdirSync, statSync } from "fs";
-import { join, dirname } from "path";
+import { join, dirname, relative, resolve } from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { createHash } from "crypto";
@@ -38,7 +40,8 @@ function parseCountOrFallback(value, fallback = 999) {
 function formatCommitCount(value) {
   return typeof value === "number" && Number.isFinite(value) ? String(value) : "unknown";
 }
-import { debugLog, matchesBasename } from "./lib/plan_utils.mjs";
+import { debugLog, detectPlannerDogfoodIncident, extractFilesToModify, matchesBasename, readFile } from "./lib/plan_utils.mjs";
+import { inferPersonaAdaptation } from "./lib/persona_adaptation.mjs";
 import { getEscalationThresholds, nowISO } from "./lib/determinism.mjs";
 import {
   TRACKED_WORKFLOWS,
@@ -78,17 +81,26 @@ const ESCALATION_ACTIONS = Object.freeze({
     auto_launch: true,
     auto_launch_marker: WORKFLOW_AUTORUN_ADVISOR,
   }),
+  "ontology-rectification": Object.freeze({
+    workflow: "/ontology",
+    audit_type: "ontology",
+    auto_launch: false,
+  }),
 });
 
 function enrichEscalation(entry) {
   const action = ESCALATION_ACTIONS[entry?.type] || null;
   if (!action) return entry;
+  const autoLaunch = typeof entry?.auto_launch === "boolean" ? entry.auto_launch : action.auto_launch;
+  const autoLaunchMarker = autoLaunch
+    ? (typeof entry?.auto_launch_marker === "string" ? entry.auto_launch_marker : action.auto_launch_marker)
+    : null;
   return {
     ...entry,
     workflow: action.workflow,
     audit_type: action.audit_type,
-    auto_launch: action.auto_launch,
-    ...(action.auto_launch_marker ? { auto_launch_marker: action.auto_launch_marker } : {}),
+    auto_launch: autoLaunch,
+    ...(autoLaunchMarker ? { auto_launch_marker: autoLaunchMarker } : {}),
   };
 }
 
@@ -164,14 +176,54 @@ function parsePorcelainStatus(text) {
   return entries;
 }
 
+function currentChangedFiles() {
+  return parsePorcelainStatus(gitRawOutput(["status", "--porcelain=v1", "--untracked-files=all"]) || "")
+    .filter((entry) => !ignoreCoveragePath(entry.file))
+    .map((entry) => entry.file)
+    .sort();
+}
+
+function changedOntologyFiles() {
+  return currentChangedFiles().filter((file) => {
+    const normalized = String(file || "").replace(/\\/g, "/");
+    return normalized.startsWith(".agent/ontology/")
+      || normalized.startsWith(".agent/skills/iterative-planner/prolog/")
+      || normalized === ".agent/skills/iterative-planner/prolog/invariants.pl"
+      || normalized === ".agent/skills/iterative-planner/prolog/transitions.pl";
+  });
+}
+
 function ignoreCoveragePath(file) {
   const normalized = String(file || "").replace(/\\/g, "/");
   if (normalized === "plans/audit_log.json" || normalized === "plans/.current_plan") return true;
   if (normalized === ".agent/http_permissions.yaml") return true;
   if (normalized.startsWith("reports/telemetry_capture/")) return true;
   if (normalized.startsWith("reports/workflow_intelligence/")) return true;
-  if (/^plans\/plan_[^/]+\/(?:state\.json|ontology_facts\.pl|metrics\.json)$/.test(normalized)) return true;
+  if (/^plans\/plan_[^/]+\/(?:state\.json|state\.md|ontology_facts\.pl|metrics\.json|health_final\.json|health_report\.md|persona_findings\.json|executed_test_gates\.json)$/.test(normalized)) return true;
+  if (/^plans\/plan_[^/]+\/artifacts\/(?:\.invariant_advisories\.json|\.repair_surface_[^/]+\.json|decision_log\.jsonl)$/.test(normalized)) return true;
+  if (/^plans\/plan_[^/]+\/artifacts\/prolog\/[^/]+\.json$/.test(normalized)) return true;
   return false;
+}
+
+let copiedPlannerInstallCache = null;
+
+function isCopiedPlannerInstall() {
+  if (copiedPlannerInstallCache !== null) return copiedPlannerInstallCache;
+  copiedPlannerInstallCache = false;
+  try {
+    const registryPath = join(cwd, ".agent", "skills", "iterative-planner", "config", ".project_registry.json");
+    const parsed = JSON.parse(readFileSync(registryPath, "utf-8"));
+    const sourceProjectPath = typeof parsed?.source_project_path === "string" ? parsed.source_project_path.trim() : "";
+    copiedPlannerInstallCache = Boolean(sourceProjectPath) && resolve(sourceProjectPath) !== resolve(cwd);
+  } catch {
+    copiedPlannerInstallCache = false;
+  }
+  return copiedPlannerInstallCache;
+}
+
+function isCopiedPlannerInternalPath(file) {
+  const normalized = String(file || "").replace(/\\/g, "/").replace(/^\.\//, "");
+  return isCopiedPlannerInstall() && normalized.startsWith(".agent/skills/iterative-planner/");
 }
 
 function allRegistryStories(registry) {
@@ -298,10 +350,13 @@ function computeCurrentCoverageFingerprint() {
 
 function auditLogCoversCurrent(auditType, log = readAuditLog()) {
   const coverage = computeCurrentCoverageFingerprint();
+  const headCoverage = coverage.worktree_dirty ? computeCommitCoverageFingerprint("HEAD", false) : coverage;
   const matching = (Array.isArray(log?.audits) ? log.audits : [])
     .filter((entry) => entry?.type === auditType)
     .filter((entry) => coverage.worktree_dirty
-      ? entry.covers_worktree === true && entry.worktree_fingerprint === coverage.worktree_fingerprint
+      ? (entry.covers_worktree === true && entry.worktree_fingerprint === coverage.worktree_fingerprint)
+        || (entry.coverage_scope === "head" && entry.covers_commit === headCoverage.covers_commit
+          && entry.change_fingerprint === headCoverage.change_fingerprint)
       : entry.covers_commit === coverage.covers_commit && entry.change_fingerprint === coverage.change_fingerprint)
     .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))[0] || null;
   return { covered: Boolean(matching), coverage, matching_audit: matching };
@@ -328,6 +383,76 @@ function resolvePlanId() {
   }
 }
 
+function readActivePlanState() {
+  try {
+    const pointerFile = join(plansDir, ".current_plan");
+    const active = readFileSync(pointerFile, "utf-8").trim();
+    if (!active) return null;
+    const parsed = JSON.parse(readFileSync(join(plansDir, active, "state.json"), "utf-8"));
+    return typeof parsed?.state === "string" ? parsed.state.trim().toUpperCase() : null;
+  } catch {
+    return null;
+  }
+}
+
+function readActivePlanOntologyFacts() {
+  try {
+    const pointerFile = join(plansDir, ".current_plan");
+    if (!existsSync(pointerFile)) return "";
+    const active = readFileSync(pointerFile, "utf-8").trim();
+    if (!active) return "";
+    const factsPath = join(plansDir, active, "ontology_facts.pl");
+    return existsSync(factsPath) ? readFileSync(factsPath, "utf-8") : "";
+  } catch {
+    return "";
+  }
+}
+
+function collectFactValues(text, regex, groupIndex = 1) {
+  const values = new Set();
+  for (const match of String(text || "").matchAll(regex)) {
+    const value = String(match[groupIndex] || "").trim();
+    if (value) values.add(value);
+  }
+  return [...values].sort();
+}
+
+function auditPerspectiveBlindSpot() {
+  const facts = readActivePlanOntologyFacts();
+  if (!facts) return null;
+  const known = collectFactValues(facts, /known_perspective\(\s*['"]?([^'")]+)['"]?\s*\)\s*\./g, 1);
+  const covered = collectFactValues(facts, /audit_perspective\(\s*[^,]+,\s*['"]?([^'")]+)['"]?\s*\)\s*\./g, 1);
+  if (known.length === 0 || covered.length === 0) return null;
+  const coveredSet = new Set(covered);
+  const missing = known.filter((entry) => !coveredSet.has(entry));
+  if (new Set(covered).size >= 2 && missing.length === 0) return null;
+  return {
+    known,
+    covered,
+    missing,
+  };
+}
+
+function highPriorityStoryGaps(registry) {
+  const stories = allRegistryStories(registry);
+  return stories
+    .filter((story) => String(story?.priority || "").toUpperCase() === "HIGH")
+    .filter((story) => {
+      const status = String(story?.status || "").toUpperCase();
+      if (status === "FULLY_COVERED" || status === "IMPLEMENTED" || status === "CLOSED" || status === "RETIRED") return false;
+      return storyRefs(story).length === 0 || status === "NOT_IMPLEMENTED" || status === "MISSING" || status === "PARTIAL";
+    })
+    .map((story) => String(story?.id || "").trim())
+    .filter(Boolean)
+    .sort();
+}
+
+function suppressAdvisorAutorunForActiveCloseout(trigger) {
+  if (trigger !== "significant-change") return false;
+  const state = readActivePlanState();
+  return state === "VALIDATE" || state === "CLOSE";
+}
+
 function appendWorkflowEvent(log, { workflow, event, sourceWorkflow = null, commitHash = null, planId = null }) {
   if (!Array.isArray(log.workflow_events)) log.workflow_events = [];
   log.workflow_events.push({
@@ -340,10 +465,13 @@ function appendWorkflowEvent(log, { workflow, event, sourceWorkflow = null, comm
   });
 }
 
-function logAudit(type) {
+function logAudit(type, opts = {}) {
   const log = readAuditLog();
   const commitHash = resolveCurrentCommitHash();
-  const coverage = computeCurrentCoverageFingerprint();
+  const coverageTarget = String(opts.coverageTarget || "").toUpperCase();
+  const coverage = coverageTarget === "HEAD"
+    ? computeCommitCoverageFingerprint("HEAD", false)
+    : computeCurrentCoverageFingerprint();
 
   log.audits.push({
     type,
@@ -359,6 +487,8 @@ function logAudit(type) {
     line_delta: coverage.line_delta,
     change_fingerprint: coverage.change_fingerprint,
     changed_files: coverage.changed_files,
+    coverage_scope: coverageTarget === "HEAD" ? "head" : "current",
+    ...(opts.extra && typeof opts.extra === "object" ? opts.extra : {}),
   });
   if (type === "advisor") {
     appendWorkflowEvent(log, {
@@ -373,7 +503,9 @@ function logAudit(type) {
     : coverage.covers_commit
       ? ` covering ${coverage.covers_commit.slice(0, 8)}`
       : "";
-  console.log(`✅ Recorded ${type} audit at ${commitHash.slice(0, 8)}${covered}`);
+  if (!opts.silent) {
+    console.log(`✅ Recorded ${type} audit at ${commitHash.slice(0, 8)}${covered}`);
+  }
 }
 
 function logWorkflowEvent(workflow, event, sourceWorkflow = null) {
@@ -495,7 +627,9 @@ function touchesSharedModules() {
     const changedFiles = (changedProc.stdout || "").trim();
     if (!changedFiles) return { touches: false, files: [] };
 
-    const files = changedFiles.split("\n").filter(l => l.trim());
+    const files = changedFiles.split("\n")
+      .filter(l => l.trim())
+      .filter(file => !isCopiedPlannerInternalPath(file));
     const sharedFiles = files.filter(f => {
       const segments = f.replace(/\\/g, "/").split("/");
       const basename = segments[segments.length - 1];
@@ -631,6 +765,35 @@ function collectAdvisorReviewReasons(changeStats, sharedModules, turbulence, thr
   return reasons;
 }
 
+function safeReadJson(filePath) {
+  try {
+    return JSON.parse(readFileSync(filePath, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+function readCurrentPlanDogfoodIncident() {
+  try {
+    const pointerFile = join(plansDir, ".current_plan");
+    if (!existsSync(pointerFile)) return null;
+    const planName = readFileSync(pointerFile, "utf-8").trim();
+    if (!planName) return null;
+    const planDir = join(plansDir, planName);
+    const state = safeReadJson(join(planDir, "state.json")) || {};
+    const planContent = readFile(join(planDir, "plan.md")) || "";
+    const goalText = [
+      typeof state.goal === "string" ? state.goal : "",
+      planContent,
+    ].filter(Boolean).join("\n");
+    const files = extractFilesToModify(planContent);
+    return detectPlannerDogfoodIncident(goalText, files);
+  } catch (e) {
+    debugLog("escalation", `dogfood incident scan failed: ${e.message}`);
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Escalation Decision Engine
 // ---------------------------------------------------------------------------
@@ -650,6 +813,9 @@ function computeEscalations() {
   const redTeamCoveredCurrent = auditLogCoversCurrent("red-team", auditLog).covered;
   const regressionCoveredCurrent = auditLogCoversCurrent("regression", auditLog).covered;
   const workflowIntelligence = summarizeWorkflowIntelligence(cwd);
+  const dogfoodIncident = readCurrentPlanDogfoodIncident();
+  const ontologyChangedFiles = changedOntologyFiles();
+  const perspectiveBlindSpot = auditPerspectiveBlindSpot();
 
   const escalations = [];
 
@@ -686,6 +852,15 @@ function computeEscalations() {
       severity: "REQUIRED",
       reason: `Shared/core modules touched: ${sharedModules.files.join(", ")}`,
       trigger: "shared-module",
+    });
+  }
+
+  if (perspectiveBlindSpot) {
+    escalations.push({
+      type: "red-team-audit",
+      severity: "REQUIRED",
+      reason: `Audit perspective blind spots: covered ${perspectiveBlindSpot.covered.join(", ")}; missing ${perspectiveBlindSpot.missing.join(", ") || "second distinct perspective"}`,
+      trigger: "audit-perspective-blind-spot",
     });
   }
 
@@ -762,6 +937,15 @@ function computeEscalations() {
   if (existsSync(registryPath)) {
     try {
       const registry = JSON.parse(readFileSync(registryPath, "utf-8"));
+      const highPriorityGaps = highPriorityStoryGaps(registry);
+      if (highPriorityGaps.length > 0) {
+        escalations.push({
+          type: "user-story-audit",
+          severity: "REQUIRED",
+          reason: `High-priority story gap(s) need audit coverage: ${highPriorityGaps.join(", ")}`,
+          trigger: "high-priority-story-gap",
+        });
+      }
 
       // Registry staleness check
       if (registry.updated) {
@@ -855,7 +1039,31 @@ function computeEscalations() {
     } catch (e) { debugLog("escalation", `File count scan failed: ${e.message}`); }
   }
 
+  if (ontologyChangedFiles.length > 0 && !auditLogCoversCurrent("ontology", auditLog).covered) {
+    escalations.push({
+      type: "ontology-rectification",
+      severity: "REQUIRED",
+      reason: `Ontology surface changed: ${ontologyChangedFiles.join(", ")} — run ontology rectification before treating invariants as settled`,
+      trigger: "ontology-surface-changed",
+      changed_files: ontologyChangedFiles,
+    });
+  }
+
   // ---- Advisor Session Review ----
+  if (dogfoodIncident?.active) {
+    escalations.push({
+      type: "advisor-review",
+      severity: "RECOMMENDED",
+      reason: `Planner dogfood false-green incident: ${dogfoodIncident.why}`,
+      trigger: dogfoodIncident.trigger,
+      auto_launch: true,
+      recommended_followup_workflow: dogfoodIncident.recommended_followup_workflow,
+      recommended_followup_reason: dogfoodIncident.why,
+      recommended_followup_next: dogfoodIncident.next,
+      matched_surfaces: dogfoodIncident.matched_surfaces,
+    });
+  }
+
   const advThresh = thresholds.advisor || { trigger_commits: 15, trigger_days: 5 };
   const advStaleness = staleness["advisor"];
   const advisorAlreadyHandledAtHead = advStaleness &&
@@ -882,17 +1090,79 @@ function computeEscalations() {
     }
 
     if (reasonParts.length > 0) {
+      const trigger = (commitsDue || daysDue) && proactiveAdvisorReasons.length > 0
+        ? "mixed"
+        : (commitsDue || daysDue)
+          ? "staleness"
+          : "significant-change";
       escalations.push({
         type: "advisor-review",
         severity: "RECOMMENDED",
         reason: reasonParts.join("; "),
-        trigger: (commitsDue || daysDue) && proactiveAdvisorReasons.length > 0
-          ? "mixed"
-          : (commitsDue || daysDue)
-            ? "staleness"
-            : "significant-change",
+        trigger,
+        ...(suppressAdvisorAutorunForActiveCloseout(trigger) ? { auto_launch: false } : {}),
       });
     }
+  }
+
+  // ---- Domain Profiles & Obvious Packs Audit (Advisor trigger) ----
+  try {
+    const personaReport = inferPersonaAdaptation(cwd);
+    if (personaReport && personaReport.audit_config_valid) {
+      const activeProfiles = personaReport.domain_profiles || [];
+      const configuredRoles = personaReport.configured_roles || [];
+      const suppressedProfiles = personaReport.suppressed_domain_profiles || [];
+      const suppressedSet = new Set(suppressedProfiles);
+      const isQuantActive = activeProfiles.includes("quant") || activeProfiles.includes("quant_betting") || configuredRoles.includes("quant");
+
+      // Check 1: Tokenomics false positive from promotion governance
+      const isTokenomicsActive = activeProfiles.includes("tokenomics") && !suppressedSet.has("tokenomics");
+      if (isTokenomicsActive) {
+        let hasRealTokenomics = false;
+        let hasGovernanceOnly = false;
+        try {
+          const files = readdirSync(cwd);
+          hasRealTokenomics = files.some(f => f.toLowerCase().includes("tokenomics") || f.toLowerCase().includes("tokenlab"));
+          hasGovernanceOnly = files.some(f => f.toLowerCase().includes("governance"));
+        } catch {}
+
+        if (!hasRealTokenomics && hasGovernanceOnly) {
+          escalations.push({
+            type: "advisor-review",
+            severity: "RECOMMENDED",
+            reason: "Unexpected domain profile: tokenomics appears to be a false positive from sports/model promotion governance files; consider suppressing tokenomics in audit.config.json via suppressed_domain_profiles",
+            trigger: "unexpected-domain-profile",
+            auto_launch: true,
+          });
+        }
+      }
+
+      // Check 2: Missing obvious packs (ML should apply for quant projects)
+      let hasMLFiles = false;
+      try {
+        const files = readdirSync(cwd);
+        hasMLFiles = files.some(f => {
+          const l = f.toLowerCase();
+          return l.includes("optuna") || l.includes("wfo") || l.includes("calibration") || l.includes("backtest") || l.includes("model");
+        });
+        if (!hasMLFiles) {
+          if (existsSync(join(cwd, "models"))) hasMLFiles = true;
+          if (existsSync(join(cwd, "ipbs_datapack"))) hasMLFiles = true;
+        }
+      } catch {}
+
+      if (hasMLFiles && !isQuantActive) {
+        escalations.push({
+          type: "advisor-review",
+          severity: "RECOMMENDED",
+          reason: "Missing obvious packs: quant/ML should apply for this model/betting repo; consider forcing machine_learning and quant_results_communication packs",
+          trigger: "missing-obvious-pack",
+          auto_launch: true,
+        });
+      }
+    }
+  } catch (e) {
+    debugLog("escalation", `Persona adaptation advisor check failed: ${e.message}`);
   }
 
   // Deduplicate: keep highest severity per type
@@ -913,8 +1183,136 @@ function computeEscalations() {
   return {
     output_schema_version: "1.1.0",
     escalations: Object.values(byType).map(enrichEscalation),
-    context: { changeStats, sharedModules, turbulence, staleness, thresholds },
+    context: { changeStats, sharedModules, turbulence, staleness, thresholds, ontologyChangedFiles },
     workflow_intelligence: workflowIntelligence,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Gate-Fired Audit Execution
+// ---------------------------------------------------------------------------
+
+function auditCommandForEscalation(escalation) {
+  const scriptsDir = join(cwd, ".agent", "skills", "iterative-planner", "scripts");
+  if (escalation.audit_type === "red-team") {
+    return {
+      label: "red-team",
+      command: process.execPath,
+      args: [join(scriptsDir, "audit_runner.mjs"), "--report-only", "--json"],
+    };
+  }
+  if (escalation.audit_type === "regression") {
+    return {
+      label: "regression",
+      command: process.execPath,
+      args: [join(scriptsDir, "project_health.mjs"), "--json"],
+    };
+  }
+  return null;
+}
+
+function safeArtifactToken(value) {
+  return String(value || "audit")
+    .replace(/[^a-z0-9_.-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80) || "audit";
+}
+
+function writeGateFiredAuditArtifact(payload) {
+  const dir = join(cwd, "reports", "gate_fired_audits");
+  mkdirSync(dir, { recursive: true });
+  const stamp = nowISO().replace(/[:.]/g, "-");
+  const token = safeArtifactToken(payload.audit_type || payload.type || "audit");
+  const path = join(dir, `${stamp}-${token}.json`);
+  writeFileSync(path, JSON.stringify(payload, null, 2) + "\n");
+  return path;
+}
+
+function executeRequiredEscalations(options = {}) {
+  const syntheticLabel = options.syntheticLabel || null;
+  const result = computeEscalations();
+  const required = result.escalations.filter((entry) => entry.severity === "REQUIRED");
+  const executed = [];
+  const skipped = [];
+  let failed = false;
+
+  for (const escalation of required) {
+    const commandSpec = auditCommandForEscalation(escalation);
+    if (!commandSpec) {
+      skipped.push({
+        type: escalation.type,
+        audit_type: escalation.audit_type,
+        reason: "No deterministic gate-fired executor is registered for this escalation type",
+      });
+      continue;
+    }
+
+    const startedAt = nowISO();
+    const proc = spawnSync(commandSpec.command, commandSpec.args, {
+      cwd,
+      encoding: "utf-8",
+      timeout: 180000,
+    });
+    const coverage = computeCurrentCoverageFingerprint();
+    const artifact = {
+      output_schema_version: "1.0.0",
+      kind: "gate_fired_audit",
+      synthetic_trigger: syntheticLabel,
+      generated_at: nowISO(),
+      started_at: startedAt,
+      escalation,
+      audit_type: escalation.audit_type,
+      command: [commandSpec.command, ...commandSpec.args],
+      exit_status: proc.status,
+      signal: proc.signal || null,
+      timed_out: proc.error?.code === "ETIMEDOUT",
+      stdout: proc.stdout || "",
+      stderr: proc.stderr || "",
+      coverage,
+    };
+    const artifactPath = writeGateFiredAuditArtifact(artifact);
+    const relArtifactPath = relative(cwd, artifactPath);
+    const executedOk = proc.status === 0 ||
+      (escalation.audit_type === "regression" && proc.status === 1 && String(proc.stdout || "").trim().length > 0);
+    if (executedOk) {
+      logAudit(escalation.audit_type, {
+        silent: options.jsonMode,
+        extra: {
+          execution_mode: "gate_fired_audit",
+          artifact_path: relArtifactPath,
+          escalation_type: escalation.type,
+          escalation_trigger: escalation.trigger,
+          synthetic_trigger: syntheticLabel,
+        },
+      });
+    } else {
+      failed = true;
+    }
+    executed.push({
+      type: escalation.type,
+      audit_type: escalation.audit_type,
+      workflow: escalation.workflow,
+      ok: executedOk,
+      audit_verdict_exit_status: proc.status,
+      exit_status: proc.status,
+      artifact_path: relArtifactPath,
+      command: [commandSpec.command, ...commandSpec.args],
+    });
+  }
+
+  return {
+    output_schema_version: "1.2.0",
+    kind: "gate_fired_audit_execution",
+    generated_at: nowISO(),
+    synthetic_trigger: syntheticLabel,
+    required_count: required.length,
+    executed_count: executed.length,
+    skipped_count: skipped.length,
+    failed_count: executed.filter((entry) => !entry.ok).length,
+    ok: !failed,
+    executed_audits: executed,
+    skipped_escalations: skipped,
+    source_escalation_check: result,
   };
 }
 
@@ -1051,12 +1449,39 @@ async function enrichWithSupervisorVerdict(result) {
 
 (async () => {
   if (args[0] === "log" && args[1]) {
-    const validTypes = ["red-team", "regression", "retro", "user-story", "advisor"];
+    const validTypes = ["red-team", "regression", "retro", "user-story", "advisor", "ontology"];
     if (!validTypes.includes(args[1])) {
       console.error(`ERROR: Invalid audit type "${args[1]}". Valid: ${validTypes.join(", ")}`);
       process.exit(1);
     }
-    logAudit(args[1]);
+    const coversIndex = args.indexOf("--covers");
+    const coverageTarget = coversIndex >= 0 ? String(args[coversIndex + 1] || "").toUpperCase() : null;
+    if (coversIndex >= 0 && coverageTarget !== "HEAD") {
+      console.error('ERROR: --covers currently accepts only "HEAD".');
+      process.exit(1);
+    }
+    logAudit(args[1], { coverageTarget });
+  } else if (args[0] === "execute-required" || args.includes("--execute-required")) {
+    const syntheticIndex = args.indexOf("--synthetic");
+    const syntheticLabel = syntheticIndex >= 0 ? (args[syntheticIndex + 1] || "synthetic") : null;
+    const jsonMode = args.includes("--json");
+    const execution = executeRequiredEscalations({ jsonMode, syntheticLabel });
+    if (jsonMode) {
+      console.log(JSON.stringify(execution, null, 2));
+    } else {
+      console.log("Gate-fired audit execution");
+      console.log(`  Required: ${execution.required_count}`);
+      console.log(`  Executed: ${execution.executed_count}`);
+      console.log(`  Skipped: ${execution.skipped_count}`);
+      console.log(`  Failed: ${execution.failed_count}`);
+      for (const audit of execution.executed_audits) {
+        console.log(`  - ${audit.ok ? "PASS" : "FAIL"} ${audit.audit_type}: ${audit.artifact_path}`);
+      }
+      for (const skipped of execution.skipped_escalations) {
+        console.log(`  - SKIP ${skipped.type}: ${skipped.reason}`);
+      }
+    }
+    process.exit(execution.ok ? 0 : 1);
   } else if (args[0] === "log-workflow" && args[1] && args[2]) {
     logWorkflowEvent(args[1], args[2], args[3] || null);
   } else if (args[0] === "log-recommendation" && args[1]) {

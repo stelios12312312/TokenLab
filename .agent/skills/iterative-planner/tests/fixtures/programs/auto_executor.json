@@ -4,13 +4,19 @@
   "title": "Auto-executor fixture",
   "status": "validating",
   "goal": "Exercise the verification_runner.mjs auto path.",
-  "story_refs": ["US-001"],
+  "story_refs": [
+    "US-001"
+  ],
   "epics": [
     {
       "id": "EP-001",
       "title": "Auto execution",
-      "story_refs": ["US-001"],
-      "ticket_refs": ["T-AUTO"]
+      "story_refs": [
+        "US-001"
+      ],
+      "ticket_refs": [
+        "T-AUTO"
+      ]
     }
   ],
   "tickets": [
@@ -20,20 +26,52 @@
       "title": "Auto-executed verification",
       "type": "feature",
       "lifecycle": "verified",
-      "story_refs": ["US-001"],
+      "story_refs": [
+        "US-001"
+      ],
       "defect_refs": [],
       "gap_refs": [],
       "depends_on": [],
-      "acceptance_criteria": ["AC-AUTO"],
-      "child_plan": { "policy": "not_required", "plan_dir": null, "reason": "fixture" },
+      "acceptance_criteria": [
+        "AC-AUTO"
+      ],
+      "child_plan": {
+        "policy": "not_required",
+        "plan_dir": null,
+        "reason": "fixture"
+      },
       "compatibility_contract_refs": [],
       "migration_boundary_refs": [],
       "deletion_move_census_refs": [],
-      "verification_refs": ["VM-AUTO-PASS", "VM-AUTO-FAIL", "VM-MANUAL"]
+      "verification_refs": [
+        "VM-AUTO-PASS",
+        "VM-AUTO-FAIL",
+        "VM-MANUAL"
+      ],
+      "external_refs": [
+        {
+          "kind": "github_issue",
+          "repo": "owner/repo",
+          "issue_number": 9001,
+          "title": "Auto-executed verification",
+          "state": "OPEN",
+          "url": "https://github.com/owner/repo/issues/9001",
+          "synced_at": "2026-07-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "acceptance_criteria": [
-    { "id": "AC-AUTO", "scope": "ticket", "subject_ref": "T-AUTO", "text": "Auto-executor proves rows execute.", "story_refs": ["US-001"], "maintenance_rationale": null }
+    {
+      "id": "AC-AUTO",
+      "scope": "ticket",
+      "subject_ref": "T-AUTO",
+      "text": "Auto-executor proves rows execute.",
+      "story_refs": [
+        "US-001"
+      ],
+      "maintenance_rationale": null
+    }
   ],
   "dependencies": [],
   "compatibility_contracts": [],

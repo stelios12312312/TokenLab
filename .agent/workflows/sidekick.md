@@ -11,7 +11,7 @@ planner sidekick init
 This copies `.agent/sidekick.config.example.yaml` to `<project>/.agent/sidekick.config.yaml`. Edit the local config to select either:
 
 - `ollama` for local models such as `qwen2.5-coder:7b`
-- `openai_compatible` for APIs such as DeepSeek
+- `openai_compatible` for remote OpenAI-compatible APIs
 
 No Sidekick provider is called unless the local sidekick config exists.
 

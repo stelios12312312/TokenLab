@@ -20,6 +20,12 @@
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join, resolve } from "path";
 import {
+  getWorkOrderSuccessCriteria,
+  getWorkOrderVerificationRows,
+  loadPlanWorkOrder,
+  writePlanWorkOrderProjection,
+} from "./lib/work_order_contract.mjs";
+import {
   analyzeIntentContract,
   getPaths,
   goalNeedsIntentContract,
@@ -449,6 +455,14 @@ function main() {
 
   if (!flags.dryRun) {
     writeFileSync(outputPath, `${JSON.stringify(merged, null, 2)}\n`);
+    const workOrderInfo = loadPlanWorkOrder(target.planDir);
+    writePlanWorkOrderProjection(target.planDir, {
+      goal: goalText,
+      planDirName: target.planDirName,
+      intentContract: merged,
+      successCriteria: getWorkOrderSuccessCriteria(workOrderInfo.parsed),
+      verificationRows: getWorkOrderVerificationRows(workOrderInfo.parsed),
+    });
   }
 
   const result = {

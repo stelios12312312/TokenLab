@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// @planner:module = bootstrap_plan_lifecycle_cli
+// @planner:capability = plan_directory_state_and_safe_plan_promotion_management
 // Bootstrap and manage plan directories under plans/ in the current working directory (project root).
 //
 // Usage:
@@ -9,24 +11,25 @@
 //   node bootstrap.mjs status                  One-line state summary
 //   node bootstrap.mjs close                   Close active plan (preserves directory)
 //   node bootstrap.mjs list                    Show all plan directories (active and closed)
+//   node bootstrap.mjs promote-safe-plan       Prepare a PLAN-state safe-plan handoff for execution
 //
 // Creates plans/plan_YYYY-MM-DD_XXXXXXXX/ (date + 8-char hex seed) in cwd.
 // Writes plans/.current_plan with the directory name for discovery.
 // Requires Node.js 18+ (guaranteed by Claude Code).
 
 import { mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync, unlinkSync, existsSync, rmSync, openSync, closeSync, constants, statSync, cpSync } from "fs";
-import { join, dirname, resolve } from "path";
+import { join, dirname, resolve, relative } from "path";
 import { randomBytes } from "crypto";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
-import { loadAsyncDriftSummary, loadDriftLlmConfig, publicDriftConfig } from "./lib/llm_drift_client.mjs";
+import { collectBranchDrift, renderBranchDriftStatus } from "./lib/branch_drift.mjs";
 import { findIveBackupRetentionWarnings } from "./lib/ive_migration_bootstrap.mjs";
 import { measurePlanScaffolding, proportionalityVerdict } from "./lib/proportionality.mjs";
 import { renderArchetypeAccomplicePlanSection } from "../packs/quant/archetype_accomplices.mjs";
+import { scaffoldVerificationStrategy } from "./lib/verification_strategy.mjs";
+import { inspectInstallHealth, maybeHandleInstallHealth, maybeRunSelfHeal } from "./lib/bootstrap_self_heal.mjs";
+import { createBootstrapStatusContext } from "./lib/bootstrap_status_context.mjs";
 
-const SELF_HEAL_ENV = "_PLANNER_SELF_HEAL_RUNNING";
-const SELF_HEAL_SKIP_ENV = "PLANNER_SKIP_SELF_HEAL";
-const SELF_HEAL_SOURCE_ENV = "PLANNER_SOURCE_REPO";
 const KB_INDEX_TEMPLATE = `# Knowledge Base Index
 
 | File | Topics |
@@ -37,72 +40,6 @@ const KB_INDEX_TEMPLATE = `# Knowledge Base Index
 | [retros/retro_ledger.json](retros/retro_ledger.json) | Structured retro archive with promotion decisions and case-file pointers |
 `;
 const RETRO_LEDGER_TEMPLATE = JSON.stringify({ version: 1, retros: [] }, null, 2) + "\n";
-
-function resolveSelfHealSource(projectRoot) {
-  const override = process.env[SELF_HEAL_SOURCE_ENV]?.trim();
-  if (override) return resolve(projectRoot, override);
-
-  const registryPath = join(projectRoot, ".agent", "skills", "iterative-planner", "config", ".project_registry.json");
-  try {
-    const registry = JSON.parse(readFileSync(registryPath, "utf-8"));
-    const sourcePath = registry?.source_project_path;
-    if (typeof sourcePath === "string" && sourcePath.trim()) {
-      return resolve(sourcePath);
-    }
-  } catch {
-    // Best-effort lookup only — fall through to no-op if the registry is absent or stale.
-  }
-
-  return null;
-}
-
-function inspectInstallHealth(projectRoot) {
-  const sourceRepo = resolveSelfHealSource(projectRoot) || projectRoot;
-  const migrateScript = join(sourceRepo, ".agent", "skills", "iterative-planner", "scripts", "migrate.mjs");
-
-  if (!existsSync(migrateScript)) {
-    return {
-      ok: false,
-      source_repo: sourceRepo,
-      self_heal_available: false,
-      needs_repair: false,
-      summary: { description: `Canonical migrate.mjs not found at ${migrateScript}` },
-    };
-  }
-
-  const doctor = spawnSync(process.execPath, [migrateScript, "doctor", projectRoot, "--json"], {
-    encoding: "utf-8",
-    stdio: ["ignore", "pipe", "pipe"],
-  });
-  if (doctor.status !== 0) {
-    return {
-      ok: false,
-      source_repo: sourceRepo,
-      self_heal_available: resolve(sourceRepo) !== resolve(projectRoot),
-      needs_repair: false,
-      summary: { description: `doctor check failed (${doctor.status ?? "unknown"})` },
-      stderr: doctor.stderr || "",
-    };
-  }
-
-  try {
-    const report = JSON.parse(doctor.stdout || "{}");
-    return {
-      ok: true,
-      source_repo: sourceRepo,
-      self_heal_available: resolve(sourceRepo) !== resolve(projectRoot),
-      ...report,
-    };
-  } catch {
-    return {
-      ok: false,
-      source_repo: sourceRepo,
-      self_heal_available: resolve(sourceRepo) !== resolve(projectRoot),
-      needs_repair: false,
-      summary: { description: "doctor output was not valid JSON" },
-    };
-  }
-}
 
 function warnIveMigrationBackupRetention(projectRoot) {
   let warnings = [];
@@ -122,90 +59,21 @@ function warnIveMigrationBackupRetention(projectRoot) {
   }
 }
 
-function maybeRunSelfHeal(projectRoot, entryArgs) {
-  const command = process.argv[2];
-  if (!command || command === "help" || command === "--help" || command === "-h") return;
-  if (command === "install-health") return;
-  // v7.4.4: triage subcommand is read-only and emits JSON; self-heal noise
-  // would corrupt the output. Skip it for triage.
-  if (command === "triage" || command === "contract") return;
-  if (process.env[SELF_HEAL_ENV] === "1") return;
-  if (process.env[SELF_HEAL_SKIP_ENV]) return;
-
-  const health = inspectInstallHealth(projectRoot);
-  if (!health?.ok || !health.source_repo || resolve(health.source_repo) === resolve(projectRoot)) return;
-  if (!health.needs_repair) return;
-
-  const migrateScript = join(health.source_repo, ".agent", "skills", "iterative-planner", "scripts", "migrate.mjs");
-  if (!existsSync(migrateScript)) {
-    // T-INTAKE-A0AAAFC1 AC4: a source repo absent on this machine means the
-    // registry path is stale (cloned from another machine) — skip silently.
-    if (existsSync(health.source_repo)) {
-      console.warn(`⚠️  Planner self-heal skipped — canonical migrate.mjs not found at ${migrateScript}`);
+function printBranchDriftStatus(projectRoot) {
+  try {
+    const report = collectBranchDrift({
+      cwd: projectRoot,
+      now: process.env.PLANNER_BRANCH_DRIFT_NOW || new Date(),
+    });
+    const rendered = renderBranchDriftStatus(report);
+    if (rendered) {
+      console.log();
+      console.log(rendered);
     }
-    return;
+  } catch (error) {
+    console.log();
+    console.log(`Branch drift: unavailable - ${error.message}`);
   }
-
-  console.log("\n── Planner Self-Heal ──");
-  console.log(`  Source repo: ${health.source_repo}`);
-  console.log(`  Target repo: ${projectRoot}`);
-  console.log(`  Detected drift: ${health.summary?.description || "planner repair required"}`);
-
-  const upgrade = spawnSync(process.execPath, [migrateScript, "upgrade", projectRoot], {
-    encoding: "utf-8",
-    stdio: "inherit",
-  });
-  if (upgrade.status !== 0) {
-    console.error(`  ❌ Planner self-heal failed during upgrade (exit ${upgrade.status ?? "unknown"}).`);
-    process.exit(upgrade.status || 1);
-  }
-
-  console.log("\n  Planner self-heal complete — re-running original command once.\n");
-  const rerun = spawnSync(process.execPath, entryArgs, {
-    encoding: "utf-8",
-    stdio: "inherit",
-    env: {
-      ...process.env,
-      [SELF_HEAL_ENV]: "1",
-    },
-  });
-  process.exit(rerun.status || 0);
-}
-
-function maybeHandleInstallHealth(projectRoot) {
-  if (process.argv[2] !== "install-health") return;
-
-  const jsonMode = process.argv.includes("--json");
-  const health = inspectInstallHealth(projectRoot);
-
-  if (jsonMode) {
-    console.log(JSON.stringify(health, null, 2));
-    process.exit(health.ok ? 0 : 1);
-  }
-
-  console.log("Planner Install Health");
-  console.log();
-  console.log(`  Project root: ${projectRoot}`);
-  console.log(`  Canonical source: ${health.source_repo || "unknown"}`);
-  console.log(`  Self-heal available: ${health.self_heal_available ? "YES" : "NO"}`);
-  console.log(`  Needs repair: ${health.needs_repair ? "YES" : "NO"}`);
-  console.log(`  Advisories: ${(health.advisory_issues || []).length}`);
-  console.log(`  Summary: ${health.summary?.description || "No summary available"}`);
-
-  if (!health.ok) {
-    console.log("  Diagnosis: planner install health could not be verified cleanly.");
-    process.exit(1);
-  }
-
-  if (health.needs_repair) {
-    console.log("  Next step: normal planner entrypoints will attempt self-heal automatically before they run.");
-    console.log("  Manual fallback: node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade .");
-  } else if ((health.advisory_issues || []).length > 0) {
-    console.log("  Advisory drift: no self-heal will run. Sync root instruction mirrors manually if you want them aligned.");
-  } else {
-    console.log("  Next step: planner-managed files and setup look aligned.");
-  }
-  process.exit(0);
 }
 
 maybeRunSelfHeal(process.cwd(), process.argv.slice(1));
@@ -213,7 +81,9 @@ maybeHandleInstallHealth(process.cwd());
 
 const {
   createInitialStateJson, writeStateJson, readStateJson, nowISO, validateStateIntegrity, isFeatureEnabled,
+  hashRuleFiles,
 } = await import("./lib/determinism.mjs");
+const { renderStateMarkdownFromJson } = await import("./lib/plan_artifact_renderer.mjs");
 const {
   debugLog, getActivePlan, GATE_HISTORY_POISON_THRESHOLD,
   findPoisonedGateHistories,
@@ -221,28 +91,86 @@ const {
   detectRecentNonActivePlanContext, formatNonActivePlanContextDetail,
   readFindingsMarkdown, loadFindingsLedger, syncFindingsMarkdownFromLedger, findingsLedgerHasRenderableContent,
   resolvePlanTarget, writeThreadPlanTarget, clearThreadPlanTarget,
+  extractFilesToModify,
+  classifyPlannerPreflight,
 } = await import("./lib/plan_utils.mjs");
 const { writeScopeContract } = await import("./lib/scope_contract.mjs");
+const {
+  WORKFLOW_CONTRACT_VERSION,
+  getWorkflowContract,
+  normalizeWorkflowId,
+} = await import("./lib/workflow_contracts.mjs");
 const { probeCapabilities, formatCapabilityBanner } = await import("./lib/capability_probe.mjs");
+const { loadJournal } = await import("./lib/agent_journal.mjs");
 const { initializePlanMetrics } = await import("./lib/plan_metrics.mjs");
-const { consumeOneTimeNonce } = await import("./lib/nonce.mjs");
 const { detectPlanShape, shapeMinFindings, shapeRequiresField } = await import("./lib/plan_shape.mjs");
 const { computeTriage, renderTriage } = await import("./lib/triage.mjs");
+const { deriveTaskFocusContract, summarizeTaskFocusContract } = await import("./lib/task_focus_contract.mjs");
+const { DEFAULT_PLANNER_POLICY, loadPlannerPolicy, policyAllowsCompactVerification, resolvePlannerPolicyShape } = await import("./lib/planner_policy.mjs");
 const { previewContract, renderContractPreview } = await import("./lib/contract_preview.mjs");
 const { inferPersonaAdaptation, isProblematicPersonaStatus } = await import("./lib/persona_adaptation.mjs");
 const { formatSessionAssumption, summarizeSessionObligations } = await import("./lib/session_obligations.mjs");
-const { computeVerificationObligationSynthesis } = await import("./lib/verification_obligations.mjs");
+const {
+  computeVerificationObligationSynthesis,
+  deriveLowRiskVerificationMatrixPolicy,
+} = await import("./lib/verification_obligations.mjs");
 const {
   analyzeVerificationMatrix,
   buildVerificationEvidenceGuidance,
+  COMPACT_LOW_RISK_MATRIX_FEATURE,
   extractSuccessCriteria,
-  renderVerificationEvidenceGuidance,
 } = await import("./lib/verification_matrix.mjs");
+const { renderEvidenceGuidance } = await import("./lib/repair_packet.mjs");
+const { loadPlanWorkOrder, writePlanWorkOrderProjection } = await import("./lib/work_order_contract.mjs");
+const {
+  generateExecutionStepsScaffold,
+  generateVerificationObligationSynthesisScaffold,
+  generateSemanticUpkeepContractScaffold,
+} = await import("./lib/plan_scaffold.mjs");
 const {
   collectProvisionalPersonaTriggeredRecommendations,
+  decidePersonaPackActivation,
+  renderPersonaAuthoritySummary,
+  renderPersonaShapeSuppressionConflicts,
   renderPersonaTriggeredRecommendations,
+  resolvePersonaAuthorityPlanContext,
+  summarizePersonaAuthority,
 } = await import("./lib/persona_activation_authority.mjs");
 const { formatPersonaArtifactIssue } = await import("./lib/persona_artifacts.mjs");
+const {
+  buildNorthStarDecisionSurface,
+  renderNorthStarDecisionSurface,
+  shouldRenderNorthStarDecisionSurface,
+} = await import("./lib/north_star_decision_surface.mjs");
+const {
+  buildOntologyPackGuardContract,
+  renderOntologyPackGuardSummary,
+} = await import("./lib/ontology_pack_guard_contract.mjs");
+
+const DEFAULT_FULL_VERIFICATION_STRATEGY_SCAFFOLD =
+  "*To be defined during PLAN. Prefer a table. Baseline shape: Criterion | Story linkage | Check | Pass means. For recipe/orchestration/integration/browser/backend work, use a context-sensitive matrix: Criterion | Story linkage | Repo/system context | Required proof type | Concrete command or action | Pass means | What remains unverified. Wrapper/unit tests alone are not enough when the real risk is operational behavior.*";
+
+function renderInitialVerificationStrategyScaffold({ goalText = "", planShape = null, plannerPolicy = null } = {}) {
+  const policy = deriveLowRiskVerificationMatrixPolicy({
+    shapePrimary: planShape?.primary || null,
+    planMatchContext: {
+      goalText,
+      plannedFiles: [],
+      effectiveFiles: [],
+    },
+    obligations: [],
+  });
+
+  if (
+    isFeatureEnabled(COMPACT_LOW_RISK_MATRIX_FEATURE) &&
+    policyAllowsCompactVerification(plannerPolicy) &&
+    policy.eligible
+  ) {
+    return "Low-risk verification obligation: TODO - for US-### and sc_1, review the changed low-risk artifact(s), record the pass signal, and name any remaining gap before close.";
+  }
+
+  return DEFAULT_FULL_VERIFICATION_STRATEGY_SCAFFOLD;
+}
 
 const cwd = process.cwd();
 const plansDir = join(cwd, "plans");
@@ -252,6 +180,61 @@ const gatesJsonPath = join(skillPath, "config", "gates.json");
 const GATE_REGISTRY = existsSync(gatesJsonPath)
   ? (JSON.parse(readFileSync(gatesJsonPath, "utf-8")).gates || {})
   : {};
+
+function normalizeKernelProfile(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
+}
+
+function readKernelProfileStatus(projectRoot) {
+  let source = null;
+  const profilePath = join(projectRoot, "planner.profile.json");
+  if (existsSync(profilePath)) {
+    try {
+      const profile = JSON.parse(readFileSync(profilePath, "utf-8"));
+      const rawProfile = profile.install_profile || profile.profile || profile.tier;
+      if (normalizeKernelProfile(rawProfile) === "kernel") source = "planner.profile.json";
+    } catch {
+      // Ignore malformed optional profile metadata; status should stay read-only.
+    }
+  }
+
+  let journalEntries = 0;
+  let incidentEntries = 0;
+  if (!source || existsSync(join(projectRoot, "plans", "knowledge", "agent_journal.jsonl"))) {
+    try {
+      const journal = loadJournal({ cwd: projectRoot });
+      journalEntries = journal.entries.length;
+      const seedEntry = journal.entries.find((entry) => entry?.payload?.install_profile === "kernel");
+      if (!source && seedEntry) source = "plans/knowledge/agent_journal.jsonl";
+      incidentEntries = journal.entries.filter((entry) => {
+        const topic = String(entry?.topic || "").trim().toLowerCase();
+        const tags = (Array.isArray(entry?.tags) ? entry.tags : []).map((tag) => String(tag || "").trim().toLowerCase());
+        return entry?.type === "failure" || topic === "incident" || tags.includes("incident");
+      }).length;
+    } catch {
+      // Optional status only.
+    }
+  }
+
+  if (!source) return null;
+  return { source, journalEntries, incidentEntries };
+}
+
+function printKernelProfileStatus(projectRoot) {
+  const status = readKernelProfileStatus(projectRoot);
+  if (!status) return;
+  console.log();
+  console.log(`  Kernel profile: active (${status.source})`);
+  console.log(`  Kernel journal: ${status.journalEntries} entr${status.journalEntries === 1 ? "y" : "ies"}, incidents=${status.incidentEntries}`);
+  if (status.incidentEntries > 0) {
+    console.log(`  Kernel activation: full planner recommended`);
+  }
+}
+
+function shellQuote(value) {
+  const text = String(value ?? "");
+  return `'${text.replace(/'/g, "'\\''")}'`;
+}
 
 function shouldWarnPersonaAdaptation(report, opts = {}) {
   if (!report || !isProblematicPersonaStatus(report.status)) return false;
@@ -292,153 +275,69 @@ function warnPersonaAdaptation(projectRoot = cwd, opts = {}) {
   }
 }
 
-// Insight injection (ive-ontology-memory): resurface relevant prior insights/strategies
-// for the active plan so the agent reasons WITH them — routed advisory (one section),
-// trusted/derived only, never blocking. The positive half of long-term memory.
-async function renderRelevantInsightsSummary(planDirName) {
-  if (!planDirName) return "";
-  try {
-    // Best-effort dynamic import: a stale target (mid-self-heal) may not yet have this
-    // lib, and a missing optional capability must never break `bootstrap status`.
-    const { loadKnowledgeTriggers, selectInsightInjections } = await import("./lib/knowledge_triggers.mjs");
-    const planDir = join(plansDir, planDirName);
-    const stateJson = readStateJson(planDir);
-    const planContent = existsSync(join(planDir, "plan.md")) ? readFileSync(join(planDir, "plan.md"), "utf-8") : "";
-    const filesSection = planContent.match(/##\s+Files\s+[Tt]o\s+[Mm]odify\s*\n([\s\S]*?)(?=\n##|$)/);
-    let plannedFiles = [];
-    if (filesSection) {
-      plannedFiles = (filesSection[1].match(/^\s*[-*]\s+`?([^`\s]+)`?/gm) || [])
-        .map((line) => line.replace(/^\s*[-*]\s+`?/, "").replace(/`?\s*$/, "").trim())
-        .filter(Boolean);
-    }
-    const loaded = loadKnowledgeTriggers();
-    if (!loaded.ok) return "";
-    const insights = selectInsightInjections(loaded.triggers, { goalText: stateJson?.goal || "", files: plannedFiles });
-    if (insights.length === 0) return "";
-    const lines = ["  Relevant prior insights (Knowledge Triggers):"];
-    for (const a of insights) {
-      lines.push(`  - [${a.id}] ${a.title}`);
-      if (a.knowledge?.directive) lines.push(`      → ${a.knowledge.directive}${a.knowledge.prompt_ref ? ` (see ${a.knowledge.prompt_ref})` : ""}`);
-      lines.push(`      matched_by: ${(a.matched_by || []).join(", ")}`);
-    }
-    return lines.join("\n");
-  } catch {
-    return "";
-  }
+function compactList(values, { limit = 8, empty = "none" } = {}) {
+  const items = (Array.isArray(values) ? values : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  if (items.length === 0) return empty;
+  const shown = items.slice(0, limit);
+  return items.length > limit ? `${shown.join(", ")} +${items.length - limit} more` : shown.join(", ");
 }
 
-// Forcing function (ive-ontology-memory ticket 5): resurface un-promoted draft Knowledge Triggers
-// at status so the operator can promote/discard them. Without this, captured drafts are invisible
-// (selectInsightInjections + evaluateObligationGate both filter non-trusted) and rot unpromoted —
-// the "advisory that isn't consumed becomes noise" failure. Best-effort dynamic import (a stale
-// self-heal target may lack the lib; an optional surface must never break `bootstrap status`).
-async function renderProposedDraftKtSummary() {
-  try {
-    const { listDraftTriggers } = await import("./lib/knowledge_triggers.mjs");
-    const drafts = listDraftTriggers();
-    if (!drafts || drafts.length === 0) return "";
-    const lines = [`  ${drafts.length} un-promoted draft Knowledge Trigger(s) — review/promote/discard:`];
-    for (const d of drafts.slice(0, 8)) {
-      lines.push(`  - [${d.kind}] ${d.id}: ${d.title}${d.proposed_from ? ` (from ${d.proposed_from})` : ""}`);
-    }
-    if (drafts.length > 8) lines.push(`  - … and ${drafts.length - 8} more`);
-    lines.push(`     Promote: node .agent/skills/iterative-planner/scripts/knowledge_triggers.mjs --promote <id> --to derived|trusted`);
-    return lines.join("\n");
-  } catch {
-    return "";
-  }
+function relativeToProject(projectRoot, path) {
+  if (!path) return null;
+  const root = String(projectRoot || cwd).replace(/\/+$/, "");
+  const text = String(path);
+  return text.startsWith(`${root}/`) ? text.slice(root.length + 1) : text;
 }
 
-function renderActivePersonaRecommendationSummary(planDirName) {
-  if (!planDirName) return "";
-  try {
-    const planDir = join(plansDir, planDirName);
-    const planPath = join(planDir, "plan.md");
-    if (!existsSync(planPath)) return "";
-    const synthesis = computeVerificationObligationSynthesis({
-      cwd,
-      planDir,
-      stateJson: readStateJson(planDir),
-      planContent: readFileSync(planPath, "utf-8"),
-    });
-    const lines = [];
-    const artifactWarnings = (synthesis.persona_artifact_issues || synthesis.persona_summary?.issues || [])
-      .map((issue) => formatPersonaArtifactIssue(issue))
-      .filter(Boolean);
-    if (artifactWarnings.length > 0) {
-      lines.push("  Persona artifact diagnostics:");
-      for (const warning of artifactWarnings) lines.push(`  - ${warning}`);
-    }
-
-    const artifactBackedSummary = renderPersonaTriggeredRecommendations(synthesis.obligations || [], { indent: "  " });
-    if (artifactBackedSummary) {
-      lines.push(artifactBackedSummary);
-      return lines.join("\n");
-    }
-
-    const adaptation = inferPersonaAdaptation(cwd);
-    const candidatePackIds = [
-      ...(adaptation?.recommended_seed_roles || []),
-      ...(adaptation?.expected_companions || []),
-    ];
-    const provisional = collectProvisionalPersonaTriggeredRecommendations(synthesis.obligations || [], {
-      candidatePackIds,
-      includeDefaultMappings: true,
-    });
-    const provisionalSummary = renderPersonaTriggeredRecommendations(provisional, {
-      indent: "  ",
-      precomputed: true,
-    });
-    if (provisionalSummary) lines.push(provisionalSummary);
-    return lines.join("\n");
-  } catch {
-    return "";
-  }
-}
-
-function renderActiveEvidenceGuidanceSummary(planDirName) {
-  if (!planDirName) return "";
-  try {
-    const planDir = join(plansDir, planDirName);
-    const planPath = join(planDir, "plan.md");
-    if (!existsSync(planPath)) return "";
-    const planContent = readFileSync(planPath, "utf-8");
-    const synthesis = computeVerificationObligationSynthesis({
-      cwd,
-      planDir,
-      stateJson: readStateJson(planDir),
-      planContent,
-    });
-    const criteria = extractSuccessCriteria(planContent);
-    const analysis = analyzeVerificationMatrix({ planContent, criteria, synthesis });
-    const guidance = buildVerificationEvidenceGuidance({
-      analysis,
-      synthesis,
-      criteria,
-      planArg: planDirName,
-    });
-    return renderVerificationEvidenceGuidance(guidance, { indent: "  ", compact: true });
-  } catch {
-    return "";
-  }
-}
-
-// Ceremony-to-substance advisory: if the active plan dir has accreted far more
-// planner bookkeeping than the work warrants, surface it (never blocks). Fully
-// guarded — a failure here must never break `status`.
-function renderProportionalitySummary(planDirName) {
-  if (!planDirName) return "";
-  try {
-    const planDir = join(plansDir, planDirName);
-    const { lines, files } = measurePlanScaffolding(planDir);
-    const verdict = proportionalityVerdict({ scaffoldingLines: lines });
-    if (!verdict.over_threshold) return "";
-    const top = files.slice(0, 3).map((f) => `${f.name} (${f.lines})`).join(", ");
-    return `  ⚠️  ${verdict.message}\n     Largest: ${top}`;
-  } catch {
-    return "";
-  }
-}
+const {
+  renderAmbientPersonaStatus,
+  renderDegradedCoverageStatus,
+  renderRelevantInsightsSummary,
+  renderProposedDraftKtSummary,
+  renderActivePersonaRecommendationSummary,
+  renderActiveEvidenceGuidanceSummary,
+  renderProportionalitySummary,
+  renderActiveOntologyPackGuardSummary,
+  renderActivePersonaAuthoritySummary,
+  renderProjectPersonaAuthoritySummary,
+  renderActiveKnowledgeReceiptSummary,
+} = createBootstrapStatusContext({
+  cwd,
+  plansDir,
+  skillPath,
+  hashRuleFiles,
+  loadPlannerPolicy,
+  DEFAULT_PLANNER_POLICY,
+  relativeToProject,
+  inferPersonaAdaptation,
+  isProblematicPersonaStatus,
+  compactList,
+  readStateJson,
+  computeVerificationObligationSynthesis,
+  formatPersonaArtifactIssue,
+  renderPersonaTriggeredRecommendations,
+  collectProvisionalPersonaTriggeredRecommendations,
+  loadPlanWorkOrder,
+  extractSuccessCriteria,
+  analyzeVerificationMatrix,
+  buildVerificationEvidenceGuidance,
+  renderEvidenceGuidance,
+  measurePlanScaffolding,
+  proportionalityVerdict,
+  extractGoalFromPlanContent,
+  extractFilesToModify,
+  deriveTaskFocusContract,
+  buildOntologyPackGuardContract,
+  renderOntologyPackGuardSummary,
+  resolvePersonaAuthorityPlanContext,
+  summarizePersonaAuthority,
+  decidePersonaPackActivation,
+  renderPersonaAuthoritySummary,
+  renderPersonaShapeSuppressionConflicts,
+  resolvePlannerPolicyShape,
+});
 
 // D-018: Advisory lock to prevent concurrent bootstrap races on .current_plan.
 // Uses O_EXCL atomic file creation — if two processes race, exactly one wins.
@@ -496,7 +395,12 @@ function releaseLock() {
 
 function ensureGitignore() {
   const gitignorePath = join(cwd, ".gitignore");
-  const patterns = ["plans/"];
+  const patterns = [
+    "plans/.current_plan*",
+    "plans/ACTIVE_PLAN.*",
+    "plans/.thread_targets/",
+    "plans/.audit-archive/",
+  ];
   let content = "";
   try {
     content = readFileSync(gitignorePath, "utf-8");
@@ -535,17 +439,6 @@ function warnTelemetryInstallHealth(projectRoot) {
   console.error("Telemetry capture is enabled but inactive: no supported PostToolUse hook was found.");
   console.error("Repair in supported PostToolUse environments with: sh .agent/skills/iterative-planner/scripts/hooks/run-node.sh .agent/skills/iterative-planner/scripts/hooks/install.mjs --trace-hook");
   console.error("If this IDE cannot provide hooks, mark this plan as no-tool-telemetry in verification.md.");
-}
-
-function printAdvisoryEngineStatus(projectRoot) {
-  const provider = publicDriftConfig(loadDriftLlmConfig(process.env, { cwd: projectRoot }));
-  const phaseList = (provider.phases || []).join(",") || "none";
-  if (provider.configured) {
-    const label = provider.using_deepseek_alias || /deepseek/i.test(provider.base_url || "") ? "DeepSeek" : "OpenAI-compatible";
-    console.log(`  Advisory engines: LLM drift ${label} active (${provider.model || "unknown model"} @ ${provider.base_url || "unknown base"}, phases=${phaseList}, fail-open advisory)`);
-  } else {
-    console.log(`  Advisory engines: LLM drift inactive (missing ${provider.missing.join(", ")}; deterministic planner checks only)`);
-  }
 }
 
 function readPointer() {
@@ -922,6 +815,385 @@ function setMarkdownSection(content, heading, body) {
   return `${content.trimEnd()}\n\n${replacement}`;
 }
 
+function writeTextAtomic(filePath, content) {
+  writeFileSync(filePath + ".tmp", content);
+  renameSync(filePath + ".tmp", filePath);
+}
+
+function readJsonStrict(filePath, label = "JSON file") {
+  try {
+    return JSON.parse(readFileSync(filePath, "utf-8"));
+  } catch (err) {
+    throw new Error(`${label} is not readable JSON at ${filePath}: ${err.message}`);
+  }
+}
+
+function writeJsonAtomic(filePath, value) {
+  writeTextAtomic(filePath, JSON.stringify(value, null, 2) + "\n");
+}
+
+function planDirNameFromArg(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const normalized = raw.replace(/\\/g, "/").replace(/\/+$/g, "");
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] || null;
+}
+
+function resolveExistingPlanDirName(value) {
+  const planDirName = planDirNameFromArg(value);
+  if (!planDirName) return null;
+  const planDir = join(plansDir, planDirName);
+  return existsSync(planDir) ? planDirName : null;
+}
+
+function makeFreshPlanDirName() {
+  const dateStr = new Date().toISOString().slice(0, 10);
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const candidate = `plan_${dateStr}_${randomBytes(8).toString("hex")}`;
+    if (!existsSync(join(plansDir, candidate))) return candidate;
+  }
+  throw new Error("Could not allocate a fresh plan directory name after 25 attempts");
+}
+
+function listProgramPacketPaths() {
+  const root = join(plansDir, "programs");
+  const packets = [];
+  function walk(dir, depth = 0) {
+    if (depth > 6 || !existsSync(dir)) return;
+    let entries = [];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const path = join(dir, entry.name);
+      if (entry.isFile() && entry.name === "program_packet.json") {
+        packets.push(path);
+      } else if (entry.isDirectory()) {
+        walk(path, depth + 1);
+      }
+    }
+  }
+  walk(root);
+  return packets;
+}
+
+function findTicketRecord(packet, ticketId) {
+  const tickets = Array.isArray(packet?.tickets) ? packet.tickets : [];
+  return tickets.find((ticket) => String(ticket?.id || "") === ticketId) || null;
+}
+
+function resolveProgramTicket(ticketId, explicitProgramPath = null) {
+  const id = String(ticketId || "").trim();
+  if (!id) return null;
+
+  const candidatePaths = explicitProgramPath
+    ? [resolve(cwd, explicitProgramPath)]
+    : listProgramPacketPaths();
+  const matches = [];
+
+  for (const packetPath of candidatePaths) {
+    const packet = readJsonStrict(packetPath, "Program Packet");
+    const ticket = findTicketRecord(packet, id);
+    if (ticket) matches.push({ packetPath, packet, ticket });
+  }
+
+  if (matches.length === 0) {
+    throw new Error(explicitProgramPath
+      ? `Ticket ${id} not found in Program Packet ${explicitProgramPath}`
+      : `Ticket ${id} not found under plans/programs`);
+  }
+  if (matches.length > 1) {
+    const paths = matches.map((match) => relative(cwd, match.packetPath).replace(/\\/g, "/")).join(", ");
+    throw new Error(`Ticket ${id} is ambiguous; pass --program to choose one of: ${paths}`);
+  }
+  return matches[0];
+}
+
+function buildProgramContext(programTicket) {
+  if (!programTicket) return null;
+  const { packetPath, packet, ticket } = programTicket;
+  return {
+    program_id: packet?.id || null,
+    program_title: packet?.title || null,
+    program_status: packet?.status || null,
+    program_packet_path: relative(cwd, packetPath).replace(/\\/g, "/"),
+    epic_id: ticket?.epic_id || null,
+    ticket_id: ticket?.id || null,
+    ticket_title: ticket?.title || null,
+    ticket_type: ticket?.ticket_type || ticket?.type || null,
+    ticket_lifecycle: ticket?.lifecycle || null,
+    child_plan_policy: ticket?.child_plan?.policy || null,
+    story_refs: Array.isArray(ticket?.story_refs) ? [...ticket.story_refs] : [],
+    acceptance_criteria: Array.isArray(ticket?.acceptance_criteria) ? [...ticket.acceptance_criteria] : [],
+    verification_refs: Array.isArray(ticket?.verification_refs) ? [...ticket.verification_refs] : [],
+  };
+}
+
+function renderProgramContextSection(context) {
+  if (!context) return "";
+  const lines = [
+    `- Program: \`${context.program_id || "unknown"}\`${context.program_title ? ` - ${context.program_title}` : ""}`,
+    `- Program Packet: \`${context.program_packet_path || "unknown"}\``,
+    `- Program status: \`${context.program_status || "unknown"}\``,
+    `- Ticket: \`${context.ticket_id || "unknown"}\`${context.ticket_title ? ` - ${context.ticket_title}` : ""}`,
+    `- Ticket lifecycle: \`${context.ticket_lifecycle || "unknown"}\``,
+    `- Epic: \`${context.epic_id || "unknown"}\``,
+    `- Child plan policy: \`${context.child_plan_policy || "unknown"}\``,
+    `- Story refs: ${(context.story_refs || []).map((id) => `\`${id}\``).join(", ") || "none"}`,
+    `- Acceptance refs: ${(context.acceptance_criteria || []).map((id) => `\`${id}\``).join(", ") || "none"}`,
+    `- Verification refs: ${(context.verification_refs || []).map((id) => `\`${id}\``).join(", ") || "none"}`,
+  ];
+  return lines.join("\n");
+}
+
+function renderPromotionHandoffSection({ workflowId, sourcePlanDirName, targetPlanDirName, copied, nextCommand, writeMode }) {
+  return [
+    `- Source plan: \`plans/${sourcePlanDirName}\``,
+    `- Promoted plan: \`plans/${targetPlanDirName}\``,
+    `- Target workflow: \`${workflowId}\``,
+    `- Copy mode: \`${copied ? "copied" : "in-place"}\``,
+    `- Write mode: \`${writeMode ? "applied" : "dry-run"}\``,
+    `- State contract: promotion records execution metadata only; phase remains PLAN until the Prolog gate passes.`,
+    `- Next command: \`${nextCommand}\``,
+  ].join("\n");
+}
+
+function updatePromotionPlanSections(planDir, { programContext, promotionHandoff }) {
+  const planPath = join(planDir, "plan.md");
+  if (!existsSync(planPath)) return [];
+  let content = readFileSync(planPath, "utf-8");
+  const actions = [];
+  if (programContext) {
+    content = setMarkdownSection(content, "Program Context", renderProgramContextSection(programContext));
+    actions.push("plan.md:program_context");
+  }
+  content = setMarkdownSection(content, "Promotion Handoff", promotionHandoff);
+  actions.push("plan.md:promotion_handoff");
+  writeTextAtomic(planPath, content);
+  return actions;
+}
+
+function normalizePromotionWorkflow(value) {
+  const workflowId = normalizeWorkflowId(value || "/safe-change");
+  const allowed = new Set(["/safe-change", "/safe-change-power"]);
+  if (!allowed.has(workflowId)) {
+    throw new Error(`Promotion workflow must be /safe-change or /safe-change-power; received ${workflowId || "(blank)"}`);
+  }
+  const contract = getWorkflowContract(cwd, workflowId);
+  if (!contract.workflow || !contract.profile) {
+    throw new Error(`Unknown workflow contract: ${workflowId}`);
+  }
+  return workflowId;
+}
+
+function parsePromoteSafePlanArgs(rawArgs) {
+  const opts = {
+    plan: null,
+    ticket: null,
+    program: null,
+    workflow: "/safe-change",
+    copy: false,
+    write: false,
+    json: false,
+  };
+  for (let index = 0; index < rawArgs.length; index++) {
+    const arg = rawArgs[index];
+    if (arg === "--plan") {
+      opts.plan = rawArgs[++index] || null;
+    } else if (arg === "--ticket") {
+      opts.ticket = rawArgs[++index] || null;
+    } else if (arg === "--program") {
+      opts.program = rawArgs[++index] || null;
+    } else if (arg === "--workflow") {
+      opts.workflow = rawArgs[++index] || null;
+    } else if (arg === "--copy") {
+      opts.copy = true;
+    } else if (arg === "--write") {
+      opts.write = true;
+    } else if (arg === "--json") {
+      opts.json = true;
+    } else if (!opts.plan && !arg.startsWith("-")) {
+      opts.plan = arg;
+    } else {
+      throw new Error(`Unknown promote-safe-plan argument: ${arg}`);
+    }
+  }
+  return opts;
+}
+
+function resolvePromotionSourcePlan({ explicitPlan, programTicket }) {
+  if (explicitPlan) {
+    const planDirName = resolveExistingPlanDirName(explicitPlan);
+    if (!planDirName) throw new Error(`Plan directory not found: ${explicitPlan}`);
+    return { planDirName, source: "argument" };
+  }
+
+  const ticketPlan = programTicket?.ticket?.child_plan?.plan_dir;
+  if (ticketPlan) {
+    const planDirName = resolveExistingPlanDirName(ticketPlan);
+    if (!planDirName) throw new Error(`Ticket child_plan.plan_dir does not exist: ${ticketPlan}`);
+    return { planDirName, source: "ticket_child_plan" };
+  }
+
+  const active = readPointer();
+  if (active) return { planDirName: active, source: "active_pointer" };
+
+  throw new Error("No plan selected. Pass --plan, link the ticket child_plan.plan_dir, or activate a plan first.");
+}
+
+function updateProgramTicketForPromotion(programTicket, targetPlanDirName) {
+  if (!programTicket) return [];
+  const { packetPath, packet, ticket } = programTicket;
+  if (!ticket.child_plan || typeof ticket.child_plan !== "object" || Array.isArray(ticket.child_plan)) {
+    ticket.child_plan = {};
+  }
+  ticket.child_plan.plan_dir = `plans/${targetPlanDirName}`;
+  if (!ticket.child_plan.policy) ticket.child_plan.policy = "required";
+  if (!ticket.lifecycle || ticket.lifecycle === "proposed") ticket.lifecycle = "in_progress";
+  writeJsonAtomic(packetPath, packet);
+  return [`program_packet:${relative(cwd, packetPath).replace(/\\/g, "/")}`];
+}
+
+async function cmdPromoteSafePlan(rawArgs = []) {
+  let opts;
+  try {
+    opts = parsePromoteSafePlanArgs(rawArgs);
+  } catch (err) {
+    if (rawArgs.includes("--json")) {
+      console.log(JSON.stringify({ ok: false, error: err.message }, null, 2));
+    } else {
+      console.error(`ERROR: ${err.message}`);
+    }
+    process.exitCode = 2;
+    return null;
+  }
+
+  let result = null;
+  try {
+    const workflowId = normalizePromotionWorkflow(opts.workflow);
+    const programTicket = opts.ticket ? resolveProgramTicket(opts.ticket, opts.program) : null;
+    const programContext = buildProgramContext(programTicket);
+    const effectiveProgramContext = programContext ? { ...programContext } : null;
+    if (opts.write && effectiveProgramContext && (!effectiveProgramContext.ticket_lifecycle || effectiveProgramContext.ticket_lifecycle === "proposed")) {
+      effectiveProgramContext.ticket_lifecycle = "in_progress";
+    }
+    const sourcePlan = resolvePromotionSourcePlan({ explicitPlan: opts.plan, programTicket });
+    const sourcePlanDirName = sourcePlan.planDirName;
+    const sourcePlanDir = join(plansDir, sourcePlanDirName);
+    const sourceState = readStateJson(sourcePlanDir);
+    if (!sourceState || typeof sourceState !== "object") {
+      throw new Error(`Plan state.json is missing or invalid: plans/${sourcePlanDirName}`);
+    }
+    if (String(sourceState.state || "").toUpperCase() !== "PLAN") {
+      throw new Error(`Can only promote PLAN-state plans; plans/${sourcePlanDirName} is ${sourceState.state || "UNKNOWN"}`);
+    }
+
+    const targetPlanDirName = opts.copy ? makeFreshPlanDirName() : sourcePlanDirName;
+    const targetPlanDir = join(plansDir, targetPlanDirName);
+    const nextCommand = `node .agent/skills/iterative-planner/scripts/transition.mjs plan-to-execute --plan ${targetPlanDirName}`;
+    const now = nowISO();
+    const promotionHandoff = renderPromotionHandoffSection({
+      workflowId,
+      sourcePlanDirName,
+      targetPlanDirName,
+      copied: opts.copy,
+      nextCommand,
+      writeMode: opts.write,
+    });
+
+    const plannedActions = [
+      opts.copy ? `copy plans/${sourcePlanDirName} -> plans/${targetPlanDirName}` : `use plans/${sourcePlanDirName} in place`,
+      `set workflow_id=${workflowId}`,
+      "record promotion_context",
+      "write Promotion Handoff section",
+      ...(effectiveProgramContext ? ["write Program Context section", `link ticket ${effectiveProgramContext.ticket_id} child_plan.plan_dir`] : []),
+      opts.copy ? "refresh active plan pointer and aliases" : "refresh active plan aliases",
+    ];
+    const appliedActions = [];
+
+    if (opts.write) {
+      if (opts.copy) {
+        cpSync(sourcePlanDir, targetPlanDir, { recursive: true, force: false, errorOnExist: true });
+        appliedActions.push(`copied:plans/${sourcePlanDirName}:plans/${targetPlanDirName}`);
+      }
+
+      const stateJson = opts.copy ? readStateJson(targetPlanDir) : sourceState;
+      stateJson.plan_dir = targetPlanDirName;
+      stateJson.workflow_id = workflowId;
+      stateJson.workflow_contract_version = WORKFLOW_CONTRACT_VERSION;
+      if (effectiveProgramContext) stateJson.program_context = effectiveProgramContext;
+      stateJson.promotion_context = {
+        source_workflow: "/safe-plan",
+        target_workflow: workflowId,
+        promoted_at: now,
+        source_plan_dir: sourcePlanDirName,
+        target_plan_dir: targetPlanDirName,
+        copied: Boolean(opts.copy),
+        source: sourcePlan.source,
+        ticket_id: effectiveProgramContext?.ticket_id || null,
+        program_packet_path: effectiveProgramContext?.program_packet_path || null,
+        next_command: nextCommand,
+      };
+
+      const stateWritten = writeStateJson(targetPlanDir, stateJson);
+      if (!stateWritten) {
+        throw new Error(`Failed to write state.json for plans/${targetPlanDirName}`);
+      }
+      const renderedState = renderStateMarkdownFromJson(stateJson);
+      if (renderedState) {
+        writeTextAtomic(join(targetPlanDir, "state.md"), renderedState);
+        appliedActions.push("state.md");
+      }
+      appliedActions.push("state.json");
+      appliedActions.push(...updatePromotionPlanSections(targetPlanDir, { programContext: effectiveProgramContext, promotionHandoff }));
+      appliedActions.push(...updateProgramTicketForPromotion(programTicket, targetPlanDirName));
+
+      writeTextAtomic(pointerFile, targetPlanDirName);
+      refreshActivePlanAliasFor(targetPlanDirName);
+      writeThreadPlanTarget(plansDir, targetPlanDirName);
+      appliedActions.push("active_plan_pointer");
+    }
+
+    result = {
+      ok: true,
+      dry_run: !opts.write,
+      source_plan_dir: sourcePlanDirName,
+      source_resolution: sourcePlan.source,
+      target_plan_dir: targetPlanDirName,
+      copied: Boolean(opts.copy),
+      workflow_id: workflowId,
+      workflow_contract_version: WORKFLOW_CONTRACT_VERSION,
+      ticket_id: effectiveProgramContext?.ticket_id || null,
+      program_packet_path: effectiveProgramContext?.program_packet_path || null,
+      planned_actions: plannedActions,
+      applied_actions: appliedActions,
+      next_command: nextCommand,
+      ontology_note: "Promotion does not enter EXECUTE; run the next command to use the Prolog-backed plan-to-execute gate.",
+    };
+  } catch (err) {
+    result = { ok: false, error: err.message };
+  }
+
+  if (opts.json) {
+    console.log(JSON.stringify(result, null, 2));
+  } else if (result.ok) {
+    console.log(`Safe-plan promotion ${result.dry_run ? "dry run" : "applied"}`);
+    console.log(`  Source plan: plans/${result.source_plan_dir}`);
+    console.log(`  Target plan: plans/${result.target_plan_dir}`);
+    console.log(`  Workflow:    ${result.workflow_id}`);
+    if (result.ticket_id) console.log(`  Ticket:      ${result.ticket_id}`);
+    console.log(`  Next:        ${result.next_command}`);
+    if (result.dry_run) console.log("  No files were changed. Re-run with --write to apply.");
+  } else {
+    console.error(`ERROR: ${result.error}`);
+  }
+  process.exitCode = result.ok ? 0 : 1;
+  return result;
+}
+
 function sanitizeRecoveredFindingsLedger(ledger, recoveryContext) {
   const sanitized = JSON.parse(JSON.stringify(ledger));
   sanitized.fast_track = false;
@@ -1022,6 +1294,13 @@ function carryRecoveredArtifacts(sourcePlanDirName, targetPlanDirName, poisonedE
       : readFileSync(sourceIntentPath, "utf-8");
     writeFileSync(join(targetPlanDir, "intent_contract.json"), carriedJson);
     carriedArtifacts.push("intent_contract.json");
+    if (intentContract) {
+      writePlanWorkOrderProjection(targetPlanDir, {
+        goal: sourceGoal || "Recovered planner plan projection",
+        intentContract,
+      });
+      carriedArtifacts.push("work_order.json");
+    }
   }
 
   const sourceDecisions = normalizeRecoveredContent(
@@ -1075,12 +1354,10 @@ function carryRecoveredArtifacts(sourcePlanDirName, targetPlanDirName, poisonedE
       carried_artifacts: carriedArtifacts,
     };
 
-    // v7.4.2: carry forward source state.json fields that are still valid
-    // for the successor. Conservative set — security-sensitive fields
-    // (approval_nonce_hash, kb_digest_hash) deliberately NOT carried so the
-    // successor regenerates them through its own explore-to-plan / approval
-    // flow. consumed_nonces also not carried (each plan has its own nonce
-    // history). The fields that ARE carried are environmental — they encode
+    // Carry forward source state.json fields that are still valid for the
+    // successor. Conservative set — kb_digest_hash is deliberately NOT carried
+    // so the successor regenerates it through its own explore-to-plan flow.
+    // Retired nonce fields are ignored. The fields that ARE carried are environmental — they encode
     // the source's view of the surrounding repo, which the successor inherits
     // since it's the same repo at the same commit.
     if (sourceState) {
@@ -1123,10 +1400,36 @@ function carryRecoveredArtifacts(sourcePlanDirName, targetPlanDirName, poisonedE
 // Commands
 // ---------------------------------------------------------------------------
 
-function cmdNew(goal, opts = {}) {
+async function cmdNew(goal, opts = {}) {
   const force = opts.force === true;
   const parallel = opts.parallel === true;
+  const routeTriage = opts.routeTriage !== false;
   const suppressOrphanWarning = opts.suppressOrphanWarning === true;
+  const workflowId = normalizeWorkflowId(opts.workflow || null);
+  if (workflowId) {
+    const contract = getWorkflowContract(process.cwd(), workflowId);
+    if (!contract.workflow || !contract.profile) {
+      console.error(`ERROR: Unknown workflow contract: ${workflowId}`);
+      process.exit(1);
+    }
+  }
+
+  const plannerPolicyInfo = loadPlannerPolicy(cwd);
+  const triage = computeTriage({
+    goalText: goal,
+    plannedFiles: [],
+    intentContract: null,
+    plannerPolicy: plannerPolicyInfo.policy,
+  });
+  const seriousPlannerPath = triage.recommended_path === "standard_planner" || triage.recommended_path === "full_planner";
+  if (routeTriage && !force && !parallel && !seriousPlannerPath) {
+    console.log(renderTriage(triage, { mode: "verbose" }));
+    console.log("");
+    console.log("  No plan was created.");
+    console.log(`  To override and create one: node ${process.argv[1]} new --force ${shellQuote(goal)}`);
+    return { routed: true, triage };
+  }
+
   mkdirSync(plansDir, { recursive: true });
 
   // Clear stale supervisor verdicts when starting a fresh plan.
@@ -1203,11 +1506,41 @@ function cmdNew(goal, opts = {}) {
   const shapeNeedsRootCause = shapeRequiresField(planShape, "root_cause");
   const shapeNeedsAdjacency = shapeRequiresField(planShape, "adjacency");
   const shapeNeedsAssumptionLedger = shapeRequiresField(planShape, "assumption_ledger");
+  const preliminaryFocusContract = deriveTaskFocusContract({
+    cwd,
+    goalText: goal,
+    plannedFiles: [],
+    planShape,
+    triage,
+    plannerPolicy: plannerPolicyInfo.policy,
+  });
 
   try {
     mkdirSync(join(planDir, "checkpoints"), { recursive: true });
     mkdirSync(join(planDir, "findings"), { recursive: true });
     const archetypeAccompliceSection = renderArchetypeAccomplicePlanSection({ goal });
+
+    // Mechanical scaffolding: prefill sections that plan-to-execute gates check
+    // (GATE-PLN-003, PLN-018, PLN-019, PLN-020) using goal, shape, and any known
+    // files. At bootstrap time plannedFiles is empty, so the scaffold stays
+    // high-level and is refined during EXPLORE / PLAN.
+    const scaffoldClassification = classifyPlannerPreflight(goal, { plannedFiles: [] });
+    const executionStepsScaffold = generateExecutionStepsScaffold({ goal, plannedFiles: [], planShape });
+    const verificationObligationSynthesisScaffold = generateVerificationObligationSynthesisScaffold({
+      cwd,
+      planDir,
+      goal,
+      plannedFiles: [],
+      planShape,
+      taskFocusContract: preliminaryFocusContract,
+    });
+    const semanticUpkeepContractScaffold = generateSemanticUpkeepContractScaffold({
+      goal,
+      plannedFiles: [],
+      planShape,
+      classification: scaffoldClassification,
+      taskFocusContract: preliminaryFocusContract,
+    });
 
     // Seed KB files before state.json so new plans capture a real knowledge snapshot.
     ensureConsolidatedFiles();
@@ -1250,28 +1583,14 @@ ${archetypeAccompliceSection}
 ## Files To Modify
 *To be determined after EXPLORE. List every file that will be touched.*
 
-## Steps
-*To be determined after EXPLORE.*
+## Execution Steps
+${executionStepsScaffold}
 
 ## Verification Obligation Synthesis
-*Required whenever repo/task context, ontology signals, persona signals, or touched boundaries imply operational verification risk. Fill every line below with repo-specific reasoning rather than a generic standard.*
-
-- Repo/system context: *What kind of system is changing?*
-- Task shape: *What kind of change is this?*
-- Ontology signals: *What stories, tags, recipe surfaces, or other ontology signals raise verification obligations here? Write \`N/A — no ontology signals\` only if none apply.*
-- Persona signals: *What persona packs, constraints, or findings influence verification here? Write \`N/A — no persona signals\` only if none apply.*
-- System boundaries touched: *Which real systems, boundaries, or execution paths are at risk?*
-- Derived verification obligations: *What proof obligations should shape the matrix below?*
+${verificationObligationSynthesisScaffold}
 
 ## Semantic Upkeep Contract
-*Required for non-trivial work. Say what semantic surfaces must stay in sync so the planner can separate REFLECT from VALIDATE cleanly.*
-
-- Profile: *Choose one: website_ui_content, integration_backend_orchestration, scientific_training_quant, or other with explanation.*
-- Ontology action: *none | refresh_links | update_entities | update_relationships | other*
-- Story action: *none | relink_existing | revise_existing | add_new | other*
-- Validation bundle: *manual_ui | docs_contract | behavioral | integration | benchmark | mixed*
-- Strictness mode: *lightweight | full | scientific*
-- Close blocker if skipped: *Explain what becomes incoherent or unprovable if this semantic upkeep is not done.*
+${semanticUpkeepContractScaffold}
 
 ## Failure Modes
 *To be determined during PLAN. For each dependency/integration: what if slow, garbage, down?*
@@ -1283,7 +1602,7 @@ ${archetypeAccompliceSection}
 *To be defined before first EXECUTE.*
 
 ## Verification Strategy
-*To be defined during PLAN. Prefer a table. Baseline shape: Criterion | Story linkage | Check | Pass means. For recipe/orchestration/integration/browser/backend work, use a context-sensitive matrix: Criterion | Story linkage | Repo/system context | Required proof type | Concrete command or action | Pass means | What remains unverified. Wrapper/unit tests alone are not enough when the real risk is operational behavior.*
+${renderInitialVerificationStrategyScaffold({ goalText: goal, planShape, plannerPolicy: plannerPolicyInfo.policy })}
 
 ## Active Mistake Response
 *Required only when the structured mistake registry activates one or more mistakes for this plan. Use a table: Mistake | Guard | Planned handling | Planned evidence.*
@@ -1343,18 +1662,23 @@ ${crossPlanNote}`
       }, null, 2) + "\n"
     );
 
+    const initialIntentContract = {
+      version: 1,
+      primary_user: null,
+      job_to_be_done: null,
+      desired_outcomes: [],
+      anti_goals: [],
+      constraints: [],
+      deliverables: [],
+    };
     writeFileSync(
       join(planDir, "intent_contract.json"),
-      JSON.stringify({
-        version: 1,
-        primary_user: null,
-        job_to_be_done: null,
-        desired_outcomes: [],
-        anti_goals: [],
-        constraints: [],
-        deliverables: [],
-      }, null, 2) + "\n"
+      JSON.stringify(initialIntentContract, null, 2) + "\n"
     );
+    writePlanWorkOrderProjection(planDir, {
+      goal,
+      intentContract: initialIntentContract,
+    });
 
     writeFileSync(
       join(planDir, "progress.md"),
@@ -1467,7 +1791,13 @@ ${crossPlanNote}`
     writeFileSync(
       join(planDir, "red_team_notes.md"),
       `*Required before EXECUTE → REFLECT transition. Document at least 3 attack vectors with real, non-template content.*
-*Accepted section styles include Attack:, **Attack**:, or heading-style subsections. Single-line sections are fine if they are substantive.*
+*Accepted section styles: Attack:, **Attack**:, or ### Attack subsections. Single-line sections are fine if substantive.*
+
+**Gate format requirements:**
+- Replace [TBD] in vector titles with a concrete name (template titles are rejected).
+- Each section (Attack/Impact/Mitigation) must have ≥4 words and ≥3 unique words.
+- Each vector must have ≥15 total words and ≥10 unique words across all sections.
+- Do NOT use **Attack:** (colon inside bold) — use **Attack**: (colon outside) or plain Attack: instead.
 
 ## Vector 1: [TBD]
 Attack:
@@ -1495,8 +1825,31 @@ Mitigation:
 `
     );
 
+    // Safe self-healing based on active personas at creation
+    try {
+      const { selfHealPlanFiles } = await import("./lib/plan_self_heal.mjs");
+      const healResult = selfHealPlanFiles(planDir, cwd);
+      if (healResult.healed) {
+        console.log(`  self-healing: completed (${healResult.reasons.join(", ")})`);
+      }
+    } catch (e) {
+      debugLog("bootstrap", `Self-heal failed during cmdNew: ${e.message}`);
+    }
+
+    // Creation contract: the canonical strategy exists immediately. Its
+    // generated TODO/UNVERIFIED fields remain non-proof and will continue to
+    // fail lint until the author fills or explicitly waives them.
+    const strategyScaffold = scaffoldVerificationStrategy({ cwd, planDir, force: false });
+    if (!strategyScaffold.ok || !strategyScaffold.wrote) {
+      throw new Error(`Could not create verification_strategy.yaml: ${(strategyScaffold.errors || []).join("; ") || "unknown scaffold error"}`);
+    }
+
     // Determinism: write canonical state.json alongside state.md
     const stateJson = createInitialStateJson(planDirName, goal, { projectRoot: cwd });
+    if (workflowId) {
+      stateJson.workflow_id = workflowId;
+      stateJson.workflow_contract_version = WORKFLOW_CONTRACT_VERSION;
+    }
     // v7.3.0: persist detected plan shape so gates and downstream tools can
     // consume it without re-detecting. The intent contract may override this
     // later via plan_shape; gates re-detect on each invocation to honor that.
@@ -1506,11 +1859,23 @@ Mitigation:
       requirements: planShape.requirements,
     };
     writeStateJson(planDir, stateJson);
-    writeScopeContract({
+    const scopeContract = writeScopeContract({
       cwd,
       planDir,
       planContent: readFileSync(join(planDir, "plan.md"), "utf-8"),
     });
+    const persistedFocusContract = deriveTaskFocusContract({
+      cwd,
+      planDir,
+      goalText: goal,
+      intentContract: initialIntentContract,
+      scopeContract,
+      plannedFiles: [],
+      planShape,
+      triage,
+      plannerPolicy: plannerPolicyInfo.policy,
+    });
+    writeFileSync(join(planDir, "focus_contract.json"), JSON.stringify(persistedFocusContract, null, 2) + "\n");
 
     if (parallel && existing) {
       refreshActivePlanAliasFor(existing);
@@ -1549,7 +1914,7 @@ Mitigation:
     ensureGitignore();
   } catch (err) {
     console.error(`WARNING: Plan created but .gitignore update failed: ${err.message}`);
-    console.error(`  Manually add plans/ to .gitignore.`);
+    console.error("  Manually ignore only planner runtime controls such as plans/.current_plan*; never ignore plans/ or reports/ proof roots.");
   }
 
   console.log(`Initialized plans/${planDirName}/`);
@@ -1561,16 +1926,18 @@ Mitigation:
   }
   console.log(`  Goal: ${goal}`);
   console.log(`  State: EXPLORE (iteration 0)`);
+  if (workflowId) {
+    console.log(`  Workflow: ${workflowId}`);
+  }
   console.log(`  Plan shape: ${planShape.primary} — requires ≥${shapeMin} finding(s)${shapeNeedsRootCause ? ", root cause" : ""}${shapeNeedsAdjacency ? ", adjacency" : ""}${shapeNeedsAssumptionLedger ? ", assumption ledger" : ""} (override via intent_contract.plan_shape)`);
+  console.log(`  ${summarizeTaskFocusContract(preliminaryFocusContract)}`);
   // v7.4.4: generalised triage warning. The chore-only warning from v7.4.3
   // is now driven by lib/triage.mjs's complexity score, which covers
   // questions, analysis tasks, and chores under one mechanism. When the
   // recommendation is skip_planner_question / skip_planner / lightweight,
   // bootstrap prints a prominent recommendation block before the rest of
   // the success output so agents see it before proceeding.
-  const triage = computeTriage({ goalText: goal, plannedFiles: [], intentContract: null });
-  const seriousPlannerPath = triage.recommended_path === "standard_planner" || triage.recommended_path === "full_planner";
-  if (triage.recommended_path !== "standard_planner" && triage.recommended_path !== "full_planner") {
+  if (routeTriage && !force && !parallel && !seriousPlannerPath) {
     console.log("");
     console.log(renderTriage(triage));
     console.log("");
@@ -1605,12 +1972,16 @@ Mitigation:
   try {
     const healthScript = join(scriptDir, "project_health.mjs");
     const reportPath = join(planDir, "health_baseline.json");
+    const boundedHealthTimeout = (name, fallback) => {
+      const requested = Number.parseInt(process.env[name] || "", 10);
+      return Number.isInteger(requested) && requested > 0 ? Math.min(requested, fallback) : fallback;
+    };
     const jsonResult = spawnSync("node", [healthScript, "--json", "--out", reportPath], {
-      encoding: "utf-8", timeout: 15000, cwd
+      encoding: "utf-8", timeout: boundedHealthTimeout("PLANNER_HEALTH_JSON_TIMEOUT_MS", 15000), cwd
     });
     if (jsonResult.status !== 0 && jsonResult.status !== 1) throw Object.assign(new Error(jsonResult.stderr || "health scan failed"), { status: jsonResult.status });
     const mdResult = spawnSync("node", [healthScript, "--quick", "--out", join(planDir, "health_report.md")], {
-      encoding: "utf-8", timeout: 10000, cwd
+      encoding: "utf-8", timeout: boundedHealthTimeout("PLANNER_HEALTH_REPORT_TIMEOUT_MS", 10000), cwd
     });
     if (mdResult.status !== 0 && mdResult.status !== 1) throw Object.assign(new Error(mdResult.stderr || "health scan failed"), { status: mdResult.status });
     console.log(`  ✅ Health baseline saved to health_baseline.json`);
@@ -1621,6 +1992,22 @@ Mitigation:
       console.log(`  ✅ Health baseline saved. ⚠️  FAIL findings present — see health_report.md`);
     } else {
       console.log(`  ⚠️ Health scan failed (non-blocking): ${e.message}`);
+    }
+    const baselinePath = join(planDir, "health_baseline.json");
+    const reportPath = join(planDir, "health_report.md");
+    if (!existsSync(baselinePath)) {
+      writeFileSync(baselinePath, `${JSON.stringify({
+        schema_version: 1,
+        generated_at: new Date().toISOString(),
+        status: "unavailable",
+        summary: null,
+        capture_error: e.message,
+        proof_sufficient: false,
+        next: `node .agent/skills/iterative-planner/scripts/project_health.mjs --json --out plans/${planDirName}/health_baseline.json`,
+      }, null, 2)}\n`);
+    }
+    if (!existsSync(reportPath)) {
+      writeFileSync(reportPath, `# Initial Health Report\n\nStatus: UNAVAILABLE\n\nThe bounded creation-time probe did not complete: ${e.message}\n\nThis artifact is availability metadata, not proof. Re-run project_health.mjs before close.\n`);
     }
   }
   releaseLock();
@@ -1697,7 +2084,18 @@ function checkStaleness(planDirName) {
   } catch { /* non-blocking */ }
 }
 
-function cmdResume() {
+function renderActiveNorthStarDecisionSurfaceStatus(goalText) {
+  const surface = buildNorthStarDecisionSurface({
+    cwd,
+    surfaceId: "bootstrap_status",
+    operatorDecisionSurface: true,
+    goalText,
+  });
+  if (!shouldRenderNorthStarDecisionSurface({ surface, goalText })) return null;
+  return renderNorthStarDecisionSurface(surface);
+}
+
+async function cmdResume() {
   if (existsSync(plansDir)) {
     try { ensureConsolidatedFiles(); } catch (e) { debugLog("bootstrap", `Consolidated file seed failed during resume: ${e.message}`); }
   }
@@ -1712,6 +2110,17 @@ function cmdResume() {
   }
 
   refreshActivePlanAliasFor(pointerPlanDirName);
+
+  const planDir = join(plansDir, planDirName);
+  try {
+    const { selfHealPlanFiles } = await import("./lib/plan_self_heal.mjs");
+    const healResult = selfHealPlanFiles(planDir, cwd);
+    if (healResult.healed) {
+      console.log(`  self-healing: completed (${healResult.reasons.join(", ")})`);
+    }
+  } catch (e) {
+    debugLog("bootstrap", `Self-heal failed during cmdResume: ${e.message}`);
+  }
 
   const progress = readPlanFile(planDirName, "progress.md");
   const decisions = readPlanFile(planDirName, "decisions.md");
@@ -1812,6 +2221,35 @@ function cmdResume() {
   }
 }
 
+async function printLifecycleReconciliationStatus() {
+  try {
+    const helperPath = join(dirname(fileURLToPath(import.meta.url)), "lib", "lifecycle_reconciler.mjs");
+    if (!existsSync(helperPath)) return;
+    const {
+      buildLifecycleReconciliationReport,
+      lifecycleReconciliationSummary,
+      renderLifecycleReconciliationStatusLine,
+    } = await import(helperPath);
+    const report = buildLifecycleReconciliationReport({
+      cwd,
+      write: false,
+      includeStampedArtifacts: false,
+    });
+    const line = renderLifecycleReconciliationStatusLine(lifecycleReconciliationSummary(report));
+    if (line) {
+      console.log();
+      console.log(line);
+    }
+  } catch (error) {
+    debugLog("bootstrap", `Lifecycle reconciliation status unavailable: ${error.message}`);
+  }
+}
+
+async function printDegradedCoverageStatus() {
+  const status = await renderDegradedCoverageStatus();
+  if (status) console.log(`\n${status}`);
+}
+
 async function cmdStatus() {
   if (existsSync(plansDir)) {
     try { ensureConsolidatedFiles(); } catch (e) { debugLog("bootstrap", `Consolidated file seed failed during status: ${e.message}`); }
@@ -1824,11 +2262,23 @@ async function cmdStatus() {
     refreshActivePlanAliasFor(null);
     console.log("No active plan.");
     console.log(`  Canonical alias: ${ACTIVE_PLAN_ALIAS_LABEL}`);
-    printAdvisoryEngineStatus(cwd);
     printCapabilityBanner(cwd, null);
+    printKernelProfileStatus(cwd);
     warnTelemetryInstallHealth(cwd);
-    warnPersonaAdaptation(cwd);
+    await printDegradedCoverageStatus();
+    const noPlanAmbientStatus = renderAmbientPersonaStatus(cwd);
+    if (noPlanAmbientStatus) {
+      console.log();
+      console.log(noPlanAmbientStatus);
+    }
+    const noPlanPersonaAuthority = renderProjectPersonaAuthoritySummary(cwd);
+    if (noPlanPersonaAuthority) {
+      console.log();
+      console.log(noPlanPersonaAuthority);
+    }
     warnIveMigrationBackupRetention(cwd);
+    printBranchDriftStatus(cwd);
+    await printLifecycleReconciliationStatus();
     // Surface un-promoted draft Knowledge Triggers even with no active plan: a draft captured at the
     // close prompt would otherwise be invisible for the whole post-close window (notify-user clears
     // the pointer), defeating the forcing function exactly when it fires.
@@ -1845,11 +2295,29 @@ async function cmdStatus() {
   const { currentState, iteration, step, goal } = getPlanSnapshot(planDirName);
 
   console.log(`[${currentState}] iter=${iteration} step=${step} | ${goal.split("\n")[0].slice(0, 60)} | plans/${planDirName}`);
-  printAdvisoryEngineStatus(cwd);
+  console.log(`  ${summarizeTaskFocusContract(deriveTaskFocusContract({
+    cwd,
+    planDir: join(plansDir, planDirName),
+    goalText: goal,
+  }))}`);
+  const personaAuthoritySummary = renderActivePersonaAuthoritySummary(planDirName);
+  if (personaAuthoritySummary) console.log(personaAuthoritySummary);
+  const ontologyPackGuardSummary = renderActiveOntologyPackGuardSummary(planDirName);
+  if (ontologyPackGuardSummary) console.log(ontologyPackGuardSummary);
+  const knowledgeReceiptSummary = await renderActiveKnowledgeReceiptSummary(planDirName);
+  if (knowledgeReceiptSummary) console.log(knowledgeReceiptSummary);
   printCapabilityBanner(cwd, planDirName);
+  printKernelProfileStatus(cwd);
   warnTelemetryInstallHealth(cwd);
-  warnPersonaAdaptation(cwd);
+  await printDegradedCoverageStatus();
+  const ambientStatus = renderAmbientPersonaStatus(cwd);
+  if (ambientStatus) {
+    console.log();
+    console.log(ambientStatus);
+  }
   warnIveMigrationBackupRetention(cwd);
+  printBranchDriftStatus(cwd);
+  await printLifecycleReconciliationStatus();
   const personaRecommendationSummary = renderActivePersonaRecommendationSummary(planDirName);
   if (personaRecommendationSummary) {
     console.log();
@@ -1859,6 +2327,11 @@ async function cmdStatus() {
   if (evidenceGuidanceSummary) {
     console.log();
     console.log(evidenceGuidanceSummary);
+  }
+  const northStarDecisionSurfaceSummary = renderActiveNorthStarDecisionSurfaceStatus(goal);
+  if (northStarDecisionSurfaceSummary) {
+    console.log();
+    console.log(northStarDecisionSurfaceSummary);
   }
   const insightsSummary = await renderRelevantInsightsSummary(planDirName);
   if (insightsSummary) {
@@ -1874,19 +2347,6 @@ async function cmdStatus() {
   if (proportionalitySummary) {
     console.log();
     console.log(proportionalitySummary);
-  }
-  const driftSummary = loadAsyncDriftSummary(join(plansDir, planDirName));
-  if (driftSummary) {
-    const jobs = driftSummary.jobs || {};
-    const latest = driftSummary.latest_report;
-    console.log();
-    console.log(`  LLM drift maintenance: ${jobs.pending || 0} pending, ${jobs.running || 0} running, ${jobs.completed || 0} completed, ${jobs.failed || 0} failed.`);
-    if (latest) {
-      console.log(`     Latest report: ${latest.classification || latest.status || "unknown"}${latest.ontology_usage ? ` (${latest.ontology_usage})` : ""}`);
-    }
-    if (jobs.pending > 0 && driftSummary.latest_job?.path) {
-      console.log(`     Run: node .agent/skills/iterative-planner/scripts/llm_drift_maintenance.mjs run --job ${driftSummary.latest_job.path}`);
-    }
   }
   if (target.source && target.source !== "pointer") {
     console.log(`  Target source: ${target.source}${target.threadId ? ` (${target.threadId})` : ""}`);
@@ -1919,10 +2379,24 @@ async function cmdStatus() {
       });
       if (escResult.status === 0 && escResult.stdout) {
         const escData = JSON.parse(escResult.stdout);
-        const advEsc = (escData.escalations || []).find(e => e.type === "advisor-review");
+        const escalations = Array.isArray(escData.escalations) ? escData.escalations : [];
+        const requiredAuditEscalations = escalations.filter((entry) =>
+          entry?.severity === "REQUIRED"
+          && entry?.workflow
+          && entry?.type !== "advisor-review"
+        );
+        if (requiredAuditEscalations.length > 0) {
+          console.log();
+          console.log("  ⚠️  Required audit escalations");
+          for (const escalation of requiredAuditEscalations) {
+            console.log(`     Run ${escalation.workflow} — ${escalation.reason || escalation.type}`);
+          }
+          console.log();
+        }
+        const advEsc = escalations.find(e => e.type === "advisor-review");
         if (advEsc) {
           // Use the unit-tested helper rather than inline rendering so
-          // test_supervisor_runner.mjs locks the format. Falls back to legacy
+          // governed test_advise.mjs supervisor scenarios lock the format. Falls back to legacy
           // marker if supervisor_verdict is absent.
           try {
             const supervisorRunnerPath = join(dirname(fileURLToPath(import.meta.url)), "lib", "supervisor_runner.mjs");
@@ -1940,7 +2414,7 @@ async function cmdStatus() {
             // can detect the degradation rather than treating it as success.
             if (isSupervisorRequired(process.env) && escData.supervisor_verdict?.required_but_unavailable) {
               console.error("  ❌ PLANNER_SUPERVISOR_REQUIRED was set; supervisor returned a fallback verdict.");
-              console.error("     Check PLANNER_DRIFT_LLM_API_KEY/MODEL/BASE_URL, network reachability, and provider status.");
+              console.error("     Check PLANNER_SUPERVISOR_API_KEY/MODEL/BASE_URL, network reachability, and provider status.");
               process.exit(2);
             }
           } catch {
@@ -1981,7 +2455,7 @@ function cmdInstallHealth(jsonMode = false) {
 
   if (health.needs_repair) {
     console.log("  Next step: normal planner entrypoints will attempt self-heal automatically before they run.");
-    console.log("  Manual fallback: node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade .");
+    console.log("  Manual fallback: node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade . --commit");
   } else {
     console.log("  Next step: planner-managed files and setup look aligned.");
   }
@@ -2214,7 +2688,7 @@ function cmdAbandon() {
   console.log(`    node ${process.argv[1]} new "<new goal>"`);
 }
 
-function cmdRecoverPoison() {
+async function cmdRecoverPoison() {
   const { planDirName: sourcePlanDirName, planDir: sourcePlanDir } = resolvePlanTarget(plansDir, { exitOnMissing: false });
   if (!sourcePlanDirName || !sourcePlanDir) {
     console.error("ERROR: No active plan to recover.");
@@ -2246,7 +2720,7 @@ function cmdRecoverPoison() {
   console.log("  A fresh successor plan will be created with sanitized carry-forward context.");
 
   cmdClose({ force: true, forceMarker: "[POISON-RECOVERED]", silent: true });
-  const created = cmdNew(goal, { suppressOrphanWarning: true });
+  const created = await cmdNew(goal, { suppressOrphanWarning: true, routeTriage: false });
   const targetPlanDirName = created?.planDirName || readPointer();
   if (!targetPlanDirName) {
     console.error("ERROR: Poisoned source plan was closed, but no successor plan became active.");
@@ -2519,13 +2993,9 @@ function cmdStoryReview(planDirArg) {
     storiesText = "(no story_registry.json found — review goal alignment only)";
   }
 
-  // Consume nonce (reads + deletes the one-time nonce file)
-  const noncePayload = consumeOneTimeNonce(planDirName);
-  const nonceText = noncePayload?.approval_nonce || null;
-
   // Print review context
   console.log("╔══════════════════════════════════════════════════════╗");
-  console.log("║  STORY REVIEW — v3.9.0                               ║");
+  console.log("║  STORY REVIEW                                        ║");
   console.log("╚══════════════════════════════════════════════════════╝");
   console.log(`\nPlan:  ${planDirName}`);
   console.log(`Goal:  ${goal}\n`);
@@ -2539,20 +3009,7 @@ function cmdStoryReview(planDirArg) {
   console.log("    1. Do the findings address the plan goal?");
   console.log("    2. Are 2+ relevant user stories addressed (by keyword/theme) in findings?");
   console.log("    3. Are any HIGH priority stories that should be impacted NOT mentioned?");
-
-  if (nonceText) {
-    console.log("\n── Approval Decision ────────────────────────────────────────────────────");
-    console.log("  Coverage PASSES → write this to decisions.md:");
-    console.log(`    [APPROVED:${nonceText}]`);
-    console.log("  Coverage FAILS → write this to decisions.md:");
-    console.log(`    [REJECTED:${nonceText}] Reason: <describe coverage gaps>`);
-    console.log("\n  ⚠️  The nonce has been consumed (one-time-read). If this session is");
-    console.log("     lost before writing, re-run transition.mjs explore-to-plan to get a new nonce.");
-  } else {
-    console.log("\n  ⚠️  No nonce found for this plan.");
-    console.log("     Ensure transition.mjs explore-to-plan ran in multi-agent mode first.");
-    console.log("     Or set approval.mode: 'auto' in determinism.json to skip the ceremony.");
-  }
+  console.log("\nApproval nonce ceremony is retired; record review notes in decisions.md only if they add useful context.");
 }
 
 function printUsage() {
@@ -2562,18 +3019,21 @@ Commands:
   new "goal"                        Create a new plan directory
   new --force "goal"                Close active plan and create a new one
   new --parallel "goal"             Create a new plan without replacing the current pointer
+  new "goal" --workflow </workflow> Persist the workflow contract identity
   resume                            Output current plan state for re-entry
   status                            One-line state summary
   close                             Close active plan (preserves directory; blocks if not in VALIDATE/EXECUTE)
   close --informational             Close from any state as informational (merges findings/KB, no execution)
   close --force                     Close active plan even from non-standard state
   list                              Show all plan directories (active and closed)
+  promote-safe-plan [options]       Prepare a PLAN-state /safe-plan handoff for /safe-change execution
+  promote-to-execution [options]    Alias for promote-safe-plan
   reset-circuit-breaker <gate>      Reset persistent failure counter for a gate (e.g. execute-to-reflect)
   abandon                           Abandon active plan — merges findings/decisions, clears pointer (work preserved)
   recover-poison                    Close a history-poisoned plan, create a successor, and carry forward sanitized context
   fix-stuck [--json]                Diagnose stuck plans (stale pointer, history poison, circuit breaker, hash mismatch)
   install-health [--json]           Diagnose planner install health and repairability for this project
-  story-review [plan-dir]           Print story coverage review context + nonce for multi-agent approval
+  story-review [plan-dir]           Print story coverage review context
 
 Backward-compatible:
   node bootstrap.mjs "goal"   Same as: node bootstrap.mjs new "goal"`);
@@ -2584,7 +3044,7 @@ Backward-compatible:
 // ---------------------------------------------------------------------------
 
 const args = process.argv.slice(2);
-const subcommands = new Set(["new", "resume", "status", "close", "list", "help", "reset-circuit-breaker", "abandon", "recover-poison", "fix-stuck", "install-health", "story-review", "triage", "contract"]);
+const subcommands = new Set(["new", "resume", "status", "close", "list", "help", "promote-safe-plan", "promote-to-execution", "reset-circuit-breaker", "abandon", "recover-poison", "fix-stuck", "install-health", "story-review", "triage", "contract"]);
 
 if (args.length === 0) {
   printUsage();
@@ -2599,15 +3059,26 @@ if (!subcommands.has(cmd)) {
     process.exit(1);
   }
   // Backward compat: treat args as goal for `new`
-  cmdNew(args.join(" ") || "No goal specified");
+  await cmdNew(args.join(" ") || "No goal specified");
 } else if (cmd === "new") {
   const force = args.includes("--force");
   const parallel = args.includes("--parallel");
-  const goalArgs = args.slice(1).filter((a) => a !== "--force" && a !== "--parallel");
+  let workflow = null;
+  const goalArgs = [];
+  for (let index = 1; index < args.length; index++) {
+    const arg = args[index];
+    if (arg === "--force" || arg === "--parallel") continue;
+    if (arg === "--workflow") {
+      workflow = args[index + 1] || null;
+      index++;
+      continue;
+    }
+    goalArgs.push(arg);
+  }
   const goal = goalArgs.join(" ") || "No goal specified";
-  cmdNew(goal, { force, parallel });
+  await cmdNew(goal, { force, parallel, workflow });
 } else if (cmd === "resume") {
-  cmdResume();
+  await cmdResume();
 } else if (cmd === "status") {
   await cmdStatus();
 } else if (cmd === "close") {
@@ -2616,12 +3087,14 @@ if (!subcommands.has(cmd)) {
   cmdClose({ force: closeForce, informational: closeInformational });
 } else if (cmd === "list") {
   cmdList();
+} else if (cmd === "promote-safe-plan" || cmd === "promote-to-execution") {
+  await cmdPromoteSafePlan(args.slice(1));
 } else if (cmd === "reset-circuit-breaker") {
   cmdResetCircuitBreaker(args[1]);
 } else if (cmd === "abandon") {
   cmdAbandon();
 } else if (cmd === "recover-poison") {
-  cmdRecoverPoison();
+  await cmdRecoverPoison();
 } else if (cmd === "fix-stuck") {
   cmdFixStuck();
 } else if (cmd === "install-health") {
@@ -2639,13 +3112,30 @@ if (!subcommands.has(cmd)) {
     console.error("Usage: bootstrap.mjs triage \"<goal>\" [--json]");
     process.exit(2);
   }
-  const triage = computeTriage({ goalText: goal });
+  const plannerPolicyInfo = loadPlannerPolicy(cwd);
+  const triage = computeTriage({ goalText: goal, plannerPolicy: plannerPolicyInfo.policy });
   const personaAdaptation = inferPersonaAdaptation(cwd);
+  const focusContract = deriveTaskFocusContract({
+    cwd,
+    goalText: goal,
+    planShape: triage.shape,
+    triage,
+    plannerPolicy: plannerPolicyInfo.policy,
+  });
   if (jsonMode) {
-    console.log(JSON.stringify({ goal, ...triage, persona_adaptation: personaAdaptation }, null, 2));
+    console.log(JSON.stringify({
+      goal,
+      ...triage,
+      focus_contract: focusContract,
+      planner_policy_file: plannerPolicyInfo.path,
+      planner_policy_valid: plannerPolicyInfo.valid,
+      planner_policy_issues: plannerPolicyInfo.issues,
+      persona_adaptation: personaAdaptation,
+    }, null, 2));
   } else {
     console.log(`Goal: ${goal}`);
     console.log(renderTriage(triage, { mode: "verbose" }));
+    console.log(summarizeTaskFocusContract(focusContract));
     const seriousPlannerPath = triage.recommended_path === "standard_planner" || triage.recommended_path === "full_planner";
     if (shouldWarnPersonaAdaptation(personaAdaptation, { serious: seriousPlannerPath, seriousOnly: true })) {
       console.log();

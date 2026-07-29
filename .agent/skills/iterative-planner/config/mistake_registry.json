@@ -132,13 +132,15 @@
         ],
         "guard": "requires_red_team"
       },
-      "verification_hooks": [
-        "ripple_check",
-        "test_migration"
-      ],
-      "required_evidence": [
-        "ripple_check",
-        "test_migration"
+  "verification_hooks": [
+    "ripple_check",
+    "migration-bootstrap",
+    "transition-gate-flows"
+  ],
+  "required_evidence": [
+    "ripple_check",
+    "migration-bootstrap",
+    "transition-gate-flows"
       ],
       "minimum_trigger_families": 2,
       "supersedes": []
@@ -207,6 +209,340 @@
         "cms_missing_content_entity_preservation"
       ],
       "minimum_trigger_families": 2,
+      "supersedes": []
+    },
+    {
+      "id": "M-PLANNER-DOGFOOD-001",
+      "title": "Planner dogfood incidents continued without deterministic truth packet",
+      "summary": "Planner false-green or dogfood complaints must trigger a deterministic truth packet before the agent resumes normal planning, so advisor/steward, ontology/IV, stories, and North Star gaps are visible without the operator spelling out each workflow.",
+      "family": "planner_dogfood",
+      "kb_refs": [
+        "plans/programs/planner-dogfood-false-green-remediation/program_packet.json"
+      ],
+      "query_tags": [
+        "dogfood",
+        "false_green",
+        "advisor_not_used",
+        "steward_not_used",
+        "ontology_not_used",
+        "iv_not_used",
+        "health_audit_missed",
+        "user_stories_missing",
+        "north_star_missing",
+        "planner_truth_packet"
+      ],
+      "triggers": {
+        "plan_terms": [
+          "dogfood",
+          "false green",
+          "false-green",
+          "advisor not used",
+          "advisor being used",
+          "advisor not being used",
+          "steward not used",
+          "ontology not used",
+          "iv not used",
+          "invariant verification not used",
+          "health audit missed",
+          "user stories missing",
+          "lack of user stories",
+          "north star missing",
+          "north star not mentioned",
+          "not eating its own dogfood",
+          "not eating own dogfood"
+        ]
+      },
+      "required_guards": [
+        "planner_truth_packet",
+        "advisor_steward_routing",
+        "story_traceability",
+        "north_star_alignment"
+      ],
+      "recommended_annotations": [
+        "story",
+        "proves"
+      ],
+      "symmetry_scan": {
+        "queries": [
+          "project_health",
+          "story_registry",
+          "planner_findings",
+          "escalation_check",
+          "advisor-review",
+          "north star"
+        ],
+        "scope": [
+          ".agent/skills/iterative-planner/scripts/",
+          ".agent/workflows/",
+          ".agent/skills/iterative-planner/config/"
+        ],
+        "guard": "requires_red_team"
+      },
+  "verification_hooks": [
+    "planner_truth_packet",
+    "test_knowledge_triggers",
+    "migration-bootstrap",
+    "transition-gate-flows"
+  ],
+  "required_evidence": [
+    "planner_truth_packet",
+    "verification_ledger:planner_truth_packet",
+    "migration-bootstrap",
+    "transition-gate-flows"
+      ],
+      "obligation_ids": [
+        "planner_dogfood_truth_packet"
+      ],
+      "minimum_trigger_families": 1,
+      "supersedes": []
+    },
+    {
+      "id": "M-041",
+      "title": "Closeout blocked by traceability bookkeeping instead of experimental validation",
+      "summary": "Scientifically complete work can be blocked at closeout because the planner's traceability channels (validation artifacts, annotations, registry refs) are not reconciled.",
+      "family": "planner_core",
+      "kb_refs": [
+        "plans/knowledge/mistakes.md#M-041"
+      ],
+      "retro_refs": [
+        "R-2026-07-02-001"
+      ],
+      "query_tags": [
+        "traceability",
+        "closeout",
+        "validation_artifact",
+        "annotation",
+        "story_registry",
+        "review_intake",
+        "registry_hash"
+      ],
+      "triggers": {
+        "file_globs": [
+          "scripts/**/*.py",
+          "tests/**/*.py",
+          "scripts/**/*.mjs",
+          "tests/**/*.mjs"
+        ],
+        "plan_terms": [
+          "closeout",
+          "traceability",
+          "validation_artifact",
+          "story_registry",
+          "annotation",
+          "review_intake",
+          "registry_hash"
+        ],
+        "story_tags": [
+          "traceability",
+          "ontology"
+        ]
+      },
+      "required_guards": [
+        "traceability_reconciliation",
+        "annotation_validation"
+      ],
+      "recommended_annotations": [
+        "story"
+      ],
+      "verification_hooks": [
+        "rule_engine_check_invariants",
+        "annotation_parser_validate"
+      ],
+      "required_evidence": [
+        "rule_engine_check_invariants",
+        "annotation_parser_validate"
+      ],
+      "minimum_trigger_families": 1,
+      "supersedes": []
+    },
+    {
+      "id": "M-043",
+      "title": "Finish-line evaluators were serially masked until close boundaries",
+      "summary": "Multi-session planner work can drain one pre-existing evaluator defect per close attempt when downstream dry/write, ordering/freshness, live/replay, integrity, and staged/commit boundaries are first exercised only after the preceding boundary turns green.",
+      "family": "planner_core",
+      "kb_refs": [
+        "plans/knowledge/mistakes.md#M-043",
+        "plans/knowledge/patterns.md#P-099"
+      ],
+      "retro_refs": [
+        "R-2026-07-22-001"
+      ],
+      "query_tags": [
+        "finish_line",
+        "close_boundary",
+        "serial_masking",
+        "lifecycle_disposition",
+        "receipt_freshness",
+        "live_replay_parity",
+        "checklist_integrity",
+        "staged_tree_proof"
+      ],
+      "triggers": {
+        "file_globs": [
+          ".agent/skills/iterative-planner/SKILL.md",
+          ".agent/skills/iterative-planner/config/mistake_registry.json",
+          ".agent/skills/iterative-planner/scripts/**/*transition*.mjs",
+          ".agent/skills/iterative-planner/scripts/**/*lifecycle*.mjs",
+          ".agent/skills/iterative-planner/scripts/**/*checklist*.mjs",
+          ".agent/skills/iterative-planner/scripts/migrate.mjs"
+        ],
+        "plan_terms": [
+          "multi-session closeout",
+          "finish-line",
+          "finish line",
+          "close-boundary",
+          "close boundary",
+          "lifecycle disposition",
+          "receipt freshness",
+          "current replay",
+          "checklist integrity",
+          "staged-tree evidence"
+        ],
+        "story_tags": [
+          "planner_core",
+          "lifecycle",
+          "integrity"
+        ]
+      },
+      "required_guards": [
+        "downstream_evaluator_inventory",
+        "dry_write_parity",
+        "acyclic_proof_order",
+        "freshness_headroom",
+        "live_replay_phase_parity",
+        "clean_staged_integrity",
+        "shipped_staged_provenance"
+      ],
+      "recommended_annotations": [
+        "story",
+        "proves"
+      ],
+      "symmetry_scan": {
+        "queries": [
+          "dry-run write candidate",
+          "freshness max age",
+          "live replay phase",
+          "checklist integrity regeneration",
+          "staged tree shipped proof"
+        ],
+        "scope": [
+          ".agent/skills/iterative-planner/scripts/",
+          ".agent/skills/iterative-planner/checklists/",
+          ".agent/skills/iterative-planner/config/",
+          ".agent/skills/red-team-remediation/"
+        ],
+        "guard": "requires_red_team"
+      },
+      "verification_hooks": [
+        "transition_dry_run",
+        "migration-bootstrap",
+        "transition-gate-flows",
+        "rule_engine_check_invariants"
+      ],
+      "required_evidence": [
+        "close_boundary_evaluator_inventory",
+        "positive_and_genuine_negative_controls",
+        "migration-bootstrap",
+        "transition-gate-flows"
+      ],
+      "minimum_trigger_families": 2,
+      "supersedes": []
+    },
+    {
+      "id": "M-045",
+      "title": "Managed planner payload was written without same-operation proof and commit",
+      "summary": "A managed upgrade can strand a consumer in mixed-version dirt when payload copy, setup, conformance, and commit are separate operations; the transaction must build and prove a source-pinned candidate before one live fast-forward.",
+      "family": "planner_core",
+      "kb_refs": [
+        "plans/knowledge/mistakes.md#M-045"
+      ],
+      "retro_refs": [
+        "R-2026-07-27-001"
+      ],
+      "query_tags": [
+        "managed_upgrade",
+        "transaction",
+        "half_applied_payload",
+        "version_stratigraphy",
+        "upgrade_receipt",
+        "source_pin",
+        "rollback"
+      ],
+      "triggers": {
+        "file_globs": [
+          ".agent/skills/iterative-planner/scripts/migrate.mjs",
+          ".agent/skills/iterative-planner/scripts/lib/migration_source_pin.mjs",
+          ".agent/skills/iterative-planner/scripts/lib/managed_upgrade_transaction.mjs",
+          ".agent/skills/iterative-planner/scripts/lib/bootstrap_self_heal.mjs",
+          ".agent/skills/iterative-planner/scripts/pre_commit_policy.mjs",
+          ".agent/skills/iterative-planner/config/managed_upgrade_transaction.json",
+          ".agent/skills/iterative-planner/tests/test_ive_migration_bootstrap.mjs"
+        ],
+        "plan_terms": [
+          "managed upgrade",
+          "planner migration",
+          "half-applied",
+          "mixed-version",
+          "upgrade receipt",
+          "recover-upgrade",
+          "version stratigraphy"
+        ],
+        "story_tags": [
+          "migration",
+          "planner_core",
+          "rollback_tested"
+        ]
+      },
+      "required_guards": [
+        "clean_managed_preflight",
+        "immutable_source_pin",
+        "scratch_candidate",
+        "atomic_conformance",
+        "explicit_commit_consent",
+        "scoped_commit",
+        "durable_recovery_receipt",
+        "committed_tree_source_stratigraphy"
+      ],
+      "recommended_annotations": [
+        "story",
+        "proves",
+        "validation_module"
+      ],
+      "symmetry_scan": {
+        "queries": [
+          "migrate upgrade apply setup commit",
+          "last_upgrade_receipt",
+          "recover-upgrade",
+          "managed sync refused",
+          "gate-or-delete-census"
+        ],
+        "scope": [
+          ".agent/skills/iterative-planner/scripts/",
+          ".agent/skills/iterative-planner/config/",
+          ".agent/skills/iterative-planner/tests/",
+          ".agent/skills/iterative-planner/MIGRATION.md",
+          ".agent/skills/iterative-planner/ERROR-RECOVERY.md"
+        ],
+        "guard": "requires_red_team"
+      },
+      "verification_hooks": [
+        "migration-bootstrap",
+        "gate-or-delete-census",
+        "preplanning-scaffolding",
+        "transition-gate-flows",
+        "rule_engine_check_invariants"
+      ],
+      "required_evidence": [
+        "dirty_preflight_no_write",
+        "post_apply_failure_no_live_advance",
+        "source_pinned_candidate_commit",
+        "complete_proof_bundle",
+        "external_recursion_marker_rejected",
+        "unrelated_dirt_excluded",
+        "durable_receipt_commit_sha",
+        "version_stratigraphy"
+      ],
+      "minimum_trigger_families": 1,
       "supersedes": []
     }
   ]

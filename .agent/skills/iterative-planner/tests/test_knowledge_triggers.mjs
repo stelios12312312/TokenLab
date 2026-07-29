@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // test_knowledge_triggers.mjs — Knowledge Trigger primitive (ive-ontology-memory).
 
-import { mkdtempSync, writeFileSync, rmSync, readFileSync, existsSync } from "fs";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync, readFileSync, existsSync } from "fs";
 import { tmpdir } from "os";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -11,6 +11,8 @@ import {
   validateTrigger,
   evaluateObligationGate,
   selectInsightInjections,
+  rankRelevantInsightInjections,
+  evaluateRankedInjectionAgainstLegacy,
   captureTrigger,
   promoteTrigger,
   listDraftTriggers,
@@ -18,6 +20,11 @@ import {
 } from "../scripts/lib/knowledge_triggers.mjs";
 import { draftKtFromRetro } from "../scripts/lib/retro_registry.mjs";
 import { run as ktCliRun } from "../scripts/knowledge_triggers.mjs";
+import { JOURNAL_REL_PATH } from "../scripts/lib/agent_journal.mjs";
+import {
+  DEFAULT_REAL_EPISODE_CORPUS_PATH,
+  loadRealEpisodeCorpus,
+} from "../scripts/lib/ive_real_episode_corpus.mjs";
 
 const SHIPPED_CONFIG = resolve(dirname(fileURLToPath(import.meta.url)), "..", "config", "knowledge_triggers.json");
 
@@ -50,6 +57,88 @@ const loaded = loadKnowledgeTriggers();
 assert(loaded.ok && loaded.triggers.length >= 2, "config/knowledge_triggers.json loads with >=2 triggers");
 assert(loaded.triggers.every((kt) => validateTrigger(kt).ok), "every shipped KT record is structurally valid");
 
+console.log("\n[planner dogfood false-green incident trigger — fires precisely]");
+{
+  const dogfoodId = "KT-PLANNER-DOGFOOD-FALSE-GREEN-001";
+  const dogfoodGoal = [
+    "the planner is not eating its own dogfood",
+    "advisor not used",
+    "ontology not used",
+    "IV not used",
+    "health audit missed user stories and north star missing",
+  ].join("; ");
+  const signal = computeKnowledgeTriggerSignal(loaded.triggers, {
+    goalText: dogfoodGoal,
+    files: [".agent/skills/iterative-planner/scripts/project_health.mjs"],
+  });
+  const hit = signal.active.find((a) => a.id === dogfoodId);
+  assert(hit?.kind === "obligation" && hit?.apply?.mode === "inject-or-block", "dogfood incident language fires the trusted planner truth-packet obligation");
+  assert(hit?.knowledge?.required_evidence?.includes("verification_ledger:planner_truth_packet"), "dogfood KT requires structured planner_truth_packet evidence");
+
+  const falsePositiveGoals = [
+    "Improve the North Star dashboard rendering",
+    "Write user stories for the onboarding workflow",
+    "Run advisor workflow triage for an unrelated CI failure",
+    "Refactor project health output formatting",
+  ];
+  const falsePositiveHits = falsePositiveGoals
+    .map((goalText) => computeKnowledgeTriggerSignal(loaded.triggers, { goalText }).active.some((a) => a.id === dogfoodId))
+    .filter(Boolean);
+  assert(falsePositiveHits.length === 0, "dogfood KT precision fixtures stay quiet on 4 near-miss prompts");
+  const fileOnlyHit = computeKnowledgeTriggerSignal(loaded.triggers, {
+    goalText: "Update planner workflow migration with US-077 traceability",
+    files: [".agent/skills/iterative-planner/scripts/program_manager.mjs"],
+  }).active.some((a) => a.id === dogfoodId);
+  assert(!fileOnlyHit, "dogfood KT stays quiet for planner-core file changes without incident language");
+}
+
+console.log("\n[planner dogfood false-green incident trigger — gate obligation]");
+{
+  const tmp = mkdtempSync(join(tmpdir(), "kt-dogfood-"));
+  try {
+    const goalText = "dogfood failure: false green health audit missed user stories and north star missing";
+    writeFileSync(join(tmp, "plan.md"), `# Plan\n\n## Goal\n${goalText}\n\n## Files To Modify\n- .agent/skills/iterative-planner/config/knowledge_triggers.json\n`);
+    const before = evaluateObligationGate({
+      gate: "plan-to-execute",
+      planDir: tmp,
+      goalText,
+      plannedFiles: [".agent/skills/iterative-planner/config/knowledge_triggers.json"],
+    });
+    const beforeHit = before.find((o) => o.id === "KT-PLANNER-DOGFOOD-FALSE-GREEN-001");
+    assert(beforeHit?.satisfied === false, "dogfood KT blocks plan-to-execute before planner_truth_packet evidence exists");
+    assert(beforeHit?.missing_evidence?.includes("verification_ledger:planner_truth_packet"), "dogfood KT reports missing planner_truth_packet evidence");
+
+    const wrongGate = evaluateObligationGate({
+      gate: "explore-to-plan",
+      planDir: tmp,
+      goalText,
+      plannedFiles: [".agent/skills/iterative-planner/config/knowledge_triggers.json"],
+    });
+    assert(wrongGate.every((o) => o.id !== "KT-PLANNER-DOGFOOD-FALSE-GREEN-001"), "dogfood KT is scoped to plan-to-execute");
+
+    writeFileSync(join(tmp, "verification_ledger.json"), JSON.stringify({
+      evidence: [
+        {
+          id: "planner_truth_packet",
+          subject_id: "planner_truth_packet",
+          mode: "artifact_review",
+          status: "PASS",
+          evidence_refs: ["reports/planner_truth_packet.json"],
+        },
+      ],
+    }, null, 2));
+    const after = evaluateObligationGate({
+      gate: "plan-to-execute",
+      planDir: tmp,
+      goalText,
+      plannedFiles: [".agent/skills/iterative-planner/config/knowledge_triggers.json"],
+    });
+    assert(after.find((o) => o.id === "KT-PLANNER-DOGFOOD-FALSE-GREEN-001")?.satisfied === true, "dogfood KT is satisfied once structured planner_truth_packet evidence is recorded");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 console.log("\n[obligation instance — CMO]");
 const onPageWrite = computeKnowledgeTriggerSignal(TRIGGERS, { toolEvent: "Write:src/pages/home.tsx" });
 assert(onPageWrite.active.some((a) => a.id === "KT-CMO-PAGE-001"), "a page-write tool event fires the CMO obligation");
@@ -81,12 +170,85 @@ console.log("\n[obligation enforcement at the gate — portable, evidence-gated]
     const before = evaluateObligationGate({ gate: "plan-to-execute", planDir: tmp, goalText: "Create a new landing page", plannedFiles: ["src/pages/home.tsx"] });
     assert(before.some((o) => o.id === "KT-CMO-PAGE-001" && o.satisfied === false), "CMO obligation BLOCKS plan-to-execute when cmo_review evidence is missing");
     writeFileSync(join(tmp, "decisions.md"), "## Decisions\n- CMO review: cmo_review captured; sign-off recorded.\n");
+    const proseOnly = evaluateObligationGate({ gate: "plan-to-execute", planDir: tmp, goalText: "Create a new landing page", plannedFiles: ["src/pages/home.tsx"] });
+    assert(proseOnly.some((o) => o.id === "KT-CMO-PAGE-001" && o.satisfied === false), "CMO obligation ignores prose-only cmo_review markers for verification_ledger tokens");
+    writeFileSync(join(tmp, "verification_ledger.json"), JSON.stringify({
+      evidence: [
+        {
+          id: "cmo_review",
+          subject_id: "cmo_review",
+          status: "PASS",
+          evidence_refs: ["reports/cmo-review.md"],
+        },
+      ],
+    }, null, 2));
     const after = evaluateObligationGate({ gate: "plan-to-execute", planDir: tmp, goalText: "Create a new landing page", plannedFiles: ["src/pages/home.tsx"] });
-    assert(after.some((o) => o.id === "KT-CMO-PAGE-001" && o.satisfied === true), "CMO obligation is SATISFIED once cmo_review evidence is recorded");
+    assert(after.some((o) => o.id === "KT-CMO-PAGE-001" && o.satisfied === true), "CMO obligation is SATISFIED once structured verification_ledger evidence is recorded");
     const wrongGate = evaluateObligationGate({ gate: "explore-to-plan", planDir: tmp, goalText: "Create a new landing page", plannedFiles: ["src/pages/home.tsx"] });
     assert(wrongGate.length === 0, "the CMO obligation is surface-scoped — it does not fire at a non-matching gate");
     const unrelated = evaluateObligationGate({ gate: "plan-to-execute", planDir: tmp, goalText: "Refactor the database migration layer", plannedFiles: ["src/db/x.ts"] });
     assert(unrelated.length === 0, "no obligation fires for an unrelated (non-page) plan");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+console.log("\n[journal-memory loading — native wins, legacy seeds fill gaps]");
+{
+  const tmp = mkdtempSync(join(tmpdir(), "kt-memory-"));
+  try {
+    const configPath = join(tmp, "knowledge_triggers.json");
+    const overlayPath = join(tmp, "drafts.json");
+    writeFileSync(configPath, JSON.stringify({
+      version: 1,
+      triggers: [
+        {
+          id: "KT-JOURNAL-WINS",
+          kind: "insight",
+          title: "legacy title",
+          when: { plan_terms: ["legacy term"], minimum_trigger_families: 1 },
+          knowledge: { directive: "legacy directive" },
+          apply: { mode: "inject", surface: "phase:explore" },
+          provenance: { trust_level: "trusted" },
+        },
+        {
+          id: "KT-LEGACY-FILLS",
+          kind: "insight",
+          title: "legacy fill",
+          when: { plan_terms: ["legacy fill"], minimum_trigger_families: 1 },
+          knowledge: { directive: "legacy fills missing journal ids" },
+          apply: { mode: "inject", surface: "phase:explore" },
+          provenance: { trust_level: "trusted" },
+        },
+      ],
+    }, null, 2));
+    const journalPath = join(tmp, JOURNAL_REL_PATH);
+    mkdirSync(dirname(journalPath), { recursive: true });
+    writeFileSync(journalPath, "", { flag: "w" });
+    writeFileSync(journalPath, `${JSON.stringify({
+      id: "J-KT-001",
+      type: "promotion",
+      status: "accepted",
+      confidence: "operator_policy",
+      summary: "Journal-native KT replaces same-id legacy seed.",
+      memory_role: "knowledge_trigger",
+      payload: {
+        id: "KT-JOURNAL-WINS",
+        kind: "insight",
+        title: "journal title",
+        when: { plan_terms: ["journal term"], minimum_trigger_families: 1 },
+        knowledge: { directive: "journal directive" },
+        apply: { mode: "inject", surface: "phase:explore" },
+        provenance: { trust_level: "trusted" },
+      },
+    })}\n`, { flag: "a" });
+
+    const merged = loadKnowledgeTriggers(configPath, { overlayPath, cwd: tmp });
+    assert(merged.ok === true, "journal-memory KT loader succeeds with legacy fallback present");
+    assert(merged.triggers.find((kt) => kt.id === "KT-JOURNAL-WINS")?.title === "journal title", "journal-native KT wins over same-id legacy seed");
+    assert(merged.triggers.some((kt) => kt.id === "KT-LEGACY-FILLS"), "legacy KT seed fills ids absent from journal memory");
+    const fired = computeKnowledgeTriggerSignal(merged.triggers, { goalText: "journal term" });
+    assert(fired.active.some((entry) => entry.id === "KT-JOURNAL-WINS"), "journal-native KT keeps unchanged trigger matching behavior");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -174,6 +336,110 @@ console.log("\n[semantic insight injection — top-3 trusted/derived only, never
     const gate = evaluateObligationGate({ gate: "plan-to-execute", planDir: tmp, goalText: "the page is so slow to render", configPath });
     assert(gate.length === 0, "semantic similarity alone never makes an obligation block");
   } finally { rmSync(tmp, { recursive: true, force: true }); }
+}
+
+console.log("\n[ranked insight injection — BM25 + graph distance + episode confidence]");
+{
+  const rankedTriggers = [
+    {
+      id: "KT-RANK-TEMPORAL-001", kind: "insight", title: "Temporal leakage proof",
+      summary: "Temporal model validation needs known-at-time splits, leakage boundaries, and calibration before any result celebration.",
+      when: { plan_terms: ["model validation"], file_globs: ["models/**"], minimum_trigger_families: 1 },
+      knowledge: { directive: "Check temporal leakage, calibration, and known-at-time evidence before summarizing model results." },
+      apply: { mode: "inject", surface: "phase:explore" },
+      provenance: { trust_level: "trusted", confidence: "measured", episode_mentions: ["run-a", "run-b", "run-c"] },
+      refs: ["src/models/train.ts", "gate:plan-to-execute"],
+    },
+    {
+      id: "KT-RANK-GENERIC-001", kind: "insight", title: "Generic model testing",
+      summary: "Model work should have tests and a short report.",
+      when: { plan_terms: ["model validation"], minimum_trigger_families: 1 },
+      knowledge: { directive: "Run the model tests." },
+      apply: { mode: "inject", surface: "phase:explore" },
+      provenance: { trust_level: "trusted", confidence: "reported", episode_mentions: ["run-a"] },
+      refs: ["docs/model-report.md"],
+    },
+    {
+      id: "KT-RANK-UI-001", kind: "strategy", title: "Responsive page rendering",
+      summary: "Page rendering work should verify mobile and desktop visual states.",
+      when: { plan_terms: ["page rendering"], minimum_trigger_families: 1 },
+      knowledge: { directive: "Capture browser proof before closing UI changes." },
+      apply: { mode: "inject", surface: "phase:explore" },
+      provenance: { trust_level: "derived", confidence: "inferred", episode_mentions: ["ui-a"] },
+      refs: ["src/pages/home.tsx"],
+    },
+  ];
+  const ranked = rankRelevantInsightInjections(rankedTriggers, {
+    goalText: "Investigate suspicious model validation before claiming success; overfitting and temporal leakage may be missing from the proof.",
+    files: ["src/models/train.ts"],
+    gates: ["plan-to-execute"],
+    prologFacts: [
+      "plan_touches_file(active_plan, src_models_train_ts).",
+      "artifact_related(src_models_train_ts, models).",
+      "gate_in_transition(plan_to_execute).",
+    ],
+  }, { limit: 3 });
+  assert(ranked[0]?.id === "KT-RANK-TEMPORAL-001", "BM25 + graph + measured episode confidence ranks the temporal leakage insight first");
+  assert(ranked[0]?.matched_by?.some((entry) => String(entry).startsWith("bm25:")), "ranked hits carry BM25 score provenance");
+  assert(ranked[0]?.matched_by?.some((entry) => String(entry).startsWith("graph:")), "ranked hits carry graph-distance provenance");
+  assert(
+    ranked[0]?.matched_by?.some((entry) => String(entry).startsWith("episodes:")) && ranked[0]?.episode_mentions >= 3,
+    "ranked hits carry repeated-episode provenance"
+  );
+  const selected = selectInsightInjections(rankedTriggers, {
+    goalText: "Investigate suspicious model validation before claiming success; temporal leakage may be missing.",
+    files: ["src/models/train.ts"],
+  });
+  assert(selected[0]?.id === "KT-RANK-TEMPORAL-001", "selectInsightInjections uses ranked retrieval for planning-time positive memory");
+}
+
+console.log("\n[ranked vs legacy injection — 14 real corpus plans]");
+{
+  const loadedCorpus = loadRealEpisodeCorpus(DEFAULT_REAL_EPISODE_CORPUS_PATH);
+  const episodes = loadedCorpus.corpus.episodes;
+  const familyLabel = (value) => String(value || "").replace(/_/g, " ");
+  const triggers = episodes.map((episode, index) => ({
+    id: `KT-REAL-${String(index + 1).padStart(2, "0")}-${episode.id}`,
+    kind: "insight",
+    title: episode.knowledge_trigger.title,
+    summary: [
+      episode.title,
+      episode.finding_summary,
+      episode.aha_pattern,
+      episode.route?.verification_required,
+      episode.route?.concept_guard,
+    ].filter(Boolean).join(" "),
+    when: {
+      plan_terms: [familyLabel(episode.family), "quant verification"],
+      file_globs: [`**/${episode.source_refs?.[0]?.source_path || "plans/knowledge/**"}`],
+      minimum_trigger_families: 1,
+    },
+    knowledge: { directive: episode.knowledge_trigger.directive },
+    apply: { mode: "inject", surface: "phase:explore" },
+    provenance: {
+      trust_level: "trusted",
+      confidence: episode.quant_guard ? "measured" : "reported",
+      episode_mentions: [episode.id, ...(episode.source_refs || []).map((ref) => ref.evidence_id).filter(Boolean)],
+    },
+    refs: (episode.source_refs || []).map((ref) => ref.source_path),
+  }));
+  const cases = episodes.map((episode, index) => ({
+    id: episode.id,
+    expected_id: triggers[index].id,
+    goalText: [
+      episode.title,
+      episode.finding_summary,
+      episode.route?.verification_required,
+      episode.route?.concept_guard,
+    ].filter(Boolean).join(" "),
+    files: (episode.source_refs || []).map((ref) => ref.source_path),
+  }));
+  const evalResult = evaluateRankedInjectionAgainstLegacy(triggers, cases, { limit: 3 });
+  console.log(`  side-by-side: cases=${evalResult.case_count}, ranked_hits=${evalResult.ranked_top_n_hits}, legacy_hits=${evalResult.legacy_top_n_hits}`);
+  assert(evalResult.case_count >= 10, "side-by-side evaluation covers at least 10 real corpus plans");
+  assert(evalResult.ranked_top_n_hits === evalResult.case_count, "ranked retrieval surfaces the expected real-episode knowledge in top-N for every case");
+  assert(evalResult.ranked_top_n_hits >= evalResult.legacy_top_n_hits, "ranked retrieval recall is no worse than legacy trigger matching");
+  assert(evalResult.ranked_top_n_hits > evalResult.legacy_top_n_hits, "ranked retrieval improves over legacy exact trigger matching on the real corpus fixture");
 }
 
 console.log("\n[capture — agent-proposed draft is inert until promoted (sc_1)]");

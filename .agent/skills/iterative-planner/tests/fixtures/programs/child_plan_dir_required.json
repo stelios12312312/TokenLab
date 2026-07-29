@@ -4,9 +4,20 @@
   "title": "Child Plan Dir Required (F-001)",
   "status": "executing",
   "goal": "A ticket cannot reach verified lifecycle with child_plan.plan_dir set to null. Inline state cannot substitute for an on-disk plan directory.",
-  "story_refs": ["US-001"],
+  "story_refs": [
+    "US-001"
+  ],
   "epics": [
-    { "id": "EP-001", "title": "Child plan epic", "story_refs": ["US-001"], "ticket_refs": ["T-001"] }
+    {
+      "id": "EP-001",
+      "title": "Child plan epic",
+      "story_refs": [
+        "US-001"
+      ],
+      "ticket_refs": [
+        "T-001"
+      ]
+    }
   ],
   "tickets": [
     {
@@ -15,27 +26,66 @@
       "title": "Claim verified despite null plan_dir",
       "type": "feature",
       "lifecycle": "verified",
-      "story_refs": ["US-001"],
+      "story_refs": [
+        "US-001"
+      ],
       "defect_refs": [],
       "gap_refs": [],
       "depends_on": [],
-      "acceptance_criteria": ["AC-001"],
-      "child_plan": { "policy": "required", "plan_dir": null, "state": "CLOSE", "reason": "Inline state asserts CLOSE but plan_dir is null — bypass attempt that this fixture exercises" },
+      "acceptance_criteria": [
+        "AC-001"
+      ],
+      "child_plan": {
+        "policy": "required",
+        "plan_dir": null,
+        "state": "CLOSE",
+        "reason": "Inline state asserts CLOSE but plan_dir is null — bypass attempt that this fixture exercises"
+      },
       "compatibility_contract_refs": [],
       "migration_boundary_refs": [],
       "deletion_move_census_refs": [],
-      "verification_refs": ["VM-001"]
+      "verification_refs": [
+        "VM-001"
+      ],
+      "external_refs": [
+        {
+          "kind": "github_issue",
+          "repo": "owner/repo",
+          "issue_number": 9004,
+          "title": "Claim verified despite null plan_dir",
+          "state": "OPEN",
+          "url": "https://github.com/owner/repo/issues/9004",
+          "synced_at": "2026-07-01T00:00:00.000Z"
+        }
+      ]
     }
   ],
   "acceptance_criteria": [
-    { "id": "AC-001", "scope": "ticket", "subject_ref": "T-001", "text": "Required child plan dir must be declared (not null) when lifecycle is verified.", "story_refs": ["US-001"], "maintenance_rationale": null }
+    {
+      "id": "AC-001",
+      "scope": "ticket",
+      "subject_ref": "T-001",
+      "text": "Required child plan dir must be declared (not null) when lifecycle is verified.",
+      "story_refs": [
+        "US-001"
+      ],
+      "maintenance_rationale": null
+    }
   ],
   "dependencies": [],
   "compatibility_contracts": [],
   "migration_boundaries": [],
   "deletion_move_census": [],
   "verification_matrix": [
-    { "id": "VM-001", "scope": "ticket", "subject_ref": "T-001", "acceptance_criterion_ref": "AC-001", "proof_type": "proof:planner_smoke", "command_or_action": "Inspect child plan state", "pass_means": "plan_dir is declared (not null)" }
+    {
+      "id": "VM-001",
+      "scope": "ticket",
+      "subject_ref": "T-001",
+      "acceptance_criterion_ref": "AC-001",
+      "proof_type": "proof:planner_smoke",
+      "command_or_action": "Inspect child plan state",
+      "pass_means": "plan_dir is declared (not null)"
+    }
   ],
   "decisions": []
 }

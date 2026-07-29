@@ -15,7 +15,7 @@ from EXECUTE toward REFLECT.
 - Spot-checks run asynchronously from PostToolUse write events and never block
   the write tool call that triggered them.
 - The configured worker provider must stay outside the Claude/Anthropic family.
-  The default example provider is `deepseek`.
+  The default example provider is `openai_compatible`.
 - Findings live under `reports/spot_checks/<plan_id>/` with retention class 3:
   purge them when the plan closes.
 - HIGH unacknowledged findings block close; HIGH `test_adequacy` findings block

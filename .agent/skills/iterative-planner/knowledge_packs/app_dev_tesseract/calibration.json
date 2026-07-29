@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "pack_id": "app_dev_tesseract",
+  "thresholds": {
+    "async_error_state_required": true,
+    "async_loading_empty_min_coverage_pct": 80,
+    "env_duplicate_read_max": 0,
+    "webhook_delivery_signal_min": 2,
+    "migration_journey_signal_min": 1
+  },
+  "severity_policy": {
+    "missing_async_error_state": "fail",
+    "missing_async_loading_or_empty_state": "warn",
+    "duplicate_env_read": "fail",
+    "webhook_missing_delivery_semantics": "fail",
+    "migration_missing_journey_proof": "fail"
+  }
+}

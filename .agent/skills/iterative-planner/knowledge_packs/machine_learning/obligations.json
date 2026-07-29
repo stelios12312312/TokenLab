@@ -1,0 +1,190 @@
+{
+  "schema_version": 1,
+  "obligations": [
+    {
+      "id": "ML-OBL-LEAKAGE-PROOF",
+      "title": "Leakage and temporal split proof",
+      "subject_id": "pack_machine_learning_leakage_proof",
+      "mode": "artifact_review",
+      "severity": "required",
+      "required_by_phase": "plan",
+      "applies_when": {
+        "text_any": [
+          "model result",
+          "training data",
+          "prediction result",
+          "ml model"
+        ]
+      },
+      "satisfied_by": {
+        "any": [
+          {
+            "id": "leakage_validation_ref",
+            "kind": "validation_ref_terms_any",
+            "terms": [
+              "leakage",
+              "temporal split"
+            ]
+          },
+          {
+            "id": "leakage_artifact",
+            "kind": "artifact_exists_any",
+            "paths": [
+              "reports/ml/leakage-proof.json",
+              "reports/ml/temporal-split-proof.json"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ML-OBL-HOLDOUT-OOS",
+      "title": "Holdout, OOS, or walk-forward validation proof",
+      "subject_id": "pack_machine_learning_holdout_oos",
+      "mode": "artifact_review",
+      "severity": "required",
+      "required_by_phase": "plan",
+      "applies_when": {
+        "text_any": [
+          "model result",
+          "prediction result",
+          "out of sample",
+          "oos",
+          "walk-forward"
+        ]
+      },
+      "satisfied_by": {
+        "any": [
+          {
+            "id": "holdout_validation_ref",
+            "kind": "validation_ref_terms_any",
+            "terms": [
+              "holdout",
+              "oos",
+              "out of sample",
+              "walk-forward"
+            ]
+          },
+          {
+            "id": "holdout_artifact",
+            "kind": "artifact_exists_any",
+            "paths": [
+              "reports/ml/holdout-validation.json",
+              "reports/ml/walk-forward-validation.json"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ML-OBL-BASELINE-CONTROL",
+      "title": "Baseline or control comparison proof",
+      "subject_id": "pack_machine_learning_baseline_control",
+      "mode": "artifact_review",
+      "severity": "required",
+      "required_by_phase": "plan",
+      "applies_when": {
+        "text_any": [
+          "improves the baseline",
+          "beats baseline",
+          "outperforms",
+          "result improvement"
+        ]
+      },
+      "satisfied_by": {
+        "any": [
+          {
+            "id": "baseline_validation_ref",
+            "kind": "validation_ref_terms_any",
+            "terms": [
+              "baseline",
+              "control comparison",
+              "control"
+            ]
+          },
+          {
+            "id": "baseline_artifact",
+            "kind": "artifact_exists_any",
+            "paths": [
+              "reports/ml/baseline-control.json"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ML-OBL-CALIBRATION",
+      "title": "Probability calibration proof",
+      "subject_id": "pack_machine_learning_calibration",
+      "mode": "artifact_review",
+      "severity": "required",
+      "required_by_phase": "plan",
+      "applies_when": {
+        "text_any": [
+          "probability output",
+          "probability",
+          "calibration",
+          "calibrated"
+        ]
+      },
+      "satisfied_by": {
+        "any": [
+          {
+            "id": "calibration_validation_ref",
+            "kind": "validation_ref_terms_any",
+            "terms": [
+              "calibration",
+              "reliability"
+            ]
+          },
+          {
+            "id": "calibration_artifact",
+            "kind": "artifact_exists_any",
+            "paths": [
+              "reports/ml/calibration.json",
+              "reports/ml/reliability-curve.json"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "id": "ML-OBL-OVERFITTING-CONTROL",
+      "title": "Overfitting and model-selection control proof",
+      "subject_id": "pack_machine_learning_overfitting_control",
+      "mode": "artifact_review",
+      "severity": "required",
+      "required_by_phase": "plan",
+      "applies_when": {
+        "text_any": [
+          "hyperparameter search",
+          "model selection",
+          "feature search",
+          "optimizer search"
+        ]
+      },
+      "satisfied_by": {
+        "any": [
+          {
+            "id": "selection_control_validation_ref",
+            "kind": "validation_ref_terms_any",
+            "terms": [
+              "selection-control",
+              "overfitting",
+              "nested validation",
+              "walk-forward"
+            ]
+          },
+          {
+            "id": "selection_control_artifact",
+            "kind": "artifact_exists_any",
+            "paths": [
+              "reports/ml/selection-control.json",
+              "reports/ml/overfitting-control.json"
+            ]
+          }
+        ]
+      }
+    }
+  ]
+}

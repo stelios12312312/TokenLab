@@ -1,0 +1,89 @@
+{
+  "version": 1,
+  "source_extensions": [
+    ".cjs",
+    ".css",
+    ".go",
+    ".html",
+    ".java",
+    ".js",
+    ".jsx",
+    ".kt",
+    ".mjs",
+    ".php",
+    ".py",
+    ".rb",
+    ".rs",
+    ".sh",
+    ".svelte",
+    ".swift",
+    ".ts",
+    ".tsx",
+    ".vue"
+  ],
+  "skip_dirs": [
+    ".cache",
+    ".git",
+    ".next",
+    ".nuxt",
+    ".turbo",
+    ".venv",
+    "__pycache__",
+    "build",
+    "coverage",
+    "dist",
+    "node_modules",
+    "out",
+    "reports",
+    "tmp",
+    "venv",
+    "vendor"
+  ],
+  "skip_path_prefixes": [
+    "plans/",
+    "apps/ive-visualizer/public/"
+  ],
+  "ignored_files": [],
+  "ignored_globs": [
+    "apps/ive-visualizer/src/data/packInspector.generated.js",
+    "docs/ive-redesign/examples/**",
+    "docs/ive-redesign/overview.html",
+    "scratch/**"
+  ],
+  "ignore_header_markers": [
+    "@planner:disabled",
+    "@planner:ignore"
+  ],
+  "config_file_patterns": [
+    ".env",
+    ".env.example",
+    ".env.sample",
+    ".env.template",
+    ".env.defaults",
+    ".env.dist",
+    "*.env.example",
+    "*.env.sample",
+    "*.env.template",
+    "*.config.json",
+    "*.config.example.json",
+    "*.config.template.json",
+    "config.json",
+    "config.example.json",
+    "config.template.json"
+  ],
+  "config_skip_patterns": [
+    ".env.local",
+    "*.local",
+    "*.local.*"
+  ],
+  "json_property_keys": [
+    "auto_committee",
+    "fail_on",
+    "role_options",
+    "roles"
+  ],
+  "json_env_value_key_suffixes": [
+    "_env",
+    "Env"
+  ]
+}

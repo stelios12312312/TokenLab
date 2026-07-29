@@ -1,6 +1,8 @@
 # Custom Persona Pack Template
 
 Use this template to create a domain-specific persona pack for the iterative planner.
+The scaffold uses `scripts/lib/auditor_pack_engine.mjs` so new packs do not
+copy the shared Prolog load/query/normalize boilerplate.
 
 ## Quick Start
 
@@ -13,7 +15,8 @@ cp -r .agent/skills/iterative-planner/packs/_template .agent/packs/my_domain
 #    - Add your DOMAIN_KEYWORDS
 #    - Implement applies() auto-detection
 #    - Define RULE_DEFS metadata
-#    - Fill in getPhaseGuidance() and getPlanConstraints()
+#    - Add custom facts inside audit() -> collectFacts
+#    - Fill in PHASE_GUIDANCE and getPlanConstraints()
 
 # 3. Edit rules.pl:
 #    - Rename my_domain_violation/4 to <your_domain>_violation/4
@@ -36,7 +39,7 @@ node .agent/skills/iterative-planner/scripts/audit_runner.mjs --pack my_domain
 | `applies(ctx)` | `(ProjectContext) => boolean` | Return true when this pack should run |
 | `rules()` | `() => RuleDef[]` | Rule metadata (id, name, rationale, false_positive, remediation, engine) |
 | `audit(ctx)` | `(ProjectContext) => Promise<RawFinding[]>` | Run rules and return raw findings |
-| `normalizeFinding(raw)` | `(Object) => Finding` | Map raw finding to shared schema via `makeFinding()` |
+| `normalizeFinding(raw)` | `(Object) => Finding` | Map raw finding to shared schema, usually via `normalizePackFinding()` |
 
 ### Optional Methods (v1.1)
 
@@ -65,12 +68,46 @@ The `context` object passed to your methods contains:
 packs/<your_domain>/
   index.mjs    — AuditorPack implementation
   rules.pl     — Prolog rules (queried by audit())
+  pack_contract.json — E5 reusable/domain shipping contract
 ```
 
 Project-local custom packs live at `<project>/.agent/packs/<role>/index.mjs`.
 
+## Autocoder Pack Contract (E5-2)
+
+Reusable/domain packs that ship with the planner must include
+`pack_contract.json`. The contract is separate from the `AuditorPack` runtime
+interface above: it is the autocoder shipping contract used by CI to prove the
+pack is reusable, calibrated, and tested against seeded defects.
+
+Required fields:
+
+| Field | Requirement |
+|-------|-------------|
+| `schema_version` | Must be `1`. |
+| `pack_id` | Must match the pack directory name. |
+| `rubrics` | Non-empty closed-question rubric array. Every rubric needs `id`, `question`, `closed_question: true`, and at least two `allowed_answers`. |
+| `checkers` | Non-empty deterministic checker array. Every checker needs `id`, `deterministic: true`, a `command`, `module`, `script`, or `path`, and `seeded_defect_ids`. |
+| `calibration_ref` | Repo-relative calibration artifact. |
+| `goldens_ref` | Repo-relative golden fixture registry with at least one fixture for this pack. |
+| `seeded_defects_ref` | Repo-relative seeded-defect registry with at least one defect for this pack. |
+| `serves_projects` | At least two real projects, not placeholders or one-off examples. |
+
+Process personas are kernel behavior, not reusable autocoder packs. The
+validator reports `assumptions_challenger`, `traceability`, `config_integrity`,
+and `wiring_auditor` as `kernel_process_persona` exemptions instead of requiring
+rubrics, checkers, calibration, goldens, or seeded defects.
+
+CI uses the existing IVE conformance runner:
+
+```bash
+node .agent/skills/iterative-planner/scripts/pack_contract_validate.mjs --json
+node .agent/skills/iterative-planner/tests/ive/run.mjs --only pack-contract --json
+```
+
 ## References
 
+- [auditor_pack_engine.mjs](../../scripts/lib/auditor_pack_engine.mjs) — Shared Prolog pack runner, story fact assertion, phase guidance formatter, and finding normalizer
 - [audit_types.mjs](../../scripts/lib/audit_types.mjs) — Finding and Constraint schemas
 - [role-auditors.md](../../references/role-auditors.md) — Full reference documentation
 - [quant pack](../quant/index.mjs) — Example: quantitative domain

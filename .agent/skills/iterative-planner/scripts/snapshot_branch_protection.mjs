@@ -127,4 +127,5 @@ if (write) {
 
 process.stdout.write(`${JSON.stringify(snapshot, null, 2)}\n`);
 if (requireEnforced && snapshot.status !== "enforced") process.exit(2);
+// proof-status-lint: exempt T-INTAKE-B07B8898 -- GitHub snapshot transport and domain error lifecycle controls whether a snapshot was obtained.
 if (snapshot.status === "error") process.exit(1);

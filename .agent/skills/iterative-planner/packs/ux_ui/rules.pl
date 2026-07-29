@@ -94,6 +94,7 @@ ux_violation('UX-002', Id,
     'HIGH') :-
     story(Id, _, high, Status),
     Status \= retired,
+    Status \= not_implemented,
     ux_relevant(Id),
     \+ code_ref(Id, _).
 
@@ -102,6 +103,7 @@ ux_violation('UX-002', Id,
     'MEDIUM') :-
     story(Id, _, _, Status),
     Status \= retired,
+    Status \= not_implemented,
     ux_relevant(Id),
     code_ref(Id, _),
     \+ test_ref(Id, _).

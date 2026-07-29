@@ -1,0 +1,83 @@
+{
+  "schema_version": 1,
+  "fixtures": [
+    {
+      "id": "schema-bounce-exhausted",
+      "trigger_class": "schema_bounce_loop",
+      "expected_action": "escalate",
+      "expected_reason": "bounce_budget_exhausted",
+      "payload": {
+        "schema_version": 1,
+        "return_type": "claims_evidence",
+        "claims": [
+          {
+            "id": "claim1",
+            "statement": "The escalation protocol should activate after the retry budget.",
+            "type": "contract",
+            "evidence_refs": [],
+            "verification_method": "executed",
+            "cost": {
+              "tokens": 12,
+              "usd": 0,
+              "wall_clock_ms": 4
+            }
+          }
+        ],
+        "bounce": {
+          "attempt": 2,
+          "max_bounces": 2
+        }
+      }
+    },
+    {
+      "id": "rubric-admin-split",
+      "trigger_class": "verifier_disagreement",
+      "expected_action": "escalate",
+      "expected_reason": "rubric_admin_split",
+      "rubric_verdicts": [
+        {
+          "admin": "rubric-a",
+          "verdict": "pass"
+        },
+        {
+          "admin": "rubric-b",
+          "verdict": "fail"
+        }
+      ],
+      "deterministic_check": {
+        "status": "pass"
+      }
+    },
+    {
+      "id": "rubric-deterministic-contradiction",
+      "trigger_class": "verifier_disagreement",
+      "expected_action": "escalate",
+      "expected_reason": "rubric_deterministic_contradiction",
+      "rubric_verdicts": [
+        {
+          "admin": "rubric-a",
+          "verdict": "pass"
+        },
+        {
+          "admin": "rubric-b",
+          "verdict": "pass"
+        }
+      ],
+      "deterministic_check": {
+        "status": "fail",
+        "check_id": "deterministic-schema-check"
+      }
+    },
+    {
+      "id": "budget-breach-stop",
+      "trigger_class": "budget_breach",
+      "expected_action": "stop",
+      "expected_reason": "budget_limit_exceeded",
+      "budget": {
+        "spent_usd": 1.25,
+        "limit_usd": 1,
+        "currency": "USD"
+      }
+    }
+  ]
+}

@@ -20,6 +20,7 @@ import {
   evaluateProjectProfiles,
   loadKnowledgePacks,
 } from "../scripts/lib/ive_profile_packs.mjs";
+import { compileVerificationStatusFacts } from "../scripts/lib/verification_status_vocabulary.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -59,11 +60,19 @@ function packResult(report, packId) {
   return (report.pack_results || []).find((entry) => entry.pack_id === packId) || null;
 }
 
+function factIncludes(report, fragment) {
+  return (report.facts || []).some((fact) => fact.includes(fragment));
+}
+
+function factCount(report, fragment) {
+  return (report.facts || []).filter((fact) => fact.includes(fragment)).length;
+}
+
 function createTempProject(name = "ive-profile-pack-") {
   const tmp = mkdtempSync(join(tmpdir(), name));
   ensureDir(join(tmp, "docs"));
   ensureDir(join(tmp, ".agent/skills/iterative-planner/scripts"));
-  writeFileSync(join(tmp, "docs/ive-engine-plan.md"), "# IVE\n\nQuant alpha profile fixture.\n");
+  writeFileSync(join(tmp, "docs/ive-engine-plan.md"), "# IVE\n\nQuant alpha profile fixture with enough detail to satisfy the bundled profile min-size contract for deterministic cache and CLI checks.\n");
   writeFileSync(join(tmp, ".agent/skills/iterative-planner/scripts/project_ive.mjs"), "console.log('fixture');\n");
   return tmp;
 }
@@ -82,10 +91,11 @@ function parseCliJson(command, args, cwd = repoRoot) {
 console.log("\nIVE Profile and Knowledge-Pack Tests\n");
 
 function testBundledProfileAndCache() {
+  const tmp = createTempProject("ive-bundled-profile-");
   const cacheDir = mkdtempSync(join(tmpdir(), "ive-profile-cache-"));
   try {
     const first = evaluateProjectProfiles({
-      cwd: repoRoot,
+      cwd: tmp,
       profileIds: ["quant_alpha"],
       gate: "plan-to-execute",
       cacheDir,
@@ -94,16 +104,17 @@ function testBundledProfileAndCache() {
     assert(first.profile_results?.[0]?.checks?.some((check) => check.kind === "regex_not_in_glob"), "profile evaluates closed regex_not_in_glob check kind");
 
     const second = evaluateProjectProfiles({
-      cwd: repoRoot,
+      cwd: tmp,
       profileIds: ["quant_alpha"],
       gate: "plan-to-execute",
       cacheDir,
     });
     assert(second.ok && second.cache_hit === true, "unchanged profile evaluation reports cache_hit");
 
-    const cli = parseCliJson(checkProfileCli, ["--profile", "quant_alpha", "--gate", "plan-to-execute", "--json", "--no-cache"]);
+    const cli = parseCliJson(checkProfileCli, ["--profile", "quant_alpha", "--gate", "plan-to-execute", "--json", "--no-cache"], tmp);
     assert(cli.status === "PASS" && cli.profiles_evaluated === 1, "check_profile.mjs emits parseable PASS JSON");
   } finally {
+    cleanup(tmp);
     cleanup(cacheDir);
   }
 }
@@ -143,7 +154,7 @@ function testProfileInheritanceOverridesAndUnknownKinds() {
       ],
     });
     const warned = evaluateProjectProfiles({ cwd: tmp, skillDir: tempSkill, profileIds: ["warn"], gate: "plan-to-execute", useCache: false });
-    assert(warned.ok && warned.status === "WARN", "gate severity override downgrades failing check to WARN");
+    assert(!warned.ok && warned.status === "WARN", "gate severity override surfaces WARN without treating it as passing proof");
 
     writeJson(join(tempSkill, "profiles/rich.profile.json"), {
       id: "rich",
@@ -176,7 +187,7 @@ function testProfileInheritanceOverridesAndUnknownKinds() {
         "knowledge_pack_loaded('machine_learning', 1, 'bundled').",
         "knowledge_pack_entry('machine_learning', 'ML-PIT-001', 'pitfall').",
       ],
-      testResults: { fixture_passed: true },
+      testResults: { fixture_passed: "pass" },
       telemetry: { metrics: { alpha: 42 } },
     });
     assert(rich.ok && rich.status === "PASS", "profile evaluator supports ontology facts, telemetry, named tests, and composite checks");
@@ -209,6 +220,23 @@ function testKnowledgePackLoadTrustDisableAndCli() {
   assert(disabled.ok && disabled.status === "DISABLED" && disabled.facts.length === 0, "disabled knowledge pack emits no runtime facts");
   assert(disabled.pack_results[0].trigger === "KnowledgePackDeactivation", "disabled knowledge pack reports deactivation trigger");
 
+  const configuredMl = mkdtempSync(join(tmpdir(), "ive-configured-ml-pack-"));
+  try {
+    writeJson(join(configuredMl, "audit.config.json"), {
+      roles: ["core", "quant"],
+      knowledge_packs: ["machine_learning", "tokenomics"],
+      knowledge_packs_disabled: ["tokenomics"],
+    });
+    const configured = loadKnowledgePacks({ cwd: configuredMl, skillDir });
+    assert(configured.ok && configured.status === "PASS", "repo-configured machine_learning pack loads without CLI pack flag");
+    assert(packResult(configured, "machine_learning")?.status === "PASS", "repo-configured machine_learning pack is active");
+    assert(packResult(configured, "machine_learning_toolbox")?.trigger === "DependencyLoaded", "repo-configured machine_learning loads toolbox dependency");
+    assert(packResult(configured, "quant_results_communication")?.trigger === "DependencyLoaded", "repo-configured machine_learning loads quant communication dependency");
+    assert(packResult(configured, "tokenomics")?.status === "DISABLED", "repo-configured disabled tokenomics pack stays disabled");
+  } finally {
+    cleanup(configuredMl);
+  }
+
   const cli = parseCliJson(knowledgePacksCli, ["--pack", "machine_learning", "--json"]);
   assert(cli.status === "PASS" && cli.loaded_pack_count === 3 && cli.facts.some((fact) => fact.includes("knowledge_pack_loaded")), "knowledge_packs.mjs emits parseable PASS JSON with dependent siblings");
 }
@@ -239,6 +267,29 @@ function testIndependentSiblingPackActivation() {
   } finally {
     cleanup(productProject);
     cleanup(uxProject);
+  }
+}
+
+function testGeneratedArtifactDiscoveryIsIgnored() {
+  const tmp = mkdtempSync(join(tmpdir(), "ive-generated-artifact-discovery-"));
+  try {
+    ensureDir(join(tmp, "reports/ive/test_runs/run-old/copied"));
+    ensureDir(join(tmp, "plans/plan_old/artifacts/prolog"));
+    writeFileSync(join(tmp, "reports/ive/test_runs/run-old/coach-report.md"), "generated coaching output\n");
+    writeFileSync(join(tmp, "reports/ive/test_runs/run-old/copied/webhook.js"), "export const generated = true;\n");
+    writeFileSync(join(tmp, "plans/plan_old/artifacts/prolog/token-plan.md"), "generated tokenomics output\n");
+
+    const generatedOnly = loadKnowledgePacks({ cwd: tmp, skillDir, activeProfiles: [] });
+    assert(!packResult(generatedOnly, "coaching_methodology"), "generated test-run markdown cannot activate coaching knowledge");
+    assert(!packResult(generatedOnly, "app_dev_tesseract"), "generated test-run source copies cannot activate app knowledge");
+    assert(!packResult(generatedOnly, "tokenomics"), "generated plan artifacts cannot activate tokenomics knowledge");
+
+    ensureDir(join(tmp, "docs"));
+    writeFileSync(join(tmp, "docs/team-coaching.md"), "source coaching method\n");
+    const sourceBacked = loadKnowledgePacks({ cwd: tmp, skillDir, activeProfiles: [] });
+    assert(packResult(sourceBacked, "coaching_methodology")?.status === "PASS", "legitimate docs still activate coaching knowledge");
+  } finally {
+    cleanup(tmp);
   }
 }
 
@@ -276,7 +327,163 @@ function testCommunityTrustGate() {
   }
 }
 
-function testFactLoaderBridgeAndNotApplicable() {
+function testKnowledgePackObligationBridgeActivationEvidenceAndCli() {
+  const tmp = createTempProject("ive-ml-obligation-project-");
+  try {
+    writeFileSync(join(tmp, "docs/ive-engine-plan.md"), [
+      "# ML fixture",
+      "This project claims a model result with probability output.",
+      "It improves the baseline through hyperparameter search.",
+    ].join("\n"));
+
+    const missing = loadKnowledgePacks({ cwd: tmp, skillDir, packIds: ["machine_learning"] });
+    const mlMissing = packResult(missing, "machine_learning");
+    assert(missing.ok && mlMissing?.status === "PASS", "accepted bundled ML pack still loads when obligations are unsatisfied");
+    assert((mlMissing?.obligation_count || 0) >= 5, "ML pack declares at least five generic obligations");
+    assert((mlMissing?.active_obligation_count || 0) >= 5, "ML model/result/probability/search text activates fixture obligations");
+    assert(factIncludes(missing, "pack_obligation('machine_learning', 'ML-OBL-LEAKAGE-PROOF')"), "obligation schema emits pack_obligation fact");
+    assert(factIncludes(missing, "active_obligation('ML-OBL-LEAKAGE-PROOF', 'machine_learning')"), "active obligation emits source-pack fact");
+    assert(factIncludes(missing, "verification_obligation('ML-OBL-LEAKAGE-PROOF', 'pack_machine_learning_leakage_proof'"), "active obligation reuses verification_obligation substrate");
+    assert(factIncludes(missing, "obligation_source('ML-OBL-LEAKAGE-PROOF', 'knowledge_pack', 'machine_learning')"), "active obligation records source-pack provenance");
+    assert(factIncludes(missing, "obligation_requires('ML-OBL-HOLDOUT-OOS'"), "holdout/OOS obligation emits requirement facts");
+    assert(!factIncludes(missing, "verification_evidence("), "missing ML proof does not synthesize passing evidence");
+
+    writeJson(join(tmp, "reports/user_story_audit/story_registry.json"), {
+      stories: [
+        {
+          id: "US-ML-001",
+          title: "ML proof fixture",
+          status: "in_progress",
+          validation_refs: [
+            "leakage temporal split proof",
+            "holdout OOS walk-forward validation",
+            "baseline control comparison",
+            "probability calibration artifact",
+            "selection-control overfitting proof",
+          ],
+        },
+      ],
+    });
+    const satisfied = loadKnowledgePacks({ cwd: tmp, skillDir, packIds: ["machine_learning"] });
+    const mlSatisfied = packResult(satisfied, "machine_learning");
+    assert((mlSatisfied?.satisfied_obligation_count || 0) >= 5, "story validation refs satisfy ML fixture obligations");
+    assert(factIncludes(satisfied, "verification_evidence("), "satisfied pack obligation emits verification_evidence fact");
+    assert(factIncludes(satisfied, "obligation_satisfied_by('ML-OBL-LEAKAGE-PROOF'"), "satisfied obligation records evidence provenance");
+
+    const cli = parseCliJson(knowledgePacksCli, ["--pack", "machine_learning", "--json"], tmp);
+    assert(cli.active_obligation_count >= 5 && cli.facts.some((fact) => fact.includes("active_obligation")), "knowledge_packs.mjs surfaces active obligation facts in JSON");
+  } finally {
+    cleanup(tmp);
+  }
+}
+
+function testKnowledgePackObligationTrustDisableUnrelatedAndDedup() {
+  const activeProject = createTempProject("ive-obligation-active-");
+  const unrelatedProject = createTempProject("ive-obligation-unrelated-");
+  const communityProject = createTempProject("ive-obligation-community-");
+  const tempSkill = createTempSkill("ive-obligation-skill-");
+  try {
+    writeFileSync(join(activeProject, "docs/ive-engine-plan.md"), "model result probability hyperparameter improvement\n");
+    const disabled = loadKnowledgePacks({ cwd: activeProject, skillDir, packIds: ["machine_learning"], disabledPacks: ["machine_learning"] });
+    assert(disabled.status === "DISABLED" && (disabled.active_obligation_count || 0) === 0, "disabled pack emits no active obligations");
+
+    writeFileSync(join(unrelatedProject, "docs/ive-engine-plan.md"), "workflow documentation with no predictive modelling claims\n");
+    const unrelated = loadKnowledgePacks({ cwd: unrelatedProject, skillDir, packIds: ["machine_learning"] });
+    assert((packResult(unrelated, "machine_learning")?.obligation_count || 0) >= 5, "explicit ML pack load still reads declared obligations");
+    assert((packResult(unrelated, "machine_learning")?.active_obligation_count || 0) === 0, "unrelated non-ML text does not activate ML obligations");
+    assert(!factIncludes(unrelated, "active_obligation("), "unrelated non-ML project emits no blocking active obligation facts");
+
+    writeJson(join(tempSkill, "knowledge_packs/community_pack/pack.json"), {
+      id: "community_pack",
+      version: 1,
+      trust_tier: "community",
+      applies_when: { file_exists_any: ["docs/ive-engine-plan.md"] },
+      entry_files: ["pitfalls.json"],
+      obligation_files: ["obligations.json"],
+    });
+    writeJson(join(tempSkill, "knowledge_packs/community_pack/pitfalls.json"), [
+      { id: "COMM-PIT-001", title: "Community fixture", severity: "medium", polarity: "risk" },
+    ]);
+    writeJson(join(tempSkill, "knowledge_packs/community_pack/obligations.json"), {
+      obligations: [
+        {
+          id: "COMM-OBL-001",
+          subject_id: "community_obligation_subject",
+          mode: "artifact_review",
+          severity: "required",
+          required_by_phase: "plan",
+          applies_when: { text_any: ["community-model"] },
+          satisfied_by: { any: [{ id: "community-proof", kind: "validation_ref_terms_any", terms: ["community proof"] }] },
+        },
+      ],
+    });
+    writeFileSync(join(communityProject, "docs/ive-engine-plan.md"), "community-model claim\n");
+    const blocked = loadKnowledgePacks({ cwd: communityProject, skillDir: tempSkill, packIds: ["community_pack"] });
+    assert(!blocked.ok && (blocked.active_obligation_count || 0) === 0 && blocked.facts.length === 0, "unaccepted community pack cannot emit blocking obligations");
+
+    const accepted = loadKnowledgePacks({
+      cwd: communityProject,
+      skillDir: tempSkill,
+      packIds: ["community_pack"],
+      allowCommunity: true,
+      acceptedPacks: ["community_pack"],
+    });
+    assert(accepted.ok && accepted.active_obligation_count === 1, "accepted community pack can emit one active obligation");
+    assert(factCount(accepted, "active_obligation('COMM-OBL-001'") === 1, "active obligation facts are deduplicated");
+  } finally {
+    cleanup(activeProject);
+    cleanup(unrelatedProject);
+    cleanup(communityProject);
+    cleanup(tempSkill);
+  }
+}
+
+function testPackObligationPrologGenericEnforcementAndWaivers() {
+  const invariants = readFileSync(join(skillDir, "prolog/invariants.pl"), "utf-8");
+  const baseFacts = `
+    current_state(plan).
+    active_obligation('ML-OBL-LEAKAGE-PROOF', 'machine_learning').
+    verification_subject('pack_machine_learning_leakage_proof', 'pack_obligation').
+    verification_mode('artifact_review').
+    verification_supported('artifact_review').
+    verification_obligation('ML-OBL-LEAKAGE-PROOF', 'pack_machine_learning_leakage_proof', 'artifact_review', 'required').
+    obligation_source('ML-OBL-LEAKAGE-PROOF', 'knowledge_pack', 'machine_learning').
+    obligation_required_by_phase('ML-OBL-LEAKAGE-PROOF', plan).
+  `;
+
+  const missing = createSession();
+  missing.consult(baseFacts);
+  missing.consult(invariants);
+  assert([...missing.query("invariant_violated(missing_pack_obligation, 'pack_machine_learning_leakage_proof')")].length === 1, "generic Prolog blocks active pack obligation without evidence");
+
+  const evidenced = createSession();
+  evidenced.consult(`${compileVerificationStatusFacts()}\n${baseFacts} verification_evidence('ev_leakage', 'pack_machine_learning_leakage_proof', 'artifact_review', passed).`);
+  evidenced.consult(readFileSync(join(skillDir, "prolog/verification_statuses.pl"), "utf-8"));
+  evidenced.consult(invariants);
+  assert([...evidenced.query("invariant_violated(missing_pack_obligation, 'pack_machine_learning_leakage_proof')")].length === 0, "passing evidence satisfies active pack obligation");
+
+  const validWaiver = createSession();
+  validWaiver.consult(`${baseFacts}
+    verification_waiver('pack_machine_learning_leakage_proof', 'artifact_review', 'wv_leakage').
+    waiver_reason('wv_leakage', 'documented out of scope').
+    waiver_approved_by('wv_leakage', 'operator').
+    waiver_expires_at('wv_leakage', '2026-12-31').
+  `);
+  validWaiver.consult(invariants);
+  assert([...validWaiver.query("invariant_violated(missing_pack_obligation, 'pack_machine_learning_leakage_proof')")].length === 0, "reasoned scoped waiver satisfies active pack obligation");
+
+  const invalidWaiver = createSession();
+  invalidWaiver.consult(`${baseFacts}
+    verification_waiver('pack_machine_learning_leakage_proof', 'artifact_review', 'wv_bad').
+    waiver_approved_by('wv_bad', 'operator').
+  `);
+  invalidWaiver.consult(invariants);
+  assert([...invalidWaiver.query("invariant_violated(missing_pack_obligation, 'pack_machine_learning_leakage_proof')")].length === 1, "waiver without reason and expiry does not satisfy pack obligation");
+  assert([...invalidWaiver.query("invariant_violated(pack_obligation_waiver_missing_reason, 'wv_bad')")].length === 1, "invalid waiver reports missing reason");
+  assert([...invalidWaiver.query("invariant_violated(pack_obligation_waiver_missing_expiry, 'wv_bad')")].length === 1, "invalid waiver reports missing expiry");
+}
+
+function testFactLoaderDoesNotInjectKnowledgePacksAndNotApplicable() {
   const tmp = createTempProject("ive-na-project-");
   const tempSkill = createTempSkill("ive-na-skill-");
   try {
@@ -289,16 +496,38 @@ function testFactLoaderBridgeAndNotApplicable() {
 
   const session = createSession();
   loadProjectMetaFacts(session, { cwd: repoRoot });
-  const matches = [...session.query("knowledge_pack_loaded('machine_learning', 1, 'bundled')")];
-  assert(matches.length > 0, "fact_loader exposes read-only knowledge-pack facts to Prolog consumers");
+  const loadedMatches = [...session.query("knowledge_pack_loaded('machine_learning', 1, 'bundled')")];
+  const entryMatches = [...session.query("knowledge_pack_entry('machine_learning', 'ML-PIT-001', 'pitfall')")];
+  assert(loadedMatches.length === 0 && entryMatches.length === 0, "fact_loader does not inject knowledge-pack facts into gate sessions");
+}
+
+function testAppDevTesseractPackActivation() {
+  const tmp = mkdtempSync(join(tmpdir(), "ive-app-dev-tesseract-project-"));
+  try {
+    ensureDir(join(tmp, "tesseract_operator/api"));
+    writeFileSync(join(tmp, "tesseract_operator/api/webhook.py"), "def handle_webhook(request):\n    return {'ok': True}\n");
+    const report = loadKnowledgePacks({ cwd: tmp, skillDir, activeProfiles: [] });
+    const appDev = packResult(report, "app_dev_tesseract");
+    assert(report.ok && appDev?.status === "PASS", "app_dev_tesseract activates from tesseract-family app files");
+    assert((appDev?.entry_count || 0) >= 8, "app_dev_tesseract loads rubric-backed pitfalls and constraints");
+    assert((appDev?.obligation_count || 0) >= 4, "app_dev_tesseract loads pack obligations");
+    assert(factIncludes(report, "knowledge_pack_loaded('app_dev_tesseract', 1, 'bundled')"), "app_dev_tesseract emits loaded fact");
+  } finally {
+    cleanup(tmp);
+  }
 }
 
 testBundledProfileAndCache();
 testProfileInheritanceOverridesAndUnknownKinds();
 testKnowledgePackLoadTrustDisableAndCli();
 testIndependentSiblingPackActivation();
+testGeneratedArtifactDiscoveryIsIgnored();
 testCommunityTrustGate();
-testFactLoaderBridgeAndNotApplicable();
+testKnowledgePackObligationBridgeActivationEvidenceAndCli();
+testKnowledgePackObligationTrustDisableUnrelatedAndDedup();
+testPackObligationPrologGenericEnforcementAndWaivers();
+testFactLoaderDoesNotInjectKnowledgePacksAndNotApplicable();
+testAppDevTesseractPackActivation();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

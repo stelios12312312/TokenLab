@@ -258,7 +258,20 @@ Assign each finding an execution mode:
       - Raise an error (production/critical context)
       - Be documented as intentional (with explicit `# INTENTIONAL_NOOP` comment)
 
-5b. **Page Load State Persistence Scan** (MANDATORY for frontend UI changes) — verify that refreshing the page mid-state or loading with URL parameters/hashes does not trigger unintended side effects:
+5a. **Transactional Publisher Interruption Scan** (MANDATORY for multi-file publishers, migrations, installers, synchronizers, or generators) — attack every durable boundary:
+   a. Interrupt after apply, after proof, after candidate commit, and immediately before and after live reference advancement.
+   b. Require either an off-target scratch candidate or durable byte-exact before-images before the first target write.
+   c. Prove conformance before live advancement and prove recovery is deterministic from every active journal state.
+   d. A failure may end only in an unchanged live target, a fully committed target with a receipt, or an explicit recoverable journal state. A receiptless half-applied payload is never an acceptable terminal state.
+   e. Treat the required proof bundle as an indivisible quorum: fail closed when any named proof is missing, duplicated, malformed, or silently skipped. A recursion-owner marker may suppress only nested test fixtures and must not let an operator-launched publisher bypass live conformance.
+
+5b. **Evidence-Absence Completeness Scan** (MANDATORY when a permit, exemption, or lifecycle decision depends on evidence being absent) — distinguish "the evidence does not exist" from "the search did not finish":
+   a. Inventory every traversal cap, unreadable-path fallback, parse failure, and skipped symlink.
+   b. Grant the absence-dependent state only after a complete search of the declared bounded surface.
+   c. Treat scan limits and unreadable paths as indeterminate and fail closed; record diagnostics instead of silently granting the state.
+   d. Seed a positive match after the traversal boundary and prove it cannot preserve the exemption.
+
+5c. **Page Load State Persistence Scan** (MANDATORY for frontend UI changes) — verify that refreshing the page mid-state or loading with URL parameters/hashes does not trigger unintended side effects:
     a. Does the code execute unconditionally on load when it was only meant for user interaction?
     b. Does it lock the UI state (e.g., `isScrolling = true`, modal overlays)?
     c. How does the browser natively handle the hash/parameter, and does custom JS conflict with it?
@@ -272,7 +285,7 @@ Assign each finding an execution mode:
    e. Require the final report to label the run class and state what remains under-searched before recommending parameter changes.
 
 7. **Planner-Core Contract Packet** (MANDATORY for planner-on-planner findings) — if the finding touches `.agent/skills/iterative-planner/`, `.agent/workflows/`, or `.agent/rules.md` and the failure smells like a gate/parser/markdown/ontology mismatch, capture the deterministic packet before choosing a fix:
-   - `node <skill-path>/scripts/verify_gate.mjs <gate> --plan <plan-dir>`
+   - `node <skill-path>/scripts/transition.mjs <gate> --dry-run --plan <plan-dir>`
    - `node <skill-path>/scripts/planner_findings.mjs --dir <repo-root> --plan <plan-dir> --gate <gate> --json`
    - `_PLANNER_PLAN_TARGET=<plan-dir> node <skill-path>/scripts/ontology_serializer.mjs --json`
    - The exact `plan.md` / `verification.md` section named by the failing gate
@@ -280,9 +293,22 @@ Assign each finding an execution mode:
 
    Then classify the problem as missing artifact, stale integrity, parser normalization, or JS/Prolog divergence. Do not patch planner prose first just because the failure is rendered through markdown. Do not stop at the first parser hit if a mirror consumer still reads the same contract.
 
-   For blocked PLAN gates, read the `Low-Level Agent Gate Packet` printed by `verify_gate.mjs plan-to-execute` and treat it as the remediation checklist for smaller agents. It should cover intent schema shape, story IDs, synthesis labels, matrix columns, and lint commands; if it does not, fix the packet surface rather than adding more prompt text.
+   For blocked PLAN gates, read the `Low-Level Agent Gate Packet` printed by `transition.mjs plan-to-execute --dry-run` and treat it as the remediation checklist for smaller agents. It should cover intent schema shape, story IDs, synthesis labels, matrix columns, and lint commands; if it does not, fix the packet surface rather than adding more prompt text.
 
    For parser or artifact-reader findings, choose the smallest real regression fixture that still satisfies unrelated gates. Include realistic authored shapes from the incident: table/list variants, natural proof prose, compact labels, and the non-mutating diagnostic CLI. Do not rely only on canonical tokens such as exact `proof:*` IDs. Avoid planner-core file paths or synthetic `close_signals` unless planner-core proof or close-signal serialization is the subject of the finding.
+
+7a. **Close-Boundary Evaluator Preflight** (MANDATORY, conditional) — when planner-core remediation touches two or more finish-line families (lifecycle/state mutation, proof production or consumption, freshness, live/replay parity, checklist integrity, clean/staged behavior, or shipped-proof provenance), inventory and exercise the whole downstream evaluator graph before the first expensive close attempt:
+
+   | Boundary pair | Required adversarial replay |
+   |---|---|
+   | Dry-run / write | Run the same fixture through both paths and compare the resulting disposition; the writer must not preserve state that the dry-run says will be cleared. |
+   | Proof producer / proof consumer | Execute the action that produces proof, then the consumer that requires it; prove the ordering can reach green without weakening the consumer. |
+   | Fresh / stale evidence | Test just-inside and just-outside freshness limits with explicit clock/headroom evidence. |
+   | Live / replay | Feed equivalent semantics through current execution and replay; compare normalized outcomes at the phase boundary. |
+   | Clean / staged plus integrity | Exercise clean and intentionally staged states, including the supported integrity refresh lane; never hand-edit integrity truth. |
+   | Historical shipped proof / staged proof | Use a genuine unrelated historical negative and a deterministic staged positive; token or title overlap alone is not proof. |
+
+   Record every applicable evaluator as `producer`, `canonical_consumer`, or `mirror_consumer`, plus command, fixture, expected outcome, and observed outcome. A newly exposed red is a separate finding or intake item: stop the closeout, preserve its evidence, and do not widen the current repair, relabel the result, waive freshness, edit lifecycle/integrity state, or fabricate non-applicability.
 
 8. **Define the invariant test** — write the test assertion in abstract terms:
    ```
@@ -307,6 +333,7 @@ Assign each finding an execution mode:
 - **Silent degradation scan complete** — no unwarned no-ops remain
 - **Cross-invariant conflict scan complete**
 - **Documentation-wiring scan** — if the fix adds new scripts, CLI commands, or directories: verify they are documented in SKILL.md and referenced by relevant workflows. Undocumented capabilities are invisible to the agent and will never be used.
+- **Machine-output transport scan** — if a touched CLI emits JSON or other machine-readable output, inspect every terminal write and exit path, including commands exempted from generic CLI determinism coverage. Exercise a payload larger than 8 KiB through a bounded pipe, parse exactly one complete document on both success and failure exits where applicable, and reject fixes that only raise consumer buffers or prove redirected-file output.
 - **Report-consistency scan** (Retro 2026-03-22) — when fixing a defect, `grep -r "D-NNN"` and `grep -r "F-NNN"` across all `reports/` files. Every reference to the defect must agree with its status in `defect_register.md`. Check `story_registry.json` for stale `open_gaps` and `blocked_by` entries that reference fixed defects. Run `rule_engine.mjs check-invariants` to catch mismatches via I-009/I-010/I-011.
 - Invariant defined
 - Generalization log updated
@@ -344,7 +371,7 @@ If the active remediation plan uses `## Success Criteria` and the repo has `repo
 
 Run:
 ```bash
-node <skill-path>/../iterative-planner/scripts/verify_gate.mjs plan-to-execute
+node <skill-path>/../iterative-planner/scripts/transition.mjs plan-to-execute --dry-run
 ```
 
 If the gate reports missing criterion/story linkage, stop and fix `plan.md` first. The `Verification Strategy` should use a table with `Criterion | Story linkage | Check | Pass means`.
@@ -437,9 +464,15 @@ Run your full test suite.
 
 ### Gate 1b: Mirror-Consumer Proof
 For shared artifact, parser, serializer, or fact-emitter fixes, run the primary failing entrypoint plus at least one secondary runtime consumer on the same success phrasing.
-- Example: `verify_gate.mjs` passes and `rule_engine.mjs check-transition` still passes on the same `verification.md` fixture.
+- Example: the authoritative `transition.mjs <gate> --dry-run` projection is stable while the diagnostic `rule_engine.mjs check-transition` agrees on its narrower semantic facts.
 - For markdown/table parser fixes, one proof must use realistic authored prose or table structure from the incident, and one proof must use the diagnostic CLI that exposes parsed rows/criteria.
 - Any mirror consumer disagreement → back to GENERALIZE. The bug is still a contract split, not a closed finding.
+
+### Gate 1c: Close-Boundary Evaluator Replay
+For work that activated the Close-Boundary Evaluator Preflight, replay every applicable row from the GENERALIZE inventory in dependency order before accepting the full-suite result. Preserve both positive and genuine negative outcomes, compare canonical and mirror consumers, and link the observed proof from the scorecard or verification artifact.
+
+- Pass: every applicable boundary pair agrees, negative controls remain red for the intended reason, and no result depends on a waiver, stale receipt, hand-edited state, or title-token coincidence.
+- Fail: any boundary pair disagrees, a negative control turns green, or a proof consumer can only pass before its producer runs. Return to GENERALIZE or open a separately scoped intake item; do not weaken the gate to finish the current remediation.
 
 ### Gate 2: Test Count Verification
 - Final count must be ≥ baseline count + (number of findings fixed)
@@ -471,6 +504,9 @@ Write `{plan-dir}/scorecard.md`:
 - Tests at end: [N] (+X from baseline)
 - Tests passing: [N]
 - New regressions introduced: 0
+- Quality score: [value or n/a + source status]
+- IV score: [value or n/a + source status]
+- Ritual score: [value or n/a + source status]
 
 ## Generalization Yield
 - Instances in audit report: [N]
@@ -486,11 +522,15 @@ Write `{plan-dir}/scorecard.md`:
 ### Gate 4: Plan Traceability Regression Check
 
 If the repo has `story_registry.json` and the active plan uses success criteria:
-- Re-run `node <skill-path>/../iterative-planner/scripts/verify_gate.mjs plan-to-execute`
+- Re-run `node <skill-path>/../iterative-planner/scripts/transition.mjs plan-to-execute --dry-run`
 - Re-run `node <skill-path>/../iterative-planner/scripts/rule_engine.mjs check-invariants`
 - Confirm the remediation did not leave a heuristic-only criterion/story mapping that will fail later at CLOSE
 
 This gate treats planner-contract regressions as real regressions, not documentation polish.
+
+### Gate 5: Measurement Receipt Check
+
+If the remediation cites IVE, scoreboard, quality-test, Insight Velocity, or ritual replay evidence, the scorecard/walkthrough must render the measured `quality_score`, `iv_score`, and `ritual_score` by name and value. A link to a JSON artifact or a component buried inside a composite score is not enough.
 
 ### Exit Criteria
 - All gates pass

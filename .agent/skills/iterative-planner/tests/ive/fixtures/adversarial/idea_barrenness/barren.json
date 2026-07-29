@@ -1,0 +1,13 @@
+{
+  "id": "ADV-LLM-005-barren",
+  "goal": "Exercise a feature-shaped reflection with repeated execution cycles and no new insight.",
+  "plan_shape": {
+    "primary": "feature",
+    "signals": ["feature", "planner_core"],
+    "confidence": 0.95
+  },
+  "reflect_cycles": 3,
+  "lesson": false,
+  "risk": false,
+  "decisions": "# Decisions\n"
+}

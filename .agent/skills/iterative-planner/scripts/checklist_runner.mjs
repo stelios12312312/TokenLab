@@ -26,6 +26,8 @@ import { spawnSync } from "child_process";
 import { withFailureCode, sortResults, isFeatureEnabled } from "./lib/determinism.mjs";
 import { getPaths, parseSimpleYaml, readPointer, resolveFindingsTruth, resolvePlanTarget } from "./lib/plan_utils.mjs";
 import { detectPlanShape } from "./lib/plan_shape.mjs";
+import { analyzeKbTagObligation, resolveKbTagKnowledgeContext } from "./lib/kb_plan_tags.mjs";
+import { assumptionStatusIsResolved } from "./lib/session_obligations.mjs";
 
 const cwd = process.cwd();
 const { plansDir } = getPaths(cwd);
@@ -114,9 +116,26 @@ function hasStructuredAssumptionProbe(truth) {
   if (!Array.isArray(assumptions)) return false;
   return assumptions.some((entry) => {
     if (!entry || typeof entry !== "object") return false;
-    const status = String(entry.status || "").toUpperCase();
-    return status === "VERIFIED" || status === "VIOLATED";
+    return assumptionStatusIsResolved(entry.status);
   });
+}
+
+function checklistCommandTimeoutMs(item) {
+  const raw = Number(item?.timeout);
+  return Number.isFinite(raw) && raw > 0 ? raw : 30000;
+}
+
+function readJsonFile(filePath) {
+  try {
+    return existsSync(filePath) ? JSON.parse(readFileSync(filePath, "utf-8")) : null;
+  } catch {
+    return null;
+  }
+}
+
+function extractGoalText(planContent) {
+  const match = String(planContent || "").match(/^## Goal\s*\n([\s\S]*?)(?=\n## |\n# |$)/m);
+  return match ? String(match[1] || "").trim().split("\n")[0].trim() : "";
 }
 
 // ---------------------------------------------------------------------------
@@ -312,6 +331,39 @@ function runCheck(item, planDirName) {
       };
     }
 
+    case "kb_learning_reference": {
+      if (!path || !existsSync(path)) {
+        return {
+          id,
+          name: item.description || "Plan references relevant KB learnings",
+          status: item.severity === "warn" ? "WARN" : "FAIL",
+          detail: `File not found: ${path}`,
+          code: "GATE-PLN-021",
+        };
+      }
+      const planContent = readFileSync(path, "utf-8");
+      const planDir = planDirName ? join(plansDir, planDirName) : null;
+      const stateJson = planDir ? readJsonFile(join(planDir, "state.json")) : null;
+      const knowledgeContext = resolveKbTagKnowledgeContext({
+        cwd,
+        planDir,
+        planDirName,
+        stateJson,
+        planContent,
+        goalText: stateJson?.goal || extractGoalText(planContent),
+      });
+      const obligation = analyzeKbTagObligation(planContent, knowledgeContext);
+      return {
+        id,
+        name: item.description || "Plan references relevant KB learnings",
+        status: obligation.satisfied ? "PASS" : (item.severity === "warn" ? "WARN" : "FAIL"),
+        detail: obligation.satisfied
+          ? obligation.detail
+          : `${obligation.detail}. ${obligation.guidance?.join("; ") || "Add [KB_APPLIED:<id>] for the matching learning."}`,
+        code: "GATE-PLN-021",
+      };
+    }
+
     case "not_contains_string": {
       if (!path || !existsSync(path)) {
         return {
@@ -448,7 +500,12 @@ function runCheck(item, planDirName) {
       if (!exe) {
         return { id, name: item.description || "Command check", status: "FAIL", detail: "Empty command after tokenization", code: "GATE-CHK-008" };
       }
-      const proc = spawnSync(exe, cmdArgs, { cwd, stdio: "pipe", timeout: 30000, encoding: "utf-8" });
+      const proc = spawnSync(exe, cmdArgs, {
+        cwd,
+        stdio: "pipe",
+        timeout: checklistCommandTimeoutMs(item),
+        encoding: "utf-8",
+      });
       if (proc.status === 0) {
         return {
           id,
@@ -640,6 +697,7 @@ for (const item of checklist.items) {
     continue;
   }
   const result = runCheck(item, planDirName);
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Locally returned runCheck protocol is used for deterministic icons and counts.
   const icon = result.status === "PASS" ? "✅" : result.status === "FAIL" ? "❌" : "⚠️";
   const codeStr = result.code ? ` [${result.code}]` : "";
   console.log(`  ${icon} [${result.status}]${codeStr} ${result.name}`);
@@ -647,6 +705,7 @@ for (const item of checklist.items) {
     console.log(`          ${result.detail}`);
   }
 
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Locally returned runCheck protocol is used for deterministic icons and counts.
   if (result.status === "PASS") passCount++;
   else if (result.status === "WARN") warnCount++;
   else { failCount++; hasFail = true; }

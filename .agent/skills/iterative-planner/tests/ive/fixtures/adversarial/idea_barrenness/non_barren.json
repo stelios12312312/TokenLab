@@ -1,0 +1,13 @@
+{
+  "id": "ADV-LLM-005-non-barren",
+  "goal": "Exercise a feature-shaped reflection that records a reusable decision.",
+  "plan_shape": {
+    "primary": "feature",
+    "signals": ["feature", "planner_core"],
+    "confidence": 0.95
+  },
+  "reflect_cycles": 3,
+  "lesson": false,
+  "risk": false,
+  "decisions": "# Decisions\n\n## D-001 - Share the novel-insight evaluator\n\nUse one evaluator for JS gate checks and Prolog fact loading so I-050 cannot drift between layers.\n"
+}

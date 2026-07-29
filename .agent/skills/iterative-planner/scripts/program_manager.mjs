@@ -11,10 +11,17 @@ import { isAbsolute, relative, resolve } from "path";
 import { createSession } from "./lib/prolog.mjs";
 import { formatReason } from "./lib/sanitize.mjs";
 import {
+  compileVerificationStatusFacts,
+  normalizeVerificationStatus,
+  verificationStatusIsPass,
+} from "./lib/verification_status_vocabulary.mjs";
+import {
   evaluateProgramGate,
   loadProgramPacket,
+  normalizeProgramRepositorySlug,
   programPacketToFacts,
   resolveProgramPacketPath,
+  ticketHasGithubIssueMirror,
   validateProgramPacket,
 } from "./lib/program_packet.mjs";
 import {
@@ -24,12 +31,7 @@ import {
   fetchProjectItem,
   resolveRepo,
 } from "./github_ticket_review.mjs";
-import {
-  callOpenAiCompatibleJson,
-  loadDriftLlmConfig,
-  publicDriftConfig,
-  redactSecrets,
-} from "./lib/llm_drift_client.mjs";
+import { redactSecrets } from "./lib/provider_client.mjs";
 import { extractNormalizedStoryIdsFromText } from "./lib/planner_canonicalizer.mjs";
 import {
   evaluateRetroRecurrenceCheck,
@@ -40,12 +42,30 @@ import {
   quantPersonaGateToBlockers,
 } from "./lib/quant_persona_gate.mjs";
 import {
-  buildDeepSeekAdvisoryBlock,
-  DEEPSEEK_ADVISORY_NOT_RUN_STATUS,
-  DEEPSEEK_ADVISORY_NOT_RUN_SUMMARY,
-  DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT,
-} from "./lib/deepseek_advisory_block.mjs";
-
+  buildLifecycleReconciliationReport,
+  lifecycleReconciliationSummary,
+  renderLifecycleReconciliationStatusLine,
+} from "./lib/lifecycle_reconciler.mjs";
+import {
+  buildKnowledgeReceipt,
+} from "./lib/knowledge_receipt.mjs";
+import {
+  assertRemoteReadAllowed,
+  normalizeRemoteMode,
+  resolveRemoteMode,
+} from "./lib/remote_mode.mjs";
+import { buildRepoStateStamp } from "./lib/repo_state_stamp.mjs";
+import {
+  buildProgramDisposition,
+  renderProgramDispositionText,
+} from "./lib/program_disposition.mjs";
+import {
+  findingsFromIveReport,
+  findingsFromProjectHealthReport,
+  findingsFromRitualReplayReport,
+  findingsFromRuleEngineReport,
+  findingsFromScoreboardReport,
+} from "./lib/deterministic_findings.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const skillPath = join(__dirname, "..");
@@ -62,19 +82,30 @@ function parseArgs(argv) {
     fromText: null,
     fromFile: null,
     fromJsonArray: null,
+    fromRepairPacket: null,
+    fromResolutionRequest: null,
+    fromArtifacts: [],
+    findingId: null,
+    deferredPrograms: [],
+    output: null,
     issue: null,
     projectItem: null,
     repo: null,
+    remoteMode: null,
+    waiveGateRequirement: null,
+    waiverDecision: null,
+    waiverReason: null,
     ticketType: null,
     personaReview: false,
     personaPacks: null,
     autoStory: false,
+    accept: false,
+    close: false,
     remediate: false,
     force: false,
     write: false,
     json: false,
     facts: false,
-    showDeepSeekBlock: false,
   };
   if (parsed.command === "verify") parsed.gate = args.shift() || null;
   if (parsed.command === "blockers" || parsed.command === "unlocks-if-closed") {
@@ -90,20 +121,33 @@ function parseArgs(argv) {
     else if (arg === "--from-text") parsed.fromText = args[++i] || "";
     else if (arg === "--from-file") parsed.fromFile = args[++i] || null;
     else if (arg === "--from-json-array") parsed.fromJsonArray = args[++i] || "";
+    else if (arg === "--from-repair-packet") parsed.fromRepairPacket = args[++i] || null;
+    else if (arg === "--from-resolution-request") parsed.fromResolutionRequest = args[++i] || null;
+    else if (arg === "--from-artifact" || arg === "--from-findings") parsed.fromArtifacts.push(args[++i] || "");
+    else if (arg === "--finding" || arg === "--finding-id") parsed.findingId = args[++i] || null;
+    else if (arg === "--deferred-program") parsed.deferredPrograms.push(args[++i] || "");
+    else if (arg === "--output") parsed.output = args[++i] || null;
     else if (arg === "--issue") parsed.issue = args[++i] || null;
     else if (arg === "--project-item") parsed.projectItem = args[++i] || null;
     else if (arg === "--repo") parsed.repo = args[++i] || null;
+    else if (arg === "--remote-mode") parsed.remoteMode = args[++i] || null;
+    else if (arg === "--waive-gate-requirement") parsed.waiveGateRequirement = args[++i] || null;
+    else if (arg === "--waiver-decision") parsed.waiverDecision = args[++i] || null;
+    else if (arg === "--waiver-reason") parsed.waiverReason = args[++i] || null;
     else if (arg === "--ticket-type") parsed.ticketType = args[++i] || "";
     else if (arg === "--persona-review") parsed.personaReview = true;
     else if (arg === "--persona-packs") parsed.personaPacks = args[++i] || "";
     else if (arg === "--quant-scope") parsed.quantScope = args[++i] || "";
     else if (arg === "--auto-story") parsed.autoStory = true;
+    else if (arg === "--accept") parsed.accept = true;
+    else if (arg === "--close") parsed.close = true;
     else if (arg === "--remediate") parsed.remediate = true;
     else if (arg === "--force") parsed.force = true;
     else if (arg === "--write") parsed.write = true;
-    else if (arg === "--show-deepseek-block") parsed.showDeepSeekBlock = true;
-    else if (arg === "--llm-review") parsed.llmReview = true;
     else if (arg === "--allow-duplicate") parsed.allowDuplicate = true;
+    else if (arg.startsWith("--")) {
+      // Unknown flags are ignored for backward-compatible dry-run callers.
+    }
     else if (!parsed.program) parsed.program = arg;
   }
   return parsed;
@@ -113,12 +157,14 @@ function usage() {
   return `program_manager.mjs — Program Packet validation
 
 Usage:
-  node program_manager.mjs init --program <name-or-path> [--title "<program title>"] [--goal "<program goal>"] [--force] [--json]
-  node program_manager.mjs intake --program <path-or-id> (--from-text "<idea>"|--from-file <path>|--from-json-array '[{"title":"...","text":"..."}]'|--issue <n>|--project-item <id/url>) [--title "<short title>"] [--ticket-type <type>] [--persona-review] [--persona-packs <csv>] [--quant-scope planner_core|meta|tooling] [--repo owner/name] [--write] [--llm-review] [--allow-duplicate] [--show-deepseek-block] [--json]
-  node program_manager.mjs intake --program <path-or-id> --from-text "<idea>" [--auto-story] [--write] [--llm-review] [--allow-duplicate] [--show-deepseek-block] [--json]
+  node program_manager.mjs init --program <name-or-path> [--title "<program title>"] [--goal "<program goal>"] (--remote-mode local-only|remote-read|remote-sync|--repo owner/name|--waive-gate-requirement <id> --waiver-decision <id> --waiver-reason "<reason>") [--force] [--json]
+  node program_manager.mjs intake --program <path-or-id> (--from-text "<idea>"|--from-file <path>|--from-json-array '[{"title":"...","text":"..."}]'|--issue <n>|--project-item <id/url>) [--title "<short title>"] [--ticket-type <type>] [--persona-review] [--persona-packs <csv>] [--quant-scope planner_core|meta|tooling] [--repo owner/name] [--remote-mode local-only|remote-read|remote-sync] [--write] [--allow-duplicate] [--json]
+  node program_manager.mjs intake --program <path-or-id> --from-text "<idea>" [--auto-story] [--write] [--allow-duplicate] [--json]
+  node program_manager.mjs triage-findings --program <path-or-id> --from-artifact <path> [--from-artifact <path> ...] [--finding <id>] [--accept] [--write] [--allow-duplicate] [--json]
+  node program_manager.mjs disposition [--from-repair-packet <path>] [--from-resolution-request <path>] [--deferred-program <path-or-id> ...] [--output <path>] [--close] [--write] [--json]
   node program_manager.mjs check [--program <path-or-id>] [--remediate] [--write] [--json]
   node program_manager.mjs verify <gate> [--program <path-or-id>] [--remediate] [--write] [--json]
-  node program_manager.mjs facts [--program <path-or-id>]
+  node program_manager.mjs facts [--program <path-or-id>] [--remote-mode local-only|remote-read|remote-sync]
   node program_manager.mjs next-ready [--program <path-or-id>] [--json]
   node program_manager.mjs dispatch-order [--program <path-or-id>] [--json]
   node program_manager.mjs blockers <ticket> [--program <path-or-id>] [--json]
@@ -134,8 +180,11 @@ Forward-reasoning queries (next-ready / dispatch-order / blockers / unlocks-if-c
 use the Prolog ontology to answer dispatch and what-if questions over the dependency
 graph. They are advisory — they do not gate transitions.
 
-init writes a valid empty Program Packet and refuses to overwrite unless --force
-is passed. Intake is dry-run by default. --title overrides first-line title
+init writes a valid empty Program Packet only after remote policy is explicit and
+refuses to overwrite unless --force is passed. Choose local-only, provide a
+repository slug (which selects remote-sync when mode is absent), or record a
+decision-backed governed waiver. During init, explicit --remote-mode local-only
+and --repo are mutually exclusive. Intake is dry-run by default. --title overrides first-line title
 extraction for single local text/file intake. If a derived title is longer than
 70 characters, intake attempts a redacted cheap LLM title summary and falls back
 to a deterministic concise title. --ticket-type records a specialized ticket lane
@@ -145,24 +194,48 @@ review metadata, and --persona-packs overrides the default packs. --from-json-ar
 accepts a JSON array string of ticket objects; each object needs
 text/body/description/content and may include title, id, ticket_type/type,
 persona_review, and persona_packs. --write updates only the local Program Packet
-and local intake artifact(s).
+and local intake artifact(s), but ready-or-later tickets require a
+GitHub Issue mirror in external_refs only when the Program Packet remote policy
+resolves to remote-sync.
+Issue and Project item intake are remote reads and require remote-read or
+remote-sync mode. Set --remote-mode explicitly or use PLANNER_REMOTE_MODE.
+local-only keeps draft intake, checks, dispatch, and local packet work fully
+offline; remote-sync is reserved for explicit GitHub mirror writes in
+github_ticket_review.mjs publish/review --write.
+
+disposition consumes lifecycle reconciler repair packets, clean committed proposed-
+resolution requests, and explicit deferred Program Packets. It is dry-run by default.
+--from-resolution-request closes only exact proposed/no-child tickets whose committed
+decision section names the ticket and whose typed commit/receipt refs all pass when
+recomputed from HEAD; it records review_status:unavailable and re-verifiable digests.
+--write classifies deferred backlog
+tickets and preserves their lifecycle. Add --close for the explicit second step
+that promotes already-dispositioned deferred tickets to administrative closed;
+the close lane requires a supported backlog_disposition classification plus a
+valid decision_ref and records review_status:unavailable rather than review_ready.
+Evidence-verified shipped-open tickets close only when commit, closed child-plan
+scope, and GitHub issue mirror checks pass; failed evidence is recorded as
+keep_open in the receipt. GitHub mirrors are still published separately through
+github_ticket_review.mjs publish --remote-mode remote-sync --write.
 
 Duplicate scan: intake deterministically compares the candidate title against
 every ticket in the target packet AND every sibling Program Packet under
 plans/programs/. High-similarity matches BLOCK the intake (exit 3) unless
 --allow-duplicate is passed after confirming the candidate is genuinely new.
 
-LLM review: per-ticket DeepSeek advisory is OPT-IN via --llm-review (2026-06-10
-consolidation audit: default-on advisories paraphrased deterministic blockers
-and had zero downstream consumers). Without the flag the intake packet records
-an honest not_run status. --show-deepseek-block renders the full fenced
-advisory verdict in text output; default output shows compact status/summary/artifact
-proof. --auto-story appends review-needed NOT_IMPLEMENTED draft stories to
+triage-findings consumes deterministic findings artifacts (or deterministic run
+receipts that can be normalized into findings), reuses the same intake duplicate
+scan, and stays advisory by default. It never mutates packet state unless the
+operator passes both --accept and --write. --write without --accept fails.
+
+--auto-story appends review-needed NOT_IMPLEMENTED draft stories to
 reports/user_story_audit/story_registry.json and links them to the ticket when
 --write is used. --remediate on check/verify emits advisory remediation task
 packets; --write writes the packet. On verify, --write also advances Program
 Packet status after deterministic validation and ontology checks pass.
-Publishing to GitHub is handled separately by github_ticket_review.mjs publish.
+GitHub Issue mirroring is required before ready-or-later ticket lifecycles.
+Publishing is handled by github_ticket_review.mjs publish, which reuses existing
+ticket external_refs instead of creating duplicate issues.
 
 No Program Packet is backward-compatible: check and verify return SKIP.`;
 }
@@ -532,6 +605,64 @@ function jsonArrayItemText(item) {
   return item?.text ?? item?.body ?? item?.description ?? item?.content ?? "";
 }
 
+function stringListFromValue(value, env = process.env) {
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => typeof entry === "string" ? entry : (entry?.text || entry?.description || entry?.title || ""))
+      .map((entry) => redactText(entry, env).trim())
+      .filter(Boolean);
+  }
+  const text = redactText(value || "", env).trim();
+  return text ? [text] : [];
+}
+
+function normalizeStructuredStoryContext(value, env = process.env) {
+  if (!Array.isArray(value)) return stringListFromValue(value, env).map((entry) => ({ relevance: entry }));
+  return value
+    .map((entry) => {
+      if (typeof entry === "string") return { relevance: redactText(entry, env).trim() };
+      if (!entry || typeof entry !== "object") return null;
+      return {
+        id: asString(entry.id || entry.story_ref || entry.storyRef || entry.ref) || null,
+        title: redactText(entry.title || "", env).trim() || null,
+        status: redactText(entry.status || "", env).trim() || null,
+        relevance: redactText(entry.relevance || entry.context || entry.reason || entry.description || "", env).trim() || null,
+      };
+    })
+    .filter((entry) => entry && (entry.id || entry.title || entry.relevance));
+}
+
+function normalizeJsonArrayStructuredFields(item, env = process.env) {
+  const problem = redactText(item.problem || item.user_problem || item.story_problem || "", env).trim();
+  const proposedChange = redactText(
+    item.proposed_change || item.proposedChange || item.solution || item.implementation || item.change || "",
+    env,
+  ).trim();
+  const acceptanceBullets = [
+    ...stringListFromValue(item.acceptance_bullets, env),
+    ...stringListFromValue(item.acceptance_criteria, env),
+    ...stringListFromValue(item.acceptanceCriteria, env),
+    ...stringListFromValue(item.criteria, env),
+  ];
+  const verificationPlan = [
+    ...stringListFromValue(item.verification_plan, env),
+    ...stringListFromValue(item.verification, env),
+    ...stringListFromValue(item.test_plan, env),
+    ...stringListFromValue(item.testPlan, env),
+  ];
+  const storyContext = normalizeStructuredStoryContext(
+    item.story_context || item.storyContext || item.user_story_context || item.userStoryContext || [],
+    env,
+  );
+  return {
+    problem: problem || null,
+    proposed_change: proposedChange || null,
+    acceptance_bullets: uniqueStrings(acceptanceBullets),
+    verification_plan: uniqueStrings(verificationPlan),
+    story_context: storyContext,
+  };
+}
+
 function normalizeJsonArraySource(item, index, env, defaults = {}) {
   if (!item || typeof item !== "object" || Array.isArray(item)) {
     throw new Error(`--from-json-array item ${index + 1} must be an object`);
@@ -557,11 +688,12 @@ function normalizeJsonArraySource(item, index, env, defaults = {}) {
       array_index: index,
       item_id: itemId || null,
     },
+    structured: normalizeJsonArrayStructuredFields(item, env),
     source_arg: itemId ? `--from-json-array:${itemId}` : `--from-json-array:${index + 1}`,
   }, item, defaults);
 }
 
-function loadSingleIntakeSource(args, { cwd, env, ghRunner, gitRunner }) {
+function loadSingleIntakeSource(args, { cwd, env, ghRunner, gitRunner, remoteMode }) {
   const overrideTitle = explicitTitle(args, env);
   const modes = sourceModes(args);
   if (modes.length !== 1) throw new Error("Pass exactly one intake source: --from-text, --from-file, --from-json-array, --issue, or --project-item");
@@ -597,6 +729,7 @@ function loadSingleIntakeSource(args, { cwd, env, ghRunner, gitRunner }) {
     };
   }
 
+  assertRemoteReadAllowed(remoteMode, "program_manager intake GitHub source");
   const repo = resolveRepo(cwd, args.repo, gitRunner);
   if (!repo) throw new Error("Cannot determine GitHub repo; pass --repo <owner/repo>");
   const issue = args.issue
@@ -615,14 +748,14 @@ function loadSingleIntakeSource(args, { cwd, env, ghRunner, gitRunner }) {
   return source;
 }
 
-function loadIntakeSources(args, { cwd, env, ghRunner, gitRunner }) {
+function loadIntakeSources(args, { cwd, env, ghRunner, gitRunner, remoteMode }) {
   const modes = sourceModes(args);
   if (modes.length !== 1) throw new Error("Pass exactly one intake source: --from-text, --from-file, --from-json-array, --issue, or --project-item");
   const defaults = intakeMetadataDefaults(args);
   if (args.fromJsonArray !== null && args.fromJsonArray !== undefined) {
     return parseJsonArrayInput(args.fromJsonArray).map((item, index) => normalizeJsonArraySource(item, index, env, defaults));
   }
-  return [attachSourceTicketMetadata(loadSingleIntakeSource(args, { cwd, env, ghRunner, gitRunner }), {}, defaults)];
+  return [attachSourceTicketMetadata(loadSingleIntakeSource(args, { cwd, env, ghRunner, gitRunner, remoteMode }), {}, defaults)];
 }
 
 function firstLine(text) {
@@ -671,7 +804,8 @@ function deterministicTitleSummary(text) {
   return normalizeTicketTitle(selected.map((word) => word.charAt(0).toUpperCase() + word.slice(1)).join(" ")) || "Program Intake Ticket";
 }
 
-const STORY_LINK_PATTERN_GLOBAL = /\bUS(?:[\s_-]*\d{1,4}|(?:[\s_-]+[A-Z][A-Z0-9]{0,15})+[\s_-]+\d{1,4})\b/gi;
+const STORY_LINK_FINAL_SEGMENT = "(?:\\d{1,4}|H[0-9A-F]{8,64})";
+const STORY_LINK_PATTERN_GLOBAL = new RegExp(`\\bUS(?:[\\s_-]*\\d{1,4}|(?:[\\s_-]+[A-Z][A-Z0-9]{0,15})+[\\s_-]+${STORY_LINK_FINAL_SEGMENT})\\b`, "gi");
 
 function normalizeTitleSummaryPayload(parsed) {
   const payload = parsed && typeof parsed === "object" ? parsed : {};
@@ -689,55 +823,18 @@ async function summarizeLongTitle({ source, cwd, env, fetchImpl }) {
   }
 
   const fallback = deterministicTitleSummary(source.text || originalTitle);
-  const config = loadDriftLlmConfig(env, { cwd });
-  const publicConfig = publicDriftConfig(config);
-  const system = [
-    "You summarize messy Program Manager intake text into a ticket title.",
-    "Return JSON only with: title.",
-    "The title must be 3-6 words, under 70 characters, concrete, and not end with ellipsis.",
-    "Do not include story ids, markdown, quotes, or ticket prefixes.",
-  ].join(" ");
-  try {
-    const response = await callOpenAiCompatibleJson({
-      config,
-      env,
-      fetchImpl,
-      maxTokens: 80,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: redactText(source.text || originalTitle, env).slice(0, 4000) },
-      ],
-    });
-    const title = normalizeTitleSummaryPayload(response.parsed) || fallback;
-    return {
-      ...source,
-      title,
-      ticket_title: title,
-      title_source: "llm_summary",
-      title_summary: {
-        status: "summarized",
-        source: response.source || "provider",
-        original_title: truncate(originalTitle, 500),
-        title,
-        config: publicConfig,
-      },
-    };
-  } catch (error) {
-    return {
-      ...source,
+  return {
+    ...source,
+    title: fallback,
+    ticket_title: fallback,
+    title_source: "deterministic_summary",
+    title_summary: {
+      status: "deterministic",
+      source: "deterministic",
+      original_title: truncate(originalTitle, 500),
       title: fallback,
-      ticket_title: fallback,
-      title_source: "deterministic_summary",
-      title_summary: {
-        status: "fallback",
-        source: "deterministic",
-        original_title: truncate(originalTitle, 500),
-        title: fallback,
-        unavailable_reason: error?.message || "unknown error",
-        config: publicConfig,
-      },
-    };
-  }
+    },
+  };
 }
 
 function extractStoryRefs(text) {
@@ -776,6 +873,57 @@ function loadStoryRegistry(cwd, timestamp) {
   }
 }
 
+function readStoryRegistryForContext(cwd) {
+  const path = storyRegistryPath(cwd);
+  if (!existsSync(path)) return { path, registry: null, stories_by_id: new Map() };
+  try {
+    const registry = JSON.parse(readFileSync(path, "utf-8"));
+    const stories = [
+      ...asArray(registry?.stories),
+      ...asArray(registry?.infrastructure_stories),
+    ];
+    return {
+      path,
+      registry,
+      stories_by_id: new Map(stories.map((story) => [asString(story?.id), story]).filter(([id]) => id)),
+    };
+  } catch {
+    return { path, registry: null, stories_by_id: new Map() };
+  }
+}
+
+function storyTitleFromRecord(story) {
+  return cleanTitle(story?.title || story?.name || story?.summary || story?.narrative?.need || "") || null;
+}
+
+function storyStatusFromRecord(story) {
+  return asString(story?.status || story?.state || story?.review_status) || null;
+}
+
+function buildStoryContext({ storyRefs, source, cwd }) {
+  const registry = cwd ? readStoryRegistryForContext(cwd) : { stories_by_id: new Map() };
+  const structured = asArray(source?.structured?.story_context);
+  const byId = new Map();
+  const loose = [];
+  for (const entry of structured) {
+    const id = asString(entry?.id);
+    if (id) byId.set(id, entry);
+    else if (entry?.title || entry?.status || entry?.relevance) loose.push(entry);
+  }
+  let looseIndex = 0;
+  return uniqueStrings(storyRefs).map((storyRef) => {
+    const story = registry.stories_by_id.get(storyRef) || null;
+    const provided = byId.get(storyRef) || null;
+    const fallback = !provided && looseIndex < loose.length ? loose[looseIndex++] : null;
+    return {
+      id: storyRef,
+      title: provided?.title || fallback?.title || storyTitleFromRecord(story),
+      status: provided?.status || fallback?.status || storyStatusFromRecord(story),
+      relevance: provided?.relevance || fallback?.relevance || "Linked by the intake source and carried into Program Packet traceability.",
+    };
+  });
+}
+
 function normalizeStoryTitle(value, fallback = "Program Manager intake story") {
   const title = cleanTitle(value || fallback).slice(0, 120).trim();
   return title || fallback;
@@ -795,42 +943,12 @@ function normalizeAutoStoryCandidates(parsed) {
 }
 
 async function discoverAutoStoryCandidates({ source, cwd, env, fetchImpl }) {
-  const config = loadDriftLlmConfig(env, { cwd });
-  const publicConfig = publicDriftConfig(config);
-  const system = [
-    "You identify draft user-story candidates from Program Manager ticket intake text.",
-    "Return JSON only with: story_candidates.",
-    "Each story candidate should include title, user, need, outcome, acceptance_criteria, tags.",
-    "Keep candidates discrete; prefer one story when the text describes one feature.",
-    "Do not mark stories implemented or verified.",
-  ].join(" ");
-  try {
-    const response = await callOpenAiCompatibleJson({
-      config,
-      env,
-      fetchImpl,
-      maxTokens: 900,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: JSON.stringify(redactObject({ title: source.title, text: source.text }, env)) },
-      ],
-    });
-    return {
-      available: true,
-      source: response.source || "provider",
-      config: publicConfig,
-      raw_excerpt: response.raw_excerpt || "",
-      candidates: normalizeAutoStoryCandidates(response.parsed),
-    };
-  } catch (error) {
-    return {
-      available: false,
-      source: "deterministic_fallback",
-      config: publicConfig,
-      summary: `Auto-story advisory unavailable: ${error?.message || "unknown error"}`,
-      candidates: [],
-    };
-  }
+  return {
+    available: false,
+    source: "deterministic_only",
+    summary: "Auto-story provider discovery removed; deterministic story drafting remains available.",
+    candidates: [],
+  };
 }
 
 function existingAutoStoryForCandidate(registry, sourceHash, candidate) {
@@ -843,18 +961,12 @@ function existingAutoStoryForCandidate(registry, sourceHash, candidate) {
   }) || null;
 }
 
-function nextAutoStoryId(registry) {
-  const used = new Set(asArray(registry?.stories).map((story) => asString(story?.id)).filter(Boolean));
-  let max = 0;
-  for (const id of used) {
-    const match = id.match(/^US-PM-AUTO-(\d{1,4})$/);
-    if (match) max = Math.max(max, Number.parseInt(match[1], 10) || 0);
+function autoStoryIdFromSourceHash(sourceHash) {
+  const hash = asString(sourceHash).replace(/[^0-9a-f]/gi, "").slice(0, 16).toUpperCase();
+  if (!/^[0-9A-F]{16}$/.test(hash)) {
+    throw new Error(`Cannot derive auto story id from source hash: ${sourceHash}`);
   }
-  for (let next = max + 1; next < 10_000; next += 1) {
-    const id = `${AUTO_STORY_ID_PREFIX}-${String(next).padStart(3, "0")}`;
-    if (!used.has(id)) return id;
-  }
-  return `${AUTO_STORY_ID_PREFIX}-${String(used.size + 1).padStart(3, "0")}`;
+  return `${AUTO_STORY_ID_PREFIX}-H${hash}`;
 }
 
 function buildDraftStory({ registry, source, candidate, timestamp }) {
@@ -864,7 +976,7 @@ function buildDraftStory({ registry, source, candidate, timestamp }) {
     return { story: existing, reused: true, source_hash: sourceHash };
   }
   const story = {
-    id: nextAutoStoryId(registry),
+    id: autoStoryIdFromSourceHash(sourceHash),
     title: normalizeStoryTitle(candidate.title),
     priority: "MEDIUM",
     status: "NOT_IMPLEMENTED",
@@ -1023,6 +1135,15 @@ function externalRefFromSource(source, timestamp) {
       synced_at: timestamp,
     };
   }
+  if (source.kind === "finding") {
+    return {
+      kind: "local_file",
+      path: source.external?.artifact_path || source.external?.path || null,
+      source_hash: sha256(source.text).slice(0, 16),
+      title: source.title || null,
+      synced_at: timestamp,
+    };
+  }
   return {
     kind: "local_text",
     source_hash: sha256(source.text).slice(0, 16),
@@ -1082,8 +1203,85 @@ function carryRecurrenceGuardsIntoDraft(draft, recurrenceCheck) {
   return true;
 }
 
-function buildIntakeDraft({ packet, source, timestamp, artifactRelPath, additionalStoryRefs = [] }) {
-  const storyRefs = uniqueStrings([...extractStoryRefs(source.text), ...additionalStoryRefs]);
+const SECTION_STOP_LABELS = [
+  "problem",
+  "proposed change",
+  "proposal",
+  "solution",
+  "acceptance criteria",
+  "acceptance",
+  "verification",
+  "test plan",
+  "story context",
+  "user story",
+];
+
+function sourceBodyWithoutTitle(source) {
+  const lines = String(source?.text || "").split(/\r?\n/);
+  const title = cleanTitle(source?.ticket_title || source?.title || "");
+  if (title && cleanTitle(lines[0] || "").toLowerCase() === title.toLowerCase()) {
+    return lines.slice(1).join("\n").trim();
+  }
+  return String(source?.text || "").trim();
+}
+
+function extractLabeledSection(text, labels) {
+  const body = String(text || "");
+  if (!body.trim()) return "";
+  const escapedLabels = labels.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const stopLabels = SECTION_STOP_LABELS.map((label) => label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const pattern = new RegExp(`(?:^|\\n)\\s*(?:#{1,6}\\s*)?(?:${escapedLabels})\\s*:?\\s*(?:\\n|)([\\s\\S]*?)(?=\\n\\s*(?:#{1,6}\\s*)?(?:${stopLabels})\\s*:?\\s*(?:\\n|$)|$)`, "i");
+  const match = body.match(pattern);
+  return match ? match[1].trim() : "";
+}
+
+function sourceProblem(source) {
+  return oneLine(
+    source?.structured?.problem ||
+    extractLabeledSection(sourceBodyWithoutTitle(source), ["problem", "user problem"]) ||
+    sourceBodyWithoutTitle(source),
+    500,
+  );
+}
+
+function sourceProposedChange(source, ticketTitle) {
+  return oneLine(
+    source?.structured?.proposed_change ||
+    extractLabeledSection(sourceBodyWithoutTitle(source), ["proposed change", "proposal", "solution", "implementation"]) ||
+    `Implement ${ticketTitle} using the Program Packet traceability, acceptance, and verification evidence from intake.`,
+    500,
+  );
+}
+
+function buildAcceptanceText({ source, ticketTitle, problem, proposedChange }) {
+  const explicit = asArray(source?.structured?.acceptance_bullets)
+    .map(asString)
+    .find(Boolean);
+  if (explicit) return oneLine(explicit, 600);
+  const section = extractLabeledSection(sourceBodyWithoutTitle(source), ["acceptance criteria", "acceptance"]);
+  if (section) return oneLine(section.replace(/^[-*]\s*/gm, ""), 600);
+  const basis = proposedChange || problem || sourceBodyWithoutTitle(source) || ticketTitle;
+  return oneLine(`Complete "${ticketTitle}" so ${basis}`, 600);
+}
+
+function buildVerificationAction({ source, artifactRelPath }) {
+  const explicit = asArray(source?.structured?.verification_plan)
+    .map(asString)
+    .find(Boolean);
+  if (explicit) return oneLine(explicit, 600);
+  const section = extractLabeledSection(sourceBodyWithoutTitle(source), ["verification", "test plan"]);
+  if (section) return oneLine(section.replace(/^[-*]\s*/gm, ""), 600);
+  return `Review ${artifactRelPath}`;
+}
+
+function sourceEvidenceRefs(source) {
+  return uniqueStrings(asArray(source?.structured?.evidence_refs).map(asString).filter(Boolean));
+}
+
+function buildIntakeDraft({ packet, source, timestamp, artifactRelPath, additionalStoryRefs = [], cwd = null }) {
+  const structuredStoryRefs = asArray(source?.structured?.story_context).map((entry) => asString(entry?.id)).filter(Boolean);
+  const storyRefs = uniqueStrings([...extractStoryRefs(source.text), ...structuredStoryRefs, ...additionalStoryRefs]);
+  const evidenceRefs = sourceEvidenceRefs(source);
   const suffix = sha256(`${source.kind}:${source.source_arg || ""}:${source.external?.url || ""}:${source.text}`).slice(0, 8).toUpperCase();
   const ticketId = `T-INTAKE-${suffix}`;
   const acceptanceId = `AC-${ticketId}`;
@@ -1102,6 +1300,9 @@ function buildIntakeDraft({ packet, source, timestamp, artifactRelPath, addition
   };
   const existingTicket = asArray(next.tickets).find((ticket) => asString(ticket?.id) === ticketId) || {};
   const ticketTitle = titleFromSource(source);
+  const problem = sourceProblem(source);
+  const proposedChange = sourceProposedChange(source, ticketTitle);
+  const storyContext = buildStoryContext({ storyRefs, source, cwd });
   const incomingTypeWins = source.ticket_type_explicit === true || !existingTicket.id;
   const incomingTicketType = incomingTypeWins ? source.ticket_type : (existingTicket.ticket_type || existingTicket.type || source.ticket_type);
   const incomingBaseType = incomingTypeWins ? source.base_ticket_type : (existingTicket.type || source.base_ticket_type);
@@ -1143,10 +1344,17 @@ function buildIntakeDraft({ packet, source, timestamp, artifactRelPath, addition
     migration_boundary_refs: asArray(existingTicket.migration_boundary_refs),
     deletion_move_census_refs: asArray(existingTicket.deletion_move_census_refs),
     verification_refs: uniqueStrings([...(existingTicket.verification_refs || []), verificationId]),
+    evidence_refs: uniqueStrings([...(existingTicket.evidence_refs || []), ...evidenceRefs]),
     external_refs: upsertExternalRef(existingTicket.external_refs, externalRef),
     review_artifacts: upsertByPath(existingTicket.review_artifacts, reviewArtifact),
     persona_packs: personaPacks,
+    acceptance_quality_required: existingTicket.acceptance_quality_required !== undefined
+      ? existingTicket.acceptance_quality_required
+      : true,
   };
+  if (problem) ticket.problem = existingTicket.problem || problem;
+  if (proposedChange) ticket.proposed_change = existingTicket.proposed_change || proposedChange;
+  if (storyContext.length > 0) ticket.story_context = storyContext;
   if (personaReview) ticket.persona_review = personaReview;
   const quantScope = source.quant_scope || existingTicket.quant_scope || null;
   if (quantScope) ticket.quant_scope = quantScope;
@@ -1157,7 +1365,7 @@ function buildIntakeDraft({ packet, source, timestamp, artifactRelPath, addition
     id: acceptanceId,
     scope: "ticket",
     subject_ref: ticketId,
-    text: "The proposed ticket has traceable scope, acceptance criteria, and verification evidence before it can become ready.",
+    text: buildAcceptanceText({ source, ticketTitle, problem, proposedChange }),
     story_refs: storyRefs,
     maintenance_rationale: storyRefs.length > 0 ? null : "Draft intake gap requires story linkage before ready.",
     ...(existingAcceptance || {}),
@@ -1175,17 +1383,22 @@ function buildIntakeDraft({ packet, source, timestamp, artifactRelPath, addition
     scope: "ticket",
     subject_ref: ticketId,
     acceptance_criterion_ref: acceptanceId,
-    proof_type: "proof:artifact_review",
-    command_or_action: `Review ${artifactRelPath}`,
-    pass_means: "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers.",
+    proof_type: existingVerification?.proof_type || source?.structured?.verification_proof_type || "proof:artifact_review",
+    command_or_action: existingVerification?.command_or_action || buildVerificationAction({ source, artifactRelPath }),
+    pass_means: existingVerification?.pass_means || source?.structured?.verification_pass_means || "Intake packet records source text, traceability, acceptance criteria, verification rows, and deterministic blockers.",
     ...(existingVerification || {}),
   };
+  verificationRow.evidence_refs = uniqueStrings([
+    ...asArray(existingVerification?.evidence_refs),
+    ...evidenceRefs,
+  ]);
   next.verification_matrix = upsertById(next.verification_matrix, verificationRow);
 
   return {
     packet: next,
     ticket,
     story_refs: storyRefs,
+    story_context: storyContext,
     gap_refs: ticket.gap_refs,
     persona_review: personaReview,
     acceptance_criteria: next.acceptance_criteria.filter((entry) => entry.id === acceptanceId),
@@ -1202,8 +1415,14 @@ function runIntakeOntology(packet, cwd, options = {}) {
   if (storyIds && Array.isArray(options.extraStoryIds)) {
     for (const storyId of options.extraStoryIds) storyIds.add(asString(storyId));
   }
-  const validation = validateProgramPacket(packet, { cwd, storyIds });
-  const ontology = runProgramOntology(packet, cwd);
+  const validation = validateProgramPacket(packet, {
+    cwd,
+    storyIds,
+    programPacketPath: options.programPacketPath,
+  });
+  const ontology = runProgramOntology(packet, cwd, null, {
+    programPacketPath: options.programPacketPath,
+  });
   return {
     program_packet_validation: validation,
     ontology,
@@ -1309,52 +1528,58 @@ function scanForDuplicateTickets({ candidateTitle, candidateId, packet, packetPa
   };
 }
 
-async function runIntakeDeepSeekAdvisory({ intakePacket, cwd, env, fetchImpl }) {
-  const config = loadDriftLlmConfig(env, { cwd });
-  const publicConfig = publicDriftConfig(config);
-  const system = [
-    "You are an advisory reviewer for a Program Manager idea-to-ticket intake packet.",
-    "Return JSON only with: status, summary, findings, recommended_actions.",
-    "Allowed status values: fresh, needs_story, needs_annotation, needs_verification, ontology_conflict, blocked, review_ready.",
-    "Deterministic Program Packet validation, ontology, stories, annotations, and verification remain authoritative.",
-    "If quant_persona_gate is required and blocked, classify the ticket as blocked or needs_verification; never call it review_ready.",
-    "Do not mark tickets ready, verified, or closed.",
-  ].join(" ");
-  try {
-    const response = await callOpenAiCompatibleJson({
-      config,
-      env,
-      fetchImpl,
-      maxTokens: 1200,
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: JSON.stringify(redactObject(intakePacket, env)) },
-      ],
-    });
-    return {
-      available: true,
-      config: publicConfig,
-      source: response.source || "provider",
-      raw_excerpt: response.raw_excerpt || "",
-      ...normalizeIntakeAdvisoryPayload(response.parsed),
-    };
-  } catch (error) {
-    return {
-      available: false,
-      status: "unavailable",
-      summary: `DeepSeek advisory unavailable: ${error?.message || "unknown error"}`,
-      findings: [],
-      recommended_actions: [],
-      config: publicConfig,
-    };
-  }
-}
-
-function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPath, ticket, acceptanceCriteria, verificationRows, deterministic, deepseekAdvisory, duplicateScan = null }) {
+function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPath, ticket, acceptanceCriteria, verificationRows, deterministic, duplicateScan = null }) {
   const blockerCount = asArray(deterministic?.blockers).length;
   const recurrence = deterministic?.retro_recurrence_check || null;
   const quantGate = deterministic?.quant_persona_gate || null;
   const personaReview = ticket?.persona_review || null;
+  const personaPacks = uniqueStrings([
+    ...asArray(ticket?.persona_packs),
+    ...asArray(personaReview?.persona_packs),
+  ]);
+  const deterministicStatus = blockerCount > 0 ? "blocked" : "proposed";
+  const deterministicBlockers = asArray(deterministic?.blockers).slice(0, 8);
+  const hasGithubIssue = ticketHasGithubIssueMirror(ticket);
+  const publishCommand = `node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs publish --program ${programPacketPath} --ticket ${ticket?.id || "<ticket-id>"} --repo owner/name --json`;
+  const knowledgeReceipt = buildKnowledgeReceipt({
+    source: {
+      surface: "program_manager_intake",
+      kind: source?.kind || null,
+      title: source?.title || ticket?.title || null,
+      ticket_id: ticket?.id || null,
+      path: intakeArtifactPath || null,
+      text: source?.text || null,
+    },
+    ticket,
+    personaReview,
+    personaPacks,
+    sourceText: source?.text || "",
+    retroRecurrenceCheck: recurrence,
+    quantPersonaGate: quantGate,
+    deterministicStatus,
+    deterministicBlockers,
+    evidenceRefs: [
+      ...asArray(ticket?.story_refs),
+      ...asArray(ticket?.verification_refs),
+      ...asArray(verificationRows).map((entry) => entry?.id),
+    ],
+    remainingUnverifiedRisk: [
+      hasGithubIssue ? null : {
+        id: "github_issue_required_before_ready",
+        status: "pending",
+        reason: "GitHub mirror publication is still required before ticket-ready handoff.",
+      },
+      deterministicStatus === "proposed" ? {
+        id: "implementation_proof_pending",
+        status: "pending",
+        reason: "Program intake scoped the ticket but did not execute the child plan.",
+      } : null,
+    ].filter(Boolean),
+    artifactRefs: [
+      { kind: "program_packet", path: programPacketPath },
+      { kind: "program_intake_packet", path: intakeArtifactPath },
+    ],
+  });
   return {
     name: "Ticket Intake Receipt",
     version: 1,
@@ -1373,11 +1598,9 @@ function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPat
     base_ticket_type: ticket?.type || null,
     ticket_lifecycle: ticket?.lifecycle || null,
     persona_review_status: personaReview?.status || "not_run",
-    persona_packs: uniqueStrings([
-      ...asArray(ticket?.persona_packs),
-      ...asArray(personaReview?.persona_packs),
-    ]),
+    persona_packs: personaPacks,
     story_refs: uniqueStrings(ticket?.story_refs),
+    story_context_refs: uniqueStrings(asArray(ticket?.story_context).map((entry) => entry?.id)),
     gap_refs: uniqueStrings(ticket?.gap_refs),
     defect_refs: uniqueStrings(ticket?.defect_refs),
     acceptance_criteria_refs: uniqueStrings([
@@ -1388,9 +1611,10 @@ function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPat
       ...asArray(ticket?.verification_refs),
       ...asArray(verificationRows).map((entry) => entry?.id),
     ]),
-    deterministic_status: blockerCount > 0 ? "blocked" : "proposed",
+    deterministic_status: deterministicStatus,
     deterministic_blocker_count: blockerCount,
-    deterministic_blockers: asArray(deterministic?.blockers).slice(0, 8),
+    deterministic_blockers: deterministicBlockers,
+    knowledge_receipt: knowledgeReceipt,
     retro_recurrence_status: recurrence?.status || "not_run",
     retro_recurrence_blocking_count: recurrence?.summary?.blocking_count || 0,
     retro_recurrence_advisory_count: recurrence?.summary?.advisory_count || 0,
@@ -1401,21 +1625,17 @@ function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPat
     quant_persona_gate_missing_count: quantGate?.summary?.missing_guard_count || 0,
     duplicate_scan_status: duplicateScan?.status || "not_run",
     duplicate_scan_matches: asArray(duplicateScan?.matches).map((match) => match.id),
-    deepseek_advisory_status: deepseekAdvisory?.status || DEEPSEEK_ADVISORY_NOT_RUN_STATUS,
-    deepseek_advisory_summary: oneLine(deepseekAdvisory?.summary || (!deepseekAdvisory ? DEEPSEEK_ADVISORY_NOT_RUN_SUMMARY : "")),
-    deepseek_advisory_artifact_path: intakeArtifactPath,
-    // Full advisory remains in JSON artifacts for auditability; default text
-    // output renders a compact status/summary/artifact line instead.
-    deepseek_advisory_block: buildDeepSeekAdvisoryBlock(deepseekAdvisory),
-    verbatim_reproduction_contract: DEEPSEEK_VERBATIM_REPRODUCTION_CONTRACT,
     direct_github_creation_allowed: false,
-    github_publication: "explicit_publish_required",
-    next_required_command: `node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program ${programPacketPath} --json`,
-    publish_command: `node .agent/skills/iterative-planner/scripts/github_ticket_review.mjs publish --program ${programPacketPath} --ticket ${ticket?.id || "<ticket-id>"} --repo owner/name --json`,
+    github_publication: hasGithubIssue ? "github_issue_linked" : "required_before_ready",
+    github_issue_required_before_ready: !hasGithubIssue,
+    next_required_command: hasGithubIssue
+      ? `node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program ${programPacketPath} --json`
+      : publishCommand,
+    publish_command: publishCommand,
   };
 }
 
-async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cwd, env, fetchImpl, write, autoStoryEnabled = false, llmReview = false, allowDuplicate = false }) {
+async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cwd, env, fetchImpl, write, autoStoryEnabled = false, allowDuplicate = false }) {
   const preparedSource = await summarizeLongTitle({ source, cwd, env, fetchImpl });
   const autoStory = await prepareAutoStory({
     enabled: autoStoryEnabled,
@@ -1433,6 +1653,7 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
     timestamp,
     artifactRelPath,
     additionalStoryRefs: autoStory.story_refs,
+    cwd,
   });
   const duplicateScan = scanForDuplicateTickets({
     candidateTitle: draft.ticket?.title || preparedSource.title,
@@ -1459,7 +1680,10 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
   if (duplicateScan.matches.length > 0 && allowDuplicate) {
     duplicateScan.status = "overridden";
   }
-  let deterministic = runIntakeOntology(draft.packet, cwd, { extraStoryIds: autoStory.story_refs });
+  let deterministic = runIntakeOntology(draft.packet, cwd, {
+    extraStoryIds: autoStory.story_refs,
+    programPacketPath: packetPath,
+  });
   const recurrenceArgs = () => ({
     cwd,
     sourceText: preparedSource.text,
@@ -1474,7 +1698,10 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
   // rather than hard-blocking scoping; re-evaluate once carried. The guard is now an
   // obligation on the ticket the child-plan must satisfy at implementation.
   if ((recurrenceCheck?.summary?.blocking_count || 0) > 0 && carryRecurrenceGuardsIntoDraft(draft, recurrenceCheck)) {
-    deterministic = runIntakeOntology(draft.packet, cwd, { extraStoryIds: autoStory.story_refs });
+    deterministic = runIntakeOntology(draft.packet, cwd, {
+      extraStoryIds: autoStory.story_refs,
+      programPacketPath: packetPath,
+    });
     recurrenceCheck = evaluateRetroRecurrenceCheck(recurrenceArgs());
   }
   const quantPersonaGate = evaluateQuantPersonaGate({
@@ -1506,6 +1733,7 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
       persona_review_enabled: preparedSource.persona_review_enabled === true,
       persona_packs: uniqueStrings(preparedSource.persona_packs || draft.ticket.persona_packs),
       text: preparedSource.text,
+      structured: preparedSource.structured || null,
       external: preparedSource.external,
     },
     program: {
@@ -1516,6 +1744,7 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
     },
     candidate_ticket: draft.ticket,
     linked_story_refs: draft.story_refs,
+    story_context: draft.story_context,
     linked_gap_refs: draft.gap_refs,
     persona_review: draft.persona_review || null,
     auto_story: {
@@ -1558,25 +1787,8 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
     quant_persona_gate: quantPersonaGate,
     deterministic,
     duplicate_scan: duplicateScan,
-    deepseek_advisory: {
-      status: "unavailable",
-      summary: "not_run",
-      findings: [],
-      recommended_actions: [],
-    },
     final_status: deterministic.blockers.length > 0 ? "blocked" : "proposed",
   };
-  // PM-3 (consolidation 2026-06-10): LLM intake review is opt-in. The default
-  // path records an honest not_run instead of a paraphrase nobody consumes.
-  intakePacket.deepseek_advisory = llmReview
-    ? await runIntakeDeepSeekAdvisory({ intakePacket, cwd, env, fetchImpl })
-    : {
-        available: false,
-        status: DEEPSEEK_ADVISORY_NOT_RUN_STATUS,
-        summary: "LLM intake review skipped (opt-in via --llm-review); deterministic results are authoritative.",
-        findings: [],
-        recommended_actions: [],
-      };
   intakePacket.ticket_intake_receipt = buildTicketIntakeReceipt({
     source: preparedSource,
     programPacketPath: relativePath(cwd, packetPath),
@@ -1585,7 +1797,6 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
     acceptanceCriteria: draft.acceptance_criteria,
     verificationRows: draft.verification_rows,
     deterministic,
-    deepseekAdvisory: intakePacket.deepseek_advisory,
     duplicateScan,
   });
 
@@ -1611,7 +1822,6 @@ async function runSingleIntakeSource({ source, packet, packetPath, timestamp, cw
     verification_rows: draft.verification_rows,
     deterministic,
     duplicate_scan: duplicateScan,
-    deepseek_advisory: intakePacket.deepseek_advisory,
     ticket_intake_receipt: intakePacket.ticket_intake_receipt,
     intake_packet: intakePacket,
     packet: draft.packet,
@@ -1644,7 +1854,6 @@ function aggregateIntakeResults({ results, target, cwd, write }) {
       blocker_count: deterministicBlockers.length,
       blockers: deterministicBlockers,
     },
-    deepseek_advisories: results.map((result) => result.deepseek_advisory),
     ticket_intake_receipts: results.map((result) => result.ticket_intake_receipt),
     intake_packets: results.map((result) => result.intake_packet),
     results: results.map(({ packet, ...result }) => result),
@@ -1720,9 +1929,51 @@ export function runInit(inputArgs, options = {}) {
     title: explicitTitle(args, env),
     goal: redactText(args.goal || "", env),
   });
-  const validation = validateProgramPacket(packet, { cwd, storyIds: collectStoryIds(cwd) });
+
+  const waiverValues = [args.waiveGateRequirement, args.waiverDecision, args.waiverReason].map(asString);
+  const waiverCount = waiverValues.filter(Boolean).length;
+  if (waiverCount > 0 && waiverCount !== waiverValues.length) {
+    throw new Error("--waive-gate-requirement, --waiver-decision, and --waiver-reason must be provided together");
+  }
+  if (asString(args.remoteMode) && normalizeRemoteMode(args.remoteMode) === "local-only" && asString(args.repo)) {
+    throw new Error("--remote-mode local-only and --repo are mutually exclusive during Program init");
+  }
+
+  const configuredMode = asString(args.remoteMode || env.PLANNER_REMOTE_MODE);
+  const configuredRepository = asString(args.repo || env.PLANNER_REPOSITORY || env.GITHUB_REPOSITORY);
+  if (configuredMode) packet.remote_mode = normalizeRemoteMode(configuredMode);
+  if (configuredRepository) {
+    packet.remote_policy = { repository_slug: normalizeProgramRepositorySlug(configuredRepository) || configuredRepository };
+    if (!configuredMode) packet.remote_mode = "remote-sync";
+  }
+  if (waiverCount === waiverValues.length && waiverCount > 0) {
+    const [requirementId, decisionId, reason] = waiverValues;
+    packet.decisions.push({
+      id: decisionId,
+      type: "gate_requirement_waiver",
+      subject_ref: requirementId,
+      rationale: reason,
+    });
+    packet.gate_requirement_waivers = [{
+      requirement_id: requirementId,
+      decision_ref: decisionId,
+      reason,
+    }];
+  }
+
+  const validation = validateProgramPacket(packet, {
+    cwd,
+    storyIds: collectStoryIds(cwd),
+    remoteMode: args.remoteMode,
+    repo: args.repo,
+    env,
+    programPacketPath: packetPath,
+  });
   if (!validation.ok) {
-    throw new Error(`Generated Program Packet failed validation: ${validation.errors.map((entry) => entry.message).join("; ")}`);
+    const error = new Error(`Generated Program Packet failed validation: ${validation.errors.map((entry) => entry.message).join("; ")}`);
+    error.validation = validation;
+    error.packetPath = relativePath(cwd, packetPath);
+    throw error;
   }
   mkdirSync(dirname(packetPath), { recursive: true });
   writeFileSync(packetPath, `${JSON.stringify(redactObject(packet, env), null, 2)}\n`, "utf-8");
@@ -1738,6 +1989,8 @@ export function runInit(inputArgs, options = {}) {
     created: true,
     overwritten: existedBefore && args.force,
     validation,
+    remote_policy: validation.remote_policy,
+    gate_satisfiability: validation.gate_satisfiability,
     next_required_command: `node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program ${relativePath(cwd, packetPath)} --json`,
   }, env);
 }
@@ -1760,7 +2013,12 @@ export async function runIntake(inputArgs, options = {}) {
   }
 
   const timestamp = nowIso(clock);
-  const sources = loadIntakeSources(args, { cwd, env, ghRunner, gitRunner });
+  const remoteMode = resolveRemoteMode({
+    explicit: args.remoteMode,
+    env,
+    defaultMode: (args.issue || args.projectItem) ? "remote-read" : "local-only",
+  });
+  const sources = loadIntakeSources(args, { cwd, env, ghRunner, gitRunner, remoteMode });
   let workingPacket = target.packet;
   const results = [];
   for (const source of sources) {
@@ -1774,7 +2032,6 @@ export async function runIntake(inputArgs, options = {}) {
       fetchImpl,
       write: args.write,
       autoStoryEnabled: args.autoStory,
-      llmReview: args.llmReview === true,
       allowDuplicate: args.allowDuplicate === true,
     });
     workingPacket = result.packet;
@@ -1790,13 +2047,446 @@ export async function runIntake(inputArgs, options = {}) {
     ? results[0]
     : aggregateIntakeResults({ results, target, cwd, write: args.write });
   const { packet, ...publicResult } = result;
-  return redactObject(publicResult, env);
+  return redactObject({ remote_mode: remoteMode, ...publicResult }, env);
 }
 
-function runForwardReasoning(packet, cwd, query) {
+function isPlainObject(value) {
+  return !!value && typeof value === "object" && !Array.isArray(value);
+}
+
+function firstValue(...values) {
+  for (const value of values) {
+    const text = asString(value);
+    if (text) return text;
+  }
+  return null;
+}
+
+function readJsonArtifact(cwd, artifactPath) {
+  const resolved = isAbsolute(artifactPath) ? artifactPath : resolve(cwd, artifactPath);
+  const parsed = JSON.parse(readFileSync(resolved, "utf-8"));
+  return {
+    path: resolved,
+    rel_path: relativePath(cwd, resolved),
+    json: parsed,
+  };
+}
+
+function normalizeArtifactReport(report, relPath) {
+  const next = clone(report);
+  if (!next.artifact_path) next.artifact_path = relPath;
+  if (!next.manifest_path && (Array.isArray(next.suites) || Array.isArray(next.results) || Array.isArray(next.checks))) {
+    next.manifest_path = relPath;
+  }
+  return next;
+}
+
+function looksLikeIveReport(report) {
+  return isPlainObject(report) && (
+    Array.isArray(report.suites) ||
+    Array.isArray(report.results) ||
+    Array.isArray(report.checks) ||
+    Array.isArray(report.issues) && (report.overall_status || report.phase || report.run_id)
+  );
+}
+
+function looksLikeScoreboardReport(report) {
+  return isPlainObject(report) && (
+    isPlainObject(report.scores) ||
+    Array.isArray(report.regressions) ||
+    report.artifacts?.scoreboard_json ||
+    report.artifacts?.conformance_manifest
+  );
+}
+
+function looksLikeRitualReplayReport(report) {
+  return isPlainObject(report) && (report.ritual_replay_id || report.corpus) && Array.isArray(report.regressions);
+}
+
+function looksLikeRuleEngineReport(report) {
+  return isPlainObject(report) && (Array.isArray(report.violations) || Array.isArray(report.warnings));
+}
+
+function looksLikeProjectHealthReport(report) {
+  return isPlainObject(report) && Array.isArray(report.findings) && (report.commit || report.analyzers || report.generated_at);
+}
+
+function scoreValuesFromFinding(finding) {
+  const scores = {
+    ...(isPlainObject(finding?.measured_scores) ? finding.measured_scores : {}),
+    ...(isPlainObject(finding?.evidence_refs?.measured_scores) ? finding.evidence_refs.measured_scores : {}),
+  };
+  return Object.fromEntries(
+    Object.entries(scores).filter(([, value]) => typeof value === "number" && Number.isFinite(value)),
+  );
+}
+
+function mergeFindingScores(finding, scores = {}) {
+  const mergedScores = {
+    ...scoreValuesFromFinding(finding),
+    ...Object.fromEntries(
+      Object.entries(scores || {}).filter(([, value]) => typeof value === "number" && Number.isFinite(value)),
+    ),
+  };
+  const next = clone(finding);
+  next.measured_scores = mergedScores;
+  next.evidence_refs = {
+    ...(isPlainObject(next.evidence_refs) ? next.evidence_refs : {}),
+    measured_scores: mergedScores,
+  };
+  return next;
+}
+
+function repoRelativeCommand(command, cwd) {
+  const text = asString(command);
+  if (!text) return "";
+  return text.split(resolve(cwd) + sep).join("");
+}
+
+function artifactFileExists(cwd, relPath) {
+  if (!relPath) return false;
+  const resolved = isAbsolute(relPath) ? relPath : resolve(cwd, relPath);
+  return existsSync(resolved);
+}
+
+function plannerScriptPathFor(scriptName, cwd) {
+  const candidate = `.agent/skills/iterative-planner/scripts/${scriptName}`;
+  return artifactFileExists(cwd, candidate) ? candidate : scriptName;
+}
+
+function detectOffendingFilesFromLogs(finding, cwd) {
+  const evidence = isPlainObject(finding?.evidence_refs) ? finding.evidence_refs : {};
+  const logPaths = uniqueStrings([
+    evidence.stdout_log_path,
+    evidence.log_path,
+    evidence.stderr_log_path,
+  ]);
+  const files = [];
+  for (const logPath of logPaths) {
+    if (!artifactFileExists(cwd, logPath)) continue;
+    const resolved = isAbsolute(logPath) ? logPath : resolve(cwd, logPath);
+    const failureLines = readFileSync(resolved, "utf-8")
+      .split(/\r?\n/)
+      .filter((line) => /\bFAIL\b/i.test(line));
+    for (const line of failureLines) {
+      for (const match of line.matchAll(/\b([A-Za-z0-9_.-]+\.mjs)\b/g)) {
+        files.push(plannerScriptPathFor(match[1], cwd));
+      }
+    }
+  }
+  return uniqueStrings(files);
+}
+
+function enrichFindingEvidence(finding, { cwd, measuredScores = {} } = {}) {
+  const next = mergeFindingScores(finding, measuredScores);
+  const evidence = isPlainObject(next.evidence_refs) ? next.evidence_refs : {};
+  const detectedFiles = detectOffendingFilesFromLogs(next, cwd);
+  next.evidence_refs = {
+    ...evidence,
+    offending_files: uniqueStrings([
+      ...asArray(evidence.offending_files),
+      ...asArray(evidence.files),
+      ...detectedFiles,
+    ]),
+  };
+  return next;
+}
+
+function findingIdentity(finding) {
+  return [
+    finding?.id,
+    finding?.dedupe_key,
+    finding?.source_run?.run_receipt_path,
+    finding?.failing_suite_id,
+    finding?.failing_check_id,
+    finding?.title,
+  ].map((entry) => asString(entry)).filter(Boolean).join("|");
+}
+
+function dedupeFindings(findings) {
+  const seen = new Set();
+  const out = [];
+  for (const finding of findings) {
+    const key = findingIdentity(finding);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(finding);
+  }
+  return out;
+}
+
+function scoreboardFindings(report, cwd) {
+  const scoreboardScores = scoreCurrentsFromProgramManager(report.scores || {});
+  const nestedManifest = firstValue(report.artifacts?.conformance_manifest);
+  if (nestedManifest && artifactFileExists(cwd, nestedManifest)) {
+    const nested = readJsonArtifact(cwd, nestedManifest);
+    const nestedReport = normalizeArtifactReport(nested.json, nested.rel_path);
+    const nestedFindings = findingsFromIveReport(nestedReport)
+      .map((finding) => enrichFindingEvidence(finding, { cwd, measuredScores: scoreboardScores }));
+    if (nestedFindings.length > 0) {
+      return nestedFindings;
+    }
+  }
+  return findingsFromScoreboardReport(report)
+    .map((finding) => enrichFindingEvidence(finding, { cwd, measuredScores: scoreboardScores }));
+}
+
+function scoreCurrentsFromProgramManager(scores = {}) {
+  const out = {};
+  for (const [key, value] of Object.entries(scores || {})) {
+    if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
+    else if (isPlainObject(value) && Number.isFinite(Number(value.current))) out[key] = Number(value.current);
+  }
+  return out;
+}
+
+function findingsFromArtifact(cwd, artifactPath) {
+  const artifact = readJsonArtifact(cwd, artifactPath);
+  const report = normalizeArtifactReport(artifact.json, artifact.rel_path);
+  const findings = [];
+
+  if (Array.isArray(report.findings) && report.findings.some((finding) => finding?.schema_version || finding?.source_run || finding?.evidence_refs)) {
+    findings.push(...report.findings.map((finding) => enrichFindingEvidence(finding, { cwd })));
+  }
+
+  if (looksLikeScoreboardReport(report)) {
+    findings.push(...scoreboardFindings(report, cwd));
+  } else if (looksLikeIveReport(report)) {
+    findings.push(...findingsFromIveReport(report).map((finding) => enrichFindingEvidence(finding, { cwd })));
+  } else if (looksLikeRitualReplayReport(report)) {
+    findings.push(...findingsFromRitualReplayReport(report).map((finding) => enrichFindingEvidence(finding, { cwd })));
+  } else if (looksLikeRuleEngineReport(report)) {
+    findings.push(...findingsFromRuleEngineReport(report).map((finding) => enrichFindingEvidence(finding, { cwd })));
+  } else if (looksLikeProjectHealthReport(report)) {
+    findings.push(...findingsFromProjectHealthReport(report).map((finding) => enrichFindingEvidence(finding, { cwd })));
+  }
+
+  return dedupeFindings(findings).map((finding) => ({
+    artifact_path: artifact.rel_path,
+    finding,
+  }));
+}
+
+function findingEvidenceRefStrings(finding) {
+  const evidence = isPlainObject(finding?.evidence_refs) ? finding.evidence_refs : {};
+  const scoreRefs = Object.entries(scoreValuesFromFinding(finding))
+    .map(([key, value]) => `score:${key}=${value}`);
+  return uniqueStrings([
+    finding?.source_run?.run_receipt_path,
+    evidence.run_receipt_path,
+    evidence.proof_artifact_path,
+    evidence.stdout_log_path,
+    evidence.stderr_log_path,
+    evidence.log_path,
+    finding?.failing_suite_id ? `suite:${finding.failing_suite_id}` : null,
+    finding?.failing_check_id ? `check:${finding.failing_check_id}` : null,
+    ...asArray(evidence.offending_files),
+    ...scoreRefs,
+  ]);
+}
+
+function findingTicketTitle(finding) {
+  const suite = asString(finding?.failing_suite_id);
+  const check = asString(finding?.failing_check_id);
+  if (suite) return `Fix ${suite} deterministic finding`;
+  if (check) return `Fix ${check} deterministic finding`;
+  return `Fix ${finding?.source_run?.surface || "deterministic"} finding`;
+}
+
+function findingTextBlock(finding, evidenceRefs, command, expectedResult) {
+  const evidence = isPlainObject(finding?.evidence_refs) ? finding.evidence_refs : {};
+  const files = uniqueStrings(evidence.offending_files);
+  const scores = Object.entries(scoreValuesFromFinding(finding))
+    .map(([key, value]) => `${key}=${value}`)
+    .join(", ");
+  return [
+    findingTicketTitle(finding),
+    "",
+    "Problem:",
+    `${finding.summary || finding.title || "A deterministic run finding needs repair."}`,
+    "",
+    "Evidence:",
+    `- Finding id: ${finding.id || "unknown"}`,
+    `- Source surface: ${finding.source_run?.surface || "unknown"}`,
+    `- Run receipt: ${finding.source_run?.run_receipt_path || evidence.run_receipt_path || "unknown"}`,
+    finding.failing_suite_id ? `- Failing suite: ${finding.failing_suite_id}` : null,
+    finding.failing_check_id ? `- Failing check: ${finding.failing_check_id}` : null,
+    evidence.stdout_log_path ? `- Stdout log: ${evidence.stdout_log_path}` : null,
+    files.length > 0 ? `- Offending files: ${files.join(", ")}` : null,
+    scores ? `- Measured scores: ${scores}` : null,
+    "",
+    "Acceptance criteria:",
+    `- Repair the finding so ${finding.failing_suite_id || finding.failing_check_id || "the deterministic check"} no longer reports failure while preserving evidence refs.`,
+    "",
+    "Verification:",
+    `- ${command || "Rerun the failing deterministic check."}`,
+    `- Expected: ${expectedResult}`,
+    "",
+    `Story refs: US-091`,
+    `Evidence refs: ${evidenceRefs.join(", ")}`,
+  ].filter((line) => line !== null).join("\n");
+}
+
+function findingToIntakeSource({ finding, artifactPath, cwd }) {
+  const evidence = isPlainObject(finding?.evidence_refs) ? finding.evidence_refs : {};
+  const command = repoRelativeCommand(firstValue(finding?.verification?.command, evidence.verification_command), cwd);
+  const expectedResult = firstValue(
+    finding?.verification?.expected_result,
+    evidence.expected_result,
+    "Finding no longer reproduces after repair",
+  );
+  const evidenceRefs = findingEvidenceRefStrings(finding);
+  return attachSourceTicketMetadata({
+    kind: "finding",
+    title: findingTicketTitle(finding),
+    ticket_title: findingTicketTitle(finding),
+    title_source: "deterministic_finding",
+    title_explicit: true,
+    text: findingTextBlock(finding, evidenceRefs, command, expectedResult),
+    external: {
+      artifact_path: artifactPath,
+      path: artifactPath,
+      finding_id: finding.id || null,
+    },
+    structured: {
+      problem: finding.summary || finding.title || null,
+      proposed_change: `Repair ${finding.failing_suite_id || finding.failing_check_id || "the deterministic finding"} using the attached run evidence.`,
+      acceptance_bullets: [
+        `${finding.failing_suite_id || finding.failing_check_id || "The deterministic finding"} no longer reports failure.`,
+        "The generated intake ticket keeps the source run receipt, logs, offending files, measured scores, and rerun command attached.",
+      ],
+      verification_plan: command ? [command] : [],
+      verification_pass_means: expectedResult,
+      verification_proof_type: "proof:integration_smoke",
+      evidence_refs: evidenceRefs,
+      story_context: [{
+        id: "US-091",
+        title: "Deterministic run findings generate evidence-attached draft tickets",
+      }],
+      finding,
+    },
+    source_arg: finding.id || finding.dedupe_key || artifactPath,
+  }, { type: "defect", persona_packs: ["wiring_auditor", "config_integrity", "traceability"] }, {});
+}
+
+export async function runFindingsTriage(inputArgs, options = {}) {
+  const cwd = resolve(options.cwd || process.cwd());
+  const env = options.env || process.env;
+  const clock = options.clock || (() => new Date());
+  const fetchImpl = options.fetchImpl || globalThis.fetch;
+  const args = Array.isArray(inputArgs) ? parseArgs(inputArgs) : { ...inputArgs };
+
+  if (args.command !== "triage-findings") throw new Error(`Unknown command: ${args.command || "(missing)"}`);
+  if (!args.program) throw new Error("Missing --program");
+  if (args.write && !args.accept) throw new Error("Findings are advisory: pass --accept together with --write to create intake tickets.");
+  if (!Array.isArray(args.fromArtifacts) || args.fromArtifacts.filter(Boolean).length === 0) {
+    throw new Error("Pass at least one findings artifact with --from-artifact <path>.");
+  }
+
+  const target = loadTarget(cwd, args.program);
+  if (target.resolved.status !== "FOUND" || target.loadError) {
+    throw new Error(target.loadError?.message || target.resolved.message || `Program Packet not found: ${args.program}`);
+  }
+
+  const artifactFindings = args.fromArtifacts
+    .filter(Boolean)
+    .flatMap((artifactPath) => findingsFromArtifact(cwd, artifactPath));
+  const selectedFindings = args.findingId
+    ? artifactFindings.filter((entry) => entry.finding?.id === args.findingId || entry.finding?.dedupe_key === args.findingId)
+    : artifactFindings;
+
+  const timestamp = nowIso(clock);
+  const runBatch = async ({ write }) => {
+    let workingPacket = target.packet;
+    const results = [];
+    for (const entry of selectedFindings) {
+      const source = findingToIntakeSource({
+        finding: entry.finding,
+        artifactPath: entry.artifact_path,
+        cwd,
+      });
+      const result = await runSingleIntakeSource({
+        source,
+        packet: workingPacket,
+        packetPath: target.resolved.path,
+        timestamp,
+        cwd,
+        env,
+        fetchImpl,
+        write,
+        autoStoryEnabled: false,
+        allowDuplicate: args.allowDuplicate === true,
+      });
+      workingPacket = result.packet;
+      const { packet, intake_packet: intakePacket, ...publicResult } = result;
+      results.push({
+        ...publicResult,
+        source_finding: entry.finding,
+        intake_packet: intakePacket,
+      });
+    }
+    return { workingPacket, results };
+  };
+
+  let { workingPacket, results } = await runBatch({ write: false });
+
+  const blockedDuplicate = results.some((result) => result.blocked_reason === "duplicate_candidates");
+  if (args.accept && args.write && selectedFindings.length > 0 && !blockedDuplicate) {
+    ({ workingPacket, results } = await runBatch({ write: true }));
+    writeFileSync(target.resolved.path, `${JSON.stringify(redactObject(workingPacket, env), null, 2)}\n`, "utf-8");
+  }
+  const wroteArtifacts = args.accept === true && args.write === true && !blockedDuplicate;
+
+  return redactObject({
+    command: "triage-findings",
+    status: blockedDuplicate ? "BLOCKED" : "PASS",
+    advisory_only: true,
+    accepted: args.accept === true,
+    dry_run: !(args.accept && args.write),
+    write: args.write === true,
+    packet_updated: args.accept === true && args.write === true && !blockedDuplicate,
+    program_packet_path: relativePath(cwd, target.resolved.path),
+    artifact_paths: args.fromArtifacts.map((artifactPath) => relativePath(cwd, artifactPath)),
+    finding_count: artifactFindings.length,
+    candidate_count: selectedFindings.length,
+    findings: selectedFindings.map((entry) => entry.finding),
+    intake_artifact_paths: wroteArtifacts
+      ? results.map((result) => result.intake_artifact_path).filter(Boolean)
+      : [],
+    candidate_tickets: results.map((result) => result.candidate_ticket).filter(Boolean),
+    verification_rows: results.flatMap((result) => asArray(result.verification_rows)),
+    duplicate_scans: results.map((result) => result.duplicate_scan || null),
+    results,
+    next_required_command: args.accept
+      ? `node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program ${relativePath(cwd, target.resolved.path)} --json`
+      : `Re-run with --accept --write after operator review to create proposed intake tickets.`,
+  }, env);
+}
+
+export function runDisposition(inputArgs, options = {}) {
+  const args = { ...inputArgs };
+  return buildProgramDisposition({
+    cwd: options.cwd || process.cwd(),
+    fromRepairPacket: args.fromRepairPacket,
+    fromResolutionRequest: args.fromResolutionRequest,
+    deferredPrograms: args.deferredPrograms,
+    output: args.output,
+    close: args.close === true,
+    write: args.write === true,
+  });
+}
+
+function runForwardReasoning(packet, cwd, query, options = {}) {
   const session = createSession();
+  session.consultFile(join(skillPath, "prolog", "verification_statuses.pl"));
   session.consultFile(join(skillPath, "prolog", "programs.pl"));
-  session.consult(programPacketToFacts(packet, { cwd }));
+  session.consult(compileVerificationStatusFacts());
+  session.consult(programPacketToFacts(packet, {
+    cwd,
+    remoteMode: options.remoteMode,
+    env: options.env,
+    programPacketPath: options.programPacketPath,
+  }));
   return session.queryAll(query);
 }
 
@@ -1877,10 +2567,30 @@ function collectStoryIds(cwd) {
   }
 }
 
-function runProgramOntology(packet, cwd) {
+function runProgramOntology(packet, cwd, gate = null, options = {}) {
   const session = createSession();
+  session.consultFile(join(skillPath, "prolog", "verification_statuses.pl"));
   session.consultFile(join(skillPath, "prolog", "programs.pl"));
-  session.consult(programPacketToFacts(packet, { cwd }));
+  session.consult(compileVerificationStatusFacts());
+  try {
+    session.consult(programPacketToFacts(packet, {
+      cwd,
+      gate,
+      remoteMode: options.remoteMode,
+      repo: options.repo,
+      env: options.env,
+      programPacketPath: options.programPacketPath,
+    }));
+  } catch (error) {
+    return {
+      violations: [{
+        code: "program_ontology_fact_generation_failed",
+        path: "ontology",
+        message: error?.message || String(error),
+      }],
+      warnings: [],
+    };
+  }
   const violations = session.queryAll("invariant_violated(Name, Detail)");
   const warnings = session.queryAll("invariant_warning(Name, Detail)");
   return {
@@ -1985,10 +2695,10 @@ function classifyRemediationAction(action) {
       kind: "story_traceability",
     };
   }
-  if (/ripple_check|test_migration|migration smoke|migration proof/.test(text)) {
+  if (/ripple_check|migration-bootstrap|migration smoke|migration proof/.test(text)) {
     return {
       workflow: "/safe-change-power",
-      command: "node .agent/skills/iterative-planner/scripts/ripple_check.mjs && node .agent/skills/iterative-planner/tests/test_migration.mjs",
+      command: "node .agent/skills/iterative-planner/scripts/ripple_check.mjs && node .agent/skills/iterative-planner/tests/ive/run.mjs --only migration-bootstrap --json --no-manifest",
       kind: "planner_core_proof",
     };
   }
@@ -2013,25 +2723,51 @@ function classifyRemediationAction(action) {
   };
 }
 
+function advisoryRecommendedActions(parsed, receipt) {
+  const direct = [
+    ...asArray(parsed?.recommended_actions),
+    ...asArray(parsed?.recommended_follow_up),
+    ...asArray(parsed?.advisory?.recommended_actions),
+    ...asArray(parsed?.deepseek_advisory?.recommended_actions),
+    ...asArray(receipt?.recommended_actions),
+  ].map(asString).filter(Boolean);
+  if (direct.length > 0) return [...new Set(direct)];
+
+  const block = asString(receipt?.deepseek_advisory_block || parsed?.deepseek_advisory_block);
+  const actions = [];
+  let inActions = false;
+  for (const rawLine of block.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (/^recommended actions:/i.test(line)) {
+      inActions = true;
+      continue;
+    }
+    if (!inActions) continue;
+    if (!line || /^<<<.*>>>$/.test(line)) break;
+    const match = line.match(/^[-*]\s+(.+)$/);
+    if (match) actions.push(match[1].trim());
+  }
+  return [...new Set(actions.filter(Boolean))];
+}
+
 function collectAdvisoryActionsFromTicket({ ticket, cwd, packetPath }) {
   const actions = [];
   for (const artifact of asArray(ticket?.review_artifacts)) {
     const artifactPath = resolveArtifactPath(cwd, packetPath, artifact?.path);
     if (!artifactPath || !existsSync(artifactPath)) continue;
     const parsed = safeReadJsonFile(artifactPath);
-    const advisory = parsed?.deepseek_advisory || parsed?.review_packet?.deepseek_advisory || parsed?.intake_packet?.deepseek_advisory || null;
     const receipt = parsed?.ticket_intake_receipt || parsed?.review_packet?.ticket_intake_receipt || null;
-    const blocked = parsed?.final_status === "blocked"
-      || parsed?.intake_packet?.final_status === "blocked"
-      || receipt?.deterministic_status === "blocked"
-      || receipt?.deepseek_advisory_status === "blocked"
-      || advisory?.status === "blocked";
+    const blocked = [
+      parsed?.final_status,
+      parsed?.intake_packet?.final_status,
+      receipt?.deterministic_status,
+    ].some((status) => normalizeVerificationStatus(status, "execution").kind === "fail");
     if (!blocked && asString(ticket?.lifecycle) !== "blocked") continue;
-    for (const action of asArray(advisory?.recommended_actions || advisory?.recommended_follow_up)) {
+    for (const action of advisoryRecommendedActions(parsed, receipt)) {
       actions.push({
-        action: asString(action),
+        action,
         artifact_path: relativePath(cwd, artifactPath),
-        advisory_status: advisory?.status || null,
+        advisory_status: asString(receipt?.deepseek_advisory_status || parsed?.advisory?.status || parsed?.deepseek_advisory?.status),
       });
     }
   }
@@ -2103,34 +2839,61 @@ function buildRemediationPlan({ result, target, cwd, write, timestamp }) {
 }
 
 function renderText(result) {
-  const lines = [];
-  lines.push(`Program Manager: ${result.command}${result.gate ? ` ${result.gate}` : ""}`);
-  lines.push(`Status: ${result.status}`);
-  if (result.program?.id) lines.push(`Program: ${result.program.id} — ${result.program.title || ""}`);
-  if (result.packet_path) lines.push(`Packet: ${result.packet_path}`);
-  if (result.message) lines.push(result.message);
+  const blockers = collectResultBlockers(result);
+  const lines = [
+    `Program Manager ${result.command}${result.gate ? ` ${result.gate}` : ""}: ${result.status}`,
+    `Blockers: ${blockers.length}`,
+  ];
+  if (result.program?.id) lines.push(`Program: ${result.program.id} - ${compactText(result.program.title || "")}`);
+  else if (result.packet_path) lines.push(`Packet: ${result.packet_path}`);
+  else lines.push("Program: not resolved");
+  if (result.message && blockers.length === 0) lines.push(`Message: ${compactText(result.message)}`);
   if (result.program_status_transition) {
     const transition = result.program_status_transition;
     lines.push(`Program status: ${transition.previous_status || "unknown"} -> ${transition.new_status || "unknown"} (${transition.transition_written ? "written" : transition.status || "not written"})`);
   }
-  if (result.errors?.length) {
-    lines.push("\nErrors:");
-    for (const error of result.errors) lines.push(`- ${error.code}: ${error.path} — ${error.message}`);
-  }
-  if (result.warnings?.length) {
-    lines.push("\nWarnings:");
-    for (const warning of result.warnings) lines.push(`- ${warning.code}: ${warning.path} — ${warning.message}`);
-  }
+  pushTopBlockers(lines, blockers, 3);
   if (result.remediation) {
-    lines.push("\nRemediation:");
-    lines.push(`- status: ${result.remediation.status}`);
-    lines.push(`- tasks: ${result.remediation.task_count || 0}`);
-    if (result.remediation.artifact_path) lines.push(`- artifact: ${result.remediation.artifact_path}`);
-    for (const task of asArray(result.remediation.tasks).slice(0, 5)) {
-      lines.push(`- ${task.id}: ${task.workflow} — ${task.recommended_action}`);
-    }
+    lines.push(`Remediation: ${result.remediation.status} (${result.remediation.task_count || 0} task(s))`);
   }
+  const lifecycleLine = result.lifecycle_reconciliation
+    ? renderLifecycleReconciliationStatusLine(result.lifecycle_reconciliation)
+    : "";
+  if (lifecycleLine) lines.push(lifecycleLine.trim());
+  lines.push(formatResultArtifactLine(result));
+  lines.push(`Next: ${verificationStatusIsPass(result.status, "execution") ? "continue with the next planned gate" : programManagerJsonCommand(result)}`);
   return lines.join("\n");
+}
+
+function attachLifecycleReconciliation(result, { cwd, programPath }) {
+  if (result?.command !== "check") return result;
+  try {
+    const report = buildLifecycleReconciliationReport({
+      cwd,
+      program: programPath,
+      write: false,
+      includeStampedArtifacts: false,
+    });
+    return {
+      ...result,
+      lifecycle_reconciliation: lifecycleReconciliationSummary(report),
+    };
+  } catch (error) {
+    return {
+      ...result,
+      lifecycle_reconciliation: {
+        status: "UNAVAILABLE",
+        advisory_findings: 0,
+        shipped_open_findings: 0,
+        duplicate_scope_findings: 0,
+        repair_packet_path: null,
+        repair_packet_written: false,
+        dirty_worktree: false,
+        warning_count: 1,
+        error: error?.message || String(error),
+      },
+    };
+  }
 }
 
 function buildResult({ command, gate, target, validation, ontology, message }) {
@@ -2147,98 +2910,169 @@ function buildResult({ command, gate, target, validation, ontology, message }) {
       status: target.packet.status || null,
     } : null,
     counts: validation?.counts || {},
+    remote_policy: validation?.remote_policy || null,
+    gate_satisfiability: validation?.gate_satisfiability || null,
     errors,
     warnings,
     message: message || null,
   };
 }
 
-function renderDeepSeekReceiptText(receipt, { showDeepSeekBlock = false } = {}) {
-  const lines = [];
-  lines.push(`DeepSeek advisory: ${receipt?.deepseek_advisory_status || DEEPSEEK_ADVISORY_NOT_RUN_STATUS}; summary: ${receipt?.deepseek_advisory_summary || "n/a"}; artifact: ${receipt?.deepseek_advisory_artifact_path || receipt?.intake_artifact_path || receipt?.review_artifact_path || "dry-run"}`);
-  if (showDeepSeekBlock && receipt?.deepseek_advisory_block) {
-    lines.push("");
-    lines.push("DeepSeek advisory verdict:");
-    lines.push(receipt.deepseek_advisory_block);
-    if (receipt.verbatim_reproduction_contract) {
-      lines.push("");
-      lines.push(`Contract: ${receipt.verbatim_reproduction_contract}`);
-    }
-  }
-  return lines;
+function compactText(value, max = 180) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (text.length <= max) return text;
+  return `${text.slice(0, Math.max(0, max - 3))}...`;
 }
 
-function renderIntakeText(result, { showDeepSeekBlock = false } = {}) {
+function countIntakeBlockers(result) {
+  if (result?.blocked_reason === "duplicate_candidates") return asArray(result?.duplicate_scan?.matches).length || 1;
+  if (Array.isArray(result?.results)) {
+    return result.results.reduce((total, item) => total + countIntakeBlockers(item), 0);
+  }
+  return asArray(result?.deterministic?.blockers).length
+    || result?.ticket_intake_receipt?.deterministic_blocker_count
+    || 0;
+}
+
+function intakeStatus(result) {
+  if (result?.blocked_reason === "duplicate_candidates") return "blocked";
+  if (Array.isArray(result?.results)) return countIntakeBlockers(result) > 0 ? "blocked" : (result.dry_run ? "dry-run" : "write");
+  return result?.ticket_intake_receipt?.deterministic_status
+    || result?.deterministic?.status
+    || (verificationStatusIsPass(result?.status, "execution") ? "proposed" : String(result?.status || "unknown").toLowerCase());
+}
+
+function collectIntakeBlockerLines(result) {
+  if (result?.blocked_reason === "duplicate_candidates") {
+    return asArray(result?.duplicate_scan?.matches).map((match) => ({
+      code: "duplicate_candidate",
+      path: match.id || "ticket",
+      message: `${match.title || "Existing ticket"} (${match.similarity || "?"}) in ${match.packet_path || "program packet"}`,
+    }));
+  }
+  if (Array.isArray(result?.results)) return result.results.flatMap((item) => collectIntakeBlockerLines(item));
+  return asArray(result?.deterministic?.blockers);
+}
+
+function collectResultBlockers(result) {
+  const blockers = [
+    ...asArray(result?.errors),
+  ];
+  if (blockers.length === 0 && normalizeVerificationStatus(result?.status, "execution").kind === "fail" && result?.message) {
+    blockers.push({ code: "program_manager_failed", path: result.packet_path || "program", message: result.message });
+  }
+  return blockers;
+}
+
+function pushTopBlockers(lines, blockers, limit = 3) {
+  for (const blocker of blockers.slice(0, limit)) {
+    const code = blocker?.code || "blocker";
+    const path = blocker?.path || "packet";
+    const message = blocker?.message || String(blocker || "");
+    lines.push(`- ${compactText(`${code}: ${path} - ${message}`)}`);
+  }
+  if (blockers.length > limit) lines.push(`More blockers: ${blockers.length - limit} (see artifact)`);
+}
+
+function formatIntakeArtifactLine(result) {
+  const path = result?.intake_artifact_path || result?.ticket_intake_receipt?.intake_artifact_path || null;
+  if (!path) return "Artifact: not written";
+  if (result?.dry_run) return `Artifact: ${path} (planned; dry-run not written)`;
+  return `Artifact: ${path}`;
+}
+
+function formatResultArtifactLine(result) {
+  return result?.human_artifact_path
+    ? `Artifact: ${result.human_artifact_path}`
+    : "Artifact: not written";
+}
+
+function programManagerJsonCommand(result) {
+  const gatePart = result?.gate ? ` ${result.gate}` : "";
+  const programPart = result?.packet_path ? ` --program ${result.packet_path}` : "";
+  return `node .agent/skills/iterative-planner/scripts/program_manager.mjs ${result?.command || "check"}${gatePart}${programPart} --json`;
+}
+
+function writeProgramManagerResultArtifact({ result, cwd, packetPath, env }) {
+  if (!packetPath) return result;
+  const stamp = nowIso().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "Z");
+  const commandBits = [result?.command || "result", result?.gate || null].filter(Boolean).map(sanitizeIdSegment);
+  const artifactPath = join(dirname(resolve(cwd, packetPath)), "artifacts", `program_manager_${commandBits.join("_")}_${stamp}.json`);
+  const payload = {
+    ...redactObject(result, env),
+    repo_state_stamp: buildRepoStateStamp({
+      cwd,
+      invocation: {
+        command: "program_manager.mjs",
+        subcommand: result?.command || null,
+        gate: result?.gate || null,
+        packet_path: packetPath,
+      },
+    }),
+  };
+  mkdirSync(dirname(artifactPath), { recursive: true });
+  writeFileSync(artifactPath, `${JSON.stringify(payload, null, 2)}\n`, "utf-8");
+  return { ...result, human_artifact_path: relativePath(cwd, artifactPath) };
+}
+
+function renderIntakeText(result) {
   if (Array.isArray(result.results)) {
     const lines = [
-      `Program Manager intake: ${result.dry_run ? "dry-run" : "write"}`,
-      `Program packet: ${result.program_packet_path}`,
-      `Bulk tickets: ${result.ticket_count || result.results.length}`,
+      `Program Manager intake: ${intakeStatus(result)}`,
+      `Blockers: ${countIntakeBlockers(result)}`,
+      `Program packet: ${result.program_packet_path || "unknown"}`,
     ];
     for (const item of result.results) {
-      lines.push(`- ${item.candidate_ticket?.id || "unknown"} — ${item.candidate_ticket?.title || ""}`);
-      if (item.blocked_reason === "duplicate_candidates") {
-        lines.push(`  BLOCKED duplicate of: ${asArray(item.duplicate_scan?.matches).map((m) => m.id).join(", ")} (re-run with --allow-duplicate if genuinely new)`);
-        continue;
-      }
-      lines.push(`  Ticket type: ${item.ticket_intake_receipt?.ticket_type || item.candidate_ticket?.ticket_type || "unknown"} (${item.ticket_intake_receipt?.base_ticket_type || item.candidate_ticket?.type || "unknown"})`);
-      lines.push(`  Persona review: ${item.ticket_intake_receipt?.persona_review_status || "not_run"}`);
-      lines.push(`  Intake packet: ${item.intake_artifact_path}`);
-      lines.push(`  Deterministic status: ${item.ticket_intake_receipt?.deterministic_status || "unknown"}`);
-    }
-    for (const receipt of asArray(result.ticket_intake_receipts)) {
-      if (receipt) {
-        lines.push("");
-        lines.push(`DeepSeek advisory for ${receipt.ticket_id || "ticket"}:`);
-        lines.push(...renderDeepSeekReceiptText(receipt, { showDeepSeekBlock }));
-      }
+      lines.push(`Ticket: ${item.candidate_ticket?.id || "unknown"} - ${compactText(item.candidate_ticket?.title || "")}`);
+      pushTopBlockers(lines, collectIntakeBlockerLines(item), 3);
+      lines.push(formatIntakeArtifactLine(item));
+      lines.push(`Next: ${item.ticket_intake_receipt?.next_required_command || "inspect artifact or rerun with --json"}`);
     }
     return lines.join("\n");
   }
-  if (result.status === "BLOCKED" && result.blocked_reason === "duplicate_candidates") {
+  if (normalizeVerificationStatus(result.status, "execution").kind === "fail" && result.blocked_reason === "duplicate_candidates") {
     const lines = [
-      "Program Manager intake: BLOCKED (duplicate candidates)",
-      `Program packet: ${result.program_packet_path}`,
-      `Candidate ticket: ${result.candidate_ticket?.id || "unknown"} — ${result.candidate_ticket?.title || ""}`,
-      "Possible duplicates:",
+      "Program Manager intake: blocked",
+      `Blockers: ${countIntakeBlockers(result)}`,
+      `Ticket: ${result.candidate_ticket?.id || "unknown"} - ${compactText(result.candidate_ticket?.title || "")}`,
     ];
-    for (const match of asArray(result.duplicate_scan?.matches)) {
-      lines.push(`- ${match.id} [${match.lifecycle || "?"}] (${match.similarity}) ${match.title} — ${match.packet_path}`);
-    }
-    lines.push("Consolidate with the existing ticket, or re-run with --allow-duplicate if genuinely new.");
+    pushTopBlockers(lines, collectIntakeBlockerLines(result), 3);
+    lines.push("Artifact: not written");
+    lines.push("Next: consolidate with the existing ticket, or re-run with --allow-duplicate if genuinely new.");
     return lines.join("\n");
   }
+  const blockers = collectIntakeBlockerLines(result);
+  const receipt = result.ticket_intake_receipt;
   const lines = [
-    `Program Manager intake: ${result.dry_run ? "dry-run" : "write"}`,
-    `Program packet: ${result.program_packet_path}`,
-    `Intake packet: ${result.intake_artifact_path}`,
-    `Candidate ticket: ${result.candidate_ticket?.id || "unknown"} — ${result.candidate_ticket?.title || ""}`,
+    `Program Manager intake: ${intakeStatus(result)}`,
+    `Blockers: ${countIntakeBlockers(result)}`,
+    `Ticket: ${result.candidate_ticket?.id || receipt?.ticket_id || "unknown"} - ${compactText(result.candidate_ticket?.title || receipt?.ticket_title || "")}`,
   ];
   if (result.duplicate_scan?.status === "overridden") {
     lines.push(`Duplicate scan: overridden via --allow-duplicate (${asArray(result.duplicate_scan?.matches).map((m) => m.id).join(", ")})`);
   }
-  const blockers = asArray(result.deterministic?.blockers);
-  const receipt = result.ticket_intake_receipt;
-  if (receipt) {
-    lines.push("Ticket Intake Receipt:");
-    lines.push(`- front door: ${receipt.front_door}`);
-    lines.push(`- ticket: ${receipt.ticket_id || "unknown"}`);
-    lines.push(`- ticket type: ${receipt.ticket_type || "unknown"} (${receipt.base_ticket_type || "unknown"})`);
-    lines.push(`- persona review: ${receipt.persona_review_status || "not_run"}`);
-    lines.push(`- deterministic status: ${receipt.deterministic_status}`);
-    lines.push(`- retro recurrence: ${receipt.retro_recurrence_status || "not_run"}`);
-    lines.push(`- next: ${receipt.next_required_command}`);
-    if (receipt) {
-      lines.push("");
-      lines.push(...renderDeepSeekReceiptText(receipt, { showDeepSeekBlock }));
-    }
+  pushTopBlockers(lines, blockers, 3);
+  lines.push(formatIntakeArtifactLine(result));
+  if (receipt?.github_publication) lines.push(`GitHub: ${receipt.github_publication}`);
+  lines.push(`Next: ${receipt?.next_required_command || "inspect artifact or rerun with --json"}`);
+  return lines.join("\n");
+}
+
+function renderFindingsTriageText(result) {
+  const lines = [
+    `Program Manager findings triage: ${String(result.status || "UNKNOWN").toLowerCase()}`,
+    `Accepted: ${result.accepted === true ? "yes" : "no"}`,
+    `Packet updated: ${result.packet_updated === true ? "yes" : "no"}`,
+    `Findings: ${result.finding_count || 0}`,
+    `Candidates: ${result.candidate_count || 0}`,
+    `Program packet: ${result.program_packet_path || "unknown"}`,
+  ];
+  for (const item of asArray(result.results).slice(0, 5)) {
+    lines.push(`Ticket: ${item.candidate_ticket?.id || "unknown"} - ${compactText(item.candidate_ticket?.title || "")}`);
+    if (item.source_finding?.failing_suite_id) lines.push(`Suite: ${item.source_finding.failing_suite_id}`);
+    lines.push(`Artifact: ${result.accepted && result.write && item.intake_artifact_path ? item.intake_artifact_path : "not written"}`);
   }
-  if (blockers.length > 0) {
-    lines.push("Blockers:");
-    for (const blocker of blockers.slice(0, 8)) {
-      lines.push(`- ${blocker.code}: ${blocker.path || "packet"} — ${blocker.message}`);
-    }
-  }
+  lines.push(`Next: ${result.next_required_command || "inspect artifact or rerun with --json"}`);
   return lines.join("\n");
 }
 
@@ -2251,7 +3085,7 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
   }
 
   const FORWARD_COMMANDS = new Set(["next-ready", "dispatch-order", "blockers", "unlocks-if-closed"]);
-  const KNOWN_COMMANDS = new Set(["init", "intake", "check", "verify", "facts", ...FORWARD_COMMANDS]);
+  const KNOWN_COMMANDS = new Set(["init", "intake", "triage-findings", "disposition", "check", "verify", "facts", ...FORWARD_COMMANDS]);
   if (!KNOWN_COMMANDS.has(args.command)) {
     console.error(`Unknown command: ${args.command}\n\n${usage()}`);
     return 2;
@@ -2262,22 +3096,70 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
       console.log(args.json ? JSON.stringify(result, null, 2) : renderText(result));
       return 0;
     } catch (error) {
-      const payload = { command: "init", status: "FAIL", error: error?.message || String(error) };
+      const payload = {
+        command: "init",
+        status: "FAIL",
+        packet_path: error?.packetPath || null,
+        error: error?.message || String(error),
+        errors: error?.validation?.errors || [],
+        warnings: error?.validation?.warnings || [],
+        remote_policy: error?.validation?.remote_policy || null,
+        gate_satisfiability: error?.validation?.gate_satisfiability || null,
+      };
       if (args.json) console.log(JSON.stringify(payload, null, 2));
-      else console.error(`${payload.error}\n\n${usage()}`);
+      else {
+        const resolutionOptions = asArray(payload.gate_satisfiability?.requirements)
+          .flatMap((entry) => asArray(entry?.resolution_options).map((option) => option.action))
+          .filter((value, index, values) => value && values.indexOf(value) === index);
+        const lines = [
+          "Program Manager init: FAIL",
+          `Blockers: ${payload.errors.length || 1}`,
+          `Error: ${compactText(payload.error)}`,
+        ];
+        if (resolutionOptions.length > 0) lines.push(`Resolution: ${resolutionOptions.join(" | ")}`);
+        lines.push("Next: choose one explicit resolution and rerun init");
+        console.error(lines.join("\n"));
+      }
       return 1;
     }
   }
   if (args.command === "intake") {
     try {
       const result = await runIntake(args, { cwd });
-      console.log(args.json ? JSON.stringify(result, null, 2) : renderIntakeText(result, { showDeepSeekBlock: args.showDeepSeekBlock }));
+      console.log(args.json ? JSON.stringify(result, null, 2) : renderIntakeText(result));
       const blockedDuplicate = result?.blocked_reason === "duplicate_candidates"
         || asArray(result?.results).some((entry) => entry?.blocked_reason === "duplicate_candidates");
       if (blockedDuplicate) return 3;
       return 0;
     } catch (error) {
       const payload = { status: "FAIL", error: error?.message || String(error) };
+      if (args.json) console.log(JSON.stringify(payload, null, 2));
+      else console.error(`${payload.error}\n\n${usage()}`);
+      return 1;
+    }
+  }
+  if (args.command === "triage-findings") {
+    try {
+      const result = await runFindingsTriage(args, { cwd });
+      console.log(args.json ? JSON.stringify(result, null, 2) : renderFindingsTriageText(result));
+      const blockedDuplicate = normalizeVerificationStatus(result?.status, "execution").kind === "fail"
+        || asArray(result?.results).some((entry) => entry?.blocked_reason === "duplicate_candidates");
+      if (blockedDuplicate) return 3;
+      return 0;
+    } catch (error) {
+      const payload = { command: "triage-findings", status: "FAIL", error: error?.message || String(error) };
+      if (args.json) console.log(JSON.stringify(payload, null, 2));
+      else console.error(`${payload.error}\n\n${usage()}`);
+      return 1;
+    }
+  }
+  if (args.command === "disposition") {
+    try {
+      const result = runDisposition(args, { cwd });
+      console.log(args.json ? JSON.stringify(result, null, 2) : renderProgramDispositionText(result));
+      return verificationStatusIsPass(result.status, "execution") ? 0 : 1;
+    } catch (error) {
+      const payload = { command: "disposition", status: "FAIL", error: error?.message || String(error) };
       if (args.json) console.log(JSON.stringify(payload, null, 2));
       else console.error(`${payload.error}\n\n${usage()}`);
       return 1;
@@ -2293,6 +3175,7 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
   }
 
   const target = loadTarget(cwd, args.program);
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Program-packet resolver protocol (FOUND, SKIP, MISSING, AMBIGUOUS), not a verification result; SKIP means no optional packet is in scope.
   if (target.resolved.status === "SKIP") {
     const result = {
       command: args.command,
@@ -2329,8 +3212,15 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
     return 1;
   }
 
+  const remotePolicyOptions = {
+    remoteMode: args.remoteMode,
+    repo: args.repo,
+    env,
+    programPacketPath: target.resolved.path,
+  };
+
   if (args.command === "facts") {
-    const facts = programPacketToFacts(target.packet, { cwd });
+    const facts = programPacketToFacts(target.packet, { cwd, ...remotePolicyOptions });
     console.log(facts.trimEnd());
     return 0;
   }
@@ -2341,17 +3231,17 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
         return dispatchOrderTickets(target.packet);
       }
       if (args.command === "next-ready") {
-        const rows = runForwardReasoning(target.packet, cwd, "next_ready_ticket(Ticket)");
+        const rows = runForwardReasoning(target.packet, cwd, "next_ready_ticket(Ticket)", remotePolicyOptions);
         const ids = rows.map((row) => String(row.Ticket)).filter(Boolean);
         return ids.map((id) => ticketSummary(target.packet, id));
       }
       if (args.command === "blockers") {
-        const rows = runForwardReasoning(target.packet, cwd, `blocking_chain('${args.ticket}', Blocker)`);
+        const rows = runForwardReasoning(target.packet, cwd, `blocking_chain('${args.ticket}', Blocker)`, remotePolicyOptions);
         const ids = [...new Set(rows.map((row) => String(row.Blocker)).filter(Boolean))];
         return ids.map((id) => ticketSummary(target.packet, id));
       }
       if (args.command === "unlocks-if-closed") {
-        const rows = runForwardReasoning(target.packet, cwd, `becomes_ready_if_closed('${args.ticket}', NewlyReady)`);
+        const rows = runForwardReasoning(target.packet, cwd, `becomes_ready_if_closed('${args.ticket}', NewlyReady)`, remotePolicyOptions);
         const ids = [...new Set(rows.map((row) => String(row.NewlyReady)).filter(Boolean))];
         return ids.map((id) => ticketSummary(target.packet, id));
       }
@@ -2387,20 +3277,24 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
     return 0;
   }
 
-  const options = { cwd, storyIds: collectStoryIds(cwd) };
+  const options = { cwd, storyIds: collectStoryIds(cwd), ...remotePolicyOptions };
   const validation = args.command === "verify"
     ? evaluateProgramGate(target.packet, args.gate, options)
     : validateProgramPacket(target.packet, options);
-  const ontology = runProgramOntology(target.packet, cwd);
-  const result = buildResult({
+  const ontology = runProgramOntology(target.packet, cwd, args.command === "verify" ? args.gate : null, remotePolicyOptions);
+  let result = buildResult({
     command: args.command,
     gate: args.gate,
     target,
     validation,
     ontology,
   });
+  result = attachLifecycleReconciliation(result, {
+    cwd,
+    programPath: target.resolved.path,
+  });
   if (args.command === "verify") {
-    result.program_status_transition = result.status === "PASS"
+    result.program_status_transition = verificationStatusIsPass(result.status, "execution")
       ? buildProgramStatusTransition({
         target,
         gate: args.gate,
@@ -2426,8 +3320,11 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
       timestamp: nowIso(),
     });
   }
-  console.log(args.json ? JSON.stringify(result, null, 2) : renderText(result));
-  return result.status === "PASS" ? 0 : 1;
+  const textResult = args.json
+    ? result
+    : writeProgramManagerResultArtifact({ result, cwd, packetPath: target.resolved.path, env });
+  console.log(args.json ? JSON.stringify(result, null, 2) : renderText(textResult));
+  return verificationStatusIsPass(result.status, "execution") ? 0 : 1;
 }
 
 if (process.argv[1] === __filename) {

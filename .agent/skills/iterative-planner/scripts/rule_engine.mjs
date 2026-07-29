@@ -7,7 +7,7 @@
 //   lib/sanitize.mjs       — Prolog atom sanitization + formatting
 //
 // Usage:
-//   node rule_engine.mjs check-transition <gate>   Semantic transition check
+//   node rule_engine.mjs check-transition <gate>   Diagnostic semantic check (not a transition predictor)
 //   node rule_engine.mjs verify-stories            Full story coverage + gap analysis
 //   node rule_engine.mjs story-deps <story-id>     Show dependency chain for a story
 //   node rule_engine.mjs impact-from-file <path>   Show story/criterion/goal impact for a file
@@ -15,7 +15,8 @@
 //   node rule_engine.mjs story-proof <story-id>    Show traceability proof for one story
 //   node rule_engine.mjs annotation-mismatches     Compare annotations against registry + criteria
 //   node rule_engine.mjs find-conflicts            Detect contradictions between stories
-//   node rule_engine.mjs check-invariants          Run all invariant rules
+//   node rule_engine.mjs check-invariants          Run all invariant rules and persist governed proof
+//   node rule_engine.mjs check-invariants --smoke  Run the same rules without writing proof artifacts
 //   node rule_engine.mjs blast-radius <story-id>   Which stories break if this one breaks
 //   node rule_engine.mjs suggest-next              Deterministic skill recommendations
 //   node rule_engine.mjs completeness-score        Completeness scoring
@@ -35,6 +36,7 @@ import { formatReason, deduplicateViolations, sanitizeEnumAtom } from "./lib/san
 import { loadStoryFacts, loadStateFacts, loadCapabilityFacts, loadGateRippleFacts, loadGateHistoryFacts, loadProjectMetaFacts, loadRemediationFacts, loadRules } from "./lib/fact_loader.mjs";
 import { refreshPlanArtifacts } from "./lib/plan_refresh.mjs";
 import { createSemanticEngine } from "./lib/semantic_engine.mjs";
+import { degradedCoverageGateResult } from "./lib/degraded_coverage.mjs";
 import {
   cmdCheckTransition, cmdVerifyStories, cmdStoryDeps, cmdFindConflicts,
   cmdCheckInvariants, cmdBlastRadius, cmdSuggestNext, cmdCompletenessScore,
@@ -72,6 +74,7 @@ function createEngine(options = {}) {
       (typeof refreshSnapshot?.ontology?.facts === "string" ? refreshSnapshot.ontology.facts : "") ||
       options?.transientOntologyFacts ||
       "",
+    transientRegistryRefresh: options?.transientRegistryRefresh === true,
   });
 }
 
@@ -91,7 +94,9 @@ const cmdCtx = {
 export function runSemanticChecks(gate, planDir, engineOptions = {}) {
   const results = [];
   try {
-    const { session } = createEngine(engineOptions);
+    const { session, degradedCoverage } = createEngine(engineOptions);
+    const coverageResult = degradedCoverageGateResult(degradedCoverage);
+    if (coverageResult) results.push(coverageResult);
     const gateDef = GATE_REGISTRY[gate];
 
     // F-006 FIX: Read from/to from gates.json for gates that don't follow the X-to-Y naming pattern.
@@ -325,15 +330,19 @@ if (!_isMain) {
 
 const args = process.argv.slice(2);
 const jsonMode = args.includes("--json");
+const smokeMode = args.includes("--smoke");
 if (args.includes("--strict")) process.env.RULE_ENGINE_STRICT = "1";
-const filtered = args.filter(a => a !== "--json" && a !== "--strict");
+const filtered = args.filter(a => a !== "--json" && a !== "--strict" && a !== "--smoke");
 const command = filtered[0];
 
-if (!command || command === "--help" || command === "help") {
+if (smokeMode && command !== "check-invariants") {
+  console.error("--smoke is supported only by the check-invariants command.");
+  process.exitCode = 2;
+} else if (!command || command === "--help" || command === "help") {
   console.log(`rule_engine.mjs — Prolog-powered semantic verification
 
 Usage:
-  node rule_engine.mjs check-transition <gate>   Semantic transition check
+  node rule_engine.mjs check-transition <gate>   Diagnostic semantic check (not a transition predictor)
   node rule_engine.mjs verify-stories            Story coverage + gap analysis
   node rule_engine.mjs story-deps <story-id>     Dependency chain
   node rule_engine.mjs impact-from-file <path>   File impact across traceability surfaces
@@ -341,7 +350,8 @@ Usage:
   node rule_engine.mjs story-proof <story-id>    Story proof chain
   node rule_engine.mjs annotation-mismatches     Annotation / registry drift report
   node rule_engine.mjs find-conflicts            Story contradiction detection
-  node rule_engine.mjs check-invariants          Run all invariant rules
+  node rule_engine.mjs check-invariants          Run all invariant rules and persist governed proof
+  node rule_engine.mjs check-invariants --smoke  Run the same rules without writing plan/report artifacts
   node rule_engine.mjs blast-radius <story-id>   Semantic blast radius
   node rule_engine.mjs suggest-next              Deterministic skill recommendations
   node rule_engine.mjs completeness-score        Completeness scoring (Boil the Lake)
@@ -364,7 +374,14 @@ Gates: explore-to-plan, plan-to-execute, execute-to-reflect, reflect-to-validate
   else if (command === "story-proof") { exitCode = cmdStoryProof(filtered[1] || "", jsonMode, cmdCtx); }
   else if (command === "annotation-mismatches") { exitCode = cmdAnnotationMismatches(jsonMode, cmdCtx); }
   else if (command === "find-conflicts") { exitCode = cmdFindConflicts(jsonMode, cmdCtx); }
-  else if (command === "check-invariants") { exitCode = cmdCheckInvariants(jsonMode, cmdCtx); }
+  else if (command === "check-invariants") {
+    const transitionSmokeMode = process.env._PLANNER_GATE_TRANSITION === "1";
+    exitCode = cmdCheckInvariants(jsonMode, {
+      ...cmdCtx,
+      persistProof: !smokeMode && !transitionSmokeMode,
+      invariantMode: smokeMode || transitionSmokeMode ? "smoke" : "evidence",
+    });
+  }
   else if (command === "blast-radius") { exitCode = cmdBlastRadius(filtered[1] || "", jsonMode, cmdCtx); }
   else if (command === "dump-fixtures") { exitCode = cmdDumpFixtures(jsonMode, cmdCtx); }
   else if (command === "suggest-next") { exitCode = cmdSuggestNext(jsonMode, cmdCtx); }

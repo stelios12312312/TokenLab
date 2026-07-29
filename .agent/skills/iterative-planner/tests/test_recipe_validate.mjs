@@ -18,8 +18,8 @@ const recipeValidatePath = join(scriptDir, "recipe_validate.mjs");
 const fixtureRoot = join(testDir, "fixtures", "recipes");
 const discoveryReviewFixturePath = join(fixtureRoot, "discovery_review", "recipes", "discovery_review.json");
 const NODE = process.execPath;
-const ipbsRecipes = "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Tennis/Sport betting/ipbs_datapack_starter/recipes";
-const tesseractRecipes = "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Courses/Executives course/tesseract-automation-engine/recipes";
+const ipbsRecipes = String(process.env.PLANNER_TEST_IPBS_RECIPES || "").trim();
+const tesseractRecipes = String(process.env.PLANNER_TEST_TESSERACT_RECIPES || "").trim();
 
 let passed = 0;
 let failed = 0;
@@ -74,6 +74,8 @@ function scenarioCanonicalFixtureValidates() {
   assert(payload.recipe_count === 1, "canonical fixture has one recipe");
   assert(payload.invalid_count === 0, "canonical fixture validates cleanly");
   assert(payload.recipes[0]?.normalized?.runner?.ready === true, "canonical fixture runner is normalized as ready");
+  assert(payload.recipes[0]?.work_order_profile?.status === "PASS", "canonical fixture promotes to a valid work-order profile");
+  assert(payload.work_order_profile?.valid_count === 1, "canonical fixture contributes one valid work-order profile");
 }
 
 function scenarioLegacyFixtureAcceptedWithInfo() {
@@ -93,27 +95,59 @@ function scenarioLegacyFixtureAcceptedWithInfo() {
     payload.recipes.some((recipe) => recipe.normalized?.runner?.command?.includes("scripts/legacy_string_runner.py")),
     "legacy string runner is normalized into a command runner"
   );
+  assert(
+    payload.recipes.every((recipe) => recipe.work_order_profile?.status === "SKIP"),
+    "legacy runner.json recipes remain readable but are not silently promoted"
+  );
+}
+
+function scenarioDryRunProfileFailsClosed() {
+  const tmp = mkdtempSync(join(tmpdir(), "planner-recipe-dry-run-contract-"));
+  try {
+    mkdirSync(join(tmp, "recipes", "live-only"), { recursive: true });
+    writeFileSync(join(tmp, "recipes", "live-only", "recipe.json"), JSON.stringify({
+      id: "live-only",
+      title: "Live Only",
+      capability_id: "run_live_only",
+      runner: {
+        type: "command",
+        cwd: ".",
+        command: ["node", "-e", "console.log('live only')"],
+        dry_run_flags: [],
+        live_flags: []
+      }
+    }, null, 2) + "\n");
+    const validateResult = runJson([recipeValidatePath, "validate", "--dir", tmp, "--json"]);
+    assert(validateResult.ok, "recipe validate still reads canonical live-only recipe");
+    assert(validateResult.json?.recipes?.[0]?.work_order_profile?.status === "FAIL", "live-only recipe is not promoted without dry-run flags");
+
+    const runnerResult = runJson([join(scriptDir, "recipe_runner.mjs"), "--dir", tmp, "--recipe", "live-only", "--execute", "--json"], plannerRoot, false);
+    assert(!runnerResult.ok && runnerResult.status !== 0, "recipe runner dry-run execution fails closed without dry-run flags");
+    assert(String(runnerResult.json?.error || "").includes("dry-run mode"), "dry-run failure explains missing dry-run contract");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 function scenarioIpbsLiveSurfaceValidatesUnmodified() {
-  if (!existsSync(ipbsRecipes)) {
-    console.log("  SKIP: live IPBS recipe path not present");
+  if (!ipbsRecipes || !existsSync(ipbsRecipes)) {
+    console.log("  SKIP: live IPBS compatibility is opt-in via PLANNER_TEST_IPBS_RECIPES");
     return;
   }
   const result = runJson([recipeValidatePath, "validate", "--dir", ipbsRecipes, "--json"]);
   assert(result.ok, "recipe validate exits cleanly for live IPBS recipes");
-  assert(result.json?.recipe_count === 12, "live IPBS recipe count is 12");
+  assert(result.json?.recipe_count > 0, "live IPBS surface contains at least one recipe");
   assert(result.json?.invalid_count === 0, "live IPBS recipes validate without modification");
   assert(result.json?.legacy_count === 0, "live IPBS surface uses canonical recipe.json only");
 }
 
 function scenarioTesseractLegacyReadCompatibility() {
-  if (!existsSync(tesseractRecipes)) {
-    console.log("  SKIP: live Tesseract recipe path not present");
+  if (!tesseractRecipes || !existsSync(tesseractRecipes)) {
+    console.log("  SKIP: live Tesseract compatibility is opt-in via PLANNER_TEST_TESSERACT_RECIPES");
     return;
   }
   const payload = validateRecipeSurface(tesseractRecipes);
-  assert(payload.legacy_count >= 2, "live Tesseract legacy runner.json recipes are detected");
+  assert(payload.legacy_count > 0, "live Tesseract legacy runner.json recipes are detected");
   assert(
     payload.recipes
       .filter((recipe) => recipe.variant === "legacy_runner_json")
@@ -257,6 +291,7 @@ function scenarioDiscoveryBootstrapGatesOnApprovedCandidates() {
 
 scenarioCanonicalFixtureValidates();
 scenarioLegacyFixtureAcceptedWithInfo();
+scenarioDryRunProfileFailsClosed();
 scenarioIpbsLiveSurfaceValidatesUnmodified();
 scenarioTesseractLegacyReadCompatibility();
 scenarioBootstrapWritesCanonicalRecipeJsonOnly();

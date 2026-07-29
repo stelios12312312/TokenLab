@@ -7,6 +7,10 @@ description: Safe planning without implementation — produce a detailed, mistak
 Use when you want a detailed, audit-backed implementation plan without making code changes in the same session.
 Invocation: describe what you want planned, then add `/safe-plan`.
 
+## Ambient Persona Context
+
+At planning start, use the ambient persona and IVE block from `bootstrap.mjs status` when `planner.policy.yaml` keeps `persona.ambient` or `ive.ambient` enabled (default). Carry domain persona obligations into EXPLORE findings, success criteria, verification strategy, story traceability, and close blockers for the future implementation. Ambient context is advisory pressure; deterministic gates own readiness.
+
 // turbo-all
 
 ## Phase 0: Shared Preflight
@@ -42,14 +46,14 @@ Invocation: describe what you want planned, then add `/safe-plan`.
 ## Phase 1: Explore
 
 1. **Choose the planning branch from `planner_preflight`**:
-   - `flow.mode=lightweight` → use `task.md` + `implementation_plan.md`, but keep the session planning-only
+   - `flow.mode=lightweight` → use the normal `plans/<plan>/` spine with scaled obligations, and keep the session planning-only
    - `flow.mode=full` → bootstrap or resume the full iterative planner flow and stop after the PLAN-quality check
    - bias toward the full branch unless the task is obviously tiny and well-bounded; multi-file, shared-surface, planner-core, migration, integration, or story-heavy planning stays full
 2. **Lightweight planning branch**:
+   - create or resume a normal plan with `bootstrap.mjs`; do not validate root-level handoff files
    - minimum 3 discovery commands
-   - write `task.md` with scope and objectives
-   - write `implementation_plan.md` with proposed files/systems, ordered steps, risks, verification, and open questions
-   - treat `implementation_plan.md` as the validated handoff artifact for lightweight `/safe-plan`; `verify_gate.mjs plan-to-execute --planning-only` reads `task.md` + `implementation_plan.md` directly when there is no `plans/` target
+   - write the proposed files/systems, ordered steps, risks, verification, and open questions into `plans/<plan>/plan.md`
+   - treat `plan.md` as the validated handoff artifact for lightweight `/safe-plan`; `verify_gate.mjs plan-to-execute --planning-only --plan <plan-dir>` reads the normal plan spine
    - still include the planning-only audit sections listed below in the handoff
    - do **not** create `walkthrough.md` just to fake execution proof
 3. **Full planning branch**:
@@ -128,13 +132,9 @@ Invocation: describe what you want planned, then add `/safe-plan`.
 
 9. **Validate the plan in read-only mode before handing it off**:
    ```bash
-   node <skill-path>/scripts/verify_gate.mjs plan-to-execute --planning-only
-   ```
-   In lightweight mode, run that command from the repo root after writing `task.md` and `implementation_plan.md`; the validator uses those files directly even without a `plans/` directory.
-   If you need to target a specific plan directory:
-   ```bash
    node <skill-path>/scripts/verify_gate.mjs plan-to-execute --planning-only --plan <plan-dir>
    ```
+   Planning-only validation requires a normal plan spine; do not use root-level handoff files as the gate target.
    Paste the output. FAIL means the plan is not yet strong enough to hand off.
 10. **Present the handoff with these explicit outputs**:
    - recommended implementation workflow next: `/safe-change` or `/safe-change-power`
@@ -143,6 +143,14 @@ Invocation: describe what you want planned, then add `/safe-plan`.
    - the exact planned tests from `## Exact Test Inventory`
    - the proof obligations that future implementation must satisfy
    - confirmation that no code was changed
+   - promotion command for later implementation:
+     ```bash
+     node <skill-path>/scripts/bootstrap.mjs promote-safe-plan --plan <plan-dir> --workflow /safe-change-power --write
+     ```
+     Use `--ticket <ticket-id> --program <program-packet>` when the plan is a Program Packet child. The command prepares workflow and ticket metadata, but the later implementer must still enter execution through:
+     ```bash
+     node <skill-path>/scripts/transition.mjs plan-to-execute --plan <plan-dir>
+     ```
 11. **Close only if this planning session is intentionally complete**:
    - if the plan should remain active for immediate future implementation or an active plan already owns the handoff, leave it in `PLAN`
    - if the session was strictly planning-only and should not keep an active plan open, close intentionally with:
@@ -157,6 +165,6 @@ Invocation: describe what you want planned, then add `/safe-plan`.
 | You want a detailed plan now and code later | Use `/safe-plan` |
 | The prompt says plan first and then implement in the same session | Use `/safe-change` or `/safe-change-power`, not `/safe-plan` |
 | The request is really a reusable operational process | Use `/recipe-discovery` or `/recipe-tidy` first |
-| The user now wants implementation in the same session | Switch to `/safe-change` or `/safe-change-power` |
+| The user now wants implementation from a validated `/safe-plan` handoff | Run `bootstrap.mjs promote-safe-plan --plan <plan-dir> --workflow /safe-change-power --write`, then use `transition.mjs plan-to-execute --plan <plan-dir>` |
 | The task is planner-core, migration-heavy, or cross-system | Keep the plan full-fidelity and bias later execution toward `/safe-change-power` |
 | The plan fails `verify_gate.mjs plan-to-execute --planning-only` | Fix the plan; do not hide weak planning behind a handoff summary |

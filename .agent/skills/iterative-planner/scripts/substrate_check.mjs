@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync } from "fs";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, join, relative } from "path";
+import { verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
 
 export const SEMANTIC_ROOT_RELATIVE_PATH = join(".agent", "semantic");
 export const READINESS_RELATIVE_PATH = join(SEMANTIC_ROOT_RELATIVE_PATH, "readiness.yaml");
@@ -326,9 +327,10 @@ function validateStoryRegistrySurface(projectRoot) {
     };
   }
 
+  const childPassed = proc.status === 0 && verificationStatusIsPass(parsed.status, "execution");
   return {
-    ok: proc.status === 0 && parsed.status !== "FAIL",
-    status: proc.status === 0 && parsed.status !== "FAIL" ? "PASS" : "FAIL",
+    ok: childPassed,
+    status: childPassed ? "PASS" : "FAIL",
     declaration: "configured",
     path: toRelative(projectRoot, registryPath),
     story_count: Number(parsed.storyCount) || 0,

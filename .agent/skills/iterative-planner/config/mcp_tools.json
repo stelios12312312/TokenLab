@@ -206,13 +206,13 @@
       }
     },
     "add_verification_result": {
-      "description": "Record a verification result (PASS/FAIL) with evidence. Must include actual command output as proof of work.",
+      "description": "Record a canonical verification result with evidence. Must include actual command output as proof of work.",
       "phase": "reflect",
       "inputSchema": {
         "type": "object",
         "properties": {
           "criterion": { "type": "string", "description": "Which success criterion this verifies" },
-          "status": { "type": "string", "enum": ["PASS", "FAIL", "UNVERIFIED"] },
+          "status": { "type": "string", "enum": ["PASS", "FAIL", "WAIVED", "N/A"] },
           "evidence": { "type": "string", "description": "Actual command output or explanation" }
         },
         "required": ["criterion", "status", "evidence"]

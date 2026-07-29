@@ -21,6 +21,7 @@ import { fileURLToPath } from "url";
 import { computeRecommendedPath } from "./lib/planner_phase_routing.mjs";
 import { resolveAntiRitualAssessment } from "./lib/anti_ritual_contract.mjs";
 import { isMarkdownTableSeparatorRow, splitMarkdownTableRow } from "./lib/markdown_table.mjs";
+import { normalizeVerificationStatus } from "./lib/verification_status_vocabulary.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -491,7 +492,7 @@ function collectInvariantIssues(result) {
     return needsDecision;
   }
 
-  if (parsed.status === "FAIL" && Number(parsed.count) > 0) {
+  if (normalizeVerificationStatus(parsed.status, "gate").kind === "fail" && Number(parsed.count) > 0) {
     needsDecision.push({
       id: "invariant_failures_present",
       bucket: "needs_decision",

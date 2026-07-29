@@ -22,9 +22,14 @@
 import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { createSession } from "../../scripts/lib/prolog.mjs";
-import { makeFinding, makeConstraint, SEVERITY } from "../../scripts/lib/audit_types.mjs";
+import { makeConstraint, SEVERITY } from "../../scripts/lib/audit_types.mjs";
 import { sanitizeAtom as sanitize } from "../../scripts/lib/sanitize.mjs";
+import {
+  assertStoryFacts,
+  formatPhaseGuidance,
+  normalizePackFinding,
+  runPrologPackAudit,
+} from "../../scripts/lib/auditor_pack_engine.mjs";
 import { parseAnnotations, walkDir } from "../../scripts/annotation_parser.mjs";
 import { serializeToFacts } from "../../scripts/ontology_serializer.mjs";
 
@@ -87,6 +92,18 @@ const RULE_DEFS = [
   },
 ];
 
+const EVIDENCE_TEMPLATES = {
+  "TR-001": (s, d) => `Success criterion has no validation evidence: ${d}`,
+  "TR-002": (s, d) => `Criterion has code but no validation artifact: ${d}`,
+  "TR-003": (s, d) => `Goal at risk — has ungrounded criterion: ${d}`,
+  "TR-004": (s, d) => `Story has code but no traceability to goals: ${d}`,
+  "TR-005": (s, d) => `Audit blind spot — no pass covered perspective: ${d}`,
+  "TR-006": (s, d) => `Verification claims PASS but no validation artifact found: ${d}`,
+  "TR-INFO": (s, d) => d,
+};
+
+const PERSPECTIVE_STRICT_SHAPES = new Set(["bug-fix", "regression", "migration", "planner-core", "unknown"]);
+
 // ---------------------------------------------------------------------------
 // AuditorPack implementation
 // ---------------------------------------------------------------------------
@@ -120,194 +137,169 @@ const traceabilityPack = {
   },
 
   async audit(context) {
-    const session = createSession();
-    const { cwd, storyRegistry, planFiles } = context;
-    const currentState = String(context.currentState || "").toLowerCase();
-    const enforceAuditCoverage = currentState === "execute" || currentState === "reflect";
+    let serializationMeta = {};
+    let enforceAuditCoverage = false;
+    return runPrologPackAudit(context, {
+      packId: this.id,
+      rulesFile: RULES_FILE,
+      query: "traceability_violation(RuleId, Subject, Detail, Severity)",
+      defaultRuleId: "TR-???",
+      defaultSeverity: "HIGH",
+      collectFacts: (ctx, session) => {
+        const { cwd, storyRegistry, planFiles } = ctx;
+        const currentState = String(ctx.currentState || "").toLowerCase();
+        enforceAuditCoverage = currentState === "execute" || currentState === "reflect";
 
-    // --- Load base story facts (same as other packs) ---
-    if (storyRegistry && Array.isArray(storyRegistry.stories)) {
-      for (const s of storyRegistry.stories) {
-        if (!s.id) continue;
-        const id = sanitize(s.id);
-        session.consult(`story(${id}, ${sanitize(s.title || "untitled")}, ${sanitize(s.priority || "medium")}, ${sanitize(s.status || "unknown")}).`);
-        if (Array.isArray(s.code_refs)) {
-          for (const c of s.code_refs) session.consult(`code_ref(${id}, ${sanitize(c)}).`);
+        let annotations = [];
+        try {
+          const sourceFiles = walkDir(cwd, cwd);
+          for (const f of sourceFiles) annotations.push(...parseAnnotations(f, cwd));
+        } catch (e) {
+          if (process.env.DEBUG) console.error(`[${this.id}] Annotation parse error: ${e.message}`);
         }
-        if (Array.isArray(s.test_refs)) {
-          for (const t of s.test_refs) session.consult(`test_ref(${id}, ${sanitize(t)}).`);
+
+        let planDir = ctx.planDir || ctx.personaAuthorityContext?.plan_dir || null;
+        const planContent = planFiles?.plan || null;
+        const pointerFile = join(cwd, "plans", ".current_plan");
+        if (!planDir && existsSync(pointerFile)) {
+          try {
+            const planDirName = readFileSync(pointerFile, "utf-8").trim();
+            planDir = join(cwd, "plans", planDirName);
+          } catch { /* skip */ }
         }
-        if (Array.isArray(s.validation_refs)) {
-          for (const v of s.validation_refs) session.consult(`validation_ref(${id}, ${sanitize(v)}).`);
-        }
-      }
-    }
 
-    // --- Load @planner: annotations ---
-    let annotations = [];
-    try {
-      const sourceFiles = walkDir(cwd, cwd);
-      for (const f of sourceFiles) {
-        annotations.push(...parseAnnotations(f, cwd));
-      }
-    } catch (e) {
-      if (process.env.DEBUG) console.error(`[${this.id}] Annotation parse error: ${e.message}`);
-    }
-
-    // --- Run ontology serializer to get traceability facts ---
-    let planDir = context.planDir || context.personaAuthorityContext?.plan_dir || null;
-    let planContent = planFiles?.plan || null;
-    const pointerFile = join(cwd, "plans", ".current_plan");
-    if (!planDir && existsSync(pointerFile)) {
-      try {
-        const planDirName = readFileSync(pointerFile, "utf-8").trim();
-        planDir = join(cwd, "plans", planDirName);
-      } catch { /* skip */ }
-    }
-
-    const { facts: ontologyFacts, meta } = serializeToFacts({
-      cwd,
-      storyRegistry,
-      planDir,
-      planContent,
-      annotations,
-    });
-
-    // Assert ontology facts into Prolog session
-    try {
-      session.consult(ontologyFacts);
-    } catch (e) {
-      return [{ _error: `Failed to load ontology facts: ${e.message}` }];
-    }
-
-    // --- Load traceability rules ---
-    let rulesText;
-    try {
-      rulesText = readFileSync(RULES_FILE, "utf-8");
-    } catch (e) {
-      return [{ _error: `Could not load ${this.id} rules.pl: ${e.message}` }];
-    }
-
-    try {
-      session.consult(rulesText);
-    } catch (e) {
-      return [{ _error: `Failed to load ${this.id} Prolog rules: ${e.message}` }];
-    }
-
-    // --- Query violations ---
-    const rawFindings = [];
-    try {
-      for (const ans of session.query("traceability_violation(RuleId, Subject, Detail, Severity)")) {
-        rawFindings.push({
-          ruleId:   String(ans.RuleId   || "TR-???"),
-          subject:  String(ans.Subject  || "project"),
-          detail:   String(ans.Detail   || ""),
-          severity: String(ans.Severity || "HIGH"),
-        });
-      }
-    } catch (e) {
-      if (process.env.DEBUG) console.error(`[${this.id}] Prolog query error: ${e.message}`);
-    }
-
-    // Deduplicate: TR-003 fires once per ungrounded criterion for the same goal.
-    // Collapse to one finding per goal with a count.
-    const deduped = [];
-    const seen = new Set();
-    for (const f of rawFindings) {
-      if (f.ruleId === "TR-005" && !enforceAuditCoverage) continue;
-      const key = `${f.ruleId}:${f.subject}`;
-      if (f.ruleId === "TR-003" || f.ruleId === "TR-004") {
-        // Deduplicate: one finding per goal (TR-003) or per story (TR-004)
-        if (seen.has(key)) continue;
-        seen.add(key);
-      }
-      // TR-004 can be very noisy — cap at 10 examples + summary
-      if (f.ruleId === "TR-004") {
-        const tr004Count = deduped.filter(d => d.ruleId === "TR-004").length;
-        if (tr004Count >= 10) {
-          const remaining = rawFindings.filter(r => r.ruleId === "TR-004").length - 10;
-          if (!seen.has("TR-004-summary") && remaining > 0) {
-            seen.add("TR-004-summary");
-            deduped.push({
-              ruleId: "TR-004",
-              subject: "project",
-              detail: `${remaining} additional stories have no traceability to goals`,
-              severity: "MEDIUM",
-            });
+        // Filter story registry to active plan stories to avoid TR-004 orphan false-positives
+        let activeStoryIds = new Set();
+        if (planContent) {
+          const storyIdRe = /\b(US-\d+|us-\d+|us-pm-auto-\d+)\b/gi;
+          let m;
+          while ((m = storyIdRe.exec(planContent)) !== null) {
+            activeStoryIds.add(m[1].toUpperCase());
           }
-          continue;
         }
-      }
-      deduped.push(f);
-    }
 
-    // Attach serialization metadata for transparency
-    if (deduped.length === 0 && meta.goals === 0 && meta.criteria === 0) {
-      deduped.push({
-        ruleId: "TR-INFO",
-        subject: "project",
-        detail: "No business goals or success criteria found in plan.md. Traceability audit requires a plan with ## Goal and ## Success Criteria sections.",
-        severity: "INFO",
-      });
-    }
+        const filesToModify = [];
+        if (planContent) {
+          const fileRe = /(file:\/\/\/[^\s)]+|(?:\.agent\/skills\/|apps\/|packages\/|src\/)[^\s)`]+)/g;
+          let m;
+          while ((m = fileRe.exec(planContent)) !== null) {
+            let p = m[1];
+            if (p.startsWith("file:///")) {
+              p = p.replace("file:///", "/");
+            }
+            if (p.startsWith(cwd)) {
+              p = p.slice(cwd.length).replace(/^[/\\]+/, "");
+            }
+            filesToModify.push(p.replace(/\\/g, "/"));
+          }
+        }
 
-    return deduped;
+        for (const ann of annotations || []) {
+          if (ann.storyId) activeStoryIds.add(ann.storyId.toUpperCase());
+          if (ann.story) activeStoryIds.add(ann.story.toUpperCase());
+        }
+
+        const filteredStories = (storyRegistry?.stories || []).filter(story => {
+          const idUpper = (story.id || "").toUpperCase();
+          if (activeStoryIds.has(idUpper)) return true;
+
+          const refs = [
+            ...(story.code_refs || []),
+            ...(story.test_refs || []),
+            ...(story.validation_refs || [])
+          ].map(r => r.replace(/\\/g, "/"));
+
+          for (const ref of refs) {
+            for (const file of filesToModify) {
+              if (ref === file || ref.endsWith("/" + file) || file.endsWith("/" + ref)) {
+                return true;
+              }
+            }
+          }
+          return false;
+        });
+
+        const activeRegistry = {
+          ...storyRegistry,
+          stories: filteredStories
+        };
+
+        assertStoryFacts(session, activeRegistry, {
+          sanitize,
+          include: ["code_refs", "test_refs", "validation_refs"],
+        });
+
+        const { facts: ontologyFacts, meta } = serializeToFacts({
+          cwd,
+          storyRegistry,
+          planDir,
+          planContent,
+          annotations,
+        });
+        serializationMeta = meta || {};
+
+        try {
+          session.consult(ontologyFacts);
+        } catch (e) {
+          return [{ _error: `Failed to load ontology facts: ${e.message}` }];
+        }
+      },
+      afterQuery: (rawFindings) => {
+        const deduped = [];
+        const seen = new Set();
+        for (const f of rawFindings) {
+          if (f.ruleId === "TR-005" && !enforceAuditCoverage) continue;
+          const key = `${f.ruleId}:${f.subject}`;
+          if ((f.ruleId === "TR-003" || f.ruleId === "TR-004") && seen.has(key)) continue;
+          if (f.ruleId === "TR-003" || f.ruleId === "TR-004") seen.add(key);
+
+          if (f.ruleId === "TR-004") {
+            const tr004Count = deduped.filter(d => d.ruleId === "TR-004").length;
+            if (tr004Count >= 10) {
+              const remaining = rawFindings.filter(r => r.ruleId === "TR-004").length - 10;
+              if (!seen.has("TR-004-summary") && remaining > 0) {
+                seen.add("TR-004-summary");
+                deduped.push({
+                  ruleId: "TR-004",
+                  subject: "project",
+                  detail: `${remaining} additional stories have no traceability to goals`,
+                  severity: "MEDIUM",
+                });
+              }
+              continue;
+            }
+          }
+          deduped.push(f);
+        }
+
+        if (deduped.length === 0 && serializationMeta.goals === 0 && serializationMeta.criteria === 0) {
+          deduped.push({
+            ruleId: "TR-INFO",
+            subject: "project",
+            detail: "No business goals or success criteria found in plan.md. Traceability audit requires a plan with ## Goal and ## Success Criteria sections.",
+            severity: "INFO",
+          });
+        }
+        return deduped;
+      },
+    });
   },
 
   normalizeFinding(raw, context) {
-    if (raw._error) {
-      return makeFinding({
-        id:             `${this.id.toUpperCase()}-ERR`,
-        role:           this.id,
-        severity:       SEVERITY.MEDIUM,
-        category:       "pack_error",
-        story_refs:     [],
-        evidence:       raw._error,
-        recommendation: `Check that packs/${this.id}/rules.pl is present and valid Prolog.`,
-      });
-    }
-
-    const rule = RULE_DEFS.find(r => r.id === raw.ruleId) || {};
-    const subjectSlug = String(raw.subject ?? "unknown").replace(/\W/g, "_");
-
-    // v7.4.1: TR-005 (audit blind spot — perspective not covered) was firing
-    // HIGH on every shape, including feature/integration/refactor/docs plans
-    // where exhaustive perspective coverage is overkill. Downgrade to LOW for
-    // shapes that don't need diagnosis-grade red-team breadth. bug-fix /
-    // regression / migration / planner-core / unknown still see HIGH.
-    const PERSPECTIVE_STRICT_SHAPES = new Set(["bug-fix", "regression", "migration", "planner-core", "unknown"]);
-    let severity = raw.severity || SEVERITY.HIGH;
-    if (raw.ruleId === "TR-005") {
-      const shapePrimary = String(context?.planShape?.primary || "").toLowerCase();
-      if (shapePrimary && !PERSPECTIVE_STRICT_SHAPES.has(shapePrimary)) {
-        severity = SEVERITY.LOW;
-      }
-    }
-
-    // Build human-readable evidence (Prolog engine lacks atom_concat,
-    // so rules return subject + label and we compose the message here)
-    const EVIDENCE_TEMPLATES = {
-      "TR-001": (s, d) => `Success criterion has no validation evidence: ${d}`,
-      "TR-002": (s, d) => `Criterion has code but no validation artifact: ${d}`,
-      "TR-003": (s, d) => `Goal at risk — has ungrounded criterion: ${d}`,
-      "TR-004": (s, d) => `Story has code but no traceability to goals: ${d}`,
-      "TR-005": (s, d) => `Audit blind spot — no pass covered perspective: ${d}`,
-      "TR-006": (s, d) => `Verification claims PASS but no validation artifact found: ${d}`,
-      "TR-INFO": (s, d) => d,
-    };
-    const evidenceFn = EVIDENCE_TEMPLATES[raw.ruleId];
-    const evidence = evidenceFn
-      ? evidenceFn(raw.subject, raw.detail)
-      : `${raw.ruleId} violation for ${raw.subject}: ${raw.detail}`;
-
-    return makeFinding({
-      id:             `${raw.ruleId}-${subjectSlug}`,
-      role:           this.id,
-      severity,
-      category:       "traceability",
-      story_refs:     raw.ruleId === "TR-004" ? [raw.subject] : [],
-      evidence,
-      recommendation: rule.remediation || "Ensure complete evidence chain from business goals to validated artifacts.",
+    return normalizePackFinding(raw, context, {
+      packId: this.id,
+      rules: RULE_DEFS,
+      defaultSeverity: SEVERITY.HIGH,
+      category: "traceability",
+      storyRefs: (finding) => finding.ruleId === "TR-004" ? [finding.subject] : [],
+      evidenceTemplates: EVIDENCE_TEMPLATES,
+      fallbackEvidence: (finding) => `${finding.ruleId} violation for ${finding.subject}: ${finding.detail}`,
+      fallbackRecommendation: "Ensure complete evidence chain from business goals to validated artifacts.",
+      severityResolver: (finding, ctx) => {
+        if (finding.ruleId !== "TR-005") return finding.severity || SEVERITY.HIGH;
+        const shapePrimary = String(ctx?.planShape?.primary || "").toLowerCase();
+        return shapePrimary && !PERSPECTIVE_STRICT_SHAPES.has(shapePrimary) ? SEVERITY.LOW : finding.severity || SEVERITY.HIGH;
+      },
     });
   },
 
@@ -338,9 +330,7 @@ const traceabilityPack = {
         "Run ontology serializer to see the full traceability graph.",
       ],
     };
-    const lines = guidance[phase];
-    if (!lines || lines.length === 0) return null;
-    return lines.map((l, i) => `${i + 1}. ${l}`).join("\n");
+    return formatPhaseGuidance(guidance, phase);
   },
 
   getPlanConstraints(context) {

@@ -1,0 +1,439 @@
+{
+  "schema_version": 1,
+  "benchmark_id": "ive_autocoder_v2_ideation_quality",
+  "description": "Deterministic actor-output corpus for useful insight generation quality.",
+  "fixtures": [
+    {
+      "id": "planner_gate_bounce_reduction",
+      "domain": "planner_core",
+      "goal": "Reduce repeated transition bounces without weakening the gate.",
+      "expected_dimensions": [
+        { "id": "classify_bounce", "label": "Classify bounce as ritual, substantive, hybrid, or unknown.", "keywords": ["classify", "ritual", "substantive", "hybrid", "unknown"], "weight": 1, "ontology_expected": true },
+        { "id": "fixture_replay", "label": "Replay representative gate transcripts before changing policy.", "keywords": ["replay", "transcripts", "fixtures", "telemetry"], "weight": 1 },
+        { "id": "budget_guard", "label": "Expose a numeric budget that fails closed on regression.", "keywords": ["budget", "numeric", "regression", "fails"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_gate_triage", "actor_family": "base_agent", "text": "Classify the bounce first, then replay representative transcripts before touching gate policy.", "dimension_refs": ["classify_bounce", "fixture_replay"], "relevance": 0.78, "actionability": 0.74, "novelty": 0.66 },
+        { "actor_id": "persona_traceability", "actor_family": "persona", "text": "Add a numeric regression budget so ritual, substantive, hybrid, and unknown rates fail closed in CI.", "dimension_refs": ["classify_bounce", "budget_guard"], "relevance": 0.86, "actionability": 0.83, "novelty": 0.74 },
+        { "actor_id": "ontology_gate", "actor_family": "ontology", "text": "Represent bounce_kind and budget_guard facts so Prolog can challenge unknown transitions.", "dimension_refs": ["classify_bounce", "budget_guard"], "relevance": 0.82, "actionability": 0.76, "novelty": 0.7 },
+        { "actor_id": "knowledge_g068", "actor_family": "knowledge_trigger", "text": "Apply the active-mistake pattern: replay telemetry and make the budget visible before close.", "dimension_refs": ["fixture_replay", "budget_guard"], "relevance": 0.84, "actionability": 0.81, "novelty": 0.72 }
+      ]
+    },
+    {
+      "id": "ml_overfitting_story_gap",
+      "domain": "machine_learning",
+      "goal": "Find missing user-story requirements in a machine-learning training plan.",
+      "expected_dimensions": [
+        { "id": "temporal_split", "label": "Require known-at-time temporal split or walk-forward validation.", "keywords": ["temporal", "walk-forward", "known-at-time", "split"], "weight": 1, "ontology_expected": true },
+        { "id": "leakage_probe", "label": "Probe leakage between feature construction and label time.", "keywords": ["leakage", "label", "feature", "future"], "weight": 1 },
+        { "id": "baseline_control", "label": "Compare against simple baselines and ablations.", "keywords": ["baseline", "control", "ablation"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_ml_review", "actor_family": "base_agent", "text": "Require a temporal split and leakage probe before interpreting the model score.", "dimension_refs": ["temporal_split", "leakage_probe"], "relevance": 0.82, "actionability": 0.78, "novelty": 0.68 },
+        { "actor_id": "persona_quant", "actor_family": "persona", "text": "Add walk-forward known-at-time validation, a leakage audit, and a simple baseline control.", "dimension_refs": ["temporal_split", "leakage_probe", "baseline_control"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.76 },
+        { "actor_id": "ontology_ml", "actor_family": "ontology", "text": "Flag missing temporal_split and leakage_probe facts against the training-plan ontology.", "dimension_refs": ["temporal_split", "leakage_probe"], "relevance": 0.84, "actionability": 0.79, "novelty": 0.7 },
+        { "actor_id": "knowledge_quant_retros", "actor_family": "knowledge_trigger", "text": "Past quant retros say not to promote any score until baselines and leakage probes pass.", "dimension_refs": ["leakage_probe", "baseline_control"], "relevance": 0.86, "actionability": 0.82, "novelty": 0.73 }
+      ]
+    },
+    {
+      "id": "recipe_runner_contract",
+      "domain": "integration",
+      "goal": "Check whether a new recipe runner is executable and safe to reuse.",
+      "expected_dimensions": [
+        { "id": "dry_run", "label": "Provide a real dry-run path.", "keywords": ["dry-run", "smoke", "runner"], "weight": 1, "ontology_expected": true },
+        { "id": "input_contract", "label": "Define required inputs and defaults.", "keywords": ["inputs", "defaults", "schema"], "weight": 1 },
+        { "id": "failure_modes", "label": "Document partial-failure handling.", "keywords": ["failure", "partial", "rollback"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_runner", "actor_family": "base_agent", "text": "Add a dry-run command and list required inputs before the runner is reusable.", "dimension_refs": ["dry_run", "input_contract"], "relevance": 0.8, "actionability": 0.78, "novelty": 0.66 },
+        { "actor_id": "persona_wiring", "actor_family": "persona", "text": "Exercise a dry-run plus a partial-failure fixture so the orchestration proof is real.", "dimension_refs": ["dry_run", "failure_modes"], "relevance": 0.87, "actionability": 0.85, "novelty": 0.73 },
+        { "actor_id": "ontology_recipe", "actor_family": "ontology", "text": "Require recipe_input_contract and dry_run_available facts before promotion.", "dimension_refs": ["dry_run", "input_contract"], "relevance": 0.83, "actionability": 0.77, "novelty": 0.69 },
+        { "actor_id": "knowledge_recipe", "actor_family": "knowledge_trigger", "text": "Reuse-before-create guidance says missing failure modes should block the recipe bootstrap.", "dimension_refs": ["input_contract", "failure_modes"], "relevance": 0.84, "actionability": 0.81, "novelty": 0.72 }
+      ]
+    },
+    {
+      "id": "scoreboard_false_green",
+      "domain": "planner_core",
+      "goal": "Prevent a scoreboard metric from passing when its source report is missing.",
+      "expected_dimensions": [
+        { "id": "missing_source_fail", "label": "Missing source status must be unknown or fail, not pass.", "keywords": ["missing", "unknown", "fail"], "weight": 1, "ontology_expected": true },
+        { "id": "budget_surface", "label": "Expose budget rows and regression codes.", "keywords": ["budget", "regression", "code"], "weight": 1 },
+        { "id": "artifact_path", "label": "Keep artifact paths inspectable.", "keywords": ["artifact", "path", "manifest"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_scoreboard", "actor_family": "base_agent", "text": "Normalize missing source status as unknown and fail closed if the metric is required.", "dimension_refs": ["missing_source_fail", "budget_surface"], "relevance": 0.82, "actionability": 0.79, "novelty": 0.68 },
+        { "actor_id": "persona_assumptions", "actor_family": "persona", "text": "Add explicit budget rows, regression codes, and artifact paths so a PASS is inspectable.", "dimension_refs": ["budget_surface", "artifact_path"], "relevance": 0.88, "actionability": 0.84, "novelty": 0.74 },
+        { "actor_id": "ontology_scoreboard", "actor_family": "ontology", "text": "A required_metric_source_missing fact should prevent a pass status in the scoreboard ontology.", "dimension_refs": ["missing_source_fail", "budget_surface"], "relevance": 0.84, "actionability": 0.77, "novelty": 0.71 },
+        { "actor_id": "knowledge_scoreboard", "actor_family": "knowledge_trigger", "text": "Prior scoreboard gotchas say missing artifacts must show source_status and manifest path.", "dimension_refs": ["missing_source_fail", "artifact_path"], "relevance": 0.83, "actionability": 0.8, "novelty": 0.7 }
+      ]
+    },
+    {
+      "id": "ux_empty_state",
+      "domain": "ux",
+      "goal": "Review a visible dashboard change for missing empty and error states.",
+      "expected_dimensions": [
+        { "id": "empty_state", "label": "Render an honest empty state.", "keywords": ["empty", "state", "no data"], "weight": 1, "ontology_expected": true },
+        { "id": "error_state", "label": "Render retryable error state.", "keywords": ["error", "retry", "failure"], "weight": 1 },
+        { "id": "responsive_proof", "label": "Capture responsive/browser proof if UI changes.", "keywords": ["responsive", "browser", "screenshot"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_ux", "actor_family": "base_agent", "text": "Add explicit empty and error states before the dashboard can be called complete.", "dimension_refs": ["empty_state", "error_state"], "relevance": 0.8, "actionability": 0.77, "novelty": 0.65 },
+        { "actor_id": "persona_ux", "actor_family": "persona", "text": "Capture a browser screenshot for empty, error, and responsive states, not only the happy path.", "dimension_refs": ["empty_state", "error_state", "responsive_proof"], "relevance": 0.9, "actionability": 0.87, "novelty": 0.76 },
+        { "actor_id": "ontology_ux", "actor_family": "ontology", "text": "Missing empty_state fact should block UX completion until proof is linked.", "dimension_refs": ["empty_state", "responsive_proof"], "relevance": 0.82, "actionability": 0.74, "novelty": 0.69 },
+        { "actor_id": "knowledge_ui", "actor_family": "knowledge_trigger", "text": "Responsive UI mistakes require captured viewport evidence for the non-happy states.", "dimension_refs": ["error_state", "responsive_proof"], "relevance": 0.85, "actionability": 0.83, "novelty": 0.72 }
+      ]
+    },
+    {
+      "id": "program_ticket_traceability",
+      "domain": "program_management",
+      "goal": "Detect whether a ready ticket is missing story or acceptance traceability.",
+      "expected_dimensions": [
+        { "id": "story_ref", "label": "Ticket has active story refs.", "keywords": ["story", "traceability", "refs"], "weight": 1, "ontology_expected": true },
+        { "id": "acceptance_ref", "label": "Acceptance and verification refs exist.", "keywords": ["acceptance", "verification", "refs"], "weight": 1 },
+        { "id": "packet_check", "label": "Program Packet validates after lifecycle changes.", "keywords": ["packet", "check", "validates"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_ticket", "actor_family": "base_agent", "text": "Check story refs and acceptance refs before moving the ticket to ready.", "dimension_refs": ["story_ref", "acceptance_ref"], "relevance": 0.8, "actionability": 0.78, "novelty": 0.66 },
+        { "actor_id": "persona_trace", "actor_family": "persona", "text": "Make Program Packet check PASS the lifecycle guard after story, acceptance, and verification refs change.", "dimension_refs": ["story_ref", "acceptance_ref", "packet_check"], "relevance": 0.89, "actionability": 0.86, "novelty": 0.74 },
+        { "actor_id": "ontology_ticket", "actor_family": "ontology", "text": "ticket_without_traceability should remain a blocker until story_ref and verification_ref facts exist.", "dimension_refs": ["story_ref", "acceptance_ref"], "relevance": 0.84, "actionability": 0.78, "novelty": 0.71 },
+        { "actor_id": "knowledge_packet", "actor_family": "knowledge_trigger", "text": "Use the intake receipt pattern and rerun program_manager check after status changes.", "dimension_refs": ["story_ref", "packet_check"], "relevance": 0.84, "actionability": 0.82, "novelty": 0.73 }
+      ]
+    },
+    {
+      "id": "tokenomics_unlock_claim",
+      "domain": "tokenomics",
+      "goal": "Review a tokenomics story for hidden unlock and incentive-source gaps.",
+      "expected_dimensions": [
+        { "id": "vesting_unlocks", "label": "Surface vesting and unlock schedule.", "keywords": ["vesting", "unlock", "schedule"], "weight": 1, "ontology_expected": true },
+        { "id": "incentive_source", "label": "Name incentive source and sustainability.", "keywords": ["incentive", "source", "sustainability"], "weight": 1 },
+        { "id": "advisory_boundary", "label": "State non-financial-advice boundary.", "keywords": ["advisory", "legal", "financial"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_token", "actor_family": "base_agent", "text": "Ask for vesting unlocks and the incentive source before accepting tokenomics claims.", "dimension_refs": ["vesting_unlocks", "incentive_source"], "relevance": 0.8, "actionability": 0.76, "novelty": 0.65 },
+        { "actor_id": "persona_tokenomics", "actor_family": "persona", "text": "Require unlock schedule, incentive source sustainability, and financial/legal advisory boundaries.", "dimension_refs": ["vesting_unlocks", "incentive_source", "advisory_boundary"], "relevance": 0.9, "actionability": 0.86, "novelty": 0.75 },
+        { "actor_id": "ontology_token", "actor_family": "ontology", "text": "A tokenomics ontology gap exists when vesting_unlocks or incentive_source facts are absent.", "dimension_refs": ["vesting_unlocks", "incentive_source"], "relevance": 0.84, "actionability": 0.77, "novelty": 0.7 },
+        { "actor_id": "knowledge_token", "actor_family": "knowledge_trigger", "text": "Tokenomics persona guidance adds advisory boundary checks before any launch recommendation.", "dimension_refs": ["incentive_source", "advisory_boundary"], "relevance": 0.86, "actionability": 0.82, "novelty": 0.72 }
+      ]
+    },
+    {
+      "id": "knowledge_pack_missing_recipe",
+      "domain": "knowledge",
+      "goal": "Spot when an information pack should imply missing checks in a plan.",
+      "expected_dimensions": [
+        { "id": "pack_signal", "label": "Detect pack-specific semantic signal.", "keywords": ["pack", "semantic", "signal"], "weight": 1, "ontology_expected": true },
+        { "id": "generic_mapping", "label": "Map pack signal through ontology rather than ad hoc tickets.", "keywords": ["ontology", "generic", "mapping"], "weight": 1 },
+        { "id": "test_fixture", "label": "Protect the mapping with fixtures.", "keywords": ["fixture", "test", "regression"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_pack", "actor_family": "base_agent", "text": "Turn the pack signal into an ontology mapping rather than a one-off ticket.", "dimension_refs": ["pack_signal", "generic_mapping"], "relevance": 0.81, "actionability": 0.78, "novelty": 0.67 },
+        { "actor_id": "persona_pack", "actor_family": "persona", "text": "Add fixture-backed tests so ML, tokenomics, and planner packs can surface missing checks generically.", "dimension_refs": ["pack_signal", "generic_mapping", "test_fixture"], "relevance": 0.88, "actionability": 0.85, "novelty": 0.76 },
+        { "actor_id": "ontology_pack", "actor_family": "ontology", "text": "Connect pack_signal to missing_requirement facts through ontology, not bespoke issue text.", "dimension_refs": ["pack_signal", "generic_mapping"], "relevance": 0.85, "actionability": 0.79, "novelty": 0.73 },
+        { "actor_id": "knowledge_pack", "actor_family": "knowledge_trigger", "text": "The general-applicability note says to add regression fixtures for pack-to-ontology discovery.", "dimension_refs": ["generic_mapping", "test_fixture"], "relevance": 0.84, "actionability": 0.82, "novelty": 0.72 }
+      ]
+    },
+    {
+      "id": "fresh_context_reviewer",
+      "domain": "review",
+      "goal": "Decide whether an in-process audit should be trusted.",
+      "expected_dimensions": [
+        { "id": "isolation_boundary", "label": "Separate author and reviewer context.", "keywords": ["fresh", "isolation", "reviewer"], "weight": 1, "ontology_expected": true },
+        { "id": "evidence_contract", "label": "Require artifact-backed claims.", "keywords": ["artifact", "evidence", "claim"], "weight": 1 },
+        { "id": "authority_ladder", "label": "Keep deterministic checks authoritative over advisory LLM output.", "keywords": ["authority", "deterministic", "advisory"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_review", "actor_family": "base_agent", "text": "Do not trust an in-process audit as independent; require artifact evidence.", "dimension_refs": ["isolation_boundary", "evidence_contract"], "relevance": 0.8, "actionability": 0.77, "novelty": 0.66 },
+        { "actor_id": "persona_review", "actor_family": "persona", "text": "Use a fresh-context reviewer only as advisory, with deterministic checks on the authority ladder.", "dimension_refs": ["isolation_boundary", "authority_ladder"], "relevance": 0.87, "actionability": 0.84, "novelty": 0.74 },
+        { "actor_id": "ontology_review", "actor_family": "ontology", "text": "Model reviewer_isolation and evidence_contract facts separately from advisory verdicts.", "dimension_refs": ["isolation_boundary", "evidence_contract"], "relevance": 0.84, "actionability": 0.78, "novelty": 0.72 },
+        { "actor_id": "knowledge_review", "actor_family": "knowledge_trigger", "text": "Advisor authority rules say deterministic checks outrank advisory review recommendations.", "dimension_refs": ["evidence_contract", "authority_ladder"], "relevance": 0.85, "actionability": 0.82, "novelty": 0.72 }
+      ]
+    },
+    {
+      "id": "dispatcher_receipt_quality",
+      "domain": "autocoder_runtime",
+      "goal": "Review cheap-agent dispatcher output for useful receipt evidence.",
+      "expected_dimensions": [
+        { "id": "closed_questions", "label": "Compile work into closed questions.", "keywords": ["closed", "questions", "brief"], "weight": 1, "ontology_expected": true },
+        { "id": "receipt_refs", "label": "Return evidence and escalation refs.", "keywords": ["receipt", "evidence", "escalation"], "weight": 1 },
+        { "id": "budget_metrics", "label": "Record cost, bounce, and escalation metrics.", "keywords": ["cost", "bounce", "metrics"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_dispatch", "actor_family": "base_agent", "text": "Make the dispatcher return closed questions and evidence refs, not just a prose answer.", "dimension_refs": ["closed_questions", "receipt_refs"], "relevance": 0.81, "actionability": 0.78, "novelty": 0.68 },
+        { "actor_id": "persona_dispatch", "actor_family": "persona", "text": "Require receipt refs plus cost, bounce, and escalation metrics so cheap execution is inspectable.", "dimension_refs": ["receipt_refs", "budget_metrics"], "relevance": 0.88, "actionability": 0.86, "novelty": 0.75 },
+        { "actor_id": "ontology_dispatch", "actor_family": "ontology", "text": "Closed_question and delivery_receipt facts should prove dispatcher evidence completeness.", "dimension_refs": ["closed_questions", "receipt_refs"], "relevance": 0.84, "actionability": 0.78, "novelty": 0.71 },
+        { "actor_id": "knowledge_dispatch", "actor_family": "knowledge_trigger", "text": "The dispatcher roadmap says receipts need cost, bounce, and escalation metrics before promotion.", "dimension_refs": ["closed_questions", "budget_metrics"], "relevance": 0.85, "actionability": 0.82, "novelty": 0.72 }
+      ]
+    },
+    {
+      "id": "quant_gradient_boosting_baseline",
+      "domain": "quant_modeling",
+      "goal": "Evaluate whether a quant plan uses the ML toolbox baseline rather than jumping straight to model tuning.",
+      "expected_dimensions": [
+        { "id": "gbm_baseline", "label": "Start with gradient boosting baseline.", "keywords": ["gradient", "boosting", "baseline"], "weight": 1, "ontology_expected": true },
+        { "id": "tabular_features", "label": "Use tabular supervised-learning feature framing.", "keywords": ["tabular", "features", "supervised"], "weight": 1 },
+        { "id": "control_baseline", "label": "Compare against a simpler control.", "keywords": ["control", "baseline", "compare"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_quant_gbm", "actor_family": "base_agent", "text": "Ask for a gradient boosting baseline and a control before accepting extra tuning work.", "dimension_refs": ["gbm_baseline", "control_baseline"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_quant_gbm", "actor_family": "persona", "text": "Frame the tabular feature set, run the ML toolbox gradient boosting baseline, and compare it to a simpler control before optimizer claims.", "dimension_refs": ["gbm_baseline", "tabular_features", "control_baseline"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_quant_gbm", "actor_family": "ontology", "text": "Emit a missing_baseline fact when gbm_baseline and control_baseline evidence are absent from a quant plan.", "dimension_refs": ["gbm_baseline", "control_baseline"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_quant_gbm", "actor_family": "knowledge_trigger", "text": "MLT-TOOL-001 supplies the gradient boosting baseline, while the quant protocol keeps it below promotion evidence.", "dimension_refs": ["gbm_baseline", "tabular_features", "control_baseline"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "quant_time_series_validation_harness",
+      "domain": "quant_modeling",
+      "goal": "Check whether a model evaluation plan proves temporal validation and known-at-time data handling.",
+      "expected_dimensions": [
+        { "id": "temporal_split", "label": "Use blocked or walk-forward temporal split.", "keywords": ["temporal", "split", "walk-forward"], "weight": 1, "ontology_expected": true },
+        { "id": "known_at_time", "label": "State known-at-time feature availability.", "keywords": ["known-at-time", "feature", "availability"], "weight": 1 },
+        { "id": "leakage_probe", "label": "Run leakage and temporal probes.", "keywords": ["leakage", "probe", "temporal"], "weight": 1 },
+        { "id": "validation_harness", "label": "Use repeatable validation harness.", "keywords": ["validation", "harness", "repeatable"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_quant_ts", "actor_family": "base_agent", "text": "Require a temporal split and leakage probe before trusting the model evaluation.", "dimension_refs": ["temporal_split", "leakage_probe"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_quant_ts", "actor_family": "persona", "text": "Use the MLT time-series validation harness with known-at-time features, blocked or walk-forward splits, and explicit leakage probes.", "dimension_refs": ["temporal_split", "known_at_time", "leakage_probe", "validation_harness"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_quant_ts", "actor_family": "ontology", "text": "no_temporal_split and missing_known_at_time facts should block a result claim until validation_harness evidence exists.", "dimension_refs": ["temporal_split", "known_at_time", "validation_harness"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_quant_ts", "actor_family": "knowledge_trigger", "text": "MLT-TOOL-002 and QRP-001 together require walk-forward validation, known-at-time data, and leakage probes.", "dimension_refs": ["temporal_split", "known_at_time", "leakage_probe", "validation_harness"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "quant_optimizer_scale_contract",
+      "domain": "quant_modeling",
+      "goal": "Review whether an optimizer plan discloses run class, search surface, controls, and objective handling.",
+      "expected_dimensions": [
+        { "id": "run_class", "label": "Disclose optimizer run class.", "keywords": ["run", "class", "optimizer"], "weight": 1, "ontology_expected": true },
+        { "id": "search_surface", "label": "Describe search surface and sampled parameters.", "keywords": ["search", "surface", "parameters"], "weight": 1 },
+        { "id": "trial_count", "label": "State trial count or budget.", "keywords": ["trial", "count", "budget"], "weight": 1 },
+        { "id": "controls_frozen", "label": "Separate frozen controls from sampled knobs.", "keywords": ["frozen", "controls", "sampled"], "weight": 1 },
+        { "id": "objective_handling", "label": "State objective and tie handling.", "keywords": ["objective", "handling", "ties"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_quant_optimizer", "actor_family": "base_agent", "text": "Ask for optimizer run class, trial count, and search surface before reading the score.", "dimension_refs": ["run_class", "search_surface", "trial_count"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_quant_optimizer", "actor_family": "persona", "text": "Document run class, trial count, search surface, frozen controls, sampled knobs, and objective handling before claiming an optimizer improvement.", "dimension_refs": ["run_class", "search_surface", "trial_count", "controls_frozen", "objective_handling"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_quant_optimizer", "actor_family": "ontology", "text": "optimizer_scale_contract_missing should fire when run_class or search_surface facts are missing.", "dimension_refs": ["run_class", "search_surface", "controls_frozen"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_quant_optimizer", "actor_family": "knowledge_trigger", "text": "QRP-002 names run class, trial count, search surface, objective handling, controls, and frozen-vs-sampled parameters.", "dimension_refs": ["run_class", "search_surface", "trial_count", "controls_frozen", "objective_handling"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "quant_claim_boundary_contract",
+      "domain": "quant_modeling",
+      "goal": "Detect whether a quant result is overstating a diagnostic metric as a deployable model claim.",
+      "expected_dimensions": [
+        { "id": "target_semantics", "label": "State target and label formula.", "keywords": ["target", "label", "semantics"], "weight": 1, "ontology_expected": true },
+        { "id": "prediction_time", "label": "Name prediction timestamp.", "keywords": ["prediction", "time", "timestamp"], "weight": 1 },
+        { "id": "proof_metric", "label": "Bind proof metric to claim.", "keywords": ["proof", "metric", "claim"], "weight": 1 },
+        { "id": "diagnostic_wording", "label": "Use diagnostic-only wording until promotion evidence exists.", "keywords": ["diagnostic", "promotion", "wording"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_quant_claim", "actor_family": "base_agent", "text": "Pin down target semantics, prediction time, and proof metric before accepting the claim.", "dimension_refs": ["target_semantics", "prediction_time", "proof_metric"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_quant_claim", "actor_family": "persona", "text": "Keep the result diagnostic-only unless target semantics, label formula, prediction timestamp, and proof metric all match the claimed decision.", "dimension_refs": ["target_semantics", "prediction_time", "proof_metric", "diagnostic_wording"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_quant_claim", "actor_family": "ontology", "text": "claim_boundary_missing should block promotion when target_semantics or prediction_time facts are absent.", "dimension_refs": ["target_semantics", "prediction_time", "diagnostic_wording"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_quant_claim", "actor_family": "knowledge_trigger", "text": "QRP-003 requires target semantics, label formula, prediction time, proof metric, and diagnostic wording for result claims.", "dimension_refs": ["target_semantics", "prediction_time", "proof_metric", "diagnostic_wording"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "quant_promotion_evidence_contract",
+      "domain": "quant_modeling",
+      "goal": "Review whether promotion evidence includes controls, stability, confidence, counterargument, and residual risk.",
+      "expected_dimensions": [
+        { "id": "qrv_artifact", "label": "Require quant_results_validation artifact.", "keywords": ["quant_results_validation", "artifact", "promotion"], "weight": 1, "ontology_expected": true },
+        { "id": "stability_controls", "label": "Include controls and stability checks.", "keywords": ["controls", "stability", "checks"], "weight": 1 },
+        { "id": "confidence_counterargument", "label": "Include confidence and strongest counterargument.", "keywords": ["confidence", "counterargument", "falsification"], "weight": 1 },
+        { "id": "residual_risk", "label": "State residual risk and verdict.", "keywords": ["residual", "risk", "verdict"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_quant_promotion", "actor_family": "base_agent", "text": "Ask for quant_results_validation plus controls and residual risk before promotion.", "dimension_refs": ["qrv_artifact", "stability_controls", "residual_risk"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_quant_promotion", "actor_family": "persona", "text": "Promotion needs a QRV artifact covering controls, stability, confidence, counterargument, falsification, residual risk, and verdict.", "dimension_refs": ["qrv_artifact", "stability_controls", "confidence_counterargument", "residual_risk"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_quant_promotion", "actor_family": "ontology", "text": "promotion_evidence_missing should remain blocking until qrv_artifact and residual_risk facts are present.", "dimension_refs": ["qrv_artifact", "residual_risk"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_quant_promotion", "actor_family": "knowledge_trigger", "text": "QRP-004 defines the promotion evidence payload: controls, stability, confidence, counterargument, falsification, residual risk, and verdict.", "dimension_refs": ["qrv_artifact", "stability_controls", "confidence_counterargument", "residual_risk"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "quant_assumption_ledger_contract",
+      "domain": "quant_modeling",
+      "goal": "Check whether a quant plan has a data lineage and assumption ledger instead of vague dataset claims.",
+      "expected_dimensions": [
+        { "id": "data_lineage", "label": "Record data source, tape, and lineage.", "keywords": ["data", "lineage", "source"], "weight": 1, "ontology_expected": true },
+        { "id": "date_range_row_count", "label": "State date range and row count.", "keywords": ["date", "range", "row"], "weight": 1 },
+        { "id": "known_at_time", "label": "Prove known-at-time availability.", "keywords": ["known-at-time", "availability", "feature"], "weight": 1 },
+        { "id": "leakage_temporal_probe", "label": "Run leakage and temporal split probes.", "keywords": ["leakage", "temporal", "probe"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_quant_ledger", "actor_family": "base_agent", "text": "Require data lineage, date range, row count, and leakage probes before model evaluation.", "dimension_refs": ["data_lineage", "date_range_row_count", "leakage_temporal_probe"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_quant_ledger", "actor_family": "persona", "text": "Build the assumption ledger with source tape, lineage, date range, row count, known-at-time checks, and leakage/temporal probes.", "dimension_refs": ["data_lineage", "date_range_row_count", "known_at_time", "leakage_temporal_probe"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_quant_ledger", "actor_family": "ontology", "text": "assumption_ledger_missing should fire when data_lineage or known_at_time facts are absent.", "dimension_refs": ["data_lineage", "known_at_time"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_quant_ledger", "actor_family": "knowledge_trigger", "text": "QRP-001 lists source tape, lineage, date range, row count, known-at-time handling, and leakage probes as ledger fields.", "dimension_refs": ["data_lineage", "date_range_row_count", "known_at_time", "leakage_temporal_probe"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "quant_run_class_decision_context",
+      "domain": "quant_communication",
+      "goal": "Review whether a result report discloses run class and decision context before user-visible claims.",
+      "expected_dimensions": [
+        { "id": "run_class_disclosure", "label": "Disclose run class in result communication.", "keywords": ["run", "class", "disclosure"], "weight": 1, "ontology_expected": true },
+        { "id": "audience_context", "label": "Name the audience context.", "keywords": ["audience", "context", "recipient"], "weight": 1 },
+        { "id": "decision_context", "label": "Name the decision the report supports.", "keywords": ["decision", "support", "context"], "weight": 1 },
+        { "id": "controls_scope", "label": "State controls and proof scope.", "keywords": ["controls", "proof", "scope"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_quant_comm", "actor_family": "base_agent", "text": "Ask who the report is for, what decision it supports, and what run class produced it.", "dimension_refs": ["run_class_disclosure", "audience_context", "decision_context"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_quant_comm", "actor_family": "persona", "text": "Quant communication needs run class disclosure, audience context, decision context, and controls scope before user-visible result claims.", "dimension_refs": ["run_class_disclosure", "audience_context", "decision_context", "controls_scope"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_quant_comm", "actor_family": "ontology", "text": "result_claim_unbounded should fire when run_class_disclosure or decision_context facts are missing.", "dimension_refs": ["run_class_disclosure", "decision_context"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_quant_comm", "actor_family": "knowledge_trigger", "text": "CRP-FLOOR-001 and CRP-FLOOR-002 require run class, audience, and decision context for result reports.", "dimension_refs": ["run_class_disclosure", "audience_context", "decision_context", "controls_scope"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "quant_visualizer_leakage_failure",
+      "domain": "quant_modeling",
+      "goal": "Use the visualizer dogfood leakage failure as a fixture for temporal split enforcement.",
+      "expected_dimensions": [
+        { "id": "temporal_split_artifact", "label": "Require artifact-backed temporal split evidence.", "keywords": ["temporal", "split", "artifact"], "weight": 1, "ontology_expected": true },
+        { "id": "leakage_failure_code", "label": "Identify leakage failure code or message.", "keywords": ["leakage", "failure", "code"], "weight": 1 },
+        { "id": "expanded_scope_rerun", "label": "Rerun expanded leakage scope when accomplice signal appears.", "keywords": ["expanded", "scope", "rerun"], "weight": 1 },
+        { "id": "local_source_path", "label": "Ground evidence in local visualizer payload.", "keywords": ["visualizer", "payload", "source"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_quant_leakage", "actor_family": "base_agent", "text": "Block the result until temporal split evidence and the leakage failure message are addressed.", "dimension_refs": ["temporal_split_artifact", "leakage_failure_code"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_quant_leakage", "actor_family": "persona", "text": "Use the visualizer leakageFail and accompliceFail rows to require artifact-backed temporal split proof and an expanded-scope rerun.", "dimension_refs": ["temporal_split_artifact", "leakage_failure_code", "expanded_scope_rerun", "local_source_path"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_quant_leakage", "actor_family": "ontology", "text": "no_temporal_split remains a blocker until temporal_split_artifact and local_source_path facts exist.", "dimension_refs": ["temporal_split_artifact", "local_source_path"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_quant_leakage", "actor_family": "knowledge_trigger", "text": "The visualizer payload records US-QLEAK-001 and funding-rate residual correlation as leakage rerun triggers.", "dimension_refs": ["temporal_split_artifact", "leakage_failure_code", "expanded_scope_rerun", "local_source_path"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "quant_betting_market_calibration",
+      "domain": "quant_betting",
+      "goal": "Review a betting-market claim for missing de-vig method, CLV basis, and segment floor evidence.",
+      "expected_dimensions": [
+        { "id": "devig_method", "label": "Declare de-vig method.", "keywords": ["devig", "method", "market"], "weight": 1, "ontology_expected": true },
+        { "id": "clv_basis", "label": "Use de-vigged CLV basis.", "keywords": ["clv", "basis", "devigged"], "weight": 1 },
+        { "id": "segment_floor", "label": "Check segment floor.", "keywords": ["segment", "floor", "calibration"], "weight": 1 },
+        { "id": "calibration_claim_boundary", "label": "Keep calibration claim diagnostic until proof exists.", "keywords": ["calibration", "claim", "diagnostic"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_quant_betting", "actor_family": "base_agent", "text": "Ask for de-vig method, CLV basis, and segment floor before betting-market claims.", "dimension_refs": ["devig_method", "clv_basis", "segment_floor"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_quant_betting", "actor_family": "persona", "text": "The bettingMarketFail payload demands de-vig method, de-vigged CLV basis, segment floors, and diagnostic claim boundaries.", "dimension_refs": ["devig_method", "clv_basis", "segment_floor", "calibration_claim_boundary"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_quant_betting", "actor_family": "ontology", "text": "betting_claim_unbounded should fire when devig_method or clv_basis facts are absent.", "dimension_refs": ["devig_method", "clv_basis", "calibration_claim_boundary"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_quant_betting", "actor_family": "knowledge_trigger", "text": "Visualizer dogfood marks missing_devig_method, clv_basis_not_devigged, and segment_floor_failed as blockers.", "dimension_refs": ["devig_method", "clv_basis", "segment_floor", "calibration_claim_boundary"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "quant_crypto_execution_cost_model",
+      "domain": "quant_crypto_execution",
+      "goal": "Review a crypto execution claim for costs, funding, liquidation, and execution-boundary proof.",
+      "expected_dimensions": [
+        { "id": "transaction_costs", "label": "Include transaction costs.", "keywords": ["transaction", "costs", "fees"], "weight": 1, "ontology_expected": true },
+        { "id": "funding_rate", "label": "Model perp funding rate.", "keywords": ["funding", "rate", "perp"], "weight": 1 },
+        { "id": "liquidation_model", "label": "Model liquidation path.", "keywords": ["liquidation", "model", "perp"], "weight": 1 },
+        { "id": "execution_claim_boundary", "label": "Keep execution result diagnostic without proof.", "keywords": ["execution", "claim", "boundary"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_quant_crypto", "actor_family": "base_agent", "text": "Ask for transaction costs, funding rate, and liquidation model before crypto execution claims.", "dimension_refs": ["transaction_costs", "funding_rate", "liquidation_model"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_quant_crypto", "actor_family": "persona", "text": "The cryptoExecutionFail payload blocks promotion until transaction costs, perp funding, liquidation, and execution claim boundaries are modeled.", "dimension_refs": ["transaction_costs", "funding_rate", "liquidation_model", "execution_claim_boundary"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_quant_crypto", "actor_family": "ontology", "text": "execution_cost_model_missing should fire when transaction_costs or funding_rate facts are absent.", "dimension_refs": ["transaction_costs", "funding_rate", "execution_claim_boundary"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_quant_crypto", "actor_family": "knowledge_trigger", "text": "Visualizer dogfood lists missing_transaction_costs, perp_missing_funding_rate, and perp_missing_liquidation_model as blockers.", "dimension_refs": ["transaction_costs", "funding_rate", "liquidation_model", "execution_claim_boundary"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "ux_visualizer_state_coverage",
+      "domain": "ux_ui",
+      "goal": "Evaluate whether visualizer proof covers loading, empty, error, stale, blocked, and responsive states.",
+      "expected_dimensions": [
+        { "id": "state_matrix", "label": "Cover a state matrix, not only happy path.", "keywords": ["state", "matrix", "coverage"], "weight": 1, "ontology_expected": true },
+        { "id": "responsive_manifests", "label": "Include desktop and mobile manifests.", "keywords": ["responsive", "desktop", "mobile"], "weight": 1 },
+        { "id": "loading_empty_error", "label": "Cover loading, empty, and error states.", "keywords": ["loading", "empty", "error"], "weight": 1 },
+        { "id": "stale_blocked_review", "label": "Cover stale, blocked, and review-ready states.", "keywords": ["stale", "blocked", "review"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_ux_states", "actor_family": "base_agent", "text": "Check desktop and mobile screenshots for loading, empty, and error states.", "dimension_refs": ["responsive_manifests", "loading_empty_error"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_ux_states", "actor_family": "persona", "text": "Use the state screenshot manifests as a matrix covering responsive, loading, empty, error, stale, blocked, and review-ready states.", "dimension_refs": ["state_matrix", "responsive_manifests", "loading_empty_error", "stale_blocked_review"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_ux_states", "actor_family": "ontology", "text": "state_coverage_missing should fire when state_matrix evidence lacks loading_empty_error or stale_blocked_review rows.", "dimension_refs": ["state_matrix", "loading_empty_error", "stale_blocked_review"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_ux_states", "actor_family": "knowledge_trigger", "text": "UX-PIT-002 warns against happy-path-only proof, and the visualizer manifests enumerate state screenshots across desktop and mobile.", "dimension_refs": ["state_matrix", "responsive_manifests", "loading_empty_error", "stale_blocked_review"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "ux_visualizer_status_divergence",
+      "domain": "ux_ui",
+      "goal": "Check whether the visualizer distinguishes deterministic lifecycle status from advisory review status.",
+      "expected_dimensions": [
+        { "id": "deterministic_status", "label": "Keep deterministic status authoritative.", "keywords": ["deterministic", "status", "authoritative"], "weight": 1, "ontology_expected": true },
+        { "id": "advisory_status", "label": "Display advisory status separately.", "keywords": ["advisory", "status", "review"], "weight": 1 },
+        { "id": "lifecycle_state", "label": "Represent lifecycle states.", "keywords": ["lifecycle", "state", "ticket"], "weight": 1 },
+        { "id": "proof_receipt_link", "label": "Link divergence to proof receipt.", "keywords": ["proof", "receipt", "link"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_ux_divergence", "actor_family": "base_agent", "text": "Show deterministic and advisory statuses separately so a blocked ticket is not misread.", "dimension_refs": ["deterministic_status", "advisory_status", "lifecycle_state"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_ux_divergence", "actor_family": "persona", "text": "The visualizer payload should show deterministic lifecycle status, advisory status, and proof receipt links as separate evidence channels.", "dimension_refs": ["deterministic_status", "advisory_status", "lifecycle_state", "proof_receipt_link"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_ux_divergence", "actor_family": "ontology", "text": "status_authority_confused should fire when deterministic_status and advisory_status collapse into one displayed fact.", "dimension_refs": ["deterministic_status", "advisory_status"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_ux_divergence", "actor_family": "knowledge_trigger", "text": "Visualizer ticket data includes done, in_progress, blocked, proposed, and advisory divergence fields tied to proof receipts.", "dimension_refs": ["deterministic_status", "advisory_status", "lifecycle_state", "proof_receipt_link"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "ux_visualizer_proof_link_completeness",
+      "domain": "ux_ui",
+      "goal": "Review whether a visualizer ticket view links child plan, verification matrix, Program Packet, and ticket evidence.",
+      "expected_dimensions": [
+        { "id": "child_plan_link", "label": "Link the child plan.", "keywords": ["child", "plan", "link"], "weight": 1, "ontology_expected": true },
+        { "id": "verification_matrix_link", "label": "Link the verification matrix.", "keywords": ["verification", "matrix", "link"], "weight": 1 },
+        { "id": "program_packet_link", "label": "Link the Program Packet.", "keywords": ["program", "packet", "link"], "weight": 1 },
+        { "id": "ticket_evidence_link", "label": "Link ticket evidence.", "keywords": ["ticket", "evidence", "link"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_ux_prooflinks", "actor_family": "base_agent", "text": "Check that ticket evidence links include child plan, verification matrix, and Program Packet.", "dimension_refs": ["child_plan_link", "verification_matrix_link", "program_packet_link"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_ux_prooflinks", "actor_family": "persona", "text": "A complete ticket view needs proof links for child plan, verification matrix, Program Packet, and ticket evidence.", "dimension_refs": ["child_plan_link", "verification_matrix_link", "program_packet_link", "ticket_evidence_link"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_ux_prooflinks", "actor_family": "ontology", "text": "proof_link_incomplete should fire when child_plan_link or verification_matrix_link facts are absent.", "dimension_refs": ["child_plan_link", "verification_matrix_link", "ticket_evidence_link"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_ux_prooflinks", "actor_family": "knowledge_trigger", "text": "proofLinksFor in visualizerPayload names Child plan, Verification matrix, Program packet, and Ticket evidence.", "dimension_refs": ["child_plan_link", "verification_matrix_link", "program_packet_link", "ticket_evidence_link"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "ux_screenshot_without_dom_proof",
+      "domain": "ux_ui",
+      "goal": "Detect when screenshot evidence is treated as enough without DOM or interaction proof.",
+      "expected_dimensions": [
+        { "id": "screenshot_limit", "label": "State screenshot-only proof limitation.", "keywords": ["screenshot", "limit", "proof"], "weight": 1, "ontology_expected": true },
+        { "id": "dom_interaction", "label": "Require DOM or interaction proof.", "keywords": ["dom", "interaction", "proof"], "weight": 1 },
+        { "id": "state_coverage", "label": "Pair with state coverage.", "keywords": ["state", "coverage", "matrix"], "weight": 1 },
+        { "id": "residual_risk", "label": "State residual UI risk.", "keywords": ["residual", "risk", "ui"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_ux_dom", "actor_family": "base_agent", "text": "Treat screenshots as useful but ask for DOM or interaction proof before closing UI risk.", "dimension_refs": ["screenshot_limit", "dom_interaction"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_ux_dom", "actor_family": "persona", "text": "UX-PIT-001 means screenshot manifests need DOM or interaction proof, state coverage, and residual UI risk notes.", "dimension_refs": ["screenshot_limit", "dom_interaction", "state_coverage", "residual_risk"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_ux_dom", "actor_family": "ontology", "text": "rendered_proof_incomplete should fire when screenshot_limit is known but dom_interaction is absent.", "dimension_refs": ["screenshot_limit", "dom_interaction", "residual_risk"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_ux_dom", "actor_family": "knowledge_trigger", "text": "UX-PIT-001 and UX-CON-001 separate screenshot inventory from rendered journey and interaction proof.", "dimension_refs": ["screenshot_limit", "dom_interaction", "state_coverage", "residual_risk"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "tokenomics_visualizer_advisory_boundary",
+      "domain": "tokenomics",
+      "goal": "Review tokenomics visualizer dogfood failures without turning them into launch, investment, or legal advice.",
+      "expected_dimensions": [
+        { "id": "arithmetic_guard", "label": "Check allocation, FDV, and emissions arithmetic.", "keywords": ["allocation", "fdv", "emissions"], "weight": 1, "ontology_expected": true },
+        { "id": "incentive_source", "label": "Name yield and incentive source.", "keywords": ["incentive", "yield", "source"], "weight": 1 },
+        { "id": "launch_boundary", "label": "State no live launch or investment advice.", "keywords": ["launch", "investment", "boundary"], "weight": 1 },
+        { "id": "qualified_review", "label": "Escalate legal or financial decisions to qualified review.", "keywords": ["qualified", "legal", "financial"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_token_visualizer", "actor_family": "base_agent", "text": "Check allocation math, FDV, and emissions-funded yield before accepting tokenomics text.", "dimension_refs": ["arithmetic_guard", "incentive_source"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_token_visualizer", "actor_family": "persona", "text": "Use tokenomicsFail only as diagnostic fixture data: check arithmetic, incentive source, launch boundary, and qualified review needs.", "dimension_refs": ["arithmetic_guard", "incentive_source", "launch_boundary", "qualified_review"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_token_visualizer", "actor_family": "ontology", "text": "tokenomics_claim_unbounded should fire when arithmetic_guard exists but launch_boundary is missing.", "dimension_refs": ["arithmetic_guard", "launch_boundary", "qualified_review"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_token_visualizer", "actor_family": "knowledge_trigger", "text": "Visualizer dogfood lists allocation_sum_invalid, fdv_mismatch, emissions_funded_yield, and guaranteed_roi_claim as boundaries.", "dimension_refs": ["arithmetic_guard", "incentive_source", "launch_boundary", "qualified_review"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    },
+    {
+      "id": "traceability_program_packet_linkage",
+      "domain": "traceability",
+      "goal": "Check that Program Packet evidence links stories, acceptance refs, verification refs, and deterministic receipts.",
+      "expected_dimensions": [
+        { "id": "story_refs", "label": "Link active story refs.", "keywords": ["story", "refs", "traceability"], "weight": 1, "ontology_expected": true },
+        { "id": "acceptance_refs", "label": "Link acceptance criteria refs.", "keywords": ["acceptance", "criteria", "refs"], "weight": 1 },
+        { "id": "verification_refs", "label": "Link verification refs.", "keywords": ["verification", "refs", "matrix"], "weight": 1 },
+        { "id": "deterministic_receipt", "label": "Preserve deterministic receipt authority.", "keywords": ["deterministic", "receipt", "authority"], "weight": 1 }
+      ],
+      "actor_outputs": [
+        { "actor_id": "base_traceability_linkage", "actor_family": "base_agent", "text": "Check story refs, acceptance refs, and verification refs before trusting the packet view.", "dimension_refs": ["story_refs", "acceptance_refs", "verification_refs"], "relevance": 0.86, "actionability": 0.84, "novelty": 0.75 },
+        { "actor_id": "persona_traceability_linkage", "actor_family": "persona", "text": "Traceability proof should link story refs, acceptance refs, verification refs, and deterministic receipt authority in the Program Packet.", "dimension_refs": ["story_refs", "acceptance_refs", "verification_refs", "deterministic_receipt"], "relevance": 0.96, "actionability": 0.94, "novelty": 0.88 },
+        { "actor_id": "ontology_traceability_linkage", "actor_family": "ontology", "text": "ticket_without_traceability should remain blocking when story_refs or verification_refs are missing.", "dimension_refs": ["story_refs", "verification_refs", "deterministic_receipt"], "relevance": 0.9, "actionability": 0.88, "novelty": 0.82 },
+        { "actor_id": "knowledge_traceability_linkage", "actor_family": "knowledge_trigger", "text": "Program Manager intake receipts require story, acceptance, verification, deterministic status, and advisory status fields.", "dimension_refs": ["story_refs", "acceptance_refs", "verification_refs", "deterministic_receipt"], "relevance": 0.92, "actionability": 0.9, "novelty": 0.84 }
+      ]
+    }
+  ]
+}

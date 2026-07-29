@@ -1,0 +1,134 @@
+{
+  "schema_version": 1,
+  "artifact": "false_red.json",
+  "generated_by": "real_telemetry_false_reds.mjs",
+  "transition_gate": "reflect-to-close",
+  "source": {
+    "fixture_dir": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry",
+    "fixture_count": 27,
+    "corpus_digest": "5fbe9a5aeeb17eaf3299a2d2b3684be8e1e76fcbc606e7ec4e6bd8f726e9c12a",
+    "self_clear_window_sec": 120
+  },
+  "gate_summary": {
+    "attempts": 7,
+    "blocked": 6,
+    "allowed": 1,
+    "self_clearing_unblocks": 1,
+    "self_clear_rate": 0.167,
+    "verdict": "some_self_clearing",
+    "top_failure_codes": [
+      {
+        "code": "GATE-REF-004",
+        "count": 2,
+        "self_cleared": 0
+      },
+      {
+        "code": "GATE-REF-011",
+        "count": 2,
+        "self_cleared": 0
+      },
+      {
+        "code": "GATE-REF-002",
+        "count": 1,
+        "self_cleared": 1
+      }
+    ]
+  },
+  "failure_codes": [
+    {
+      "code": "GATE-REF-004",
+      "blocked_on": 15,
+      "self_cleared": 4,
+      "self_clear_rate": 0.267,
+      "systemic_suspect": false
+    },
+    {
+      "code": "GATE-REF-002",
+      "blocked_on": 10,
+      "self_cleared": 2,
+      "self_clear_rate": 0.2,
+      "systemic_suspect": false
+    },
+    {
+      "code": "GATE-REF-011",
+      "blocked_on": 2,
+      "self_cleared": 0,
+      "self_clear_rate": 0,
+      "systemic_suspect": false
+    }
+  ],
+  "fixtures": [
+    {
+      "fixture": "portable_agent_kit_GATE-ETR-008.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-ETR-008.jsonl",
+      "sha256": "860004f6d72a32b9e7fb055480ed3591b8789ec91d9211133bafdf80c1b7f917",
+      "provenance": {
+        "source_project": "portable-agent-kit",
+        "plan_id": "plan_2026-03-31_50040c72a1c8d723",
+        "source_path": "/Users/stelios/Documents/Github/portable-agent-kit/plans/plan_2026-03-31_50040c72a1c8d723/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-ETR-008",
+        "record_count": 16,
+        "match_count": 6,
+        "source_chain": "broken",
+        "harvested_at": "2026-03-31T17:27:59.668Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 2,
+      "blocked": 1,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-002",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 16,
+        "mismatched": 0,
+        "gate_transitions": 16,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "valueinvesting_reflect_to_close_stuck.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/valueinvesting_reflect_to_close_stuck.jsonl",
+      "sha256": "d3137f2ed4ff330ae7d407dfbb4969f3c845b245815e4cbaa40e1c6eeb5296bc",
+      "provenance": {
+        "source_project": "ValueInvestingAI",
+        "plan_id": "plan_2026-04-06_85c1b6b5b137e745",
+        "source_path": "legacy-real-telemetry/valueinvesting_reflect_to_close_stuck.jsonl",
+        "gate_code": "explore-to-plan",
+        "record_count": 17,
+        "match_count": 5,
+        "source_chain": "legacy_unverified",
+        "harvested_at": "2026-04-06T19:26:44.422Z",
+        "harvester": "legacy_real_telemetry_provenance_backfill"
+      },
+      "gate_transitions": 5,
+      "blocked": 5,
+      "allowed": 0,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-004",
+          "count": 2
+        },
+        {
+          "code": "GATE-REF-011",
+          "count": 2
+        }
+      ],
+      "replay": {
+        "matched": 17,
+        "mismatched": 0,
+        "gate_transitions": 17,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    }
+  ]
+}

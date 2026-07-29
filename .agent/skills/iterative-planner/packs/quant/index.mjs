@@ -16,9 +16,14 @@
 import { readFileSync, existsSync, statSync } from "fs";
 import { join, dirname, resolve, sep, extname } from "path";
 import { fileURLToPath } from "url";
-import { createSession } from "../../scripts/lib/prolog.mjs";
-import { makeFinding, makeConstraint, SEVERITY } from "../../scripts/lib/audit_types.mjs";
+import { makeConstraint, SEVERITY } from "../../scripts/lib/audit_types.mjs";
 import { extractFilesToModify } from "../../scripts/lib/plan_utils.mjs";
+import {
+  assertStoryFacts,
+  formatPhaseGuidance,
+  normalizePackFinding,
+  runPrologPackAudit,
+} from "../../scripts/lib/auditor_pack_engine.mjs";
 
 const __filename  = fileURLToPath(import.meta.url);
 const __dirname   = dirname(__filename);
@@ -526,9 +531,9 @@ const RULE_DEFS = [
   {
     id: "QU-001",
     name: "Data leakage signal check",
-    rationale: "Backtest stories without documented leakage review are a significant risk of inflated performance metrics.",
+    rationale: "Backtest stories without documented leakage review and a firing negative fixture are a significant risk of inflated performance metrics.",
     false_positive: "Story is exploratory research; leakage check handled in a separate story.",
-    remediation: "Add a dedicated leakage-check story or document feature provenance explicitly in postconditions.",
+    remediation: "Add a dedicated leakage-check story, document feature provenance, and link a checked-in negative fixture proving the guard fires on known-bad input.",
     engine: "prolog",
   },
   {
@@ -649,65 +654,26 @@ const quantPack = {
   },
 
   async audit(context) {
-    // Clone the shared session so we don't pollute it for other packs
-    const session = createSession();
-
-    // Re-assert base story facts (the shared session is not clonable in our Prolog impl)
-    if (context.storyRegistry && Array.isArray(context.storyRegistry.stories)) {
-      for (const s of context.storyRegistry.stories) {
-        if (!s.id) continue;
-        const id = sanitize(s.id);
-        // sanitize() wraps in quotes — use directly, no extra quoting needed
-        session.consult(`story(${id}, ${sanitize(s.title || "untitled")}, ${sanitize(s.priority || "medium")}, ${sanitize(s.status || "unknown")}).`);
-        if (Array.isArray(s.postconditions)) {
-          for (const p of s.postconditions) {
-            try { session.consult(`postcondition(${id}, ${p}).`); } catch { /* skip malformed */ }
-          }
-        }
-        if (Array.isArray(s.tags)) {
-          for (const t of s.tags) {
-            session.consult(`story_tag(${id}, ${sanitize(t)}).`);
-          }
-        }
-      }
-    }
-
-    // Collect quant-specific facts into the session
-    collectQuantFacts(context, session);
-
-    // Load Prolog rules
-    let rulesText;
-    try {
-      rulesText = readFileSync(RULES_FILE, "utf-8");
-    } catch (e) {
-      return [{ _error: `Could not load quant rules.pl: ${e.message}` }];
-    }
-
-    try {
-      session.consult(rulesText);
-    } catch (e) {
-      return [{ _error: `Failed to load quant Prolog rules: ${e.message}` }];
-    }
-
-    // Query all violations
-    const rawFindings = [];
-    try {
-      for (const ans of session.query("quant_violation(RuleId, Subject, Detail, Severity)")) {
-        rawFindings.push({
-          ruleId:   String(ans.RuleId   || "QU-???"),
-          subject:  String(ans.Subject  || "project"),
-          detail:   String(ans.Detail   || ""),
-          severity: String(ans.Severity || "MEDIUM"),
+    return runPrologPackAudit(context, {
+      packId: this.id,
+      rulesFile: RULES_FILE,
+      rulesLabel: "quant",
+      query: "quant_violation(RuleId, Subject, Detail, Severity)",
+      defaultRuleId: "QU-???",
+      defaultSeverity: "MEDIUM",
+      collectFacts: (ctx, session) => {
+        assertStoryFacts(session, ctx.storyRegistry, {
+          sanitize,
+          include: ["postconditions", "tags"],
+          rawPostconditions: true,
         });
-      }
-    } catch (e) {
-      // Partial results already collected — continue
-      if (process.env.DEBUG) console.error(`[quant] Prolog query error: ${e.message}`);
-    }
-
-    rawFindings.push(...collectSourceLeakageFindings(context));
-
-    return rawFindings;
+        collectQuantFacts(ctx, session);
+      },
+      afterQuery: (rawFindings, ctx) => {
+        rawFindings.push(...collectSourceLeakageFindings(ctx));
+        return rawFindings;
+      },
+    });
   },
 
   getPhaseGuidance(phase, _context) {
@@ -730,7 +696,8 @@ const quantPack = {
         "For serious-search or promotion-grade claims, state bootstrap/CI or selection uncertainty, multiple-testing or DSR handling, sample floors, controls, and holdout/stability boundaries.",
         "Route zero-bet, zero-trade, tiny-sample, or empty-signal outputs to diagnosis, repair ticket, next experiment, claim block, or accepted limitation before closure.",
         "For capped, weighted, normalized, or transformed metrics, state raw values, transformation lineage, formula, denominator, and sample count.",
-        "Include a dedicated leakage review step for any story that touches backtest data.",
+        "Include a dedicated leakage review step for any story that touches backtest data; leakage/temporal proof rows must link a checked-in negative fixture proving the guard fires on known-bad input.",
+        "For time-joined evidence, declare capture-time provenance and how synthesized or unverifiable timestamps are handled; serious_search and promotion_candidate evidence must fail closed.",
         "Require temporal_cutoff or walk_forward as the split method — random shuffle on time-series is a critical error.",
         "Plan must specify minimum backtest window (default 252 days) and justify any shorter window.",
         "If probability outputs are involved, include a calibration verification step with quality thresholds; artifact existence alone is not calibration proof.",
@@ -770,8 +737,7 @@ const quantPack = {
         "Treat markdown reports as presentation surfaces; the machine-readable quant_results_validation.json is the gate signal.",
       ],
     };
-    const lines = guidance[phase];
-    return lines ? lines.map((l, i) => `${i + 1}. ${l}`).join("\n") : null;
+    return formatPhaseGuidance(guidance, phase);
   },
 
   getPlanConstraints(context) {
@@ -813,9 +779,9 @@ const quantPack = {
       constraints.push(makeConstraint({
         id: "QU-C-001",
         role: "quant",
-        constraint: "Plan must include a dedicated leakage review step",
+        constraint: "Plan must include a dedicated leakage review step with a checked-in negative fixture proving the guard fires on known-bad input; time-joined evidence must declare capture-time provenance and fail-closed serious-run handling",
         severity: "HIGH",
-        rationale: "Backtest stories detected without any leakage review — inflated performance metrics are the #1 risk in quant projects",
+        rationale: "Backtest stories detected without structural leakage proof — inflated performance metrics and green-by-construction timestamp guards are the #1 risk in quant projects",
         story_refs: backtestStories.map(s => s.id),
       }));
     }
@@ -1049,42 +1015,47 @@ const quantPack = {
       }));
     }
 
+    // WFO/Optuna/calibration plans on sports/betting models require specific advisor/protocols
+    const hasWfoOrOptuna = textContainsAny(combinedText, ["wfo", "walk forward", "optuna", "hyperparameter", "calibration"]);
+    const hasSportsOrBetting = textContainsAny(combinedText, ["soccer", "football", "sports", "betting", "odds", "wager"]);
+    if (hasWfoOrOptuna && hasSportsOrBetting) {
+      constraints.push(makeConstraint({
+        id: "QU-C-013",
+        role: "quant",
+        constraint: "Plan must explicitly invoke the IPBS quant advisor (.agent/skills/ipbs-quant-advisor), model training preflight (.agent/skills/model-training-preflight), and retraining/validation protocols (.agent/skills/model-retraining-protocol) to verify optimization stability and prevent overfitting.",
+        severity: "HIGH",
+        rationale: "Hyperparameter optimization (Optuna) and walk-forward optimization (WFO) are highly prone to overfitting on sports betting models; the plan must explicitly route through the specialized preflight and validation protocols.",
+        story_refs: storyRefs,
+        meta: iveMeta({
+          knowledgePack: "quant_optimization",
+          factTemplates: ["quant_advisor_missing", "preflight_missing", "validation_protocol_missing"],
+          conceptGuards: ["optimization is highly prone to overfitting; specialized advisors/protocols must verify stability"],
+          validNextActions: ["fix_now", "ticket_now"],
+          verificationRequired: "Plan explicitly invokes the quant advisor, training preflight, and retraining/validation protocols",
+          memoryGuard: "WFO/Optuna betting plans must invoke the specialized advisor and preflight/retraining protocols",
+        }),
+      }));
+    }
+
     return constraints;
   },
 
   normalizeFinding(raw) {
-    if (raw._error) {
-      return makeFinding({
-        id:             "QU-ERR",
-        role:           "quant",
-        severity:       SEVERITY.MEDIUM,
-        category:       "pack_error",
-        story_refs:     [],
-        evidence:       raw._error,
-        recommendation: "Check that packs/quant/rules.pl is present and valid Prolog.",
-      });
-    }
-
-    const rule = RULE_DEFS.find(r => r.id === raw.ruleId) || {};
-    const isStoryRef = raw.subject !== "project" && raw.subject !== "unknown" && !String(raw.subject || "").includes("/");
-
-    // RP-016: Guard against undefined subject (missing Prolog binding).
-    const subjectSlug = String(raw.file || raw.subject || "unknown").replace(/\W/g, "_");
-    return makeFinding({
-      id:             `${raw.ruleId}-${subjectSlug}`,
-      role:           "quant",
-      severity:       raw.severity || SEVERITY.MEDIUM,
-      category:       ruleCategory(raw.ruleId),
-      story_refs:     isStoryRef ? [raw.subject] : [],
-      evidence:       raw.detail || `${raw.ruleId} violation for ${raw.subject}`,
-      recommendation: rule.remediation || "See quant pack documentation.",
-      meta: {
+    return normalizePackFinding(raw, undefined, {
+      packId: this.id,
+      rules: RULE_DEFS,
+      defaultSeverity: SEVERITY.MEDIUM,
+      category: (finding) => ruleCategory(finding.ruleId),
+      errorId: "QU-ERR",
+      errorRecommendation: "Check that packs/quant/rules.pl is present and valid Prolog.",
+      fallbackRecommendation: "See quant pack documentation.",
+      meta: (finding, _context, rule) => ({
         quant: {
-          rule_id:        raw.ruleId,
+          rule_id:        finding.ruleId,
           false_positive: rule.false_positive,
-          source_file:    raw.file || null,
+          source_file:    finding.file || null,
         },
-      },
+      }),
     });
   },
 };

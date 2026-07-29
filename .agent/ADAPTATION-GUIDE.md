@@ -38,9 +38,9 @@ Inspect the output — the upgrade is additive only and will not overwrite exist
 ### Step 3: Apply the upgrade
 
 ```bash
-node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade .
+node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade . --commit
 # Optional: seed knowledge base with cross-project learnings
-node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade . --seed-kb
+node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade . --commit --seed-kb
 ```
 
 ### Step 4: Wire up new scripts in SKILL.md
@@ -50,7 +50,7 @@ The migration copies new enforcement scripts but cannot modify your project's SK
 ### Step 5: Verify
 
 ```bash
-node .agent/skills/iterative-planner/scripts/verify_gate.mjs explore-to-plan
+node .agent/skills/iterative-planner/scripts/transition.mjs explore-to-plan --dry-run
 node .agent/skills/iterative-planner/scripts/rule_engine.mjs check-invariants
 ```
 
@@ -192,7 +192,7 @@ The planner includes deterministic enforcement scripts that run at each gate poi
 
 ```bash
 # Verify gate compliance before state transitions
-node .agent/skills/iterative-planner/scripts/verify_gate.mjs explore-to-plan
+node .agent/skills/iterative-planner/scripts/transition.mjs explore-to-plan --dry-run
 
 # Run YAML checklists (built-in or domain-specific)
 node .agent/skills/iterative-planner/scripts/checklist_runner.mjs explore-to-plan
@@ -296,7 +296,7 @@ Or use `migrate.mjs --seed-kb` (see Migration Guide).
 │   │   ├── SKILL.md             ← State machine, gates, protocols
 │   │   ├── scripts/
 │   │   │   ├── bootstrap.mjs    ← Creates/manages plan directories
-│   │   │   ├── verify_gate.mjs  ← Pre-flight gate verification
+│   │   │   ├── verify_gate.mjs  ← Programmatic checks + planning-only diagnostic
 │   │   │   ├── checklist_runner.mjs ← YAML checklist execution
 │   │   │   ├── test_baseline.mjs ← Test count capture & delta check
 │   │   │   ├── close_guard.mjs  ← CLOSE phase enforcement

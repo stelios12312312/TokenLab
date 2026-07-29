@@ -297,23 +297,6 @@ async function main() {
     }
   }
 
-  if ((toolName === "Write" || toolName === "Edit") && paths.length > 0) {
-    try {
-      const { enqueueSpotCheck } = await import("../lib/spot_check.mjs");
-      for (const filePath of paths) {
-        enqueueSpotCheck({
-          cwd,
-          planId: planDirName,
-          file: filePath,
-          source: "post_tool_use",
-          runAfterEnqueue: true,
-        });
-      }
-    } catch {
-      // Best-effort — spot checks must never fail the editor hook.
-    }
-  }
-
   process.exit(0);
 }
 

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "receipt_path": ".agent/skills/iterative-planner/config/last_upgrade_receipt.json",
+  "journal_git_path": "iterative-planner/managed-upgrade",
+  "preflight_scopes": [
+    ".agent",
+    "CLAUDE.md",
+    "GEMINI.md",
+    "AGENTS.md",
+    ".cursor/rules/iterative-planner.mdc",
+    ".github/copilot-instructions.md",
+    "audit.config.json",
+    "planner.policy.yaml",
+    "planner.policy.yml",
+    "planner.policy.json",
+    "plans/knowledge"
+  ],
+  "proof_commands": [
+    {
+      "id": "gate-or-delete-census",
+      "args": [".agent/skills/iterative-planner/tests/ive/run.mjs", "--only", "gate-or-delete-census", "--json", "--no-manifest"],
+      "timeout_ms": 180000
+    },
+    {
+      "id": "migration-bootstrap",
+      "args": [".agent/skills/iterative-planner/tests/ive/run.mjs", "--only", "migration-bootstrap", "--json", "--no-manifest"],
+      "timeout_ms": 1020000
+    },
+    {
+      "id": "preplanning-scaffolding",
+      "args": [".agent/skills/iterative-planner/tests/ive/run.mjs", "--only", "preplanning-scaffolding", "--json", "--no-manifest"],
+      "timeout_ms": 300000
+    },
+    {
+      "id": "transition-gate-flows",
+      "args": [".agent/skills/iterative-planner/tests/ive/run.mjs", "--only", "transition-gate-flows", "--json", "--no-manifest"],
+      "timeout_ms": 300000
+    }
+  ]
+}

@@ -12,11 +12,15 @@ import {
 } from "./lib/persona_activation_authority.mjs";
 import { formatPersonaArtifactIssue } from "./lib/persona_artifacts.mjs";
 import { computeVerificationObligationSynthesis } from "./lib/verification_obligations.mjs";
+import { loadPlanWorkOrder } from "./lib/work_order_contract.mjs";
+import {
+  renderEvidenceGuidanceLines,
+  renderRepairSurface,
+} from "./lib/repair_packet.mjs";
 import {
   analyzeVerificationMatrix,
   buildVerificationEvidenceGuidance,
   extractSuccessCriteria,
-  renderVerificationEvidenceGuidance,
   summarizeVerificationMatrixDiagnostics,
 } from "./lib/verification_matrix.mjs";
 
@@ -75,19 +79,33 @@ function buildLintPacket(planDir, { planArg = planDir } = {}) {
   const planPath = join(planDir, "plan.md");
   const planContent = readText(planPath);
   const stateJson = readStateJson(planDir);
+  const workOrderInfo = loadPlanWorkOrder(planDir);
+  const workOrder = workOrderInfo.error ? null : workOrderInfo.parsed;
   const synthesis = computeVerificationObligationSynthesis({
     cwd: process.cwd(),
     planDir,
     stateJson,
     planContent,
   });
-  const criteria = extractSuccessCriteria(planContent);
-  const analysis = analyzeVerificationMatrix({ planContent, criteria, synthesis });
+  const criteria = extractSuccessCriteria(planContent, { workOrder });
+  const analysis = analyzeVerificationMatrix({ planContent, workOrder, criteria, synthesis });
   const evidenceGuidance = buildVerificationEvidenceGuidance({
     analysis,
     synthesis,
     criteria,
     planArg,
+  });
+  const repairSurfaceMissing = [
+    ...(analysis.missing_columns || []).map((column) => `Missing Verification Strategy column: ${column}`),
+    ...(analysis.issues || []),
+  ];
+  const repairSurfaceLines = renderRepairSurface({
+    gateId: "verification_matrix",
+    title: analysis.satisfied ? "Verification matrix evidence guidance" : "Verification matrix needs repair",
+    primaryArtifact: join(planDir, "plan.md"),
+    missing: repairSurfaceMissing.length > 0 ? repairSurfaceMissing : ["No blocking matrix issues; use this surface as evidence guidance."],
+    diagnostics: renderEvidenceGuidanceLines(evidenceGuidance, { compact: true }),
+    retry: `node .agent/skills/iterative-planner/scripts/verification_matrix.mjs lint --plan ${planArg} --json`,
   });
   const personaTriggeredRecommendations = collectPersonaTriggeredRecommendations(synthesis.obligations || []);
   const personaArtifactIssues = synthesis.persona_artifact_issues || synthesis.persona_summary?.issues || [];
@@ -99,7 +117,12 @@ function buildLintPacket(planDir, { planArg = planDir } = {}) {
     ok: analysis.satisfied,
     plan_dir: planDir,
     plan_path: planPath,
+    work_order_path: workOrderInfo.present ? workOrderInfo.path : null,
+    work_order_source: workOrder ? "work_order_projection_or_legacy_fallback" : "legacy_markdown",
+    work_order_error: workOrderInfo.error,
     selected_table: analysis.selected_table,
+    compact_policy: analysis.compact_policy || synthesis.low_risk_verification_policy || null,
+    compact_obligation: analysis.compact_obligation || null,
     missing_columns: analysis.missing_columns,
     warnings: [...analysis.warnings, ...personaArtifactWarnings],
     persona_artifact_issues: personaArtifactIssues,
@@ -109,6 +132,11 @@ function buildLintPacket(planDir, { planArg = planDir } = {}) {
     recognized_proof_ids: analysis.recognized_proof_ids,
     suggested_proof_ids: analysis.suggested_proof_ids,
     evidence_guidance: evidenceGuidance,
+    repair_surface: {
+      surface_id: "verification_matrix",
+      missing_fields: repairSurfaceMissing,
+      lines: repairSurfaceLines,
+    },
     persona_triggered_recommendations: personaTriggeredRecommendations,
     issues: analysis.issues,
     summary: summarizeVerificationMatrixDiagnostics(analysis),
@@ -140,8 +168,9 @@ function renderHuman(packet) {
   if (packet.recognized_proof_ids.length > 0) {
     lines.push(`Recognized proof IDs: ${packet.recognized_proof_ids.join(", ")}`);
   }
-  const evidenceGuidance = renderVerificationEvidenceGuidance(packet.evidence_guidance);
-  if (evidenceGuidance) lines.push(evidenceGuidance);
+  if (packet.repair_surface?.lines?.length > 0) {
+    lines.push(packet.repair_surface.lines.join("\n"));
+  }
   if (packet.obligation_coverage.length > 0) {
     lines.push("Obligation coverage:");
     for (const entry of packet.obligation_coverage) {

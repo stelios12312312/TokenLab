@@ -27,6 +27,7 @@ import {
   matchGlob, debugLog,
 } from "./lib/plan_utils.mjs";
 import { isFeatureEnabled, withFailureCode, readStateJson, nowISO } from "./lib/determinism.mjs";
+import { verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -97,7 +98,7 @@ function filterByPhase(entries, phase, stateJson) {
   let endTs = null;
 
   for (let i = 0; i < transitions.length; i++) {
-    if (transitions[i].to === phase && transitions[i].gate_result !== "FAIL") {
+    if (transitions[i].to === phase && verificationStatusIsPass(transitions[i].gate_result, "gate")) {
       startTs = transitions[i].timestamp;
       // Find next transition out of this phase
       for (let j = i + 1; j < transitions.length; j++) {

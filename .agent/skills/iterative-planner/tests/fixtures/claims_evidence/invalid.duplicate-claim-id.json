@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "return_type": "claims_evidence",
+  "bounce": {
+    "attempt": 0,
+    "max_bounces": 2
+  },
+  "claims": [
+    {
+      "id": "claim_duplicate",
+      "statement": "First claim using this id.",
+      "type": "implementation",
+      "evidence_refs": [
+        ".agent/skills/iterative-planner/tests/test_claims_evidence_contract.mjs"
+      ],
+      "verification_method": "executed",
+      "cost": {
+        "tokens": 10,
+        "usd": 0,
+        "wall_clock_ms": 1
+      }
+    },
+    {
+      "id": "claim_duplicate",
+      "statement": "Second claim using this id.",
+      "type": "implementation",
+      "evidence_refs": [
+        ".agent/skills/iterative-planner/scripts/lib/claims_evidence_contract.mjs"
+      ],
+      "verification_method": "deterministic",
+      "cost": {
+        "tokens": 12,
+        "usd": 0,
+        "wall_clock_ms": 1
+      }
+    }
+  ]
+}

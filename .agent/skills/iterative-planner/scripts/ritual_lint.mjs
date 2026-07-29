@@ -14,6 +14,7 @@ import {
 } from "./lib/workflow_contracts.mjs";
 import { lintVerificationStrategy } from "./lib/verification_strategy.mjs";
 import { nowISO, readStateJson, writeStateJson } from "./lib/determinism.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 
 const args = process.argv.slice(2);
 const flags = {
@@ -21,6 +22,8 @@ const flags = {
   help: args.includes("--help") || args.includes("-h"),
   adopt: args.includes("--adopt")
 };
+
+const DETAIL_CHANGED_FILES_LIMIT = 50;
 
 function usage() {
   return [
@@ -41,6 +44,17 @@ function readFlagValue(flag) {
   return index >= 0 && args[index + 1] ? args[index + 1] : null;
 }
 
+function compactIssueDetail(detail) {
+  if (!detail || typeof detail !== "object" || Array.isArray(detail)) return detail;
+  const compacted = { ...detail };
+  if (Array.isArray(compacted.changed_files) && compacted.changed_files.length > DETAIL_CHANGED_FILES_LIMIT) {
+    compacted.changed_files_total = compacted.changed_files.length;
+    compacted.changed_files = compacted.changed_files.slice(0, DETAIL_CHANGED_FILES_LIMIT);
+    compacted.changed_files_truncated = true;
+  }
+  return compacted;
+}
+
 function makeIssue({ id, severity = "error", message, repair_command = null, detail = null }) {
   return {
     id,
@@ -48,7 +62,7 @@ function makeIssue({ id, severity = "error", message, repair_command = null, det
     blocking: severity === "error",
     message,
     repair_command,
-    detail
+    detail: compactIssueDetail(detail)
   };
 }
 
@@ -234,7 +248,9 @@ if (flags.help) {
 
 const result = await buildResult();
 if (flags.json) {
-  console.log(JSON.stringify(result, null, 2));
+  // `process.exit()` can truncate asynchronous pipe writes at one OS pipe
+  // buffer (8 KiB on macOS). Audit details legitimately exceed that size.
+  emitJson(result);
 } else {
   console.log(formatHuman(result));
 }

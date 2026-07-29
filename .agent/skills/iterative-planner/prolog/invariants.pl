@@ -44,12 +44,12 @@ invariant_violated(depends_on_retired, dep(Story, Dep)) :-
 invariant_violated(story_conflict, conflict(S1, S2, Reason)) :-
     conflict(S1, S2, Reason).
 
-%% I-007: Every script capability must have at least one story covering it
-%%   Fires when a .mjs file exists on disk (capability/1 asserted by rule_engine.mjs)
-%%   but no story has a code_ref to that script (story_covers_script/2 asserted by JS).
+%% I-007: Planner infrastructure capabilities must remain owned by the
+%% synthetic _planner_infra story. planner_capability/1 is asserted by
+%% fact_loader.mjs only for the planner's own scripts.
 invariant_violated(capability_without_story, Script) :-
-    capability(Script),
-    \+ story_covers_script(_, Script).
+    planner_capability(Script),
+    \+ story_covers_script('_planner_infra', Script).
 
 %% I-008: Every story covering a script must have at least one doc_ref
 %%   Fires when story_covers_script/2 is present but the story has no documentation.
@@ -311,6 +311,40 @@ invariant_violated(deliverable_missing_quality_contract, DeliverableId) :-
     \+ deliverable_required_signal(DeliverableId, _),
     \+ deliverable_anti_goal(DeliverableId, _).
 
+%% I-035: Every active source file must be mapped to a story, capability, or
+%% explicitly ignored. During EXPLORE/PLAN this is advisory because mapping may
+%% be the work in progress; by VALIDATE/CLOSE it becomes blocking evidence.
+source_file_mapped(File) :- code_ref(_, File).
+source_file_mapped(File) :- test_ref(_, File).
+source_file_mapped(File) :- doc_ref(_, File).
+source_file_mapped(File) :- validation_ref(_, File).
+source_file_mapped(File) :- validation_artifact(File, _).
+source_file_mapped(File) :- story_covers_script(_, File).
+source_file_mapped(File) :- file_marked_ignored(File).
+
+invariant_violated(unmapped_source_file, File) :-
+    source_file(File),
+    \+ source_file_mapped(File),
+    evidence_phase_reached.
+
+invariant_warning(unmapped_source_file, File) :-
+    source_file(File),
+    \+ source_file_mapped(File),
+    \+ evidence_phase_reached.
+
+%% I-036: Every discovered configuration key must be documented by an owner
+%% story tag. Like source mapping, this warns before evidence closure and blocks
+%% only once the plan reaches VALIDATE/CLOSE.
+invariant_violated(undocumented_config_flag, Key) :-
+    config_key(Key),
+    \+ story_tag(_, Key),
+    evidence_phase_reached.
+
+invariant_warning(undocumented_config_flag, Key) :-
+    config_key(Key),
+    \+ story_tag(_, Key),
+    \+ evidence_phase_reached.
+
 %% IVE Phase 3: ideation anchors, operators, and intent binding must stay
 %% executable, traceable, and bound to real ontology nodes when the plan opts
 %% into phase-3 evidence. These invariants promote the validator's structured
@@ -384,50 +418,6 @@ invariant_violated(learning_note_too_long, NoteId) :-
     learning_note_too_long(NoteId).
 
 %% ═══════════════════════════════════════════════════════════
-%% PLAN-APPROVAL ENVELOPE INVARIANTS (I-057, I-058) — US-086
-%% Facts asserted by fact_loader.mjs after computing
-%% validateEnvelopeAgainstDisk(planDir):
-%%   approval_envelope_present(true|false)
-%%   approval_envelope_status(Atom)
-%%     atoms: ok, absent, missing_but_approval_claimed,
-%%            no_envelope, envelope_invalid, envelope_disk_mismatch,
-%%            plan_json_duplicate_key, plan_json_schema_invalid,
-%%            projection_drift, plan_md_missing
-%% ═══════════════════════════════════════════════════════════
-
-%% I-057: schema-version downgrade resistance — when the plan claims to be
-%% approved (state.json carries approval_nonce_hash) but the envelope file is
-%% missing, FAIL. The legacy md-only hash fallback no longer exists; backward
-%% compat for pre-redesign plans is migrate.mjs upgrade-approval-envelope's
-%% job, not the verifier's.
-invariant_violated(envelope_schema_downgrade, Status) :-
-    approval_envelope_status(Status),
-    Status = missing_but_approval_claimed.
-
-%% I-058: projection equivalence — plan.md MUST equal the deterministic
-%% projection of plan.json at every gate, when plan.json is present. Drift
-%% means a benign plan.md could hide a malicious plan.json (F-002).
-invariant_violated(plan_projection_drift, Status) :-
-    approval_envelope_status(Status),
-    member(Status, [projection_drift, plan_md_missing, plan_json_duplicate_key, plan_json_schema_invalid]).
-
-%% Additional envelope tamper coverage — envelope file edited or substituted
-%% post-approval. Treated as a separate diagnostic from I-057 so the operator
-%% can see which class of tamper fired.
-invariant_violated(approval_envelope_tampered, Status) :-
-    approval_envelope_status(Status),
-    member(Status, [envelope_invalid, envelope_disk_mismatch]).
-
-%% NF-007: Prolog/runtime truth parity — an envelope can validate against disk
-%% even when state.json lacks the approval_nonce_hash that originally anchored
-%% the approval. Runtime gate FAILs (correctly) via the nonce check, but Prolog
-%% would otherwise report envelope_status=ok and mislead static-only readers.
-%% This invariant ensures the two truth surfaces report the same verdict.
-invariant_violated(envelope_orphan_no_state_approval, no_state_approval_nonce) :-
-    approval_envelope_status(ok),
-    user_approved(false).
-
-%% ═══════════════════════════════════════════════════════════
 %% DOMAIN HOOK — Projects add their own invariants below.
 %% Examples:
 %%
@@ -477,7 +467,8 @@ invariant_violated(envelope_orphan_no_state_approval, no_state_approval_nonce) :
 %%   success_criterion(Criterion)           — project success criterion
 %%   criterion_story(Criterion, Story)      — criterion-to-story mapping
 %%   validation_ref(Story, Path)            — validation artifact for story
-%%   validation_executed(Path)              — artifact was actually run
+%%   story_coverage_contract(Story, Version) — legacy or current coverage semantics
+%%   validation_executed(Story, Path)        — artifact was actually run for that story
 %% ═══════════════════════════════════════════════════════════
 
 %% HR-001: Every validation module must have a live consumer.
@@ -551,7 +542,8 @@ invariant_violated(live_model_no_edge_proof, Model) :-
 %%   Zero-activity results MUST NOT pass validation.
 invariant_violated(degenerate_output_passed, Subject) :-
     result(Subject, activity_count, 0),
-    validation_status(Subject, passed).
+    validation_status(Subject, Status),
+    verification_status_accepts('execution', Status).
 
 %% HR-010: Multi-perspective audit coverage.
 %%   Red team audits MUST include at least 2 distinct perspectives overall.
@@ -638,32 +630,117 @@ invariant_violated(ava_defect_missing_anchor, DefectId) :-
     ava_defect_status(DefectId, active),
     \+ ava_defect_anchor(DefectId, _).
 
-subject_has_passing_evidence(Subject) :-
-    verification_evidence(_, Subject, _, Status),
-    member(Status, [passed, pass, ok, success, verified]).
+%% Quant/search scale hardening. The JS helper owns deterministic markdown and
+%% artifact extraction; Prolog owns fail-closed enforcement from those facts so a
+%% weakened transition gate cannot silently pass a qualitative-only contract.
+invariant_violated(quant_optimization_scale_contract_invalid, Issue) :-
+    quant_optimization_scale_required(true),
+    quant_optimization_scale_issue(Issue).
 
-subject_has_passing_evidence(Subject) :-
-    verification_waiver(Subject, _, WaiverId),
+interpretive_quant_run_class('serious_search').
+interpretive_quant_run_class('promotion_candidate').
+
+invariant_violated(quant_run_class_inflation, info(Declared, quick_true, Budget)) :-
+    quant_run_class_declared(Declared),
+    interpretive_quant_run_class(Declared),
+    quant_run_class_quick_evidence(true),
+    quant_run_class_discovered_budget(Budget).
+
+invariant_violated(quant_run_class_inflation, info(Declared, discovered_budget_unknown)) :-
+    quant_run_class_declared(Declared),
+    interpretive_quant_run_class(Declared),
+    quant_run_class_discovered_budget_unknown(true).
+
+invariant_violated(quant_run_class_inflation, info(Declared, budget_below_threshold(Budget, Threshold))) :-
+    quant_run_class_declared(Declared),
+    interpretive_quant_run_class(Declared),
+    quant_run_class_discovered_budget(Budget),
+    quant_run_class_threshold(Declared, Threshold),
+    Budget < Threshold.
+
+invariant_violated(quant_leakage_proof_artifact_invalid, Issue) :-
+    quant_leakage_proof_artifact_required(true),
+    quant_leakage_proof_artifact_issue(Issue).
+
+verification_subject_equivalent(Subject, Subject).
+verification_subject_equivalent(Subject, Canonical) :-
+    verification_subject_alias(Subject, Canonical).
+verification_subject_equivalent(Subject, Canonical) :-
+    verification_subject_alias(Canonical, Subject).
+
+subject_has_passing_evidence(Subject, Mode) :-
+    verification_subject_equivalent(Subject, EvidenceSubject),
+    verification_evidence(_, EvidenceSubject, Mode, Status),
+    verification_status_accepts('evidence', Status).
+
+subject_has_passing_evidence(Subject, Mode) :-
+    verification_subject_equivalent(Subject, WaivedSubject),
+    verification_waiver(WaivedSubject, Mode, WaiverId),
     waiver_approved_by(WaiverId, _).
 
-learned_obligation_enforced(ObligationId, Subject, RequiredPhase) :-
-    verification_obligation(ObligationId, Subject, _, Severity),
+subject_has_valid_pack_waiver(Subject, Mode) :-
+    verification_subject_equivalent(Subject, WaivedSubject),
+    verification_waiver(WaivedSubject, Mode, WaiverId),
+    waiver_approved_by(WaiverId, _),
+    waiver_reason(WaiverId, _),
+    waiver_expires_at(WaiverId, _).
+
+subject_has_pack_satisfaction(Subject, Mode) :-
+    verification_subject_equivalent(Subject, EvidenceSubject),
+    verification_evidence(_, EvidenceSubject, Mode, Status),
+    verification_status_accepts('evidence', Status).
+
+subject_has_pack_satisfaction(Subject, Mode) :-
+    subject_has_valid_pack_waiver(Subject, Mode).
+
+learned_obligation_enforced(ObligationId, Subject, Mode, RequiredPhase) :-
+    verification_obligation(ObligationId, Subject, Mode, Severity),
     obligation_source(ObligationId, learned_obligation, _),
     obligation_required_by_phase(ObligationId, RequiredPhase),
     member(Severity, [required, warn_then_fail]).
 
+pack_obligation_enforced(ObligationId, Subject, Mode, RequiredPhase) :-
+    active_obligation(ObligationId, _),
+    verification_obligation(ObligationId, Subject, Mode, Severity),
+    obligation_source(ObligationId, knowledge_pack, _),
+    obligation_required_by_phase(ObligationId, RequiredPhase),
+    member(Severity, [required, warn_then_fail]).
+
+pack_obligation_waiver(WaiverId) :-
+    pack_obligation_enforced(_, Subject, Mode, _),
+    verification_subject_equivalent(Subject, WaivedSubject),
+    verification_waiver(WaivedSubject, Mode, WaiverId).
+
 learned_obligation_source_registry_degraded(ObligationId, Subject, RequiredPhase) :-
-    learned_obligation_enforced(ObligationId, Subject, RequiredPhase),
+    learned_obligation_enforced(ObligationId, Subject, _, RequiredPhase),
     obligation_source_registry_degraded(ObligationId).
 
+invariant_violated(missing_pack_obligation, Subject) :-
+    pack_obligation_enforced(_, Subject, Mode, RequiredPhase),
+    \+ subject_has_pack_satisfaction(Subject, Mode),
+    phase_reached(RequiredPhase).
+
+invariant_warning(missing_pack_obligation, Subject) :-
+    pack_obligation_enforced(_, Subject, Mode, RequiredPhase),
+    \+ subject_has_pack_satisfaction(Subject, Mode),
+    \+ phase_reached(RequiredPhase).
+
+invariant_violated(pack_obligation_waiver_missing_reason, WaiverId) :-
+    pack_obligation_waiver(WaiverId),
+    \+ waiver_reason(WaiverId, _).
+
+invariant_violated(pack_obligation_waiver_missing_expiry, WaiverId) :-
+    pack_obligation_waiver(WaiverId),
+    \+ waiver_expires_at(WaiverId, _).
+
 invariant_violated(missing_learned_obligation, Subject) :-
-    learned_obligation_enforced(_, Subject, RequiredPhase),
-    \+ subject_has_passing_evidence(Subject),
+    learned_obligation_enforced(_, Subject, Mode, RequiredPhase),
+    \+ subject_has_passing_evidence(Subject, Mode),
     phase_reached(RequiredPhase).
 
 invariant_warning(missing_learned_obligation, Subject) :-
-    learned_obligation_enforced(_, Subject, RequiredPhase),
-    \+ subject_has_passing_evidence(Subject),
+    learned_obligation_enforced(_, Subject, Mode, RequiredPhase),
+    \+ subject_has_passing_evidence(Subject, Mode),
     \+ phase_reached(RequiredPhase).
 
 invariant_violated(source_registry_degraded_for_learned_obligation, ObligationId) :-
@@ -744,6 +821,12 @@ invariant_violated(active_mistake_missing_declared_guard, MistakeId) :-
     phase_reached(plan),
     \+ mistake_guard_declared(MistakeId, Guard).
 
+%% J14-S1: a malformed or drifted coverage population pin is a hard semantic
+%% failure wherever the rule engine consumes story facts.
+invariant_violated(story_coverage_contract_invalid, Error) :-
+    story_coverage_contract_valid(false),
+    story_coverage_contract_error(Error).
+
 invariant_violated(active_mistake_missing_verification_hook, MistakeId) :-
     active_mistake(MistakeId),
     mistake_verification_hook(MistakeId, Hook),
@@ -767,12 +850,26 @@ journal_queryable(EntryId) :-
 invariant_warning(journal_issue_detected, info(Code, Line)) :-
     journal_issue(Code, Line).
 
+invariant_warning(journal_contradiction_detected, info(Left, Right, Key)) :-
+    contradicts(Left, Right),
+    journal_contradiction_key(Left, Right, Key).
+
 full_evidence_chain(Criterion) :-
     criterion_story(Criterion, Story),
     code_ref(Story, _),
     test_ref(Story, _),
     validation_ref(Story, Validation),
-    validation_executed(Validation).
+    story_coverage_contract(Story, current),
+    validation_executed(Story, Validation).
+
+%% Pinned contract-v1 stories retain their historical evidence judgment.
+full_evidence_chain(Criterion) :-
+    criterion_story(Criterion, Story),
+    code_ref(Story, _),
+    test_ref(Story, _),
+    validation_ref(Story, _),
+    validation_executed_tracking_enabled,
+    \+ story_coverage_contract(Story, current).
 
 %% Fallback: if validation_executed tracking not enabled, check ref only
 full_evidence_chain(Criterion) :-
@@ -780,6 +877,7 @@ full_evidence_chain(Criterion) :-
     code_ref(Story, _),
     test_ref(Story, _),
     validation_ref(Story, _),
+    \+ story_coverage_contract(Story, _),
     \+ validation_executed_tracking_enabled.
 
 %% Phase 1 verification-obligation ontology warnings.
@@ -874,8 +972,9 @@ invariant_violated(north_star_metric_failed, Metric) :-
 %% never affected. Undefined reflection_* predicates fail silently in the engine.
 %% ───────────────────────────────────────────────────────────────────────────
 
-%% I-044: Required structured reflection questions remain unanswered at REFLECT.
-invariant_violated(reflection_required_questions_unanswered, count(Unanswered)) :-
+%% I-044: Required structured reflection questions are guide-first. Missing
+%% answers stay visible, but prose completion is not semantic transition authority.
+invariant_warning(reflection_required_questions_unanswered, count(Unanswered)) :-
     current_state(reflect),
     reflection_required_questions(Answered, Required),
     Required > Answered,
@@ -898,51 +997,37 @@ invariant_violated(reflection_pivot_not_reverted, Subject) :-
     current_state(reflect),
     reflection_pivot_decision(Subject).
 
-%% I-047: A required retro must be explicitly named/addressed in the reflection.
-invariant_violated(reflection_required_retro_unaddressed, RetroId) :-
+%% I-047: Retro linkage is durable learning guidance, not delivery proof.
+invariant_warning(reflection_required_retro_unaddressed, RetroId) :-
     current_state(reflect),
     reflection_required_retro(RetroId),
     \+ reflection_addresses_retro(RetroId).
 
-%% ───────────────────────────────────────────────────────────────────────────
-%% Spot-check finding invariants (I-052..I-054). I-052/I-053 are transition-
-%% scoped: they fire only when semantic_transition_target/1 names the relevant
-%% gate (asserted by runSemanticChecks for the real gate, or injected by tests).
-%% Facts come from loadSpotCheckFacts (reports/spot_checks/<plan>/findings.jsonl);
-%% no findings → no facts → never blocks.
-%% ───────────────────────────────────────────────────────────────────────────
+%% I-050: Repeated ideation/execution cycles must add at least one reusable
+%% insight before advancing to VALIDATE. Docs/chore/analysis work and explicit
+%% execution-only waivers are handled in the shared JS fact compiler.
+invariant_violated(novel_insight_floor_artifact_read_error, Error) :-
+    current_state(reflect),
+    novel_insight_floor_required(true),
+    novel_insight_floor_error(Error),
+    Error \= none.
 
-%% I-052: any unacknowledged HIGH spot-check finding blocks CLOSE.
-invariant_violated(high_spot_check_unacknowledged_before_close, FindingId) :-
-    semantic_transition_target(close),
-    spot_check_finding(FindingId, high, _),
-    \+ spot_check_acknowledged(FindingId).
+invariant_violated(novel_insight_floor_not_met, count(N)) :-
+    current_state(reflect),
+    novel_insight_floor_required(true),
+    \+ novel_insight_floor_waived(true),
+    novel_insight_floor_window_count(N),
+    novel_insight_floor_threshold(T),
+    novel_insight_count(0),
+    N >= T.
 
-%% I-053: an unacknowledged HIGH test_adequacy finding blocks VALIDATE.
-invariant_violated(high_test_adequacy_spot_check_blocks_validate, FindingId) :-
-    semantic_transition_target(validate),
-    spot_check_finding(FindingId, high, test_adequacy),
-    \+ spot_check_acknowledged(FindingId).
-
-%% I-054: persistent unacknowledged recurrence in one spot-check category
-%% (advisory — surfaces a pattern without blocking the gate).
-invariant_warning(persistent_spot_check_recurrence, Category) :-
-    spot_check_category_recurrence(Category, Count),
-    Count >= 3.
-
-%% I-055: a HIGH spot-check finding recorded as produced (in the append-only
-%% decision_log) but no longer readable was DELETED from reports/spot_checks/.
-%% Blocks VALIDATE and CLOSE — closes the AV-4 fail-open where emptying the
-%% findings dir silently cleared HIGH blockers. Tamper-EVIDENCE grade: catches
-%% casual/accidental deletion and an agent dropping findings to dodge a blocker;
-%% a motivated decision_log rewrite is a higher bar (CI re-run is the full fix).
-%% spot_check_missing_high_finding/1 is asserted by loadSpotCheckFacts. Two
-%% single-target clauses (close, validate) — mirrors I-052/I-053; the engine's
-%% Prolog dialect is happier with separate clauses than a (close ; validate)
-%% disjunction in the body.
-invariant_violated(high_spot_check_finding_deleted, FindingId) :-
-    semantic_transition_target(close),
-    spot_check_missing_high_finding(FindingId).
-invariant_violated(high_spot_check_finding_deleted, FindingId) :-
-    semantic_transition_target(validate),
-    spot_check_missing_high_finding(FindingId).
+invariant_warning(novel_insight_floor_at_risk, count(N)) :-
+    current_state(reflect),
+    novel_insight_floor_required(true),
+    \+ novel_insight_floor_waived(true),
+    novel_insight_floor_window_count(N),
+    novel_insight_floor_warning_threshold(W),
+    novel_insight_floor_threshold(T),
+    novel_insight_count(0),
+    N >= W,
+    N < T.

@@ -22,6 +22,7 @@ import {
   getSkillPath, getPaths, readPointer, readFile, fileExists,
   parseSimpleYaml, matchGlob, walkDir
 } from "./lib/plan_utils.mjs";
+import { findingsFromProjectHealthReport } from "./lib/deterministic_findings.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const skillPath = getSkillPath(import.meta.url);
@@ -182,8 +183,11 @@ function analyzerDocReferences(config, diffFiles) {
   const excludePaths = config.exclude_paths || ["node_modules/**", ".git/**"];
   const codeRoot = config.code_root || ".";
 
-  // Get all markdown files to scan
-  let mdFiles = getFilesByGlobs(scanPaths, excludePaths).filter(f => f.endsWith(".md"));
+  // Get all markdown files to scan (ignore tests, fixtures, and examples)
+  let mdFiles = getFilesByGlobs(scanPaths, excludePaths)
+    .filter(f => f.endsWith(".md"))
+    .filter(f => !/\b(test|tests|fixture|fixtures|example|examples|sample|samples)\b/.test(f));
+
   if (diffFiles) mdFiles = mdFiles.filter(f => diffFiles.includes(f));
 
   const missing = new Map(); // path -> { locations: [], count: 0 }
@@ -254,7 +258,7 @@ function checkRef(ref, mdFile, lineNum, codeRoot, missing) {
   if (/^path\//.test(ref)) return; // Documentation examples
   if (/plan_\d{4}-\d{2}-\d{2}_[0-9a-f]+\//.test(ref)) return; // Example plan dirs
   // Skip runtime-created paths (created at plan bootstrap, not present in source tree)
-  if (/^(\.claude\/settings(\.local)?\.json|\.cursor\/settings\.json|plans\/(FINDINGS|DECISIONS|LESSONS|annotation_review)\.md|plans\/knowledge\/|plans\/semantic_backlog\/|checkpoints\/|knowledge\/(index|mistakes|patterns|gotchas|parity-registry)\.md|reports\/(user_story_audit|regression_audit|remediation_queue|full_review_summary|stewardship)\b|reports\/sme_improvement\/(opportunity_queue\.json|recommendation_report\.md)\b|recipes\/(discovery_review\.(json|md)|entity_registry\.json|capability_registry\.json)\b|findings\/)/.test(ref)) return;
+  if (/^(\.claude\/settings(\.local)?\.json|\.cursor\/settings\.json|\.cursor\/rules\/|\.github\/|\.agent\/recipe_fleet\.config\.yaml|\.agent\/sidekick\.config\.example\.yaml|reports\/conventions\/|docs\/(ipbs|evolution-trader)-recommendations\.md|plans\/(FINDINGS|DECISIONS|LESSONS|annotation_review)\.md|plans\/knowledge\/|plans\/semantic_backlog\/|checkpoints\/|knowledge\/(index|mistakes|patterns|gotchas|parity-registry)\.md|reports\/(user_story_audit|regression_audit|remediation_queue|full_review_summary|stewardship)\b|reports\/sme_improvement\/(opportunity_queue\.json|recommendation_report\.md)\b|recipes\/(discovery_review\.(json|md)|entity_registry\.json|capability_registry\.json)\b|findings\/)/.test(ref)) return;
   // Skip example code paths used as illustrations in reference docs and workflow templates
   // (Ruby, Python, TypeScript examples that are not part of this project)
   if (/\.(rb|py|ts)$/.test(ref) && /^(lib\/|src\/|app\/|config\/initializers\/|test\/|tests\/|core\/|models\/)/.test(ref)) return;
@@ -680,6 +684,86 @@ function getLastModified(filePath) {
   }
 }
 
+function analyzerStoryRegistryCheck() {
+  const findings = [];
+  const registryPath = join(cwd, "reports", "user_story_audit", "story_registry.json");
+  const scriptPath = join(skillPath, "scripts", "story_registry.mjs");
+
+  if (!existsSync(registryPath) || !existsSync(scriptPath)) return findings;
+
+  let proc;
+  try {
+    proc = spawnSync(process.execPath, [scriptPath, "check", "--json"], {
+      cwd,
+      encoding: "utf-8",
+      timeout: 10000,
+    });
+  } catch (error) {
+    findings.push({
+      analyzer: "story_registry_check",
+      severity: "fail",
+      message: `story_registry.mjs check could not run: ${error.message}`,
+      location: "reports/user_story_audit/story_registry.json",
+      count: 1,
+      details: "Run: node .agent/skills/iterative-planner/scripts/story_registry.mjs check --json",
+    });
+    return findings;
+  }
+
+  let parsed = null;
+  try {
+    parsed = JSON.parse(proc.stdout || "{}");
+  } catch {
+    findings.push({
+      analyzer: "story_registry_check",
+      severity: "fail",
+      message: "story_registry.mjs check did not emit parseable JSON",
+      location: "reports/user_story_audit/story_registry.json",
+      count: 1,
+      details: (proc.stderr || proc.stdout || "").trim().slice(0, 500) || "No output captured.",
+    });
+    return findings;
+  }
+
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Story analyzer uses SKIP when no story registry is applicable to the health operation.
+  if (parsed.status === "SKIP") return findings;
+
+  for (const error of parsed.errors || []) {
+    findings.push({
+      analyzer: "story_registry_check",
+      severity: "fail",
+      message: `Story registry check failed: ${error}`,
+      location: "reports/user_story_audit/story_registry.json",
+      count: 1,
+      details: "Canonical check: node .agent/skills/iterative-planner/scripts/story_registry.mjs check --json",
+    });
+  }
+
+  for (const warning of parsed.warnings || []) {
+    findings.push({
+      analyzer: "story_registry_check",
+      severity: "warn",
+      message: `Story registry check warning: ${warning}`,
+      location: "reports/user_story_audit/story_registry.json",
+      count: 1,
+      details: "Canonical check: node .agent/skills/iterative-planner/scripts/story_registry.mjs check --json",
+    });
+  }
+
+  if (proc.status !== 0 && findings.length === 0) {
+    findings.push({
+      analyzer: "story_registry_check",
+      severity: "fail",
+      message: `story_registry.mjs check exited ${proc.status}`,
+      location: "reports/user_story_audit/story_registry.json",
+      count: 1,
+      details: (proc.stderr || proc.stdout || "").trim().slice(0, 500) || "No structured errors captured.",
+    });
+  }
+
+  return findings;
+}
+
 // ---------------------------------------------------------------------------
 // Main runner
 // ---------------------------------------------------------------------------
@@ -743,6 +827,8 @@ function runAnalyzers() {
   // Warn when the project has no story_registry.json or fewer stories than the
   // minimum threshold (default 3, overridable via audit.config.json min_stories).
   try {
+    allFindings.push(...analyzerStoryRegistryCheck());
+
     const registryPath = join(cwd, "reports", "user_story_audit", "story_registry.json");
     let minStories = 3;
     const auditConfigPath = join(cwd, "audit.config.json");
@@ -841,6 +927,7 @@ function runAnalyzers() {
     summary,
     findings: allFindings,
   };
+  report.normalized_findings = findingsFromProjectHealthReport(report);
 
   return report;
 }
@@ -916,9 +1003,16 @@ if (_isMain && !flags.help && !flags.list) (async () => {
 
       const auditConfig  = loadAuditConfig(cwd) || { roles: ["core"], fail_on: ["HIGH", "CRITICAL"], role_options: {} };
       const context      = await buildProjectContext(cwd, skillPath, auditConfig);
-      let   packs        = await loadRolePacks(auditConfig, skillPath, cwd, context.planShape);
+      let   packs        = await loadRolePacks(auditConfig, skillPath, cwd, context.planShape, {
+        taskFocusContract: context.personaAuthorityContext?.task_focus_contract || null,
+      });
+      const personaAuthority = packs.personaAuthority || null;
       packs              = await enforceMinimumPersona(packs, context);
+      if (personaAuthority && !packs.personaAuthority) {
+        Object.defineProperty(packs, "personaAuthority", { value: personaAuthority, enumerable: false });
+      }
       const roleFindings = await runRoleAuditors(context, packs);
+      report.persona_authority = packs.personaAuthority || personaAuthority || null;
 
       // Merge role findings into report (same shape as core findings)
       report.findings.push(...roleFindings);
@@ -941,6 +1035,8 @@ if (_isMain && !flags.help && !flags.list) (async () => {
     }
     // -----------------------------------------------------------------------
 
+    if (flags.out) report.run_receipt_path = flags.out;
+    report.normalized_findings = findingsFromProjectHealthReport(report);
     const output = flags.json ? JSON.stringify(report, null, 2) : formatMarkdown(report);
 
     if (flags.out) {

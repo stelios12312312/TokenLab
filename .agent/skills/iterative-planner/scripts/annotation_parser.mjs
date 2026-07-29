@@ -84,6 +84,13 @@ const SKIP_DIRS = new Set([
   "dist", "build", ".next", "target", ".tox", "coverage",
 ]);
 
+function isGeneratedEvidenceRoot(fullPath, baseDir) {
+  const rel = relative(baseDir, fullPath).replace(/\\/g, "/");
+  const topLevel = rel.split("/")[0];
+  return topLevel === "plans" || topLevel === "reports" ||
+    rel === ".agent/cache" || rel.startsWith(".agent/cache/");
+}
+
 // Validation-relevant directories (for coverage metrics)
 const VALIDATION_DIRS = [
   "validation", "validators", "checks", "gates", "guards",
@@ -108,6 +115,7 @@ function walkDir(dir, baseDir, files = []) {
     if (entry.startsWith(".") && entry !== ".agent") continue;
 
     const fullPath = join(dir, entry);
+    if (isGeneratedEvidenceRoot(fullPath, baseDir)) continue;
     let stat;
     try { stat = statSync(fullPath); } catch { continue; }
 
@@ -662,7 +670,9 @@ if (flags.validate) {
   const parseErrors = allAnnotations.filter(a => a.error);
 
   if (validationErrors.length === 0 && parseErrors.length === 0) {
-    console.log(`✅ All ${allAnnotations.length} annotations valid (${files.length} files scanned).`);
+    if (!flags.json) {
+      console.log(`✅ All ${allAnnotations.length} annotations valid (${files.length} files scanned).`);
+    }
     process.exit(0);
   } else {
     const fails = validationErrors.filter(e => e.severity === "fail");
@@ -678,7 +688,9 @@ if (flags.validate) {
       console.warn(`⚠️  ${e.file}:${e.line} — ${e.error}`);
     }
 
-    console.log(`\n${fails.length} errors, ${warns.length + parseErrors.length} warnings (${allAnnotations.length} annotations, ${files.length} files)`);
+    if (!flags.json) {
+      console.log(`\n${fails.length} errors, ${warns.length + parseErrors.length} warnings (${allAnnotations.length} annotations, ${files.length} files)`);
+    }
     process.exit(fails.length > 0 ? 1 : 0);
   }
 }

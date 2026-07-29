@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "return_type": "claims_evidence",
+  "bounce": {
+    "attempt": 2,
+    "max_bounces": 2
+  },
+  "claims": [
+    {
+      "id": "claim_exhausted",
+      "statement": "This invalid return has already consumed its bounce budget.",
+      "type": "proof",
+      "evidence_refs": [],
+      "verification_method": "executed",
+      "cost": {
+        "tokens": 10,
+        "usd": 0,
+        "wall_clock_ms": 1
+      }
+    }
+  ]
+}

@@ -19,18 +19,37 @@ This creates:
 - `plans/.current_plan` — pointer to the active plan
 - Template files: `findings.md`, `plan.md`, `decisions.md`, `progress.md`, `reflection.md`, `verification.md`, `state.md`
 
-### Step 2: Know the Approval Mode
+### Step 2: Know the Integrity Boundary
 
-Auto mode is the default for full workflows. After `explore-to-plan`, `transition.mjs` writes
-`[APPROVED:<nonce>]` directly to `decisions.md`, so you do not need to start the approval daemon
-unless the project has explicitly switched to `approval.mode = "interactive"`.
+Planner transitions no longer require approval nonces, tamper fingerprint refreshes,
+approval envelopes, or config-integrity rebaselines. The runtime boundary is the
+gate output plus git diff/log, IVE conformance, and fresh-context/CI review where
+configured.
 
-**Optional approval paths:**
-- `interactive` — start `node .agent/skills/iterative-planner/scripts/approval_daemon.mjs` in a separate terminal, or use `nonce_reveal.mjs`
-- `multi-agent` — follow the `STORY REVIEW REQUIRED` prompt and have the reviewer agent write the approval marker
-- `/safe-change` — the LLM may spawn `approval_daemon.mjs --auto` for low-risk safe-change workflows only
+### Step 3: Review Project Policy
 
-### Step 3: Invoke the Planner
+Setup creates a root `planner.policy.yaml` file when one is missing. This
+project-owned file declares defaults that bootstrap and migration can read
+without changing planner-managed internals:
+
+```yaml
+version: 1
+default_route: auto
+verification:
+  compact_by_default: true
+story_registry:
+  enforced_for: [code, integration, quant, security]
+session:
+  kb_reads_required: false
+transition_output: full
+```
+
+`default_route` may be `auto`, `lightweight`, or `full`. It only affects
+actionable work; questions, read-only requests, and confirmation-needed actions
+keep their safety routing. Setup and upgrade merge missing defaults into an
+existing policy file without overwriting project-specific values.
+
+### Step 4: Invoke the Planner
 
 Use the `/iterative-planner` skill in Claude Code, use `/safe-plan` for planning-only sessions, or use `/safe-change` for implementation work.
 
@@ -43,7 +62,7 @@ EXPLORE → PLAN → EXECUTE → REFLECT → VALIDATE → CLOSE
 | Phase | What You Do | Gate to Proceed |
 |-------|------------|-----------------|
 | **EXPLORE** | Investigate the codebase, document ≥3 findings | `explore-to-plan` |
-| **PLAN** | Write problem statement, steps, verification strategy | `plan-to-execute` (requires an approved plan; `auto` by default) |
+| **PLAN** | Write problem statement, steps, verification strategy | `plan-to-execute` |
 | **EXECUTE** | Implement the plan, create red-team notes | `execute-to-reflect` |
 | **REFLECT** | Judge solution quality and semantic coherence | `reflect-to-validate` |
 | **VALIDATE** | Verify proof sufficiency, PASS/FAIL evidence, and residual risk | `validate-to-close` |
@@ -84,10 +103,10 @@ node .agent/skills/iterative-planner/scripts/bootstrap.mjs resume
 | Issue | Fix |
 |-------|-----|
 | "No active plan" | Run `bootstrap.mjs new "goal"` first |
-| "Approval nonce missing" | Re-run `explore-to-plan`; if `approval.mode` is `interactive`, start the approval daemon or use `nonce_reveal.mjs` |
+| "Approval nonce missing" | You are on an old planner/runtime; upgrade. Current E8-1 runtime does not use approval nonces. |
 | "Fewer than 3 indexed findings" | Add more findings to `findings.md` (minimum 3, ≥50 words each) |
 | "KB digest missing" | The salt is printed by `transition.mjs explore-to-plan` — add `[KB_DIGEST:<salt>]` to findings.md |
-| "Config integrity baseline missing" | Run `node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade` |
+| "Config integrity baseline missing" | You are on an old planner/runtime; current E8-1 runtime retired `.config_integrity`. |
 | "This work is done in EXPLORE" | Close intentionally with `bootstrap.mjs close --informational` instead of forcing empty EXECUTE/REFLECT steps |
 
 ## Quick Status Check (Manual)

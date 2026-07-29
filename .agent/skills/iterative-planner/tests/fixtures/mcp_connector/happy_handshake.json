@@ -1,0 +1,43 @@
+{
+  "_comment": "Deterministic mock-parity contract for the MCP/connector smoke test. This fixture documents the expected request/response shapes without requiring a live IDE client.",
+  "protocolVersion": "2024-11-05",
+  "expectedServerInfo": {
+    "name": "iterative-planner",
+    "version": "1.0.0"
+  },
+  "expectedCapabilities": {
+    "tools": {
+      "listChanged": true
+    }
+  },
+  "expectedTools": [
+    "get_state",
+    "get_gate_status",
+    "list_plans"
+  ],
+  "schemaChecks": [
+    {
+      "name": "tools/list response shape",
+      "path": "result.tools",
+      "type": "array",
+      "minLength": 5
+    },
+    {
+      "name": "tool object shape",
+      "path": "result.tools[0].name",
+      "type": "string",
+      "required": true
+    },
+    {
+      "name": "tool inputSchema shape",
+      "path": "result.tools[0].inputSchema.type",
+      "value": "object"
+    }
+  ],
+  "residualRisk": [
+    "Real IDE MCP client handshake (Claude Desktop, Codex, etc.) is not exercised; only the local stdio transport is tested.",
+    "No authentication/authorization layer exists in mcp_server.mjs, so auth boundary coverage is limited to absence-of-secrets and env-root isolation.",
+    "Long-running sessions, tool list change notifications, and cancellation are not covered.",
+    "Concurrent client connections and stdin backpressure are not covered."
+  ]
+}

@@ -12,7 +12,7 @@ The rule engine adds a formal verification layer using an embedded Prolog interp
 |---------|------------|-------------|
 | `transition.mjs <gate>` | ✅ Yes | Step 4 runs semantic checks on the transition |
 | `rule_engine.mjs verify-stories` | Manual | Full story coverage + gaps + invariants |
-| `rule_engine.mjs check-transition <gate>` | Manual | Detailed transition diagnostics |
+| `rule_engine.mjs check-transition <gate>` | Manual | Semantic diagnostics only; not a transition predictor |
 | `rule_engine.mjs find-conflicts` | Manual | Detects contradictions between stories |
 | `rule_engine.mjs check-invariants` | Manual | Runs all invariant rules |
 | `rule_engine.mjs blast-radius <story-id>` | Manual | Semantic blast radius via dependency graph |
@@ -26,6 +26,9 @@ The rule engine adds a formal verification layer using an embedded Prolog interp
 ```bash
 # State machine verification
 node <skill-path>/scripts/rule_engine.mjs check-transition explore-to-plan
+
+# Authoritative readiness (complete evaluator, no persistence)
+node <skill-path>/scripts/transition.mjs explore-to-plan --dry-run
 
 # User story verification
 node <skill-path>/scripts/rule_engine.mjs verify-stories
@@ -48,17 +51,20 @@ node <skill-path>/scripts/rule_engine.mjs verify-stories --json
 node <skill-path>/scripts/rule_engine.mjs --self-test
 ```
 
+`check-transition` is not a transition predictor. It reports the narrower
+semantic substrate only; `transition.mjs <gate> --dry-run` owns readiness.
+
 ## Fact Sources
 
 | Source | Prolog Facts Asserted | Auto-Extracted? |
 |--------|----------------------|----------------|
-| `story_registry.json` | `story/4`, `code_ref/2`, `test_ref/2`, `validation_ref/2`, `doc_ref/2`, `requires/2` | ✅ Yes |
+| `story_registry.json` | `story/4`, `code_ref/2`, `test_ref/2`, `validation_ref/2`, `story_coverage_contract/2`, story-bound `validation_executed/2`, `doc_ref/2`, `requires/2` | ✅ Yes |
 | `state.md` | `current_state/1`, `findings_count/1`, `findings_depth_ok/1` | ✅ Yes |
 | `plan.md` | `problem_statement/1`, `files_listed/1`, `verification_strategy/1`, `success_criterion/1`, `criterion_story/2` | ✅ Yes |
-| `decisions.md` | `user_approved/1` (via approval nonce check) | ✅ Yes |
+| `decisions.md` | Decision-log prose for audit/review context | ✅ Yes |
 | `findings_ledger.json` / `findings.md` | `findings_count/1`, `findings_depth_ok/1`, `root_cause_documented/1`, `kb_read/1` (structured-first with markdown fallback) | ✅ Yes |
 | `state.json` | `gate_passed/2`, `gate_attempted/3`, `state_history_available/1` | ✅ Yes |
-| `program_packet.json` | `program/3`, `epic/3`, `ticket/4`, `program_epic/2`, `epic_ticket/2`, `ticket_story/2`, `ticket_depends_on/2`, `acceptance_criterion/4`, `child_plan_policy/2`, `compatibility_contract/3`, `migration_boundary/3`, `deletion_move_census/3`, `verification_matrix_row/7`, `decision/3` | Via `program_manager.mjs` transient facts |
+| `program_packet.json` | `program/3`, `epic/3`, `ticket/4`, `program_epic/2`, `epic_ticket/2`, `ticket_story/2`, `ticket_depends_on/2`, `acceptance_criterion/4`, `child_plan_policy/2`, `compatibility_contract/3`, `migration_boundary/3`, `deletion_move_census/3`, `verification_matrix_row/7`, `decision/3`, `program_gate_requirement_satisfied/2`, `program_gate_requirement_waived/2`, `program_gate_requirement_unsatisfied/2` | Via `program_manager.mjs` transient facts |
 | `prolog/invariants.pl` (project root) | Custom domain facts | Manual |
 
 ## Traceability Layers
@@ -66,7 +72,7 @@ node <skill-path>/scripts/rule_engine.mjs --self-test
 The planner's traceability model has three cooperating layers:
 
 1. **Coverage hints from `@planner:` annotations** — useful for ontology and coverage checks.
-2. **Evidence refs from `story_registry.json`** — `code_refs`, `test_refs`, and `validation_refs` feed close-time evidence checks like `broken_evidence_chain`.
+2. **Evidence refs from `story_registry.json`** — `code_refs`, `test_refs`, and `validation_refs` feed close-time evidence checks like `broken_evidence_chain`. Coverage-contract v2 also requires `executed_proof_refs` to resolve to a dated successful IVE-suite or executed-test-gate receipt.
 3. **Criterion linkage from `plan.md`** — `Criterion | Story linkage | Check | Pass means` tells the ontology which story is supposed to prove each success criterion.
 
 Annotations help coverage, but they do not create `code_ref/2`, `test_ref/2`, or `validation_ref/2` facts. If a criterion fails `broken_evidence_chain`, inspect the plan linkage and the story registry first.
@@ -92,6 +98,8 @@ To enable conflict detection and verification paths, stories can include optiona
 ```
 
 **`code_refs/test_refs/validation_refs`**: Close-time evidence inputs. `broken_evidence_chain` expects the relevant story to carry these refs in the registry.
+
+**Executed coverage contract (v2)**: A repository can add a root `coverage_contract` with legacy/current versions, an effective timestamp, and a SHA-256/count pin for its exact legacy population. New stories declare `coverage_contract_version: 2` plus `executed_proof_refs` objects shaped as `{ "kind": "ive_suite"|"executed_test_gate", "artifact": "<validation_ref>", "selector": "<suite-or-gate-id>" }`. FULLY_COVERED then requires the selected record to contain the command that ran, a successful status/exit code, and valid start/finish timestamps. File pointers alone remain partial. Repositories without the root contract retain v1 compatibility until an explicit migration.
 **`requires`**: Story IDs this story depends on (enables dependency graph + blast radius).
 **`preconditions/postconditions/actions`**: Prolog terms for verification paths and conflict detection.
 
@@ -106,6 +114,7 @@ Telemetry-backed findings can add planner-owned fact inputs such as `proof_telem
 | `prolog/stories.pl` | Coverage, dependencies, verification paths, conflicts | Core rules — extend, don't modify |
 | `prolog/programs.pl` | Program Packet invariants for epics, tickets, lifecycle, child plans, migration/delete safeguards, and program close | Core additive rules — inert unless program facts exist |
 | `prolog/invariants.pl` | Cross-cutting invariants with domain hooks (I-001 to I-029) | ✅ Add project-specific invariants here |
+| `../../story-verification/prolog/story_rules.pl` | Agent B story-specific invariants | Edit only when authorized |
 | `prolog/suggestions.pl` | Deterministic skill recommendations based on project state | Core rules — loaded by `rule_engine.mjs` |
 | `prolog/completeness.pl` | Boil-the-Lake completeness scoring (7 dimensions) | Core rules — loaded by `rule_engine.mjs` |
 | `prolog/repo_mode.pl` | Repo ownership, risk classification, auto-approve gates | Core rules — loaded by `rule_engine.mjs` |

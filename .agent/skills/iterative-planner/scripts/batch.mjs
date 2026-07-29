@@ -170,6 +170,7 @@ function buildRouteSummary(items) {
     continue_active_plan: 0,
     explicit_workflow: 0,
     advisor_recommended: 0,
+    ask_human: 0,
   };
 
   for (const item of Array.isArray(items) ? items : []) {
@@ -208,6 +209,15 @@ function buildBatchItem(batchSession, description, intakeDecision) {
 }
 
 function buildPrimaryAction(decision) {
+  if (decision?.route === "ask_human") {
+    return {
+      workflow: null,
+      mode: "human_decision",
+      when: "before_execution",
+      command: null,
+      decision_request: decision?.decision_request || null,
+    };
+  }
   const advisoryPrimary = decision?.advisory_recommendation?.recommended_flow?.[0] || null;
   if (advisoryPrimary) {
     return {
@@ -259,6 +269,7 @@ function buildCloseSummary(batchSession) {
       workflow: primary.workflow,
       mode: primary.mode,
       command: primary.command,
+      decision_request: primary.decision_request || null,
     });
 
     const followUpSteps = decision?.advisory_recommendation?.recommended_flow?.slice(1) || [];
@@ -303,7 +314,7 @@ function renderHuman(batchSession) {
   lines.push(`Mode: ${batchSession.mode}`);
   lines.push(`Description: ${batchSession.description}`);
   lines.push(`Items: ${batchSession.summary.total_items}`);
-  lines.push(`Routes: direct=${batchSession.summary.direct_agent_a}, continue=${batchSession.summary.continue_active_plan}, explicit=${batchSession.summary.explicit_workflow}, advisor=${batchSession.summary.advisor_recommended}`);
+  lines.push(`Routes: direct=${batchSession.summary.direct_agent_a}, continue=${batchSession.summary.continue_active_plan}, explicit=${batchSession.summary.explicit_workflow}, advisor=${batchSession.summary.advisor_recommended}, human=${batchSession.summary.ask_human}`);
 
   if ((batchSession.items || []).length > 0) {
     lines.push("Items:");

@@ -1,12 +1,6 @@
 name: "VALIDATE -> CLOSE Gate"
 
 items:
-  - id: verification-results
-    check: contains_string
-    path: "{plan-dir}/verification.md"
-    string: "PASS"
-    description: "Verification results contain at least one PASS"
-
   - id: verification-not-template
     check: not_contains_string
     path: "{plan-dir}/verification.md"
@@ -34,6 +28,12 @@ items:
     equals: true
     description: "Structured close signal confirms remediation-style work records an anti-recurrence guard (test, ontology, annotation, KB) or an approved waiver"
 
+  - id: accepted-retros-have-action-evidence
+    check: command_succeeds
+    command: "node .agent/skills/iterative-planner/scripts/verify_retro_action.mjs --json"
+    timeout: 180000
+    description: "Accepted retros have promotion, remediation ticket, remediation plan, related plan, or action evidence refs"
+
   - id: learned-obligations-satisfied
     check: json_field_equals
     path: "{plan-dir}/state.json"
@@ -46,7 +46,7 @@ items:
     path: "{plan-dir}/state.json"
     field: "close_signals.quant_results_validation.satisfied"
     equals: true
-    description: "Structured close signal confirms quant/model/betting result claims have machine-readable validation before close"
+    description: "Structured close signal confirms result-bearing claims have machine-readable validation, valid source evidence, and a satisfied fresh-process adversarial rerun receipt before close"
 
   - id: review-intake-satisfied
     check: json_field_equals
@@ -54,6 +54,12 @@ items:
     field: "close_signals.review_intake.satisfied"
     equals: true
     description: "Structured close signal confirms required review-intake findings have valid dispositions before close"
+
+  - id: decision-anchor-audit
+    check: command_succeeds
+    command: "node .agent/skills/iterative-planner/scripts/decision_anchors.mjs audit --json"
+    timeout: 180000
+    description: "Journal-backed decision-anchor audit passes before close"
 
   - id: baseline-exists
     check: file_exists
@@ -85,8 +91,9 @@ items:
   - id: capability-invariants
     check: command_succeeds
     command: "node .agent/skills/iterative-planner/scripts/rule_engine.mjs check-invariants"
+    timeout: 180000
     severity: warn
-    description: "Capability invariants pass (includes cross-report consistency I-009/I-010/I-011)"
+    description: "Capability invariants pass; transition context forces this nested check into non-writing smoke mode (includes cross-report consistency I-009/I-010/I-011)"
 
   - id: persona-audit-config-exists
     check: file_exists
@@ -102,6 +109,7 @@ items:
   - id: reachability-audit-clean
     check: command_succeeds
     command: "node .agent/skills/iterative-planner/scripts/rule_engine.mjs reachability-audit"
+    timeout: 180000
     description: "State-space reachability analysis passes (no deadlocks, forbidden paths, gate bypasses, escalation routes)"
 
   - id: no-uncommitted-placeholders

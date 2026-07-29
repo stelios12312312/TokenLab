@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "provenance": {
+    "kind": "synthetic_pattern_matrix",
+    "source_report": ".agent/skills/iterative-planner/feedback/2026-07-16-tesseract-coach-field-feedback.md",
+    "source_claim": "The field report records an aggregate of 21 false alarms, each co-firing with ordinary story-invariant enforcement.",
+    "raw_rows_available": false,
+    "interpretation_boundary": "These cases reproduce the documented count and ordinary-family shape; they are not claimed to be the unavailable raw Tesseract rows."
+  },
+  "cases": [
+    {"id": "TESSERACT-PATTERN-001", "violations": ["high_priority_untested"]},
+    {"id": "TESSERACT-PATTERN-002", "violations": ["deliverable_missing_purpose"]},
+    {"id": "TESSERACT-PATTERN-003", "violations": ["active_mistake_missing_declared_guard"]},
+    {"id": "TESSERACT-PATTERN-004", "violations": ["active_mistake_missing_verification_hook"]},
+    {"id": "TESSERACT-PATTERN-005", "violations": ["broken_evidence_chain"]},
+    {"id": "TESSERACT-PATTERN-006", "violations": ["high_priority_untested", "broken_evidence_chain"]},
+    {"id": "TESSERACT-PATTERN-007", "violations": ["deliverable_missing_purpose", "broken_evidence_chain"]},
+    {"id": "TESSERACT-PATTERN-008", "violations": ["active_mistake_missing_declared_guard", "active_mistake_missing_verification_hook"]},
+    {"id": "TESSERACT-PATTERN-009", "violations": ["high_priority_untested", "deliverable_missing_purpose"]},
+    {"id": "TESSERACT-PATTERN-010", "violations": ["high_priority_untested", "active_mistake_missing_declared_guard"]},
+    {"id": "TESSERACT-PATTERN-011", "violations": ["high_priority_untested", "active_mistake_missing_verification_hook"]},
+    {"id": "TESSERACT-PATTERN-012", "violations": ["deliverable_missing_purpose", "active_mistake_missing_declared_guard"]},
+    {"id": "TESSERACT-PATTERN-013", "violations": ["deliverable_missing_purpose", "active_mistake_missing_verification_hook"]},
+    {"id": "TESSERACT-PATTERN-014", "violations": ["active_mistake_missing_declared_guard", "broken_evidence_chain"]},
+    {"id": "TESSERACT-PATTERN-015", "violations": ["active_mistake_missing_verification_hook", "broken_evidence_chain"]},
+    {"id": "TESSERACT-PATTERN-016", "violations": ["high_priority_untested", "deliverable_missing_purpose", "broken_evidence_chain"]},
+    {"id": "TESSERACT-PATTERN-017", "violations": ["active_mistake_missing_declared_guard", "active_mistake_missing_verification_hook", "broken_evidence_chain"]},
+    {"id": "TESSERACT-PATTERN-018", "violations": ["high_priority_untested", "deliverable_missing_purpose", "active_mistake_missing_declared_guard", "active_mistake_missing_verification_hook", "broken_evidence_chain"]},
+    {"id": "TESSERACT-PATTERN-019", "violations": ["high_priority_untested"]},
+    {"id": "TESSERACT-PATTERN-020", "violations": ["active_mistake_missing_declared_guard"]},
+    {"id": "TESSERACT-PATTERN-021", "violations": ["broken_evidence_chain"]}
+  ]
+}

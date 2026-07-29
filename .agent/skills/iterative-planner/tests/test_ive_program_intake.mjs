@@ -141,7 +141,7 @@ function samplePacket(overrides = {}) {
 function mockEnv() {
   return {
     ...process.env,
-    PLANNER_DRIFT_LLM_MOCK_RESPONSE: JSON.stringify({
+    PLANNER_SUPERVISOR_MOCK_RESPONSE: JSON.stringify({
       status: "review_ready",
       summary: "Program intake mapping is review ready.",
       findings: [],

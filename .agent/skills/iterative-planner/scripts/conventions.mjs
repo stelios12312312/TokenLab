@@ -326,6 +326,7 @@ function main(argv = process.argv) {
         summary: {
           active_conventions: activeConventions.length,
           applicable_results: checked.results.length,
+          // proof-status-lint: exempt T-INTAKE-B07B8898 -- Convention lifecycle enum (satisfied, violated, exempted, pending_file_creation), not verification vocabulary.
           satisfied: checked.results.filter((entry) => entry.status === "satisfied").length,
           violations: checked.results.filter((entry) => entry.status === "violated").length,
           pending_file_creation: checked.results.filter((entry) => entry.status === "pending_file_creation").length,

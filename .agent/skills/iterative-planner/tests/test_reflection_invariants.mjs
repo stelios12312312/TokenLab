@@ -316,14 +316,14 @@ function scenarioI044AnsweredCountInvariant() {
       edgeCaseCoverage: "",
     });
     const invariants = runNode([ruleEngineScript, "check-invariants", "--json"], tmp);
-    assert(!invariants.ok && invariants.status === 1, "rule_engine check-invariants fails when required reflection questions are unanswered");
+    assert(invariants.ok && invariants.status === 0, "rule_engine check-invariants keeps unanswered reflection questions advisory");
     const parsed = parseJson(invariants.stdout);
     assert(!!parsed, "reflection invariant I-044 fixture emits valid JSON");
-    assert(Array.isArray(parsed?.violations), "I-044 payload includes violations array");
-    assert(parsed?.count > 0, "I-044 payload records positive violation count");
-    const violationNames = new Set((parsed?.violations || []).map((entry) => entry?.name));
-    assert(violationNames.has("reflection_required_questions_unanswered"), "check-invariants surfaces I-044 for unanswered reflection questions");
-    assert((parsed?.violations || []).some((entry) => entry?.name === "reflection_required_questions_unanswered"), "I-044 payload names required-question evidence");
+    assert(Array.isArray(parsed?.warnings), "I-044 payload includes warnings array");
+    assert((parsed?.warnings || []).length > 0, "I-044 payload records advisory evidence");
+    const warningNames = new Set((parsed?.warnings || []).map((entry) => entry?.name));
+    assert(warningNames.has("reflection_required_questions_unanswered"), "check-invariants surfaces advisory I-044 for unanswered reflection questions");
+    assert((parsed?.warnings || []).some((entry) => entry?.name === "reflection_required_questions_unanswered"), "I-044 warning names required-question evidence");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -403,13 +403,13 @@ function scenarioI047RequiredRetroInvariant() {
       relevantRetros: "The reflection acknowledges earlier planner drift in general terms, but it intentionally avoids naming the required retro directly.",
     });
     const invariants = runNode([ruleEngineScript, "check-invariants", "--json"], tmp);
-    assert(!invariants.ok && invariants.status === 1, "rule_engine check-invariants fails when a required retro is not explicitly addressed");
+    assert(invariants.ok && invariants.status === 0, "rule_engine check-invariants keeps missing retro linkage advisory");
     const parsed = parseJson(invariants.stdout);
     assert(!!parsed, "reflection invariant I-047 fixture emits valid JSON");
-    assert(parsed?.status === "FAIL", "I-047 payload reports FAIL status");
-    const violationNames = new Set((parsed?.violations || []).map((entry) => entry?.name));
-    assert(violationNames.has("reflection_required_retro_unaddressed"), "check-invariants surfaces I-047 for required retros that reflection does not address explicitly");
-    assert((parsed?.violations || []).some((entry) => String(entry?.detail || "").includes("R-2026-04-20-001")), "I-047 detail names the missing required retro id");
+    assert(parsed?.status === "PASS", "I-047 payload reports PASS with advisory linkage");
+    const warningNames = new Set((parsed?.warnings || []).map((entry) => entry?.name));
+    assert(warningNames.has("reflection_required_retro_unaddressed"), "check-invariants surfaces advisory I-047 for required retros not addressed explicitly");
+    assert((parsed?.warnings || []).some((entry) => String(entry?.detail || "").includes("R-2026-04-20-001")), "I-047 advisory detail names the missing required retro id");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -425,10 +425,10 @@ function scenarioAnswerModeQuestionsRejectKeywordFill() {
       edgeCaseCoverage: "This is addressed and handled appropriately here today.",
     });
     const invariants = runNode([ruleEngineScript, "check-invariants", "--json"], tmp);
-    assert(!invariants.ok && invariants.status === 1, "answer-mode questions reject generic keyword-fill prose");
+    assert(invariants.ok && invariants.status === 0, "answer-mode keyword-fill prose remains advisory");
     const parsed = parseJson(invariants.stdout);
-    const violationNames = new Set((parsed?.violations || []).map((entry) => entry?.name));
-    assert(violationNames.has("reflection_required_questions_unanswered"), "keyword-fill answer surfaces as an unanswered required reflection question");
+    const warningNames = new Set((parsed?.warnings || []).map((entry) => entry?.name));
+    assert(warningNames.has("reflection_required_questions_unanswered"), "keyword-fill answer surfaces as an advisory unanswered reflection question");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }

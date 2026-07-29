@@ -5,6 +5,7 @@ import { readFileSync } from "fs";
 import { resolve } from "path";
 import { isDirectInvocation } from "./lib/script_entrypoint.mjs";
 import { runIveProgramIntake } from "./lib/ive_program_intake.mjs";
+import { verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
 
 function parseArgs(argv = []) {
   const args = {
@@ -76,7 +77,7 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
     });
     if (args.json) console.log(JSON.stringify(result, null, 2));
     else console.log(renderText(result));
-    return result.status === "PASS" ? 0 : 1;
+    return verificationStatusIsPass(result.status, "execution") ? 0 : 1;
   } catch (error) {
     const result = {
       ok: false,

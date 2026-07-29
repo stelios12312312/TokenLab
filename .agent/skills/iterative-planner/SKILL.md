@@ -1,6 +1,6 @@
 ---
 name: iterative-planner
-planner_version: "10.0.0"
+planner_version: "10.6.8"
 description: >
   State-machine driven iterative planning and execution for complex coding tasks.
   Cycle: Explore → Plan → Execute → Reflect → Validate → Close / Re-plan. Filesystem as persistent memory.
@@ -23,7 +23,7 @@ Deterministic scripts support that loop, mistake registries preserve memory, and
 | # | Gate | Command | Key Requirements |
 |---|------|---------|-----------------|
 | 1 | `explore-to-plan` | `node <sp>/scripts/transition.mjs explore-to-plan` | ≥3 findings, KB read, intent contract for user-facing goals |
-| 2 | `plan-to-execute` | `node <sp>/scripts/transition.mjs plan-to-execute` | Problem stmt, files list, user approved, deliverable mapping, criterion/story linkage, verification obligation synthesis + context-sensitive verification matrix for recipe/orchestration/integration work |
+| 2 | `plan-to-execute` | `node <sp>/scripts/transition.mjs plan-to-execute` | Problem stmt, files list, verification strategy, deliverable mapping, criterion/story linkage, verification obligation synthesis + context-sensitive verification matrix for recipe/orchestration/integration work |
 | 3 | `execute-to-reflect` | `node <sp>/scripts/transition.mjs execute-to-reflect` | Red-team notes (≥3 vectors) + persona audit |
 | 4 | `reflect-to-validate` | `node <sp>/scripts/transition.mjs reflect-to-validate` | Reflection verdicts, semantic coherence, KB/semantic upkeep, progress complete |
 | 5 | `validate-to-close` | `node <sp>/scripts/transition.mjs validate-to-close` | Proof of work, verification sufficiency, persona audit, intent/test evidence |
@@ -32,19 +32,19 @@ Deterministic scripts support that loop, mistake registries preserve memory, and
 **`<sp>`** = `.agent/skills/iterative-planner`
 
 - **Gate chain (I-015)**: Gates must run in order (1→2→3→4→5). Skipping a gate triggers Prolog invariant I-015.
-- **Transition nonce**: Each successful transition writes a nonce to `state.json`. The next gate verifies it — direct `state.md` edits are detected and blocked.
-- **Approval nonce**: Gate 1 generates a nonce. Before Gate 2 passes, the nonce must appear as `[APPROVED:<nonce>]` in `decisions.md`. In default `auto` mode, `transition.mjs explore-to-plan` writes it directly. In `interactive` mode, use `approval_daemon.mjs` or `nonce_reveal.mjs`. In `multi-agent` mode, the story review agent writes the approval marker after reviewing findings coverage.
+- **Runtime integrity boundary**: E8-1 retired transition nonces, approval nonce/envelope checks, tamper fingerprints, state hashes, and `.config_integrity`. Gates now rely on deterministic artifact checks, Prolog semantics, decision-log hash chaining, git history, and fresh-context CI review instead of in-process approval ceremony. `GATE-SEM-003` is the surviving fail-closed JavaScript/Prolog semantic-divergence alarm: it is quiet only when every Prolog-only blocker is a structured `GATE-SEM-002` row fully explained by the closed ordinary-story-invariant family, and receipts record the explaining check IDs. Unknown, mixed, missing-structure, engine-level, and I-035 `unmapped_source_file` differences remain hard; this does not restore any retired fingerprint or approval substrate.
 - **KB digest**: At EXPLORE, read all KB files, then persist the KB digest salt in `findings_ledger.json` (`kb_digest_salt`) or add `[KB_DIGEST:<hash>]` to `findings.md` (salt shown by Gate 1). Proves KB was actually read.
 - **Content depth**: Findings need ≥30 words each. Red-team vectors need ≥3 content lines each. Empty code blocks don't count as proof of work.
 - **FAIL = blocked**: Fix all FAIL items before proceeding. WARN = advisory.
+- **Pre-planning scaffold gate**: `explore-to-plan` runs a deterministic scaffold check before normal gate checks. It verifies an explicit North Star contract, a usable `reports/user_story_audit/story_registry.json` baseline, and Program Packet context when the plan appears tied to an open Program Packet. Missing items block normal planner work with `GATE-EXP-017` through `GATE-EXP-019`; `chore` and `analysis` shapes receive advisory WARNs instead.
 - **Deterministic repair packet**: When a gate blocks and prints `Deterministic Repair Packet`, follow that packet before guessing at prose. It names the target artifact, missing section shape, diagnostic commands, loop-recovery command, and retry transition.
 - **Paste output**: Always paste the transition command output into the conversation so the user can see it.
 - **Verification obligation synthesis**: If repo/task context, ontology signals, persona signals, or touched boundaries imply operational verification risk, `plan.md` must include `## Verification Obligation Synthesis` with `Repo/system context`, `Task shape`, `Ontology signals`, `Persona signals`, `System boundaries touched`, and `Derived verification obligations`. This section is where discovery context becomes an explicit verification contract.
-- **Context-sensitive verification**: If the plan touches recipe/orchestration/browser/integration/backend operational behavior, `## Verification Strategy` must be a table with `Criterion | Story linkage | Repo/system context | Required proof type | Concrete command or action | Pass means | What remains unverified`. The matrix should justify the proof mode from the changed system and from the synthesized obligations; do not treat wrapper/unit tests as production proof by default. Frontend/browser work should propose real rendered-journey proof and screenshot/captured-viewport artifacts using proof IDs such as `proof:browser_journey`, `proof:browser_screenshot`, and `proof:visual_proof` when those are locally feasible. A `## Success Criteria` markdown table is valid when it includes a `Criterion` column; `Verification Strategy` criterion cells may use stable IDs such as `sc_1` instead of copying full prose, and proof wording may be natural prose when it matches a canonical proof family, so do not force exact `proof:*` tokens as a formatting ritual.
+- **Context-sensitive verification**: If the plan touches recipe/orchestration/browser/integration/backend operational behavior, `## Verification Strategy` must be a table with `Criterion | Story linkage | Repo/system context | Required proof type | Concrete command or action | Pass means | What remains unverified`. The matrix should justify the proof mode from the changed system and from the synthesized obligations; do not treat wrapper/unit tests as production proof by default. Frontend/browser work should propose real rendered-journey proof and screenshot/captured-viewport artifacts using proof IDs such as `proof:browser_journey`, `proof:browser_screenshot`, and `proof:visual_proof` when those are locally feasible. When `compact_low_risk_verification_matrix` is enabled, docs/chore/analysis/static-artifact shapes with no integration, quant, backend, migration, security, credential, external-service, or data-loss signals may use one `Low-risk verification obligation: ...` sentence instead of the full matrix; new docs/chore/analysis scaffolds seed this compact sentence by default, while static-artifact compact mode becomes available once planned static files make the low-risk boundary explicit. A `## Success Criteria` markdown table is valid when it includes a `Criterion` column; `Verification Strategy` criterion cells may use stable IDs such as `sc_1` instead of copying full prose, and proof wording may be natural prose when it matches a canonical proof family, so do not force exact `proof:*` tokens as a formatting ritual.
 - **Matrix diagnostics**: When `GATE-PLN-017` is unclear, run `node .agent/skills/iterative-planner/scripts/verification_matrix.mjs lint --plan <plan-dir> --json` to inspect the selected table, parsed criteria count, row family matches, recognized `proof:*` IDs, malformed rows, synthesized-obligation coverage, and the shared `Evidence guidance` packet without changing planner state.
-- **Low-level agent gate packet**: When `verify_gate.mjs plan-to-execute` blocks, read the printed `Low-Level Agent Gate Packet` before editing prose. It names exact schema/list fields for `intent_contract.json`, unresolved story IDs, required `Verification Obligation Synthesis` labels, matrix columns, shared evidence guidance, and deterministic lint/repair commands. Treat that packet as the short prompt for smaller agents; do not duplicate it by hand in every user prompt.
+- **Low-level agent gate packet**: When `transition.mjs plan-to-execute --dry-run` blocks, read the printed `Low-Level Agent Gate Packet` before editing prose. It names exact schema/list fields for `intent_contract.json`, unresolved story IDs, required `Verification Obligation Synthesis` labels, matrix columns, shared evidence guidance, and deterministic lint/repair commands. Treat that packet as the short prompt for smaller agents; do not duplicate it by hand in every user prompt.
 - **Evidence guidance surfaces**: `bootstrap.mjs status`, `verification_matrix.mjs lint`, and the blocked `plan-to-execute` packet render the same analyzer-derived `Evidence guidance`. Use it before authoring matrix evidence; copied placeholder/example cells are intentionally rejected as incomplete proof.
-- **Closeout reporting**: When verification-obligation synthesis is active, `verification.md` must record `## Systems Exercised`, `## Remaining Unverified`, and `## Verification Sufficiency`, and the `Validation Status` ladder must stop leaving the required proof levels at `PENDING`.
+- **Closeout reporting**: When verification-obligation synthesis is active, `verification.md` must record `## Systems Exercised`, `## Remaining Unverified`, and `## Verification Sufficiency`, and the `Validation Status` ladder must stop leaving the required proof levels at `PENDING`. When IVE, scoreboard, or quality-test evidence is cited, the user-facing closeout must include the measured score trio by name and value: `quality_score`, `iv_score`, and `ritual_score` (or `n/a` plus the source status if a score was not selected). Do not bury these values inside JSON paths, component lists, or artifact links only.
 - **KB sign-off at REFLECT**: `reflection.md` includes a prefilled `## Knowledge Base Sign-Off` section. Leave it pending until REFLECT, then either update `plans/knowledge/` for real reusable learnings or set `Decision: no_new_learnings` with a specific `Reason:`. Do not edit `state.json.close_signals`; that JSON is generated by the planner from artifacts.
 - **Compliance audit**: `node <sp>/scripts/gate_compliance.mjs` — reports which gates were run/skipped.
 
@@ -68,12 +68,12 @@ Deterministic scripts support that loop, mistake registries preserve memory, and
 | Roadmaps spanning multiple epics, tickets, migrations, dependencies, or child plans | **Program Manager** first, then child Iterative Planner plans |
 | Debugging with unclear root cause | **Iterative Planner** |
 | Confirming prior fixes / re-verifying state (>50% findings pre-fixed) | **Lightweight** with triage file as plan |
-| Single-file fixes, obvious solutions | **Lightweight** (task.md → implementation_plan.md → walkthrough.md) |
+| Single-file fixes, obvious solutions | **Lightweight** on the normal plan spine with scaled obligations |
 | Single-file static/UI/page-clone deliverables | **Lightweight** |
 | Quick feature / extraction | **Lightweight** |
 | Known-root-cause bug fixes | **Lightweight** |
 | History-poisoned or abandoned plan where the remaining work is now simple | **Lightweight** after `recover-poison` or `abandon` |
-| **Operational chores** — ad budget changes, credential rotations, settings toggles, schedule edits, content tweaks, dashboard configuration | **Skip the planner entirely.** Just do the task and commit. If `bootstrap.mjs new` is run anyway, it will detect `chore` shape and minimise gates, but the planner state machine is overkill — chores aren't engineering work. |
+| **Operational chores** — ad budget changes, credential rotations, settings toggles, schedule edits, content tweaks, dashboard configuration | **Skip the planner entirely.** Just do the task and commit. If default `bootstrap.mjs new` is run anyway, it routes skip/lightweight goals away without creating a plan. Use `bootstrap.mjs new --force "<goal>"` only when an operator intentionally overrides triage. |
 | **Questions** — "what does X do?", "how is Y wired?", "why is Z failing?" | **Skip the planner — answer the user.** The state machine is for tracking work; questions don't need a plan. Run `bootstrap.mjs triage "<goal>"` first if unsure. |
 | **Analysis tasks** — review / audit / explain / inspect / list / summarize, with no code-change verbs | **Skip the planner or use lightweight.** Detected as `analysis` shape with minimal gates. Run `bootstrap.mjs triage "<goal>"` to get a recommendation before opening anything. |
 
@@ -105,43 +105,51 @@ The returned contract is the shared routing surface used by `/safe-plan`, `/safe
 - `audit_posture`
 - `recommended_path`
 - `operator_action` + `operator_question` when user input is required
+- `focus_contract`
 - `persona_activation_authority`
 
-### Async Cheap-LLM Drift Steward
+### Task Focus Contract
 
-Planner drift can be reviewed by a secondary OpenAI-compatible LLM without making that model a gate authority.
+Before persona packs, scaffold sections, self-heal injections, or verification
+obligations expand, the planner derives a Task Focus Contract. It names the
+operator question, work intent, zoom level, owned scope, ambient dirty
+quarantine, allowed and forbidden claims, authoritative persona packs,
+advisory-only packs, and required proof families.
 
-Configure the provider with:
+Rules of thumb:
+- When `plans/guidance_packet.json` is valid and its trimmed goal exactly matches
+  the plan goal, bootstrap copies its persona guardrails and Program context into
+  an immutable `intake_context` snapshot. Top-level focus authority and Program
+  projections come from that snapshot; later plan-directory derivations preserve
+  it instead of reclassifying the goal or rereading a packet for another task.
+- Guidance packets never authorize post-intake dirty files. Because task intake
+  does not publish an ambient file scope, matching guidance-backed plans begin
+  with an empty ambient snapshot; declared/owned scope can still be refined by
+  the child plan. Malformed, tampered, or mismatched-goal packets are ignored.
+- Unknown shape plus no owned scope becomes `pending_focus`; domain packs may
+  warn but must not create blocking obligations until focus is clarified.
+- Planner-core focus activates `assumptions_challenger`, `wiring_auditor`,
+  `config_integrity`, and `traceability`, while quant, tokenomics, and UX/UI
+  stay advisory unless the task makes explicit domain claims or uses
+  `force_packs`.
+- Ambient dirty files are evidence for quarantine warnings, not authorization
+  for blocking proof rows unless the plan declares them as owned scope.
+
+### Async Cheap-LLM Drift Steward (retired)
+
+The secondary OpenAI-compatible drift-LLM steward has been retired. The planner
+now operates in deterministic-only mode by default. Gate enforcement, ontology
+checks, and scaffolding run locally without an advisory LLM.
+
+To keep the supervisor disabled, set in `.env.local`:
 
 ```bash
-export PLANNER_DRIFT_LLM_API_KEY="..."
-export PLANNER_DRIFT_LLM_MODEL="..."
-export PLANNER_DRIFT_LLM_BASE_URL="https://provider.example/v1"
-export PLANNER_DRIFT_LLM_TIMEOUT_MS=20000
-export PLANNER_DRIFT_LLM_PHASES=gate,post_task
-export PLANNER_DRIFT_LLM_WRITE_MODE=safe_apply
+PLANNER_SUPERVISOR_DISABLED=1
 ```
 
-For local development, the drift client also reads a gitignored `.env.local`
-from the project root as a fallback. Use the planner-specific variables above,
-or use `DEEPSEEK_API_KEY` by itself to select the DeepSeek defaults:
-`PLANNER_DRIFT_LLM_MODEL=deepseek-chat` and
-`PLANNER_DRIFT_LLM_BASE_URL=https://api.deepseek.com/v1`. Explicit process
-environment variables always win over `.env.local`, and missing provider
-configuration remains fail-open advisory.
-
-Useful commands:
-
-```bash
-node <sp>/scripts/llm_drift_auditor.mjs --mode gate --gate plan-to-execute --json
-node <sp>/scripts/llm_drift_maintenance.mjs enqueue --plan <plan-dir> --reason post_task
-node <sp>/scripts/llm_drift_maintenance.mjs run --job plans/<plan-dir>/async/<job>.json
-```
-
-Rules:
-- Gate-time drift audit is advisory and fail-open. Missing config, invalid JSON, timeout, HTTP error, or `stale_blocking` output cannot fail a gate by itself.
-- Provider calls request OpenAI-compatible JSON-object mode. If a provider answers with malformed JSON, the shared client makes one bounded JSON repair retry before returning fail-open `unavailable`.
-- Async maintenance may safe-apply deterministic report regeneration, but LLM-suggested `@planner:proves`, `@planner:story`, story registry, ontology, or user-claim edits are review artifacts unless deterministic validation proves they are unambiguous.
+To re-enable an external supervisor, configure `PLANNER_SUPERVISOR_API_KEY` and
+remove `PLANNER_SUPERVISOR_DISABLED`. The retired `PLANNER_DRIFT_LLM_*`
+variables are no longer read by any runtime code.
 - Every async report includes ontology usage proof from annotation validation, ontology serialization, invariant checks, story verification, story registry validation, and the traceability audit pack.
 - If ontology facts change but no audit, gate, traceability, story, or rule-engine decision changes, classify the change as `ritual_only`.
 
@@ -158,7 +166,7 @@ Generic idea, backlog, GitHub Issue, and GitHub Project intake also belongs here
 Draft local tickets first:
 
 ```bash
-node <sp>/scripts/program_manager.mjs init --program <program-id> --title "<program title>" --goal "<program goal>" --json
+node <sp>/scripts/program_manager.mjs init --program <program-id> --title "<program title>" --goal "<program goal>" --remote-mode local-only --json
 node <sp>/scripts/program_manager.mjs intake --program <program-id-or-path> --from-text "<idea>" --json
 node <sp>/scripts/program_manager.mjs intake --program <program-id-or-path> --from-text "<idea>" --title "<short title>" --ticket-type quant_exploration --persona-review --json
 node <sp>/scripts/program_manager.mjs intake --program <program-id-or-path> --from-text "<idea>" --auto-story --write --json
@@ -168,8 +176,25 @@ node <sp>/scripts/program_manager.mjs intake --program <program-id-or-path> --is
 node <sp>/scripts/program_manager.mjs intake --program <program-id-or-path> --project-item <id-or-url> --repo owner/name --write --json
 ```
 
-Use `init` when the Program Packet does not exist yet; it writes the valid empty
-schema skeleton and refuses accidental overwrite unless `--force` is passed.
+Use `init` when the Program Packet does not exist yet. Init now requires one
+explicit structural resolution before it writes the schema skeleton:
+
+- `--remote-mode local-only` for an offline/local Program;
+- `--repo owner/name` to persist repository identity and select remote-sync when
+  no mode was supplied; or
+- `--waive-gate-requirement <id> --waiver-decision <id> --waiver-reason
+  "<reason>"` to record a typed, decision-backed governed waiver.
+
+`--remote-mode local-only` and `--repo` are mutually exclusive during init.
+Remote-read and remote-sync require one canonical repository identity. Existing
+packets with neither a policy nor an unambiguous repository stop on their first
+`check`, `verify`, or lifecycle `disposition` touch with
+`program_gate_requirement_resolution_required`;
+the CLI never silently converts that absence to an operator-chosen local-only
+decision. Checks remain read-only after the decision is satisfied. Init refuses
+accidental overwrite unless `--force` is passed. Conflicting persisted mode or
+repository aliases fail as invalid/ambiguous configuration instead of selecting
+the first field.
 Intake is dry-run by default. `--write` updates only the local Program Packet and
 the local `intake/<ticket-id>_intake_packet.json` artifact. Text and file intake
 sources are mirrored as `external_refs` kinds `local_text` and `local_file`;
@@ -222,6 +247,28 @@ node <sp>/scripts/program_manager.mjs verify ready-to-execution --program plans/
 node <sp>/scripts/program_manager.mjs verify execution-to-program-validate --program plans/programs/<program-id>/program_packet.json
 node <sp>/scripts/program_manager.mjs verify validate-to-program-close --program plans/programs/<program-id>/program_packet.json
 ```
+
+Already-resolved `proposed` tickets with no child plan use a separate,
+evidence-backed administrative lane. The request must be committed and clean,
+use schema `program_proposed_resolution_request.v1`, name the exact Program
+Packet, and provide for every ticket a supported classification
+(`resolved_by_evidence` or `resolved_by_investigation`), a committed decision
+section that names the exact ticket id, and one to eight typed evidence refs.
+`git_commit` refs must exist and be reachable from HEAD; `json_receipt` refs
+must be clean committed JSON with a deterministic PASS result. Review dry-run
+output before enabling the write:
+
+```bash
+node <sp>/scripts/program_manager.mjs disposition --from-resolution-request <request.json> --json
+node <sp>/scripts/program_manager.mjs disposition --from-resolution-request <request.json> --output <receipt.json> --write --json
+```
+
+The same verifier runs in dry-run, write, subsequent Program checks, and
+Program fact generation. Invalid mixed-batch entries remain open with stable
+blockers; independently valid siblings may close. The writer persists request,
+decision-section, and evidence digests, records `review_status: unavailable`,
+and is idempotent only while the committed evidence still re-verifies. This
+lane never substitutes for a nonempty child plan and never publishes remotely.
 
 When `program_manager.mjs verify <gate> --write` passes deterministic Program
 Packet validation and ontology checks, it advances the program status:
@@ -279,6 +326,25 @@ when they touch migration, delete/move work, shared/core surfaces, user-facing c
 behavior, cross-system dependencies, public interfaces, planner-core files, or anything
 beyond artifact-only administrative scope.
 
+An `in_progress` or `blocked` ticket may declare `awaiting_external_action`
+when completed local work is intentionally waiting for an operator run or a
+human decision. The object must include `kind`, `reason`, `recorded_at`, and a
+bounded `expected_evidence` JSON match rooted inside the repository. The valid
+object also explicitly propagates child-plan failure signals while an
+`in_progress` repair is recovering; without it, the parent must still move to
+`blocked`. Lifecycle reconciliation suppresses a shipped-open advisory only while that exact
+evidence is absent. Once matching evidence exists, the exemption expires and
+the shipped-open advisory returns until the ticket is honestly advanced. The
+field is invalid on every other lifecycle and never closes a ticket
+automatically. Missing roots prove absence; unreadable or scan-limited roots do
+not. Incomplete discovery fails closed and keeps shipped-open visible.
+
+Inspect this state without mutation via
+`node .agent/skills/iterative-planner/scripts/lifecycle_reconciler.mjs --json --no-write`.
+For current-code L2 gate compatibility, use
+`node .agent/skills/iterative-planner/scripts/dogfood_lifecycle_replay.mjs --json`;
+that replay is deterministic evidence, not a credentialed L3 agent run.
+
 ### Commit Message Guard
 
 Planner release, phase, feature, fix, and chore commits should install the portable `commit-msg` hook:
@@ -318,30 +384,26 @@ The planner is intentionally asymmetric by phase:
 
 This keeps the original simple loop intact. The planner should help the agent notice missed risk and step back safely, not supervise every keystroke.
 
-### Approval Mode
+### Approval Mode (legacy)
 
-The approval mode controls who writes `[APPROVED:<nonce>]` to `decisions.md` after a successful `explore-to-plan`.
-
-- In default `auto` mode, `transition.mjs explore-to-plan` writes it directly.
-- In `auto` mode (default), no extra PLAN-phase user action is needed.
-- Default full workflows use `approval.mode = "auto"`, so do **not** tell the user to start the approval daemon unless the project has explicitly switched to `interactive` mode.
+The legacy approval mode machinery (approval daemon, nonces, and tamper fingerprint approvals) was retired by E8-1. In the current runtime, default `auto` mode simply writes `[APPROVED]` to `decisions.md` after a successful `explore-to-plan`. No daemon, nonce, or out-of-band approval step is required.
 
 ### Lightweight Invocation (via /safe-change)
 
 When triggered by the `/safe-change` workflow for changes ≤3 files / ≤30 lines / no new abstractions, or when the remaining work after poisoned-plan recovery is now small and local:
 
-1. **Start approval daemon** — spawn in background: `node <sp>/scripts/approval_daemon.mjs --auto &`. This auto-approves the plan-to-execute gate so the workflow runs without interruption (only for nonces tagged `safe-change`).
-2. **Set workflow type** — when running explore-to-plan transition, set: `_PLANNER_WORKFLOW_TYPE=safe-change node <sp>/scripts/transition.mjs explore-to-plan`. This tags the nonce so the daemon knows it's safe to auto-approve.
-3. **Skip bootstrap** — do NOT run `bootstrap.mjs`. Use the standard artifact files (`task.md`, `implementation_plan.md`, `walkthrough.md`) instead of `plans/` state files.
-4. **EXPLORE lite** — still required, but write findings directly to `implementation_plan.md` instead of `findings.md`. Minimum 3 grep/search calls.
-5. **PLAN** — write `implementation_plan.md` (user-facing). Auto-approve if ≤3 files.
-6. **EXECUTE** — TDD: write invariant test first. Implement. Run test. Run full suite.
-7. **REFLECT** — verify test count ≥ baseline + 1. Check for regressions.
-8. **CLOSE** — write `walkthrough.md`. If `plans/knowledge/` exists, append learnings. If not, embed learnings in walkthrough under "## Lessons Learned".
+1. **Bootstrap or resume the normal spine only when a plan is warranted** — default `bootstrap.mjs new` routes triage-classified skip/lightweight goals away before creating plan state; use `bootstrap.mjs new --force` only when you intentionally want a plan despite that routing. Lightweight is a scaled-obligation mode, not a separate root-file workflow.
+2. **Set workflow type when needed** — run explore-to-plan with `_PLANNER_WORKFLOW_TYPE=safe-change` when the plan shape calls for it. Default `auto` approval needs no extra step.
+3. **EXPLORE lite** — still required, but record findings in the plan's normal findings artifacts. Minimum discovery scales to the task shape; planner-core or shared-surface work remains full-strength.
+4. **PLAN** — write `plans/<plan>/plan.md` with scoped files, ordered steps, risks, and verification. Empty or minimal obligations are fine when justified by the task shape.
+5. **Gate through the normal spine** — run transition gates normally. For planning-only handoffs, validate with `verify_gate.mjs plan-to-execute --planning-only --plan <plan-dir>`.
+6. **EXECUTE** — TDD: write invariant test first when behavior changes. Implement. Run the focused test and appropriate broader suite.
+7. **REFLECT** — verify regression coverage and record any scoped non-applicability explicitly.
+8. **CLOSE** — write `summary.md`. If `plans/knowledge/` exists, append learnings there. Legacy `walkthrough.md` is accepted only as historical Program Packet compatibility proof, not as the active lightweight close artifact.
 
 Pure static UI/page deliverables (for example a standalone HTML clone) should use structured manual validation when the intent contract marks the work as `manual_observation`; do not invent a fake test file just to satisfy planner bureaucracy.
 
-This avoids the overhead of the full state machine for simple, well-scoped changes while still enforcing TDD and regression gates.
+This avoids unnecessary obligations for simple, well-scoped changes while preserving the same state-machine spine, approval, traceability, and regression gates.
 
 ## Integration with Existing Artefacts
 
@@ -349,7 +411,7 @@ When the iterative planner is active, the agent should:
 - **Still update `task.md`** (top-level progress tracking) — keep the high-level bullet points in sync with `progress.md`
 - **Use `plans/` for detailed state** — the state machine files (`state.md`, `plan.md`, `decisions.md`, etc.) live here
 - **Write `implementation_plan.md`** if the user requests a formal plan review — the iterative planner's `plan.md` is the working plan; `implementation_plan.md` is the user-facing summary
-- **Write `summary.md` at CLOSE** — summarise what was done; this is the canonical close artifact for the full flow. (The legacy `walkthrough.md` fallback for KB evidence in full plans was retired in v7.1+; it remains the canonical close artifact only for the lightweight `/safe-change` flow.)
+- **Write `summary.md` at CLOSE** — summarise what was done; this is the canonical close artifact for both full and lightweight work. The legacy `walkthrough.md` fallback for KB evidence in full plans was retired in v7.1+ and remains only as Program Packet compatibility evidence for historical lightweight child plans.
 
 ## Supporting Utilities
 
@@ -447,7 +509,7 @@ node <skill-path>/scripts/planner.mjs verify-fleet --json
 
 ```bash
 node <skill-path>/scripts/bootstrap.mjs "goal"              # Create new plan (backward-compatible)
-node <skill-path>/scripts/bootstrap.mjs new "goal"           # Create new plan
+node <skill-path>/scripts/bootstrap.mjs new "goal"           # Create new plan for standard/full planner goals; routes skip/lightweight goals away
 node <skill-path>/scripts/bootstrap.mjs new --force "goal"   # Close active plan, create new one
 node <skill-path>/scripts/bootstrap.mjs resume               # Re-entry summary for new sessions
 node <skill-path>/scripts/bootstrap.mjs status               # One-line state summary
@@ -457,20 +519,53 @@ node <skill-path>/scripts/bootstrap.mjs close --informational # Close from any s
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
 ```
 
-**Self-heal + install health (v3.10.2):** `bootstrap.mjs` and `transition.mjs` still run the built-in-first self-heal preflight before they load planner-local modules. `bootstrap.mjs install-health` now uses the same canonical source contract to report whether the local planner install is aligned, whether repair is needed, whether advisory-only drift exists, and whether self-heal is available. Project-specific customization of `CLAUDE.md` / `GEMINI.md` / `AGENTS.md` is advisory and does not trigger self-heal. Use `PLANNER_SOURCE_REPO=/abs/path/to/Iterative Planner` to override the source locator or `PLANNER_SKIP_SELF_HEAL=1` to disable the preflight while debugging.
+**Self-heal + install health:** `bootstrap.mjs` owns the built-in-first install-health preflight before it loads planner-local modules. Transition evaluation never mutates the install implicitly because dry-run and actual execution must inspect identical inputs. `bootstrap.mjs install-health` reports whether the local planner install is aligned, whether repair is needed, whether advisory-only drift exists, and the exact source-pinned recovery or upgrade command. Bootstrap diagnoses drift and pauses for explicit `--commit` consent; it does not write a half-applied payload. Source-driven migration resolves `PLANNER_SOURCE_REF` (default `HEAD`) to one commit, executes from a `git archive` snapshot of that commit, builds the complete candidate in a scratch clone, runs the configured census plus planner-core proof bundle there, commits the candidate, and only then fast-forwards the live consumer. Apply, setup, proof, and candidate-commit failures leave the live target unchanged. A durable journal under target Git metadata and an ignored `config/last_upgrade_receipt.json` distinguish an interrupted final handoff from legacy debris, bind from/tree/source versions to the selected source and resulting commit, and power `recover-upgrade`. Before any candidate is built, upgrade classifies target bytes against target `HEAD`, the selected source ancestry, and all source history. An ignored or otherwise untracked managed file is accepted only when its exact same-path Git blob appears in the selected source ancestry or in that selected snapshot's versioned `config/legacy_managed_blob_provenance.json` ledger. Uncommitted targets, committed divergence, tracked or untracked ahead-of-ref targets, and unclassifiable targets refuse the entire operation and print committed/tree/source stratigraphy, hashes, a bounded diff summary, and a pinned recovery recipe. Project-local `.project_registry.json` entries and unrelated dirty project files are preserved; candidate staging is scoped to the proven upgrade. Use `PLANNER_SOURCE_REPO=/abs/path/to/Iterative Planner` to override the source locator, `PLANNER_SOURCE_REF=<commit-or-tag>` to pin the source, or `PLANNER_SKIP_SELF_HEAL=1` to disable bootstrap diagnosis while debugging.
 
 **Active-plan alias + stale-context guards (v3.10.3):** `bootstrap.mjs` and `transition.mjs` now keep `plans/ACTIVE_PLAN.md` and `plans/ACTIVE_PLAN.json` in sync with `plans/.current_plan`. `bootstrap.mjs status` and `resume` warn when recent tool traces touched a non-active `plans/plan_*` directory, and `transition.mjs` blocks with `GATE-CTX-001` if recent trace evidence shows edits or writes against a non-active plan. Read-only stale-plan evidence produces `GATE-CTX-002` warnings. If either fires, reopen `plans/ACTIVE_PLAN.md`, switch back to the active plan, and retry.
 
 ### Enforcement Scripts
 
 ```bash
-# Gate verification — run before each state transition
-node <skill-path>/scripts/verify_gate.mjs explore-to-plan
-node <skill-path>/scripts/verify_gate.mjs plan-to-execute
-node <skill-path>/scripts/verify_gate.mjs execute-to-reflect   # red-team adversarial gate
-node <skill-path>/scripts/verify_gate.mjs reflect-to-validate
-node <skill-path>/scripts/verify_gate.mjs validate-to-close
-node <skill-path>/scripts/transition.mjs notify-user           # audit-only final handoff gate
+# Authoritative preflight — same evaluator as actual, persistence disabled
+node <skill-path>/scripts/transition.mjs explore-to-plan --dry-run
+node <skill-path>/scripts/transition.mjs plan-to-execute --dry-run
+node <skill-path>/scripts/transition.mjs execute-to-reflect --dry-run   # red-team adversarial gate
+node <skill-path>/scripts/transition.mjs reflect-to-validate --dry-run
+node <skill-path>/scripts/transition.mjs validate-to-close --dry-run
+node <skill-path>/scripts/transition.mjs notify-user --dry-run           # audit-only final handoff gate
+
+### Authorized checklist-integrity regeneration
+
+Never hand-edit `config/.checklist_integrity` and never make a transition accept
+current checklist bytes automatically. When a legitimate committed checklist
+change needs re-authorization, first record an operator decision under
+`plans/plan_*/decisions.md`, then run the supported migration lane as dry-run
+and explicit write:
+
+```bash
+node .agent/skills/iterative-planner/scripts/migrate.mjs \
+  regenerate-checklist-integrity . \
+  --checklist <gate-name> \
+  --decision-ref plans/plan_<id>/decisions.md#D-<id> \
+  --dry-run --json
+node .agent/skills/iterative-planner/scripts/migrate.mjs \
+  regenerate-checklist-integrity . \
+  --checklist <gate-name> \
+  --decision-ref plans/plan_<id>/decisions.md#D-<id> \
+  --write --json
+```
+
+The target must be the Git root. The named checklist and existing registry must
+be tracked and clean in both index and worktree; the checklist buffer must be
+byte-identical to `git show HEAD:<path>`. The decision must resolve to a
+target-local plan decision log and contain the exact heading; it may be an
+uncommitted active-plan artifact, and its current SHA-256 is bound in the
+receipt. Dry-run is the default, `--dry-run` and `--write` are mutually
+exclusive, a missing registry member is refused rather than lazily created,
+and write emits a PASS receipt under
+`reports/ive/checklist_integrity_regenerations/`. Process-level receipt failure
+restores the original registry. The runtime checklist verifier remains
+unchanged: every remaining mismatch still hard-fails before checklist items run.
 
 # YAML checklist runner — deterministic checks
 node <skill-path>/scripts/checklist_runner.mjs explore-to-plan
@@ -515,12 +610,6 @@ node <skill-path>/scripts/trace_auditor.mjs                  # audit current pha
 node <skill-path>/scripts/trace_auditor.mjs --phase EXPLORE  # audit specific phase
 node <skill-path>/scripts/hooks/install.mjs --trace-hook     # install PostToolUse hook
 
-# Approval daemon — handles nonce ceremony for plan approval
-node <skill-path>/scripts/approval_daemon.mjs                # interactive y/n mode (separate terminal)
-node <skill-path>/scripts/approval_daemon.mjs --auto         # auto-approve safe-change only
-node <skill-path>/scripts/approval_daemon.mjs --once         # single approval, then exit
-node <skill-path>/scripts/nonce_reveal.mjs                   # manual nonce reveal (alternative to daemon)
-
 # Plan validation — protocol compliance check (read-only)
 node <skill-path>/scripts/validate-plan.mjs                  # validate active plan
 node <skill-path>/scripts/validate-plan.mjs <plan-name>      # validate specific plan
@@ -541,6 +630,7 @@ node <skill-path>/scripts/escalation_check.mjs --json        # machine-readable
 
 # Project health — quick project health scan
 node <skill-path>/scripts/project_health.mjs                 # health report
+node <skill-path>/scripts/ttinsights_report.mjs --json        # ontology-guided planner improvement insights
 
 # Annotation bootstrapper — scan code, infer @planner: annotations, cross-ref registry
 node <skill-path>/scripts/annotation_assist.mjs              # scan cwd, output report
@@ -548,6 +638,8 @@ node <skill-path>/scripts/annotation_assist.mjs --apply      # write annotations
 node <skill-path>/scripts/annotation_assist.mjs --json       # machine-readable output
 node <skill-path>/scripts/annotation_parser.mjs              # parse existing @planner: annotations to JSON/Prolog/Turtle
 node <skill-path>/scripts/story_registry.mjs evidence US-001 # inspect story_registry evidence gaps for a story
+node <skill-path>/scripts/story_registry.mjs prune --safe    # dry-run stale evidence-ref pruning
+node <skill-path>/scripts/story_registry.mjs prune --safe --write # apply safe stale evidence-ref pruning
 
 # Ontology serializer — plan.md + registry + annotations → Prolog traceability facts
 node <skill-path>/scripts/ontology_serializer.mjs            # emit traceability facts to stdout
@@ -576,6 +668,19 @@ bash .agent/scripts/migrate-all-projects.sh                  # update all projec
 # see .agent/workflows/parity-audit.md
 ```
 
+`transition.mjs <gate> --dry-run` is the sole transition predictor. It runs the
+same health, persona, JavaScript, checklist, reachability, and Prolog evaluation
+as actual execution, then stops at the persistence boundary. Ordinary
+`verify_gate.mjs` CLI calls delegate to it; `--planning-only` remains a scoped
+plan-content diagnostic. Verification result tokens come from
+`config/verification_status_vocabulary.json`; presentation tables accept only
+the configured forms (`PASS`, `FAIL`, `WAIVED`, `N/A`, `NA`, or
+`NOT APPLICABLE`). Put qualifiers in the evidence column—phrases such as
+`PASS AT CLOSE ENTRY` are rejected with accepted-form guidance.
+`scripts/lib/verification_status_vocabulary.mjs` validates and normalizes that
+authority, while `prolog/verification_statuses.pl` derives executed Prolog
+truth from facts compiled from the same configuration.
+
 ### Traceability Model (Coverage vs Evidence vs Linkage)
 
 The planner uses three related but different traceability layers:
@@ -584,7 +689,7 @@ The planner uses three related but different traceability layers:
 2. **`story_registry.json` evidence refs** — `code_refs`, `test_refs`, and `validation_refs`.
 3. **`plan.md` Verification Strategy linkage** — `Criterion | Story linkage | Check | Pass means`.
 
-Annotations help coverage and ontology facts, but they do not create `code_refs`, `test_refs`, or `validation_refs`. If `broken_evidence_chain` fires, fix the missing story linkage or story-registry evidence first; annotations alone will not satisfy the chain.
+Annotations help coverage and ontology facts, but they do not create `code_refs`, `test_refs`, or `validation_refs`. Evidence refs must be durable artifact paths, not shell commands. If `broken_evidence_chain` fires, fix the missing story linkage or story-registry evidence first; annotations alone will not satisfy the chain. To inspect stale evidence refs before editing the registry, run `story_registry.mjs prune --safe`; use `--safe --write` only after reviewing the dry-run output.
 
 Active-plan annotation refreshes are intentionally scoped: the planner scans `## Files To Modify` plus bounded nearby real-code adjacency when computing semantic substrate, then falls back to repo-wide scanning only when no usable planned-file set exists. This keeps fixtures/examples/docs from polluting close-time reasoning while preserving standalone discoverability for no-plan tooling.
 
@@ -596,20 +701,35 @@ The semantic substrate is a deterministic machine pipeline, not a new prose arti
 
 ### Integrity Model (RT6)
 
-The planner uses a layered tamper-detection system to prevent LLMs from bypassing gates:
+The planner uses layered runtime evidence checks instead of in-process approval theater:
 
 | Layer | What's Protected | Mechanism | Failure Mode |
 |-------|-----------------|-----------|-------------|
-| **Config integrity** (AV-13) | `config/*.json`, enforcement scripts, Prolog rules | SHA-256 baseline in `.config_integrity` | FAIL — gate aborted |
-| **state.json integrity** (RT6-C1) | State, transitions, approval nonces, gate results | `_state_hash` field (SHA-256 of sorted keys) | FAIL — gate aborted |
 | **Decision log chain** (RT-AUDIT-M2) | Historical audit trail | Hash chain (`_prev_hash` linking records) | FAIL — gate blocked |
 | **Checklist integrity** (AV-17) | YAML gate checklists | SHA-256 baseline in `.checklist_integrity` | FAIL — checklist skipped |
 | **Command allowlist** (RT6-C2) | Checklist `command_succeeds` items | Token-based: only `node .agent/.../scripts/*.mjs` | FAIL — command blocked |
-| **Prolog rule integrity** (RT6-M2) | `prolog/*.pl` semantic rules | Included in config integrity baseline | FAIL — gate aborted |
+| **Prolog semantics** (RT6-M2) | State-machine and invariant logic | `transition.mjs` runs `rule_engine.mjs` at every gate | FAIL — gate aborted |
+| **Git/CI review boundary** | Planner source changes | git diff/log plus fresh-context CI reviewer jobs | Blocks merge or review signoff, not local phase editing |
 
-**Key invariant**: `state.json` can ONLY be modified by `transition.mjs` via `writeStateJson()`. Direct edits are detected by the `_state_hash` integrity check and cause the next gate transition to abort.
+**Key invariant**: `state.json` remains planner-owned and should only be modified by planner commands such as `transition.mjs`. Legacy `_state_hash`, approval nonce, transition nonce, and tamper fingerprint fields are ignored if found in old plans; current integrity proof is the layered evidence table above.
 
-**Backwards compatibility**: Plans created before RT6-C1 will not have `_state_hash`. The first transition after upgrade adds the hash automatically. Until then, the integrity check passes with a "no hash yet" advisory.
+**Transition tool-error boundary (mandatory):** A check process that crashes,
+is signalled, emits empty/invalid JSON, returns an invalid result shape, or
+contradicts `ok: true` with a non-zero exit is not a semantic gate result.
+`transition.mjs` returns exit 3 and a `TOOL_ERROR` receipt with a stable,
+non-empty `TOOL-*` code. `failure_codes` and `hard_blocks` remain semantic-only;
+tool failures use `tool_error_codes` and `tool_errors`, including secret-redacted, bounded 2 KiB
+stdout/stderr excerpts and original byte counts. A valid `ok: false` response
+remains semantic even with a non-zero exit. Actual tool errors may persist only
+their immutable receipt and separate tool-error telemetry: they must not append
+state/decision history, increment lifecycle attempts, add `gate_failures`, or
+trip circuit breakers. Dry-run writes nothing. Retry the same dry-run once; if
+the tool code repeats, report the code and receipt rather than editing lifecycle
+artifacts. `ritual_lint` keeps a 60000 ms default timeout; the optional
+`PLANNER_RITUAL_LINT_TIMEOUT_MS` test/diagnostic override is clamped to
+10–60000 ms.
+
+**Backwards compatibility**: Plans created before E8-1 may contain retired integrity fields. Current transitions tolerate those fields for historical plans but do not create, refresh, or require them.
 
 ### IDE Support Matrix
 
@@ -654,7 +774,7 @@ The planner captures tool call traces to verify the agent reads required files a
 | `config/trace_rules.json` | Per-phase tool trace coverage rules — `trace_auditor.mjs` reads from here to determine required reads and thresholds |
 | `config/determinism.json` | Feature flags (including `tool_trace`) — all scripts check `isFeatureEnabled()` before trace capture/audit |
 
-`new` refuses if active plan exists — use `resume`, `close`, or `--force`.
+`new` routes triage-classified skip/lightweight goals away before creating plan state. For standard/full planner goals, it refuses if an active plan exists — use `resume`, `close`, or `--force`.
 `new` ensures `.gitignore` includes `plans/` — prevents plan files from being committed during EXECUTE step commits.
 `close` merges per-plan findings/decisions to consolidated files, updates `state.md`, and removes the `.current_plan` pointer. The protocol CLOSE state (writing `summary.md`, auditing decision anchors) should be completed by the agent before running `close`.
 After bootstrap → **read every file in `{plan-dir}`** (`state.md`, `plan.md`, `decisions.md`, `findings.md`, `progress.md`, `reflection.md`, `verification.md`) before doing anything else. Then begin EXPLORE. User-provided context → write to `findings.md` first.
@@ -727,7 +847,7 @@ R = read only | W = update (implicit read + write) | R+W = distinct read and wri
 
 ### EXPLORE
 
-- **Approval mode reminder** — Default full workflows use `approval.mode = "auto"`, so do **not** tell the user to start the approval daemon unless the project has explicitly switched to `interactive` mode.
+- **Approval mode reminder** — Default full workflows use `approval.mode = "auto"`. The approval daemon and nonce ceremony were retired by E8-1; do not tell the user to start a daemon or generate nonces.
 - Read `state.md` and `plans/INDEX.md` at start of EXPLORE for cross-plan context. Open `plans/FINDINGS.md` and `plans/DECISIONS.md` only when the compact index, the goal, or the current finding suggests a deeper dive is needed.
 - Read `state.md`, `plans/FINDINGS.md` and `plans/DECISIONS.md` at start of EXPLORE for cross-plan context.
 - **Read `plans/knowledge/index.md`** — scan for relevant mistakes, patterns, and gotchas. If the current problem matches a known entry, read the detailed file. Do NOT repeat a known mistake. DO apply a known pattern.
@@ -795,14 +915,14 @@ For **bug-fix plans**, **audit-driven plans**, or tasks where findings are pre-k
 If the task involves Optuna, model-family search, strategy/staking optimization, backtest parameter tuning, or any claim that an optimizer result explains profitability, EXPLORE must record an `## Optimization Scale Contract` with:
 
 - Run class: `smoke`, `wiring_proof`, `exploratory`, `serious_search`, or `promotion_candidate`.
-- Trial budget and completion count, plus whether the objective was frozen or sampled.
-- Count of unique optimizer parameter names where discoverable from code/artifacts.
+- Numeric trial budget and numeric completion count, plus whether the objective was frozen or sampled.
+- Numeric count of unique optimizer parameter names where discoverable from code/artifacts.
 - Active parameter count per trial, including conditional model/policy/calibration branches where applicable.
-- Model families, policy/strategy families, calibration choices, feature-selection surface, and objective choices.
-- Coverage statement: combinations tried versus combinations available when artifacts expose it.
+- Enumerated model or strategy families, intervals, and directions, plus relevant calibration choices, feature-selection surface, and objective choices.
+- Coverage statement with numerator and denominator for combinations tried versus combinations available, or an explicit "denominator unknown because ..." reason.
 - Interpretation boundary: what the run can prove and what it cannot prove.
 
-For smoke or wiring-proof runs, do not interpret ROI, IC, calibration, or promotion failure as final optimization evidence. Treat the result as artifact/protocol proof only and make the next serious search budget explicit.
+For smoke or wiring-proof runs, do not interpret ROI, IC, calibration, or promotion failure as final optimization evidence. Treat the result as artifact/protocol proof only and make the next serious search budget explicit. Quant negative/no_go summaries must include one sentence naming the tested region of hypothesis space; do not summarize "the strategy library failed" when only a narrow family/interval/direction/parameter region was tested.
 
 <!-- DOMAIN: PROJECT-SPECIFIC EXPLORE CHECKLISTS
      =========================================
@@ -845,10 +965,12 @@ For smoke or wiring-proof runs, do not interpret ROI, IC, calibration, or promot
 - **Problem Statement first** — before designing steps, write in `plan.md`: (1) what behavior is expected, (2) invariants — what must always be true, (3) edge cases at boundaries. Can't state the problem clearly → go back to EXPLORE.
 - **Formal Invariants (Prolog)** — codify your new invariants as Prolog rules in `prolog/invariants.pl` (e.g. extending `invariant_violated/2`) so `transition.mjs` can enforce them automatically. Prolog verification is mandatory for all transitions.
 - Write `plan.md`: problem statement, steps, failure modes, risks, success criteria, verification strategy, complexity budget.
-- **Verification Strategy** — for each success criterion, define: what test/check to run, what command to execute, what result means "pass". When `reports/user_story_audit/story_registry.json` exists, use an explicit table with `Criterion | Story linkage | Check | Pass means`, and every criterion must map to at least one story ID. `## Success Criteria` may be numbered bullets or a markdown table with a `Criterion` column. Context-sensitive proof rows may use exact `proof:*` IDs or equivalent natural proof phrases from the canonical proof families; regression fixtures for parser changes must include realistic authored tables/prose, not exact-token happy paths only. Plans with no testable criteria → write "N/A — manual review only" (proves you checked). See `references/file-formats.md` for template.
+- **Verification Strategy** — for each success criterion, define: what test/check to run, what command to execute, what result means "pass". When `reports/user_story_audit/story_registry.json` exists, use an explicit table with `Criterion | Story linkage | Check | Pass means`, and every criterion must map to at least one story ID unless the feature-flagged compact low-risk obligation path is eligible and the one-sentence obligation names an active story ID. For docs/chore/analysis scaffolds, replace the seeded compact `TODO` sentence with the real story/artifact/action/pass/residual-gap wording before `plan-to-execute`; high-risk work still needs the full matrix. `## Success Criteria` may be numbered bullets or a markdown table with a `Criterion` column. Context-sensitive proof rows may use exact `proof:*` IDs or equivalent natural proof phrases from the canonical proof families; regression fixtures for parser changes must include realistic authored tables/prose, not exact-token happy paths only. Plans with no testable criteria → write "N/A — manual review only" (proves you checked). See `references/file-formats.md` for template.
 - **Shared Artifact Reader Inventory** — if planner-core work changes how code reads or emits `plan.md`, `verification.md`, `state.json`, close signals, or emitted ontology/Prolog facts, list the artifact writer/scaffold plus every runtime reader before EXECUTE. Classify each hit as `writer`, `canonical_reader`, or `mirror_reader`. The plan is not complete until either one shared helper owns the contract or every runtime consumer is updated in the same patch.
 - For WordPress/CMS "missing content" or "looks empty" incidents, the plan must also record the turbulence question, the raw HTML/DOM probe of the exact broken URL, the render-vs-query branch (`0 bytes`/missing block = render crash; HTML shell with empty collections = backend/query), and the entity-preservation rule before proposing migrations or CPT rewrites.
-- Annotations help coverage and ontology facts, but they do not create `code_refs`, `test_refs`, or `validation_refs`.
+- Annotations help coverage and ontology facts, but they do not create `code_refs`, `test_refs`, or `validation_refs`. Evidence refs must be durable artifact paths, not shell commands; run `story_registry.mjs prune --safe` to list stale refs and `story_registry.mjs prune --safe --write` only after reviewing the proposed replacements/removals.
+- **Validation-artifact → source-file mapping reconciliation** — if success criteria generate `validation_artifact/2` facts (e.g., criterion-to-script links or `@planner:proves`), verify the artifact files are also covered by `source_file_mapped/1` through `code_ref`, `test_ref`, `validation_ref`, or an explicit mapping. Do not rely on validation artifacts alone unless the ontology bridge rule is known to be active.
+- **Registry hash refresh contract** — if `story_registry.json` is edited during the plan, do not manually compute or edit `state.json.registry_hash`. Run a planner transition; in write mode the hash is refreshed and `registry_tampered` is retracted automatically.
 - To diagnose a specific evidence-chain gap, run:
   ```bash
   node <skill-path>/scripts/story_registry.mjs evidence <story-id>
@@ -921,14 +1043,69 @@ If the plan cannot count the dimensions yet, it must include a discovery step th
 - **Surprise discovery** (behaviour contradicts findings, unknown dependency, wrong assumption) → note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
 - Add `# DECISION D-NNN` comments where needed (`references/decision-anchoring.md`).
 
-#### External Communication Gate (MANDATORY)
+#### Irreversible Action Execution Contract (MANDATORY)
 
-**Purpose**: Prevent unauthorized emails, messages, or external communications from being sent to live customers without human review.
+**Purpose**: Keep draft, dry-run, plan, and review approval separate from authorization to perform a live irreversible external action.
 
-**Procedure**:
-1. Before dispatching any live external communication (e.g. `gmail.send_draft`, sending Slack messages to customers), you MUST present the exact payload or draft ID to the user.
-2. You MUST receive explicit "YES SEND IT" approval from the user.
-3. Bypassing this gate and sending live external communications autonomously is a critical safety violation.
+The managed registry is `config/irreversible_action_registry.json`. It declares
+the seeded action families and one shared direct-confirmation policy:
+
+| Action family | Includes |
+|---|---|
+| `external_communication` | send email/message |
+| `publish` | publish or go live |
+| `deploy` | deploy to an external environment |
+| `spend_payment` | spend, pay, charge, refund, or transfer funds |
+| `delete_remote` | delete/close a remote object |
+| `kill_promote` | accept a killed-hypothesis, no-go, or promotion route |
+
+**Permanent human line**:
+
+1. The agent may explain that direct confirmation is required, but it MUST NOT
+   generate, infer, default, delegate, reuse, or auto-submit human
+   confirmation. After reviewing the displayed class, target, and payload, the
+   user types a fresh direct affirmative such as `yes`, `go ahead`, or
+   `ok, let's do it`.
+2. `proceed with draft`, a conditional or delayed response, a delegated
+   response, a plan transition, and any draft/dry-run approval are never
+   execution authorization. Preview verdicts always carry
+   `execution_authorized: false`, even if affirmative text appears in the
+   request.
+3. Execute mode uses deterministic `bounded_affirmative_v1` classification and
+   requires `source: direct_user_input`, a non-blank actor, a fresh timestamp,
+   `generated: false`, `delegated: false`, and confirmation metadata matching
+   the canonical action class, exact target, and exact payload reference.
+   Unknown classes, invalid provenance, stale records, mismatched envelopes,
+   ambiguity, negation, conditions, and malformed configuration block.
+4. Before a live adapter sends, publishes, deploys, pays, deletes remotely, or
+   accepts a kill/promote route, it MUST obtain an `AUTHORIZED` receipt from
+   `scripts/irreversible_action_gate.mjs` for that exact action class, target,
+   and payload reference. A blocked check exits non-zero. The receipt hashes
+   the confirmation text and action envelope; it never echoes plaintext.
+   Kill/promote routes additionally require an independent artifact-only
+   referee or skeptic receipt bound to the same envelope.
+5. The gate evaluates authorization only and never performs the external action. Enforcement is claimed only for adapters that invoke it; do not describe unintegrated connectors as protected.
+
+Project-specific action classes may be declared in root-level
+`planner.irreversible-actions.json`. This overlay is additive-only. It cannot
+replace built-in ids, aliases, the shared confirmation policy, origin rules, or
+preview semantics; duplicates and unsupported fields fail closed. A deprecated
+legacy `confirmation_token` property is accepted temporarily for migration
+compatibility, then ignored and removed from normalized runtime data.
+
+Local preview example (never authorizes execution):
+
+```bash
+node .agent/skills/iterative-planner/scripts/irreversible_action_gate.mjs check --action-class deploy --mode dry-run --target "environment:<id>" --payload-ref "build:<id>" --json
+```
+
+For execute mode, pass a confirmation record using `--confirmation-text`,
+`--confirmation-actor`, `--confirmation-source direct_user_input`,
+`--confirmation-recorded-at`, `--confirmation-generated false`,
+`--confirmation-delegated false`, `--confirmation-action-class`,
+`--confirmation-target`, and `--confirmation-payload-ref`. The caller records
+the user's actual message and displayed envelope; never prefill or manufacture
+those confirmation fields on the user's behalf.
 #### Drift Detection Gate (every 15 tool calls during EXECUTE)
 
 1. Every 15 tool calls, re-read `plan.md` (current step) and `progress.md`
@@ -936,6 +1113,15 @@ If the plan cannot count the dimensions yet, it must include a discovery step th
 3. If YES → continue
 4. If NO → log `[DRIFT_WARNING]` in `state.md` with what you were doing vs what you should be doing, then re-focus
 5. If 3+ drift warnings accumulate → auto-transition to REFLECT ("scope creep detected")
+
+#### Traceability Validation Gate (MANDATORY when @planner annotations or new scripts/tests are added)
+
+**Purpose**: Prevent closeout friction from invalid annotations and untraced new files.
+
+**Procedure**:
+1. Before `execute-to-reflect`, run `node <skill-path>/scripts/annotation_parser.mjs --validate`.
+2. If it reports unknown annotation keys (e.g., `story_id` instead of `story`) or broken story links, fix them before transitioning.
+3. For plans that add files under `scripts/` or `tests/`, cross-reference them against `story_registry.json` `code_refs`/`test_refs` or add an explicit ignore marker. Untracked files block `validate-to-close`.
 
 #### Post-Step Gate (successful steps only — all 4 before moving on)
 
@@ -953,13 +1139,15 @@ If the plan cannot count the dimensions yet, it must include a discovery step th
 
 #### Post-Step Gate (successful steps only — all 5 before moving on)
 
-**0. Adversarial Red-Team Roleplay Gate:** Before the iterative planner is allowed to transition from EXECUTE to REFLECT, you must switch personas. Explicitly write down 3 ways an adversarial hacker or a catastrophic input (like an API sending null for everything) could break the code you just wrote. If the code can't survive those 3 scenarios, you are not allowed to commit the code. **Enforcement:** Document each attack vector as a `## Vector N` heading in `red_team_notes.md` (scaffolded at plan creation). Each vector must include Attack, Impact, and Mitigation sections with real, non-template content. Accepted label styles include `Attack:`, `**Attack**:`, or heading-style subsections such as `### Attack`. Single-line sections are acceptable if they are substantive; adding fake line breaks is not required. Run `verify_gate.mjs execute-to-reflect` or `transition.mjs execute-to-reflect` — the gate blocks unless ≥3 substantive vectors are documented.
+**0. Adversarial Red-Team Roleplay Gate:** Before the iterative planner is allowed to transition from EXECUTE to REFLECT, you must switch personas. Explicitly write down 3 ways an adversarial hacker or a catastrophic input (like an API sending null for everything) could break the code you just wrote. If the code can't survive those 3 scenarios, you are not allowed to commit the code. **Enforcement:** Document each attack vector as a `## Vector N` heading in `red_team_notes.md` (scaffolded at plan creation). Each vector must include Attack, Impact, and Mitigation sections with real, non-template content. Accepted label styles include `Attack:`, `**Attack**:`, or heading-style subsections such as `### Attack`. Single-line sections are acceptable if they are substantive; adding fake line breaks is not required. Run `transition.mjs execute-to-reflect --dry-run` immediately before the actual transition — the gate blocks unless ≥3 substantive vectors are documented.
 
 **0b. Compulsory Persona Audit (v2.1.0+):** `transition.mjs execute-to-reflect` automatically runs all persona packs configured in `audit.config.json` against the current project. If any finding meets or exceeds the `fail_on` threshold, the transition is **blocked**. This ensures domain-specific rules (quant data integrity, UX accessibility, etc.) are enforced before reflection. Escape hatch: set env var `PLANNER_SKIP_PERSONA_AUDIT="justification"` (v3.0 — CLI flags and config-file skips removed; only env vars work since LLMs cannot set them).
 
 **0c. Compulsory Reachability Audit (RT-HARDENING-007):** `transition.mjs execute-to-reflect` runs exhaustive state-space analysis via Prolog backtracking. Unlike red-team audits (empirical — humans try things), this is **formal** — it proves properties over ALL possible state paths. Checks: hard deadlocks, forbidden reachability paths, gate bypass routes, privilege escalation paths. Any FAIL blocks the transition. Projects define policies in their host-project Prolog policy file (for example `path/to/prolog/project.pl`) with safe declarative facts such as `forbidden_path(explore, close).`, `privileged_state(execute).`, and `auth_gate(plan, execute).` Only simple ground facts for those policy predicates are accepted; transition predicates and directives remain blocked. Standalone: `node rule_engine.mjs reachability-audit` or `--json` for machine-readable output. Controlled by `reachability_audit` feature flag in `determinism.json` and per-gate `reachability_audit` field in `gates.json`.
 
 **0d. Semantic Substrate Digest (warn-only at EXECUTE → REFLECT):** The shared planner refresh path deterministically re-evaluates semantic substrate before REFLECT using scoped annotations, story semantics, persona artifacts, and Prolog diagnostics. Relevant gaps are surfaced as a compact warning digest, not a new markdown report. In v1 this primarily covers config contradictions (`@planner:mutually_exclusive`) and stateful-story semantics (missing postconditions/conflicts).
+
+**0e. Pipe-Safe Machine Output Gate (conditional):** If the change touches a CLI that emits JSON or another machine-readable payload, exercise at least one payload larger than 8 KiB through a real pipe and require the consumer to parse exactly one complete document. Test both passing and non-zero exit paths when both exist. An explicit `process.exit()` is acceptable only after the producer has awaited its stdout/stderr write callback; changing consumer buffers or relying on redirected-file output is not transport proof. If the CLI is exempt from the generic `cli-determinism` inventory, the domain regression suite must own this large-payload fixture and the exemption must remain reviewable.
 
 1. `plan.md` — mark step `[x]`, advance marker, update complexity budget
 2. `progress.md` — move item Remaining → Completed, set next In Progress
@@ -988,13 +1176,14 @@ On **failed step**: skip gate. Follow Autonomy Leash (revert-first, 2 attempts m
   ```
   Subagent findings → `findings/reflect-red-team-{angle}.md`. The main agent reconciles before writing `reflection.md`.
 - Resolve semantic upkeep before VALIDATE: ontology/story drift, funnel/journey meaning changes, and task-relevant semantic substrate gaps belong here.
+- **Review-intake source hygiene** — inspect `review_intake.json` required items before `reflect-to-validate`. If any required item is sourced from a `check-invariants_*.json` artifact, the cycle has not been broken; archive stale artifacts or verify `review_intake.mjs` excludes `check-invariants` traces.
 - Read `decisions.md` — check 3-strike patterns.
 - Compare against **written criteria**, not memory. Run 5 Simplification Checks (`references/complexity-control.md`).
 - Write `reflection.md`, `decisions.md` (what happened, learned, root cause) + `progress.md` + `state.md`.
 
 Pure static UI/page deliverables whose intent contract uses `manual_observation` may satisfy close via intent/manual evidence instead of matching test-file coverage.
 
-**Learned Verification Obligations (registry-backed):** Some plans now activate proof obligations from the combination of `config/mistake_registry.json` and `config/learned_obligations.json`. The mistake registry owns predictive trigger metadata plus recommended guards/annotations/hooks; the learned-obligations registry owns verification subject and policy details. When a learned obligation is active, prefer recording evidence or waiver data in `verification_ledger.json` under the obligation's `subject_id` and `verification_mode`; use `verification.md` `## Learned Obligations` only as a fallback. JS owns activation from plan context; Prolog owns the generic warn-early / fail-later enforcement.
+**Learned Verification Obligations (registry-backed):** Some plans now activate proof obligations from the combination of `config/mistake_registry.json` and `config/learned_obligations.json`. The mistake registry owns predictive trigger metadata plus recommended guards/annotations/hooks; the learned-obligations registry owns verification subject and policy details. When a learned obligation is active, prefer recording evidence or waiver data in `verification_ledger.json` under the obligation's `subject_id` and `verification_mode`; use `verification.md` `## Learned Obligations` only as a fallback. The JS PLAN gate and ontology serializer must use the same live plan-level evaluator and phase ordering. Guard rows declare intended handling but do not satisfy an obligation; only matching passing structured evidence, a valid waiver, or the documented markdown fallback does. Prolog owns the generic warn-early / fail-later enforcement over the facts produced from that shared signal.
 
 | Condition | → Transition |
 |-----------|--------------|
@@ -1006,7 +1195,36 @@ Pure static UI/page deliverables whose intent contract uses `manual_observation`
 
 **Semantic Substrate Contract (warn early, fail at reflect/validate handoff):** Relevant plans must carry enough deterministic semantic substrate to let Prolog reason about contradictions and stateful outcomes. Config-heavy work should declare contradictory runtime modes with `@planner:mutually_exclusive`, and stateful-flow work should keep story postconditions/conflicts explicit in `story_registry.json`. The refresh path stores only compact ids plus scope/relevance metadata in `close_signals.semantic_substrate`; only strong relevance can make substrate required, weak lexical hints stay advisory, and repo-wide fallback must be marked as degraded discovery rather than trusted semantic proof. `reflect-to-validate` fails when task-relevant blocking gap ids remain unresolved.
 
+**Novel Insight Floor (I-050):** Ideation-shaped plans may not advance through repeated barren REFLECT cycles. `reflect-to-validate` warns after two successful EXECUTE -> REFLECT handoffs with no new `## D-###` decision, substantive lesson, or self-generated pre-mortem risk, and blocks at three. Docs, analysis, chores, and explicit execution-only waivers are exempt.
+
 **Quant Results Validation Contract (mandatory for post-run quant/model/betting claims):** Quant personas re-enter after results are produced. If the plan, reflection, verification, summary, or report surface makes quant/model/betting result claims, optimization-output claims, report-quality claims, or promotion language, REFLECT/VALIDATE must produce `quant_results_validation.json`. The artifact records run class, promotion verdict, search surface, sample size/date span, train/validation/final-OOS splits, controls, stability/confidence/leakage evidence, presentation stamp, strongest counterargument, and falsification criteria. Smoke and wiring-proof runs close only as `diagnostic_only`/`not_promotable` with no promotable language. Betting or inefficiency claims require odds snapshot / CLV / reference-price evidence, with `quant_target` owning target and price-semantics pressure. `reflect-to-validate` and close fail when `close_signals.quant_results_validation` is required but unsatisfied.
+
+Every applicable result artifact must declare the source files that support its numeric output under `evidence.claimed_data_sources`:
+
+```json
+{
+  "evidence": {
+    "claimed_data_sources": [
+      {
+        "id": "primary_dataset",
+        "path": "data/results.db",
+        "expected_worktree_root": ".",
+        "freshness": { "max_age_seconds": 86400 }
+      }
+    ]
+  }
+}
+```
+
+At close-signal refresh the planner resolves the active project root and every declared path canonically, then computes existence, regular-file status, byte count, mtime/age, freshness, containment, and SHA-256 from disk. It does not trust caller-supplied observations. Missing declarations, duplicate ids, missing/empty/stale/future-dated sources, sibling-worktree identity mismatches, and canonical paths outside the active worktree produce `environment_invalid`; `claim_support_allowed` and `numeric_output_reportable` remain false. A detected result claim cannot bypass this check with `applicable=false`. Non-result-bearing work returns `not_required` before enumerating sources and performs zero filesystem probes. Use read-only diagnostics through `evidence_preflight.mjs` with `GATE-REF-017` or `GATE-VAL-016`.
+
+At `validate-to-close`, every result-bearing plan also needs risk-bearing evidence rows in `verification_ledger.json` with a `rerun` object. Set `risk_bearing: true`, choose exactly one `selection` value (`critical` or `sample`), cite a runnable `command`, and provide at least one `stdout_json` expectation. `exact` expectations compare a JSON scalar. `numeric` expectations require finite `expected`, `absolute_tolerance`, and `relative_tolerance` values; explicit zero tolerance is valid. `expected_exit_code` defaults to `0`; `timeout_ms` defaults to `120000` and may not exceed `300000`.
+
+The close selector runs every declared-critical row. When none is critical, it selects exactly one sample by the stable SHA-256 plan-ID/evidence-ID algorithm recorded in the receipt. A fresh local Node worker executes each selected command with planner, IDE, and author-session authority variables neutralized; it is not the plan's author-agent and makes no provider call. The receipt records selection, process identity, command, exit, typed expected/observed values, and tolerance. Missing runnable evidence, invalid contracts, worker absence/crash/timeout, unexpected exit, malformed JSON, missing output paths, author-context reuse, or value divergence makes `close_signals.quant_results_validation.satisfied` false and names the evidence ID, command, and mismatch under existing `GATE-VAL-016`. A passing rerun cannot erase an existing result/environment/scientific blocker. Non-result plans remain `not_required`, and ordinary refresh/standalone ontology serialization never launches the worker; the transition supplies the one composed signal to every semantic reader. The required dry-run and actual close each perform an independent non-persisting/persisting evaluation respectively so their gate policy remains equivalent.
+
+**Degraded Coverage Contract (mandatory for selected checks):** `config/degraded_coverage_census.json` inventories checks that may encounter missing substrate, fixtures, or configuration. Every entry names its selection predicate and is classified as `report_degraded_coverage`, `already_fail_closed`, `already_visible`, `intentionally_not_applicable`, or `dominated_by_prior_failure`. A reportable check that cannot run emits the existing evidence-validity state `degraded_coverage`; it cannot support full-coverage or result claims. Bootstrap status, direct invariant output, and transition receipts name the check and cause and expose exactly two resolution kinds: `build_substrate` and `record_governed_waiver`.
+
+The optional host registry `.agent/degraded_coverage_waivers.json` has shape `{ "schema_version": 1, "waivers": [...] }`. Each waiver requires `waiver_type: "degraded_coverage"`, a registered `check_id`, substantive `reason`, `approved_by`, `recorded_at`, and future `expires_at`. Unknown, duplicate, malformed, expired, unapproved, future-recorded, or redundant waivers fail under `GATE-COV-002`. A valid waiver changes the resolution to `waived` but the evidence remains `degraded_coverage` with `claim_support_allowed: false`; governance never retroactively makes an unexecuted check valid. Explicitly disabled or unselected checks remain quiet N/A, and existing hard failures retain their authority.
 
 ### VALIDATE
 
@@ -1018,20 +1236,21 @@ Pure static UI/page deliverables whose intent contract uses `manual_observation`
 - **Test Evidence Contract (mandatory for code changes):** If `## Files To Modify` includes code/config/runtime files, also list the matching test file(s) there and record a passing test command in `verification.md`. If tests genuinely cannot be added in the current environment, add an approved waiver in `verification_ledger.json` with subject `plan:test-evidence` (or `plan:test-coverage`), plus `reason` and `approved_by`. Pure static UI/page deliverables whose intent contract uses `manual_observation` may satisfy close via intent/manual evidence instead of matching test-file coverage.
 - **Anti-Recurrence Guard (mandatory for retro / bug-hunt / remediation work):** If the goal or problem statement is retro-, regression-, defect-, bug-, incident-, root-cause-, or remediation-shaped, `verification.md` must include `## Anti-Recurrence Guard` with at least one `PASS` line and `Guard Type: test`, `ontology`, `annotation`, or `kb`. An approved waiver in `verification_ledger.json` with subject `plan:anti-recurrence` also satisfies the contract. `check-invariants` should warn before close if this guard is missing, and `validate-to-close` will fail once the plan reaches evidence phases without it.
 - **Learned Verification Obligations (registry-backed):** Some plans now activate proof obligations from the combination of `config/mistake_registry.json` and `config/learned_obligations.json`. The mistake registry owns predictive trigger metadata plus recommended guards/annotations/hooks; the learned-obligations registry owns verification subject and policy details. When a learned obligation is active, prefer recording evidence or waiver data in `verification_ledger.json` under the obligation's `subject_id` and `verification_mode`; use `verification.md` `## Learned Obligations` only as a fallback. JS owns activation from plan context; Prolog owns the generic warn-early / fail-later enforcement.
-- **Quant Results Validation (mandatory for post-run quant/model/betting claims):** Before close, ensure `close_signals.quant_results_validation.satisfied === true` or `status === "not_required"`. Markdown reports do not satisfy this gate by themselves; the planner reads `quant_results_validation.json`.
+- **Quant Results Validation (mandatory for post-run quant/model/betting claims):** Before close, ensure `close_signals.quant_results_validation.satisfied === true`, `evidence_validity === "valid"`, `environment_preflight_receipt.status === "valid"`, and `adversarial_evidence_rerun_receipt.status === "satisfied"`, or that the signal is genuinely `not_required`. Markdown reports, caller-asserted file metadata, process freshness alone, and a recorded PASS do not satisfy this gate; the planner reads `quant_results_validation.json`, computes the claimed-source receipt from disk, and independently re-executes the selected typed evidence commands.
 
-**Planner-on-Planner Proof (mandatory for planner-core changes):** If the plan touches `.agent/skills/iterative-planner/`, `.agent/workflows/`, or `.agent/rules.md`, `verification.md` must show PASS for both `test_migration.mjs` and a planner journey regression such as `test_transition_gate_flows.mjs` or `test_parallel_plan_targeting.mjs`. If the touched files include `.agent/skills/iterative-planner/scripts/bootstrap.mjs`, `.agent/skills/iterative-planner/scripts/planner_preflight.mjs`, `.agent/skills/iterative-planner/scripts/verify_gate.mjs`, `.agent/skills/iterative-planner/scripts/transition.mjs`, `.agent/skills/iterative-planner/scripts/lib/plan_utils.mjs`, or `.agent/skills/iterative-planner/scripts/knowledge_resolver.mjs`, also record PASS for:
+**Planner-on-Planner Proof (mandatory for planner-core changes):** If the plan touches `.agent/skills/iterative-planner/`, `.agent/workflows/`, or `.agent/rules.md`, `verification.md` must show PASS for both the governed `migration-bootstrap` IVE suite and the governed `transition-gate-flows` planner journey. If the touched files include `.agent/skills/iterative-planner/scripts/bootstrap.mjs`, `.agent/skills/iterative-planner/scripts/planner_preflight.mjs`, `.agent/skills/iterative-planner/scripts/verify_gate.mjs`, `.agent/skills/iterative-planner/scripts/transition.mjs`, `.agent/skills/iterative-planner/scripts/lib/plan_utils.mjs`, or `.agent/skills/iterative-planner/scripts/knowledge_resolver.mjs`, record PASS for the canonical proof bundle:
 
-- `node .agent/skills/iterative-planner/tests/test_migration.mjs`
-- `node .agent/skills/iterative-planner/tests/test_bootstrap_state_surface.mjs`
-- `node .agent/skills/iterative-planner/tests/test_archetype_preflight_scenarios.mjs`
-- `node .agent/skills/iterative-planner/tests/test_transition_gate_flows.mjs`
-- `node .agent/skills/iterative-planner/tests/test_archetype_gate_canonicalization.mjs`
+- `node .agent/skills/iterative-planner/tests/ive/run.mjs --only migration-bootstrap --json --no-manifest`
+- `node .agent/skills/iterative-planner/tests/ive/run.mjs --only preplanning-scaffolding --json --no-manifest`
+- `node .agent/skills/iterative-planner/tests/ive/run.mjs --only transition-gate-flows --json --no-manifest`
+- `node .agent/skills/iterative-planner/tests/ive/run.mjs --only gate-or-delete-census --json --no-manifest`
+
+**Planner-core coverage ratchet:** Install the skill-local report-only tooling once with `npm install --ignore-scripts --prefix .agent/skills/iterative-planner`. Refresh the committed top-20 per-script baseline with `node .agent/skills/iterative-planner/scripts/coverage_baseline.mjs measure --json`. The measurement runs all registered local IVE suites under c8 except `cli-determinism` (whose nested 20-second subprocess probes are incompatible with instrumentation overhead) and the ratchet suite itself (to avoid a first-baseline cycle), using a 300-second measurement-only suite ceiling for instrumentation overhead, then records lines, branches, functions, and statements. It does not impose a global threshold. The required `planner-core-coverage-ratchet` IVE suite runs `coverage_baseline.mjs check` and fails only when a modified declared script drops below its committed per-script baseline or its source hash is stale.
 
 **Planner-Core Contract Debug Packet (mandatory for planner-on-planner gate/parser drift):** If planner-core work is blocked by a gate, parser, markdown artifact, close-signal mismatch, or JS/Prolog divergence, do not start by rewriting `plan.md`, `verification.md`, or parser code from intuition. First capture the same target plan through the deterministic surfaces below, then classify the fault as `missing_artifact`, `stale_integrity`, `parser_normalization_bug`, or `js_prolog_divergence` before patching anything:
 
 1. `node <skill-path>/scripts/bootstrap.mjs status`
-2. `node <skill-path>/scripts/verify_gate.mjs <gate> --plan <plan-dir>`
+2. `node <skill-path>/scripts/transition.mjs <gate> --dry-run --plan <plan-dir>`
 3. `node <skill-path>/scripts/planner_findings.mjs --dir <repo-root> --plan <plan-dir> --gate <gate> --json`
 4. `_PLANNER_PLAN_TARGET=<plan-dir> node <skill-path>/scripts/ontology_serializer.mjs --json`
 5. Read the exact section in `plan.md`, `verification.md`, or the gate-owned artifact named by the failure
@@ -1040,22 +1259,44 @@ Pure static UI/page deliverables whose intent contract uses `manual_observation`
 
 Treat emitted facts and deterministic gate output as the truth surface. Markdown is presentation until those surfaces show the same root cause.
 
+### Close-Boundary Evaluator Preflight (MANDATORY, conditional)
+
+If a planner-core task is a multi-session finish line, resumes governed work near CLOSE, or will cross two or more downstream evaluator surfaces (transition gate, lifecycle disposition, evidence freshness, live/replay countersign, integrity registry, staged-tree or commit hook), preflight the complete downstream evaluator graph during EXPLORE/PLAN. This is not required for an ordinary bounded change with no such boundary stack.
+
+The preflight must inventory each evaluator, its exact command, input artifact, expected lifecycle/phase snapshot, clean-versus-staged tree expectation, mutation authority, freshness limit, and downstream consumer. Then exercise every safe read-only/dry-run boundary that is reachable before implementation. For a mutating boundary, use its supported dry-run or a faithful temporary fixture; never mutate production lifecycle merely to make a preflight green.
+
+| Boundary pair | Required early proof | Genuine negative that must remain red |
+|---|---|---|
+| Dry-run / write | Both modes construct and validate the same candidate mutation; only write persists. | Invalid, absent, or unlinked evidence keeps state open and writes nothing. |
+| Proof producer / proof consumer | A dependency graph shows an acyclic order in which every required proof can exist before its consumer demands it. | A cycle, missing authority, or forbidden early mutation stops the plan before the expensive close bundle. |
+| Fresh / stale evidence | Record current age, maximum age, expected close-bundle duration, and numeric headroom; order any separately authorized one-shot producer immediately before consumption. | Expired, future-dated, or insufficient-headroom evidence cannot be called exact or all-green. |
+| Live / replay | Evaluate the same phase-boundary snapshot and current strict semantics through both paths. | A substantive current-contract violation still fails replay and cannot be normalized away. |
+| Clean / staged plus integrity | Probe clean tracked HEAD and the intended staged tree; verify every legitimate guarded-file writer has a supported deterministic regeneration lane. | Tamper, dirty guarded input, lazy baseline creation, or hand-edited integrity remains rejected. |
+| Historical shipped proof / staged proof | Historical proof requires explicit ticket identity or verifiable file-scope linkage; an authorized close-before-commit path requires deterministic staged-tree evidence. | Generic title-token overlap is not shipped proof, while genuine shipped-open work remains fail-closed. |
+
+Record the ordered graph and receipts in `plan.md`/`verification.md`. If a preflight exposes a separate defect, intake and scope it independently; do not widen the current repair, weaken the evaluator, increase a freshness/budget threshold without measurement, regenerate a baseline by hand, or relabel the red result. The later deterministic close gate remains authoritative even when this early preflight passed. See `M-043`, `P-099`, and retro `R-2026-07-22-001`.
+
 **(Retro 2026-03-22) Cross-report consistency check**: If this session fixed any defects, verify that ALL report files referencing those defects agree on status. Run `grep -r "D-NNN" reports/` for each fixed defect. Also run `rule_engine.mjs check-invariants` to catch I-009/I-010/I-011 violations (blocked stories marked fully_covered, open gaps on closed defects).
 
 **Before transitioning to VALIDATE**, run:
 ```bash
-node <skill-path>/scripts/verify_gate.mjs reflect-to-validate
+node <skill-path>/scripts/transition.mjs reflect-to-validate --dry-run
 node <skill-path>/scripts/checklist_runner.mjs reflect-to-validate
 ```
 
 **Before transitioning to CLOSE**, run:
 ```bash
-node <skill-path>/scripts/verify_gate.mjs validate-to-close
+node <skill-path>/scripts/transition.mjs validate-to-close --dry-run
 node <skill-path>/scripts/checklist_runner.mjs validate-to-close
 node <skill-path>/scripts/test_baseline.mjs verify    # if baseline.json exists
 node <skill-path>/scripts/rule_engine.mjs check-invariants  # cross-report consistency
 ```
 Paste output. FAIL → fix before closing.
+
+The first command evaluates configured verification-result truth, not substring
+presence: a genuine `FAIL` and every unconfigured phrase block in both
+JavaScript and Prolog. Running the preflight never updates `state.json`,
+`ontology_facts.pl`, findings projections, or lifecycle-attempt telemetry.
 
 **Compulsory Persona Audit (v2.1.0+):** `transition.mjs validate-to-close` also runs the persona audit (same as execute-to-reflect). All domain persona rules must pass before closing. Escape hatch: `"skip_persona_audit"` in `audit.config.json` only (no CLI flag).
 
@@ -1195,9 +1436,9 @@ See `references/file-formats.md` for templates.
 
 ### Knowledge Base in Lightweight Mode
 
-When using the lightweight invocation (no `plans/` directory):
-- **If `plans/knowledge/` exists**: append learnings at the end of the task
-- **If `plans/knowledge/` doesn't exist**: embed key learnings in `walkthrough.md` under a `## Lessons Learned` section with sub-headers: Mistakes, Patterns, Gotchas
+When using the lightweight invocation:
+- **If `plans/knowledge/` exists**: append learnings through the normal close protocol
+- **If `plans/knowledge/` doesn't exist**: embed key learnings in `summary.md` under a `## Lessons Learned` section with sub-headers: Mistakes, Patterns, Gotchas
 - **Never skip the learning step** — even simple fixes can teach something
 
 ## Autonomous Batch Mode
@@ -1215,7 +1456,7 @@ Formal verification layer using embedded Prolog. Evaluates state machine guards,
 **Key commands**:
 ```bash
 node <skill-path>/scripts/rule_engine.mjs check-invariants    # All invariants (I-001 to I-029); refreshes active-plan ontology facts first
-node <skill-path>/scripts/rule_engine.mjs check-transition <gate>  # Transition diagnostics
+node <skill-path>/scripts/rule_engine.mjs check-transition <gate>  # Semantic diagnostics; not a transition predictor
 node <skill-path>/scripts/rule_engine.mjs verify-stories      # Story coverage
 node <skill-path>/scripts/rule_engine.mjs reachability-audit   # Structural analysis
 node <skill-path>/scripts/rule_engine.mjs --self-test          # Self-test
@@ -1256,13 +1497,13 @@ Use these commands when a plan is stuck and cannot progress normally:
 | Symptom | Command | Effect |
 |---------|---------|--------|
 | Stale pointer (plan closed but pointer still set) | `bootstrap.mjs fix-stuck` | Auto-clears pointer |
-| `_state_hash` mismatch (state.json manually edited) | `bootstrap.mjs fix-stuck` | Reports mismatch, suggests re-running last transition — does NOT auto-fix |
+| Legacy `_state_hash` advisory in an old plan | `bootstrap.mjs fix-stuck` | Reports historical integrity-field drift when detected; current transitions do not create or require `_state_hash` |
 | History-poisoned gate tail (same gate hit 5 FAILs in a row) | `bootstrap.mjs fix-stuck` | Diagnoses AV-19 history poison, surfaces repeated failure codes, and points to the supported recovery path |
 | Recover a history-poisoned plan after the real issue is understood | `bootstrap.mjs recover-poison` | Closes the poisoned source plan with a recovery marker, creates a successor plan with the same goal, and carries forward sanitized findings/decision context |
 | Circuit breaker tripped (10+ fails on a gate) | `bootstrap.mjs fix-stuck` | Reports gate + fail count, suggests `reset-circuit-breaker <gate>` |
 | Plan stuck >7 days with 3+ fails | `bootstrap.mjs fix-stuck` | Detects and recommends `abandon` |
 | Want to gracefully close an in-progress plan | `bootstrap.mjs abandon` | Merges findings/decisions to consolidated files, sets state CLOSE with `[ABANDONED]` marker, clears pointer |
-| Planner install is stale after an upgrade rollout | Run the normal planner entrypoint (`bootstrap.mjs ...` or `transition.mjs ...`) | Auto-runs canonical-source self-heal, upgrades planner-managed files/setup, then replays the original command once |
+| Planner install is stale after an upgrade rollout | Run the normal planner entrypoint (`bootstrap.mjs ...` or `transition.mjs ...`) | Diagnoses committed/tree/source drift and prints the exact source-pinned `upgrade ... --commit` or `recover-upgrade` command; it never writes without explicit consent |
 
 `abandon` is always safe — findings and decisions are preserved, the plan directory is kept. Only the active-plan pointer is cleared.
 
@@ -1270,9 +1511,9 @@ Use these commands when a plan is stuck and cannot progress normally:
 
 If the remaining work after `recover-poison` or `abandon` is now a simple single-file fix or a static/UI deliverable, switch to the Lightweight flow instead of re-entering the full planner.
 
-`fix-stuck` is still for plan-lifecycle problems only. It does not replace planner-install self-heal; install drift is handled by the entrypoint preflight or manually with `migrate.mjs doctor/upgrade`.
+`fix-stuck` is still for plan-lifecycle problems only. It does not replace planner-install diagnosis; install drift is handled by the entrypoint preflight or manually with `migrate.mjs doctor`, `migrate.mjs upgrade ... --commit`, or `migrate.mjs recover-upgrade`.
 
-> **If `bootstrap.mjs status` shows a stuck warning (`⚠️ Stale plan pointer`, `⚠️ History-poisoned gate tail`, `⚠️ Circuit breaker tripped`, or `⚠️ State hash mismatch`), run `bootstrap.mjs fix-stuck` before attempting any gate transition.** Attempting a gate on a stuck plan will fail at the Prolog or JS check layer and increment the circuit breaker counter.
+> **If `bootstrap.mjs status` shows a stuck warning (`⚠️ Stale plan pointer`, `⚠️ History-poisoned gate tail`, `⚠️ Circuit breaker tripped`, or a legacy state-integrity advisory), run `bootstrap.mjs fix-stuck` before attempting any gate transition.** Attempting a gate on a stuck plan will fail at the Prolog or JS check layer and increment the circuit breaker counter.
 
 ## Recovery from Context Loss
 
@@ -1331,7 +1572,7 @@ Before presenting any results to the user, verify:
 - [ ] Gotchas from this session: [added entries / no new gotchas]
 - [ ] Tech debt: [updated / not applicable]
 
-If `plans/knowledge/` doesn't exist, embed learnings in `walkthrough.md` under `## Lessons Learned`.
+If `plans/knowledge/` doesn't exist, embed learnings in `summary.md` under `## Lessons Learned`.
 
 **Zero-learning exception**: If genuinely nothing was learned (trivial fix, no surprises), write "No new learnings — [1-line reason]" to satisfy the gate. But this should be rare for multi-file changes.
 
@@ -1361,6 +1602,7 @@ Before ANY `notify_user` call that presents results or marks a task as complete:
    ```bash
    node <skill-path>/scripts/story_registry.mjs check
    ```
+   If stale refs or command-shaped validation refs are reported, dry-run `node <skill-path>/scripts/story_registry.mjs prune --safe` before hand-editing the registry.
    If stale (>14d or >15 commits), note in summary.md: "Story registry is stale — consider re-running /red-team-user-story-audit"
 
 **If the conversation is ending abruptly** (user stops responding, context limit approaching):

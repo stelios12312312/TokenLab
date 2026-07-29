@@ -4,10 +4,19 @@ import { readdirSync } from "fs";
 import { spawnSync } from "child_process";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
+import {
+  buildGuidancePacket,
+  writeGuidancePacket,
+} from "./lib/guidance_packet.mjs";
+import { loadPlannerPolicy } from "./lib/planner_policy.mjs";
+import { computeTriage } from "./lib/triage.mjs";
+import { deriveIntakeDecisionRequest } from "./lib/intake_decision_request.mjs";
+import { buildGuidanceReminder, renderGuidanceReminder } from "./lib/guidance_reminder.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
 const agentDir = join(scriptDir, "..", "..", "..");
+const SKIP_TRIAGE_ROUTES = new Set(["skip_planner", "skip_planner_question"]);
 
 function parseArgs(argv) {
   const args = {
@@ -15,6 +24,7 @@ function parseArgs(argv) {
     json: false,
     noLog: false,
     noPlanContext: false,
+    entryBudget: null,
     help: false,
   };
   const goalParts = [];
@@ -31,6 +41,12 @@ function parseArgs(argv) {
     }
     if (token === "--no-plan-context") {
       args.noPlanContext = true;
+      continue;
+    }
+    if (token === "--entry-budget") {
+      const value = Number(argv[index + 1]);
+      if (Number.isFinite(value) && value > 0) args.entryBudget = Math.floor(value);
+      index += 1;
       continue;
     }
     if (token === "--help" || token === "-h" || token === "help") {
@@ -64,6 +80,8 @@ function usage() {
     "  node .agent/skills/iterative-planner/scripts/task_intake.mjs --json --no-plan-context",
     "",
     "Behavior:",
+    "  - Composes and writes plans/guidance_packet.json plus plans/guidance_packet.md",
+    "  - Embeds the full bounded guidance packet in --json output",
     "  - Explicit slash workflows pass through without reclassification",
     "  - Simple lightweight work routes directly to Agent A's front door",
     "  - Active-plan reuse stays direct when the current plan already owns the work",
@@ -146,6 +164,7 @@ function buildDecision({
   explicitWorkflow = null,
   preflight = null,
   advisoryRecommendation = null,
+  decisionRequest = null,
   decisionLog = null,
 } = {}) {
   return {
@@ -158,11 +177,43 @@ function buildDecision({
     preflight_summary: buildPreflightSummary(preflight),
     recommended_action: recommendedAction,
     advisory_recommendation: advisoryRecommendation,
+    decision_request: decisionRequest,
     decision_log: decisionLog || {
       wrote: false,
       skipped: true,
       path: null,
       entry_count: null,
+    },
+  };
+}
+
+function buildSkipPreflight(goal, triage) {
+  return {
+    goal,
+    flow: {
+      mode: "skip",
+      reason: triage.summary,
+      confidence: "high",
+    },
+    workflow: {
+      recommended: "/ignore-planner",
+      escalation_reason: triage.recommended_path,
+      reason: triage.summary,
+    },
+    recovery: {
+      mode: "skip",
+      command: null,
+    },
+    recommended_path: triage.recommended_path,
+    audit_posture: "normal",
+    signals: {
+      simple_task_shape: true,
+      planning_only_request: false,
+    },
+    task_profile: {
+      id: "analysis_only",
+      label: "Analysis Only",
+      reason: triage.summary,
     },
   };
 }
@@ -180,7 +231,14 @@ function renderHuman(decision) {
     return lines.join("\n");
   }
 
-  if (decision.advisory_recommendation) {
+  if (decision.decision_request) {
+    lines.push(`Question: ${decision.decision_request.question}`);
+    lines.push("Options:");
+    for (const [index, option] of (decision.decision_request.options || []).entries()) {
+      const workflow = option.workflow ? ` [${option.workflow}]` : "";
+      lines.push(`${index + 1}. ${option.label}${workflow} — ${option.description}`);
+    }
+  } else if (decision.advisory_recommendation) {
     lines.push("Recommended flow:");
     for (const [index, step] of (decision.advisory_recommendation.recommended_flow || []).entries()) {
       const owner = step.agent ? `Agent ${step.agent}` : "Workflow";
@@ -198,10 +256,22 @@ function renderHuman(decision) {
     lines.push(`Decision log: ${decision.decision_log.path}`);
   }
 
+  if (decision.guidance_packet_artifacts) {
+    lines.push(`Guidance JSON: ${decision.guidance_packet_artifacts.json_path}`);
+    lines.push(`Guidance Markdown: ${decision.guidance_packet_artifacts.markdown_path}`);
+    lines.push(`Guidance hash: ${decision.guidance_packet_artifacts.packet_hash}`);
+  }
+
+  const reminder = renderGuidanceReminder(decision.advisory_reminder);
+  if (reminder) {
+    lines.push("");
+    lines.push(reminder);
+  }
+
   return lines.join("\n");
 }
 
-function main() {
+async function main() {
   const args = parseArgs(process.argv);
   if (args.help) {
     console.log(usage());
@@ -212,98 +282,176 @@ function main() {
   const goal = args.goal || "";
   const explicitWorkflow = extractExplicitWorkflow(goal);
 
+  let preflightJson = null;
+  let decision = null;
+  const plannerPolicyInfo = loadPlannerPolicy(cwd);
+  const triage = explicitWorkflow || !goal
+    ? null
+    : computeTriage({ goalText: goal, plannerPolicy: plannerPolicyInfo.policy });
+
   if (explicitWorkflow) {
-    const payload = {
-      task_intake: buildDecision({
+    decision = buildDecision({
         goal,
         route: "explicit_workflow",
         rationale: "The user named a workflow explicitly, so task intake should not override that intent.",
         explicitWorkflow,
-      }),
-    };
-
-    if (args.json) {
-      console.log(JSON.stringify(payload, null, 2));
-    } else {
-      console.log(renderHuman(payload.task_intake));
-    }
-    return;
-  }
-
-  const preflightArgs = goal ? ["--goal", goal, "--json"] : ["--json"];
-  if (args.noPlanContext) preflightArgs.push("--no-plan-context");
-  const preflight = runJsonScript("planner_preflight.mjs", preflightArgs, { cwd });
-  if (!preflight.ok) {
-    console.error(preflight.stderr || preflight.stdout || "planner_preflight.mjs failed");
-    process.exit(preflight.status || 1);
-  }
-
-  const preflightJson = preflight.json;
-  const directWorkflow = preflightJson?.workflow?.recommended || null;
-  const recommendedAction = {
-    workflow: directWorkflow,
-    mode: preflightJson?.flow?.mode || null,
-    recovery_mode: preflightJson?.recovery?.mode || null,
-    command: preflightJson?.recovery?.command || null,
-  };
-
-  const continueActivePlan = (
-    preflightJson?.workflow?.recommended === "continue-active-plan" &&
-    preflightJson?.active_plan?.used_for_classification === true
-  );
-  const directLightweight = (
-    preflightJson?.signals?.simple_task_shape === true &&
-    preflightJson?.flow?.mode !== "full" &&
-    directWorkflow &&
-    directWorkflow !== "/advisor"
-  );
-
-  let decision;
-  if (continueActivePlan) {
+      });
+  } else if (triage?.operator_action === "ask_user") {
+    preflightJson = buildSkipPreflight(goal, triage);
+    const decisionRequest = deriveIntakeDecisionRequest({ triage, preflight: preflightJson });
     decision = buildDecision({
-      goal: goal || preflightJson?.goal || "",
-      route: "continue_active_plan",
-      rationale: "The current active plan already owns this work, so task intake should continue that plan directly.",
-      recommendedAction,
+      goal,
+      route: "ask_human",
+      rationale: "Canonical triage requires a bounded operator decision before any workflow can begin.",
+      recommendedAction: null,
       preflight: preflightJson,
+      decisionRequest,
     });
-  } else if (directLightweight) {
+  } else if (triage && SKIP_TRIAGE_ROUTES.has(triage.recommended_path)) {
+    preflightJson = buildSkipPreflight(goal, triage);
     decision = buildDecision({
-      goal: goal || preflightJson?.goal || "",
-      route: "direct_agent_a",
-      rationale: "The task shape is simple enough for a direct Agent A workflow without broader orchestration.",
-      recommendedAction,
+      goal,
+      route: triage.recommended_path,
+      rationale: triage.summary,
+      recommendedAction: {
+        workflow: "/ignore-planner",
+        mode: "skip",
+        recovery_mode: "skip",
+        command: null,
+      },
       preflight: preflightJson,
     });
   } else {
-    const adviseArgs = goal ? ["--goal", goal, "--json"] : ["--json"];
-    if (args.noPlanContext) adviseArgs.push("--no-plan-context");
-    if (args.noLog) adviseArgs.push("--no-log");
-    const advise = runJsonScript("advise.mjs", adviseArgs, { cwd });
-    if (!advise.ok) {
-      console.error(advise.stderr || advise.stdout || "advise.mjs failed");
-      process.exit(advise.status || 1);
+    const preflightArgs = goal ? ["--goal", goal, "--json"] : ["--json"];
+    if (args.noPlanContext) preflightArgs.push("--no-plan-context");
+    const preflight = runJsonScript("planner_preflight.mjs", preflightArgs, { cwd });
+    if (!preflight.ok) {
+      console.error(preflight.stderr || preflight.stdout || "planner_preflight.mjs failed");
+      process.exit(preflight.status || 1);
     }
 
-    const advisoryRecommendation = advise.json?.advisory_recommendation || null;
-    const primaryStep = advisoryRecommendation?.recommended_flow?.[0] || null;
-    decision = buildDecision({
-      goal: goal || advisoryRecommendation?.goal || preflightJson?.goal || "",
-      route: "advisor_recommended",
-      rationale: "The intake is non-trivial or ambiguous, so it should escalate to the bounded orchestrator advisory surface before work begins.",
-      recommendedAction: primaryStep ? {
-        workflow: primaryStep.workflow || null,
-        mode: primaryStep.mode || null,
-        recovery_mode: preflightJson?.recovery?.mode || null,
-        command: primaryStep.command || null,
-      } : recommendedAction,
+    preflightJson = preflight.json;
+    const directWorkflow = preflightJson?.workflow?.recommended || null;
+    const recommendedAction = {
+      workflow: directWorkflow,
+      mode: preflightJson?.flow?.mode || null,
+      recovery_mode: preflightJson?.recovery?.mode || null,
+      command: preflightJson?.recovery?.command || null,
+    };
+
+    const continueActivePlan = (
+      preflightJson?.workflow?.recommended === "continue-active-plan" &&
+      preflightJson?.active_plan?.used_for_classification === true
+    );
+    const directLightweight = (
+      directWorkflow &&
+      directWorkflow !== "/advisor" &&
+      directWorkflow !== "/safe-change-power"
+    );
+
+    const preflightDecisionRequest = deriveIntakeDecisionRequest({
+      triage,
       preflight: preflightJson,
-      advisoryRecommendation,
-      decisionLog: advisoryRecommendation?.decision_log || null,
+      activePlanContinuation: continueActivePlan,
     });
+
+    if (preflightDecisionRequest) {
+      decision = buildDecision({
+        goal: goal || preflightJson?.goal || "",
+        route: "ask_human",
+        rationale: "Authoritative intake evidence does not support choosing one workflow without operator input.",
+        recommendedAction: null,
+        preflight: preflightJson,
+        decisionRequest: preflightDecisionRequest,
+      });
+    } else if (continueActivePlan) {
+      decision = buildDecision({
+        goal: goal || preflightJson?.goal || "",
+        route: "continue_active_plan",
+        rationale: "The current active plan already owns this work, so task intake should continue that plan directly.",
+        recommendedAction,
+        preflight: preflightJson,
+      });
+    } else if (directLightweight) {
+      decision = buildDecision({
+        goal: goal || preflightJson?.goal || "",
+        route: "direct_agent_a",
+        rationale: preflightJson?.signals?.simple_task_shape === true
+          ? "The task shape is simple enough for a direct Agent A workflow without broader orchestration."
+          : "The selected workflow can run directly in Agent A while retaining the full preflight contract.",
+        recommendedAction,
+        preflight: preflightJson,
+      });
+    } else {
+      const adviseArgs = goal ? ["--goal", goal, "--json"] : ["--json"];
+      if (args.noPlanContext) adviseArgs.push("--no-plan-context");
+      if (args.noLog) adviseArgs.push("--no-log");
+      const advise = runJsonScript("advise.mjs", adviseArgs, { cwd });
+      if (!advise.ok) {
+        console.error(advise.stderr || advise.stdout || "advise.mjs failed");
+        process.exit(advise.status || 1);
+      }
+
+      const advisoryRecommendation = advise.json?.advisory_recommendation || null;
+      const primaryStep = advisoryRecommendation?.recommended_flow?.[0] || null;
+      const advisoryDecisionRequest = deriveIntakeDecisionRequest({
+        triage,
+        preflight: preflightJson,
+        advisoryRecommendation,
+      });
+      if (advisoryDecisionRequest) {
+        decision = buildDecision({
+          goal: goal || advisoryRecommendation?.goal || preflightJson?.goal || "",
+          route: "ask_human",
+          rationale: "The advisory surface could not produce a valid bounded flow, so operator input is required.",
+          recommendedAction: null,
+          preflight: preflightJson,
+          advisoryRecommendation,
+          decisionRequest: advisoryDecisionRequest,
+          decisionLog: advisoryRecommendation?.decision_log || null,
+        });
+      } else {
+        decision = buildDecision({
+          goal: goal || advisoryRecommendation?.goal || preflightJson?.goal || "",
+          route: "advisor_recommended",
+          rationale: "The intake is non-trivial or ambiguous, so it should escalate to the bounded orchestrator advisory surface before work begins.",
+          recommendedAction: primaryStep ? {
+            workflow: primaryStep.workflow || null,
+            mode: primaryStep.mode || null,
+            recovery_mode: preflightJson?.recovery?.mode || null,
+            command: primaryStep.command || null,
+          } : recommendedAction,
+          preflight: preflightJson,
+          advisoryRecommendation,
+          decisionLog: advisoryRecommendation?.decision_log || null,
+        });
+      }
+    }
   }
 
-  const payload = { task_intake: decision };
+  decision.advisory_reminder = buildGuidanceReminder({
+    triggered: decision.route === "advisor_recommended",
+    surface: "intake_route_selection",
+    reason: "advisor_route_selected",
+    nextCommand: decision.recommended_action?.command,
+    why: decision.rationale,
+  });
+
+  const guidancePacket = await buildGuidancePacket({
+    cwd,
+    goal: decision.goal || goal,
+    decision,
+    preflight: preflightJson,
+    entryBudget: args.entryBudget || undefined,
+  });
+  const guidanceArtifacts = writeGuidancePacket(guidancePacket, { cwd });
+  decision.guidance_packet_artifacts = guidanceArtifacts;
+
+  const payload = {
+    task_intake: decision,
+    guidance_packet: guidancePacket,
+    guidance_packet_artifacts: guidanceArtifacts,
+  };
   if (args.json) {
     console.log(JSON.stringify(payload, null, 2));
   } else {
@@ -311,4 +459,7 @@ function main() {
   }
 }
 
-main();
+main().catch((error) => {
+  console.error(`task_intake guidance composition failed: ${error.message}`);
+  process.exit(1);
+});

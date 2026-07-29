@@ -2,6 +2,7 @@
 
 import { spawnSync } from "child_process";
 import { dirname, join, resolve } from "path";
+import { existsSync } from "fs";
 import { fileURLToPath } from "url";
 import {
   buildWorkflowContractSummary,
@@ -12,6 +13,7 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
+const bundledProjectRoot = resolve(scriptDir, "../../../..");
 
 const args = process.argv.slice(2);
 const flags = {
@@ -82,6 +84,11 @@ function selectWorkflow({ cwd, goal, preflight, knowledge }) {
     || "/safe-change";
 }
 
+function resolveContractProjectRoot(cwd) {
+  const localRegistryPath = join(cwd, ".agent", "skills", "iterative-planner", "config", "workflow_registry.json");
+  return existsSync(localRegistryPath) ? cwd : bundledProjectRoot;
+}
+
 function buildNextActions({ goal, preflight, workflowId, contract }) {
   const active = preflight?.active_plan || {};
   const activePlanOwnsWork = active.present && active.used_for_classification !== false;
@@ -114,6 +121,7 @@ function summarizePreflight(preflight) {
     evidence: preflight.evidence,
     strictness: preflight.strictness,
     anti_ritual: preflight.anti_ritual,
+    ritual_ladder: preflight.ritual_ladder,
     task_profile: preflight.task_profile,
   };
 }
@@ -148,25 +156,29 @@ function buildResult() {
   const preflight = preflightResult.ok ? preflightResult.data : null;
   const knowledge = knowledgeResult.ok ? knowledgeResult.data : null;
   const workflowId = selectWorkflow({ cwd, goal, preflight, knowledge });
-  const contract = getWorkflowContract(cwd, workflowId);
-  const summary = buildWorkflowContractSummary(cwd, workflowId);
+  const contractProjectRoot = resolveContractProjectRoot(cwd);
+  const contract = getWorkflowContract(contractProjectRoot, workflowId);
+  const summary = buildWorkflowContractSummary(contractProjectRoot, workflowId);
   const active = preflight?.active_plan || {};
   const poisoned = active.poisoned === true;
   const contractMissing = !contract.workflow || !contract.profile;
   const blockingReasons = [];
+  const warningReasons = [];
   if (poisoned) blockingReasons.push("active plan history is poisoned");
-  if (contractMissing) blockingReasons.push(`workflow ${workflowId} is missing a registry contract`);
+  if (contractMissing) warningReasons.push(`workflow ${workflowId} is missing a registry contract`);
 
   return {
     generated_at: new Date().toISOString(),
     cwd,
     goal,
     selected_workflow_id: workflowId,
+    contract_project_root: contractProjectRoot,
     contract_profile: summary.contract_profile,
     workflow_contract: summary,
     blocking: {
       blocked: blockingReasons.length > 0,
-      reasons: blockingReasons
+      reasons: blockingReasons,
+      warnings: warningReasons
     },
     next_actions: buildNextActions({ goal, preflight, workflowId, contract: summary }),
     required_artifacts: summary.required_artifacts_by_phase,
@@ -174,6 +186,7 @@ function buildResult() {
     required_proof_surfaces: summary.required_proof_surfaces,
     post_change_audit_expectations: summary.post_change_audits,
     active_plan: active,
+    ritual_ladder: preflight?.ritual_ladder || null,
     preflight: preflightResult.ok ? summarizePreflight(preflight) : { error: preflightResult.stderr || preflightResult.stdout || "planner_preflight failed" },
     knowledge: knowledgeResult.ok ? summarizeKnowledge(knowledge) : { error: knowledgeResult.stderr || knowledgeResult.stdout || "knowledge_resolver failed" }
   };
@@ -185,6 +198,15 @@ function formatHuman(result) {
   lines.push(`  Workflow: ${result.selected_workflow_id}`);
   lines.push(`  Contract profile: ${result.contract_profile || "missing"}`);
   lines.push(`  Blocking: ${result.blocking.blocked ? result.blocking.reasons.join("; ") : "no"}`);
+  if ((result.blocking.warnings || []).length > 0) {
+    lines.push(`  Warnings: ${result.blocking.warnings.join("; ")}`);
+  }
+  if (result.ritual_ladder) {
+    lines.push(`  Ladder: ${result.ritual_ladder.selected_step} (${result.ritual_ladder.status})`);
+    if ((result.ritual_ladder.non_skippable || []).length > 0) {
+      lines.push(`  Safety: ${result.ritual_ladder.non_skippable.map((entry) => entry.id).join(", ")}`);
+    }
+  }
   lines.push(`  Next: ${result.next_actions.exact_command}`);
   lines.push(`  Required gates: ${result.required_gates.join(", ") || "none"}`);
   lines.push(`  Proof surfaces: ${result.required_proof_surfaces.join(", ") || "none"}`);

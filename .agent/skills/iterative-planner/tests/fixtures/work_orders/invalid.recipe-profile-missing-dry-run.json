@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "id": "wo_recipe_live_only",
+  "goal": "Promote live only recipe into a deterministic work-order profile.",
+  "inputs": [
+    {
+      "id": "recipe_definition",
+      "kind": "recipe",
+      "ref": "recipes/live-only/recipe.json"
+    }
+  ],
+  "constraints": [
+    "Execute the recipe through its declared runner contract only."
+  ],
+  "claims_to_produce": [
+    {
+      "id": "recipe_profile_valid",
+      "statement": "The recipe profile is safe for cheap-agent dry-run execution."
+    }
+  ],
+  "proof_obligations": [
+    {
+      "claim_id": "recipe_profile_valid",
+      "method": "deterministic",
+      "check": "validateWorkOrder(work_order).ok"
+    }
+  ],
+  "stop_conditions": [
+    "Stop if the recipe profile lacks dry-run flags."
+  ],
+  "budget": {
+    "max_tokens": 12000,
+    "max_cost_usd": 0,
+    "max_time_minutes": 20
+  },
+  "profile": {
+    "type": "recipe",
+    "recipe_id": "live-only",
+    "capability_id": "run_live_only",
+    "required_params": [],
+    "dry_run_fail_closed": false,
+    "runner": {
+      "type": "command",
+      "cwd": ".",
+      "command": [
+        "python",
+        "scripts/live_only.py"
+      ],
+      "defaults": {},
+      "dry_run_flags": [],
+      "live_flags": []
+    }
+  }
+}

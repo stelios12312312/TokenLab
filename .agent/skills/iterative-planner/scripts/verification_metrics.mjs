@@ -20,6 +20,7 @@
 import { readFileSync, readdirSync, existsSync, statSync } from "fs";
 import { join, basename, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
+import { verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const SCRIPTS_DIR = dirname(__filename);
@@ -120,8 +121,17 @@ function testFiles() {
 export function gatedTests() {
   const tests = testFiles();
   const runMjs = safeRead(join(SKILL_DIR, "tests", "ive", "run.mjs"));
-  const gated = tests.filter((t) => runMjs.includes(t));
+  const directCommands = directlyGatedTestNames(runMjs);
+  const gated = tests.filter((test) => directCommands.has(test));
   return { gated, total: tests.length };
+}
+
+export function directlyGatedTestNames(runMjsSource) {
+  const names = new Set();
+  const commandPattern = /command:\s*\[\s*["']node["']\s*,\s*join\(TESTS_ROOT,\s*["'](test_[^"']+\.mjs)["']\s*\)\s*\]/g;
+  let match;
+  while ((match = commandPattern.exec(String(runMjsSource || ""))) !== null) names.add(match[1]);
+  return names;
 }
 export function realDataGroundedTests() {
   const dir = join(SKILL_DIR, "tests");
@@ -146,12 +156,10 @@ function hasGenuineCloseTransition(state) {
   return tr.some((t) => {
     const to = String(t?.to || "").toUpperCase();
     const from = String(t?.from || "").toUpperCase();
-    const result = String(t?.gate_result || t?.result || "").toUpperCase();
     const marker = String(t?.marker || "");
     if (to !== "CLOSE") return false;
     if (/FORCE-CLOSED|INFORMATIONAL/i.test(marker)) return false;
-    if (result === "SKIP") return false;
-    return from === "VALIDATE"; // the real penultimate state before a gated close
+    return from === "VALIDATE" && verificationStatusIsPass(t?.gate_result ?? t?.result, "gate");
   });
 }
 export function genuineCloseRate({ cwd = REPO_ROOT } = {}) {
@@ -197,7 +205,7 @@ export function collectVerificationMetrics({ cwd = REPO_ROOT } = {}) {
     // definitions are documented so a reader knows exactly what each ratio means
     definitions: {
       dead_load_ratio: "scripts/lib/*.mjs that are PRODUCTION-UNREACHABLE (no production importer in a parsed import graph AND not referenced by name in any other production script) / total lib modules. Test-only references are excluded (a test naming a module doesn't make it reachable). Some unreachable modules are test harnesses to keep, not remove — triage required.",
-      gated_test_ratio: "test_*.mjs files referenced by tests/ive/run.mjs / total test_*.mjs files",
+      gated_test_ratio: "test_*.mjs files directly executed by a DEFAULT_SUITES command in tests/ive/run.mjs / total test_*.mjs files; fixture-only references do not count",
       real_data_grounded_ratio: "test_*.mjs files consuming real_telemetry fixtures / total test_*.mjs files",
       genuine_close_rate: "plans whose state.json.transitions include a validate-to-close gate (excludes `close --informational`) / total plans with a state.json",
     },

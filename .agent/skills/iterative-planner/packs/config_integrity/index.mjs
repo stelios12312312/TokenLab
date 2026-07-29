@@ -14,10 +14,14 @@
 import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { createSession } from "../../scripts/lib/prolog.mjs";
-import { makeFinding, makeConstraint, SEVERITY } from "../../scripts/lib/audit_types.mjs";
-import { downgradeForShape as shapeAwareSeverity } from "../../scripts/lib/pack_severity.mjs";
+import { makeConstraint } from "../../scripts/lib/audit_types.mjs";
 import { sanitizeAtom as sanitize } from "../../scripts/lib/sanitize.mjs";
+import {
+  assertStoryFacts,
+  formatPhaseGuidance,
+  normalizePackFinding,
+  runPrologPackAudit,
+} from "../../scripts/lib/auditor_pack_engine.mjs";
 import { parseAnnotations, walkDir, toPrologFacts } from "../../scripts/annotation_parser.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -88,6 +92,12 @@ const RULE_DEFS = [
     engine: "prolog",
   },
 ];
+
+const EVIDENCE_TEMPLATES = {
+  "CI-001": (s, d) => `Mutually exclusive flags both enabled: ${s} + ${d}`,
+  "CI-002": (s, d) => `Capped metric ${s} has no raw value available — downstream consumers see transformed data`,
+  "CI-003": (s, d) => `Config flag ${s} has a default value but is never read by any code`,
+};
 
 // ---------------------------------------------------------------------------
 // Configuration scanning
@@ -189,161 +199,77 @@ const configIntegrityPack = {
   },
 
   async audit(context) {
-    const session = createSession();
-    const { cwd, storyRegistry, auditConfig } = context;
+    return runPrologPackAudit(context, {
+      packId: this.id,
+      rulesFile: RULES_FILE,
+      query: "config_integrity_violation(RuleId, Subject, Detail, Severity)",
+      defaultRuleId: "CI-???",
+      defaultSeverity: "MEDIUM",
+      collectFacts: (ctx, session) => {
+        const { cwd, storyRegistry, auditConfig } = ctx;
+        assertStoryFacts(session, storyRegistry, { sanitize, include: ["tags"] });
 
-    // Re-assert base story facts
-    if (storyRegistry && Array.isArray(storyRegistry.stories)) {
-      for (const s of storyRegistry.stories) {
-        if (!s.id) continue;
-        const id = sanitize(s.id);
-        session.consult(`story(${id}, ${sanitize(s.title || "untitled")}, ${sanitize(s.priority || "medium")}, ${sanitize(s.status || "unknown")}).`);
-        if (Array.isArray(s.tags)) {
-          for (const t of s.tags) session.consult(`story_tag(${id}, ${sanitize(t)}).`);
+        try {
+          const sourceFiles = walkDir(cwd, cwd).filter((filePath) => !isTestOrFixturePath(filePath));
+          const allAnnotations = [];
+          for (const f of sourceFiles) allAnnotations.push(...parseAnnotations(f, cwd));
+          const prologFacts = toPrologFacts(allAnnotations);
+          if (prologFacts) session.consult(prologFacts);
+        } catch (e) {
+          if (process.env.DEBUG) console.error(`[${this.id}] Annotation parse error: ${e.message}`);
         }
-      }
-    }
 
-    // Load @planner: annotations as deterministic facts
-    try {
-      const sourceFiles = walkDir(cwd, cwd).filter((filePath) => !isTestOrFixturePath(filePath));
-      const allAnnotations = [];
-      for (const f of sourceFiles) {
-        allAnnotations.push(...parseAnnotations(f, cwd));
-      }
-      const prologFacts = toPrologFacts(allAnnotations);
-      if (prologFacts) {
-        session.consult(prologFacts);
-      }
-    } catch (e) {
-      if (process.env.DEBUG) console.error(`[${this.id}] Annotation parse error: ${e.message}`);
-    }
+        const configs = scanConfigFiles(cwd);
+        const flags = extractFlags(configs);
+        const flagNamesSeen = new Set();
+        for (const f of flags) {
+          session.consult(`config_flag(${sanitize(f.source)}, ${sanitize(f.name)}, ${f.value}).`);
+          flagNamesSeen.add(f.name);
+        }
 
-    // Scan and assert configuration flags
-    const configs = scanConfigFiles(cwd);
-    const flags = extractFlags(configs);
-    const flagNamesSeen = new Set();
-    for (const f of flags) {
-      session.consult(`config_flag(${sanitize(f.source)}, ${sanitize(f.name)}, ${f.value}).`);
-      flagNamesSeen.add(f.name);
-    }
-
-    // CI-003 needs config_default/2: assert defaults for known config schemas.
-    // Source: @planner:enabled_default annotations and documented defaults.
-    try {
-      const sourceFiles = walkDir(cwd, cwd).filter((filePath) => !isTestOrFixturePath(filePath));
-      for (const sf of sourceFiles) {
-        for (const ann of parseAnnotations(sf, cwd)) {
-          if (ann.key === "enabled_default" && ann.values[0]) {
-            const flagName = sf.replace(/[^a-zA-Z0-9_./-]/g, "_");
-            session.consult(`config_default(${sanitize(flagName)}, ${ann.values[0].toLowerCase()}).`);
+        try {
+          const sourceFiles = walkDir(cwd, cwd).filter((filePath) => !isTestOrFixturePath(filePath));
+          for (const sf of sourceFiles) {
+            for (const ann of parseAnnotations(sf, cwd)) {
+              if (ann.key === "enabled_default" && ann.values[0]) {
+                const flagName = sf.replace(/[^a-zA-Z0-9_./-]/g, "_");
+                session.consult(`config_default(${sanitize(flagName)}, ${ann.values[0].toLowerCase()}).`);
+              }
+              if (ann.key === "config_flag" && ann.values[0] && !flagNamesSeen.has(ann.values[0])) {
+                session.consult(`config_default(${sanitize(ann.values[0])}, unknown).`);
+              }
+            }
           }
-          if (ann.key === "config_flag" && ann.values[0] && !flagNamesSeen.has(ann.values[0])) {
-            // Documented flag with no runtime config_flag — assert as default
-            session.consult(`config_default(${sanitize(ann.values[0])}, unknown).`);
+        } catch { /* annotation scan failure is non-fatal */ }
+
+        const exclusions = [...DEFAULT_EXCLUSIONS];
+        const opts = auditConfig.role_options?.config_integrity || {};
+        if (Array.isArray(opts.mutual_exclusions)) {
+          for (const ex of opts.mutual_exclusions) {
+            if (Array.isArray(ex) && ex.length === 2) exclusions.push(ex);
           }
         }
-      }
-    } catch { /* annotation scan failure is non-fatal */ }
 
-    // Assert mutual exclusions from defaults + project config
-    const exclusions = [...DEFAULT_EXCLUSIONS];
-    if (auditConfig.role_options && auditConfig.role_options.config_integrity) {
-      const opts = auditConfig.role_options.config_integrity;
-      if (Array.isArray(opts.mutual_exclusions)) {
-        for (const ex of opts.mutual_exclusions) {
-          if (Array.isArray(ex) && ex.length === 2) {
-            exclusions.push(ex);
-          }
+        for (const [a, b] of exclusions) {
+          session.consult(`mutually_exclusive(${sanitize(a)}, ${sanitize(b)}).`);
+          session.consult(`mutually_exclusive(${sanitize(b)}, ${sanitize(a)}).`);
         }
-      }
-    }
-
-    for (const [a, b] of exclusions) {
-      session.consult(`mutually_exclusive(${sanitize(a)}, ${sanitize(b)}).`);
-      session.consult(`mutually_exclusive(${sanitize(b)}, ${sanitize(a)}).`);
-    }
-
-    // Load Prolog rules
-    let rulesText;
-    try {
-      rulesText = readFileSync(RULES_FILE, "utf-8");
-    } catch (e) {
-      return [{ _error: `Could not load ${this.id} rules.pl: ${e.message}` }];
-    }
-
-    try {
-      session.consult(rulesText);
-    } catch (e) {
-      return [{ _error: `Failed to load ${this.id} Prolog rules: ${e.message}` }];
-    }
-
-    // Query violations
-    const rawFindings = [];
-    try {
-      for (const ans of session.query("config_integrity_violation(RuleId, Subject, Detail, Severity)")) {
-        rawFindings.push({
-          ruleId:   String(ans.RuleId   || "CI-???"),
-          subject:  String(ans.Subject  || "project"),
-          detail:   String(ans.Detail   || ""),
-          severity: String(ans.Severity || "MEDIUM"),
-        });
-      }
-    } catch (e) {
-      if (process.env.DEBUG) console.error(`[${this.id}] Prolog query error: ${e.message}`);
-    }
-
-    return rawFindings;
+      },
+    });
   },
 
   normalizeFinding(raw, context) {
-    if (raw._error) {
-      return makeFinding({
-        id:             `${this.id.toUpperCase()}-ERR`,
-        role:           this.id,
-        severity:       SEVERITY.MEDIUM,
-        category:       "pack_error",
-        story_refs:     [],
-        evidence:       raw._error,
-        recommendation: `Check that packs/${this.id}/rules.pl is present and valid Prolog.`,
-      });
-    }
-
-    const rule = RULE_DEFS.find(r => r.id === raw.ruleId) || {};
-    const subjectSlug = String(raw.subject ?? "unknown").replace(/\W/g, "_");
-
-    // v7.4.2: shape-conditional severity. CI-002 (capped metric without raw
-    // value) HIGH on every plan was firing on metric refactors / docs work
-    // that aren't changing the actual capping. CI-001 (mutually exclusive
-    // flags both enabled) stays CRITICAL on all shapes — that's a real bug.
-    const severity = shapeAwareSeverity({
-      ruleId: raw.ruleId,
-      defaultSeverity: raw.severity || SEVERITY.HIGH,
-      planShape: context?.planShape,
-      downgrades: {
+    return normalizePackFinding(raw, context, {
+      packId: this.id,
+      rules: RULE_DEFS,
+      defaultSeverity: "HIGH",
+      category: "configuration_integrity",
+      storyRefs: () => [],
+      severityDowngrades: {
         "CI-002": ["refactor", "docs"],
       },
-    });
-
-    // Build evidence message (Prolog returns subject/detail, JS composes message)
-    const EVIDENCE_TEMPLATES = {
-      "CI-001": (s, d) => `Mutually exclusive flags both enabled: ${s} + ${d}`,
-      "CI-002": (s, d) => `Capped metric ${s} has no raw value available — downstream consumers see transformed data`,
-      "CI-003": (s, d) => `Config flag ${s} has a default value but is never read by any code`,
-    };
-    const evidenceFn = EVIDENCE_TEMPLATES[raw.ruleId];
-    const evidence = evidenceFn
-      ? evidenceFn(raw.subject, raw.detail)
-      : `${raw.ruleId} violation for ${raw.subject}`;
-
-    return makeFinding({
-      id:             `${raw.ruleId}-${subjectSlug}`,
-      role:           this.id,
-      severity,
-      category:       "configuration_integrity",
-      story_refs:     [],
-      evidence,
-      recommendation: rule.remediation || "Review configuration for conflicts and metric lineage issues.",
+      evidenceTemplates: EVIDENCE_TEMPLATES,
+      fallbackRecommendation: "Review configuration for conflicts and metric lineage issues.",
     });
   },
 
@@ -372,9 +298,7 @@ const configIntegrityPack = {
         "Check that configuration changes haven't introduced contradictions.",
       ],
     };
-    const lines = guidance[phase];
-    if (!lines || lines.length === 0) return null;
-    return lines.map((l, i) => `${i + 1}. ${l}`).join("\n");
+    return formatPhaseGuidance(guidance, phase);
   },
 
   getPlanConstraints(context) {

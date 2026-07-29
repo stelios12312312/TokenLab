@@ -1,0 +1,624 @@
+{
+  "schema_version": 1,
+  "id": "T-INTAKE-AE7E117D",
+  "generated_at": "2026-07-28T23:17:00.451Z",
+  "generator": {
+    "tool": "c8",
+    "version": "11.0.0",
+    "node": "v20.19.2",
+    "mode": "report_only"
+  },
+  "workload": "governed core-release IVE profile except cli-determinism and planner-core-coverage-ratchet; 900000ms per-suite instrumentation timeout",
+  "metric_policy": {
+    "comparison": "per_modified_script_no_regression",
+    "metrics": [
+      "lines",
+      "branches",
+      "functions",
+      "statements"
+    ],
+    "global_threshold": null
+  },
+  "targets": [
+    {
+      "file": ".agent/skills/iterative-planner/scripts/transition.mjs",
+      "source_hash": "572f33abdbe1d4e9972f2382c461f3956e2acbe0bf5a6e7098bfff92e8d10192",
+      "metrics": {
+        "lines": {
+          "total": 1963,
+          "covered": 1560,
+          "skipped": 0,
+          "pct": 79.47
+        },
+        "branches": {
+          "total": 407,
+          "covered": 291,
+          "skipped": 0,
+          "pct": 71.5
+        },
+        "functions": {
+          "total": 20,
+          "covered": 20,
+          "skipped": 0,
+          "pct": 100
+        },
+        "statements": {
+          "total": 1963,
+          "covered": 1560,
+          "skipped": 0,
+          "pct": 79.47
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/bootstrap.mjs",
+      "source_hash": "595751a2fe2ae5f1009b9a9e5af59fec9d567f386bf2f1cf0b99dd39e6bdbd46",
+      "metrics": {
+        "lines": {
+          "total": 3168,
+          "covered": 1244,
+          "skipped": 0,
+          "pct": 39.27
+        },
+        "branches": {
+          "total": 237,
+          "covered": 137,
+          "skipped": 0,
+          "pct": 57.81
+        },
+        "functions": {
+          "total": 81,
+          "covered": 33,
+          "skipped": 0,
+          "pct": 40.74
+        },
+        "statements": {
+          "total": 3168,
+          "covered": 1244,
+          "skipped": 0,
+          "pct": 39.27
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/migrate.mjs",
+      "source_hash": "a36a3053cfb43138c32bd511e0ad50ad6a9f61e2f58e9cd2eb288e1bbd273a34",
+      "metrics": {
+        "lines": {
+          "total": 6519,
+          "covered": 3371,
+          "skipped": 0,
+          "pct": 51.71
+        },
+        "branches": {
+          "total": 959,
+          "covered": 613,
+          "skipped": 0,
+          "pct": 63.92
+        },
+        "functions": {
+          "total": 172,
+          "covered": 107,
+          "skipped": 0,
+          "pct": 62.21
+        },
+        "statements": {
+          "total": 6519,
+          "covered": 3371,
+          "skipped": 0,
+          "pct": 51.71
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/rule_engine.mjs",
+      "source_hash": "1a70852772ebd517cb30971b64b2696f07e886d139f098eba1df627737d5ccef",
+      "metrics": {
+        "lines": {
+          "total": 398,
+          "covered": 359,
+          "skipped": 0,
+          "pct": 90.2
+        },
+        "branches": {
+          "total": 130,
+          "covered": 87,
+          "skipped": 0,
+          "pct": 66.92
+        },
+        "functions": {
+          "total": 5,
+          "covered": 5,
+          "skipped": 0,
+          "pct": 100
+        },
+        "statements": {
+          "total": 398,
+          "covered": 359,
+          "skipped": 0,
+          "pct": 90.2
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/verify_gate.mjs",
+      "source_hash": "3583966fc3d531489881da69e58eacf32084c10beb2477c5a76f5c6d5808be85",
+      "metrics": {
+        "lines": {
+          "total": 3732,
+          "covered": 3454,
+          "skipped": 0,
+          "pct": 92.55
+        },
+        "branches": {
+          "total": 1115,
+          "covered": 805,
+          "skipped": 0,
+          "pct": 72.2
+        },
+        "functions": {
+          "total": 93,
+          "covered": 91,
+          "skipped": 0,
+          "pct": 97.85
+        },
+        "statements": {
+          "total": 3732,
+          "covered": 3454,
+          "skipped": 0,
+          "pct": 92.55
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/ontology_serializer.mjs",
+      "source_hash": "5f5d7e3aa08bd8a0d841c3b22b261f61c6ce2ba7cafcbbe732188f452a722849",
+      "metrics": {
+        "lines": {
+          "total": 1905,
+          "covered": 1690,
+          "skipped": 0,
+          "pct": 88.71
+        },
+        "branches": {
+          "total": 629,
+          "covered": 495,
+          "skipped": 0,
+          "pct": 78.7
+        },
+        "functions": {
+          "total": 43,
+          "covered": 43,
+          "skipped": 0,
+          "pct": 100
+        },
+        "statements": {
+          "total": 1905,
+          "covered": 1690,
+          "skipped": 0,
+          "pct": 88.71
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs",
+      "source_hash": "4333dd9cfc550499b2105ca4b5c73dcf09ef9c6a1c97ff646606a4b6e014e337",
+      "metrics": {
+        "lines": {
+          "total": 1788,
+          "covered": 1540,
+          "skipped": 0,
+          "pct": 86.13
+        },
+        "branches": {
+          "total": 673,
+          "covered": 524,
+          "skipped": 0,
+          "pct": 77.86
+        },
+        "functions": {
+          "total": 38,
+          "covered": 35,
+          "skipped": 0,
+          "pct": 92.11
+        },
+        "statements": {
+          "total": 1788,
+          "covered": 1540,
+          "skipped": 0,
+          "pct": 86.13
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/story_registry.mjs",
+      "source_hash": "e6c5ba9b2eeb47676df0824e9a4d602467a7ab55fc94bb6c96152e4cf6fea16f",
+      "metrics": {
+        "lines": {
+          "total": 1152,
+          "covered": 466,
+          "skipped": 0,
+          "pct": 40.45
+        },
+        "branches": {
+          "total": 186,
+          "covered": 93,
+          "skipped": 0,
+          "pct": 50
+        },
+        "functions": {
+          "total": 42,
+          "covered": 23,
+          "skipped": 0,
+          "pct": 54.76
+        },
+        "statements": {
+          "total": 1152,
+          "covered": 466,
+          "skipped": 0,
+          "pct": 40.45
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/ripple_check.mjs",
+      "source_hash": "7541a152b72d339f89704e35ca5a14c97f0039c8d4881ab00dcda4160125e7bd",
+      "metrics": {
+        "lines": {
+          "total": 272,
+          "covered": 217,
+          "skipped": 0,
+          "pct": 79.78
+        },
+        "branches": {
+          "total": 60,
+          "covered": 18,
+          "skipped": 0,
+          "pct": 30
+        },
+        "functions": {
+          "total": 6,
+          "covered": 6,
+          "skipped": 0,
+          "pct": 100
+        },
+        "statements": {
+          "total": 272,
+          "covered": 217,
+          "skipped": 0,
+          "pct": 79.78
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/program_manager.mjs",
+      "source_hash": "4a29a44e3569c3d96fdeb2575fbaaf631f55de7c814da47e037a5c5de8680e4b",
+      "metrics": {
+        "lines": {
+          "total": 3336,
+          "covered": 2398,
+          "skipped": 0,
+          "pct": 71.88
+        },
+        "branches": {
+          "total": 996,
+          "covered": 577,
+          "skipped": 0,
+          "pct": 57.93
+        },
+        "functions": {
+          "total": 158,
+          "covered": 117,
+          "skipped": 0,
+          "pct": 74.05
+        },
+        "statements": {
+          "total": 3336,
+          "covered": 2398,
+          "skipped": 0,
+          "pct": 71.88
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/task_intake.mjs",
+      "source_hash": "824c493c953d2393218c5ad29d1d5fb8c0bf06e97b25ac6719ad692b5fc3da94",
+      "metrics": {
+        "lines": {
+          "total": 465,
+          "covered": 383,
+          "skipped": 0,
+          "pct": 82.37
+        },
+        "branches": {
+          "total": 119,
+          "covered": 71,
+          "skipped": 0,
+          "pct": 59.66
+        },
+        "functions": {
+          "total": 11,
+          "covered": 10,
+          "skipped": 0,
+          "pct": 90.91
+        },
+        "statements": {
+          "total": 465,
+          "covered": 383,
+          "skipped": 0,
+          "pct": 82.37
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/project_health.mjs",
+      "source_hash": "23fdcc07e742bcc4565453c5c066a0d3ca5c6bbd953e8af945fee75d6b6047e7",
+      "metrics": {
+        "lines": {
+          "total": 1070,
+          "covered": 679,
+          "skipped": 0,
+          "pct": 63.46
+        },
+        "branches": {
+          "total": 237,
+          "covered": 150,
+          "skipped": 0,
+          "pct": 63.29
+        },
+        "functions": {
+          "total": 17,
+          "covered": 12,
+          "skipped": 0,
+          "pct": 70.59
+        },
+        "statements": {
+          "total": 1070,
+          "covered": 679,
+          "skipped": 0,
+          "pct": 63.46
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/escalation_check.mjs",
+      "source_hash": "5a6407afed1639428702f28031e809139317abdfdc04e714baec4215e4797cd4",
+      "metrics": {
+        "lines": {
+          "total": 1502,
+          "covered": 885,
+          "skipped": 0,
+          "pct": 58.92
+        },
+        "branches": {
+          "total": 350,
+          "covered": 204,
+          "skipped": 0,
+          "pct": 58.29
+        },
+        "functions": {
+          "total": 52,
+          "covered": 35,
+          "skipped": 0,
+          "pct": 67.31
+        },
+        "statements": {
+          "total": 1502,
+          "covered": 885,
+          "skipped": 0,
+          "pct": 58.92
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/pre_commit_policy.mjs",
+      "source_hash": "ec7f47909b507b40f0918ec2960c1d17485fbd7bf9da1178fc457433e2750138",
+      "metrics": {
+        "lines": {
+          "total": 466,
+          "covered": 0,
+          "skipped": 0,
+          "pct": 0
+        },
+        "branches": {
+          "total": 1,
+          "covered": 0,
+          "skipped": 0,
+          "pct": 0
+        },
+        "functions": {
+          "total": 1,
+          "covered": 0,
+          "skipped": 0,
+          "pct": 0
+        },
+        "statements": {
+          "total": 466,
+          "covered": 0,
+          "skipped": 0,
+          "pct": 0
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/lib/plan_refresh.mjs",
+      "source_hash": "f0722e75608634ff3395ea91d3f4abb53487c6f58e3f9c7dfe401aacdee3df00",
+      "metrics": {
+        "lines": {
+          "total": 1390,
+          "covered": 1282,
+          "skipped": 0,
+          "pct": 92.23
+        },
+        "branches": {
+          "total": 438,
+          "covered": 360,
+          "skipped": 0,
+          "pct": 82.19
+        },
+        "functions": {
+          "total": 47,
+          "covered": 47,
+          "skipped": 0,
+          "pct": 100
+        },
+        "statements": {
+          "total": 1390,
+          "covered": 1282,
+          "skipped": 0,
+          "pct": 92.23
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/lib/evidence_preflight.mjs",
+      "source_hash": "be18207f52ea23495ec5b6bdacc93de8361dc889e7af62ca61dddfd5d84e5786",
+      "metrics": {
+        "lines": {
+          "total": 1110,
+          "covered": 826,
+          "skipped": 0,
+          "pct": 74.41
+        },
+        "branches": {
+          "total": 267,
+          "covered": 127,
+          "skipped": 0,
+          "pct": 47.57
+        },
+        "functions": {
+          "total": 36,
+          "covered": 34,
+          "skipped": 0,
+          "pct": 94.44
+        },
+        "statements": {
+          "total": 1110,
+          "covered": 826,
+          "skipped": 0,
+          "pct": 74.41
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/lib/preplanning_scaffolding.mjs",
+      "source_hash": "74596e9bd96bdcea3f8122b0ce6c63edf2e90a71a3ee41df4725ef3238424728",
+      "metrics": {
+        "lines": {
+          "total": 423,
+          "covered": 379,
+          "skipped": 0,
+          "pct": 89.6
+        },
+        "branches": {
+          "total": 155,
+          "covered": 106,
+          "skipped": 0,
+          "pct": 68.39
+        },
+        "functions": {
+          "total": 25,
+          "covered": 24,
+          "skipped": 0,
+          "pct": 96
+        },
+        "statements": {
+          "total": 423,
+          "covered": 379,
+          "skipped": 0,
+          "pct": 89.6
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/lib/lifecycle_reconciler.mjs",
+      "source_hash": "a6e7f6dcca4cc23582e845f2016fa4d3ff01727aabac24a8589313db8f09bd8c",
+      "metrics": {
+        "lines": {
+          "total": 926,
+          "covered": 882,
+          "skipped": 0,
+          "pct": 95.25
+        },
+        "branches": {
+          "total": 401,
+          "covered": 339,
+          "skipped": 0,
+          "pct": 84.54
+        },
+        "functions": {
+          "total": 44,
+          "covered": 44,
+          "skipped": 0,
+          "pct": 100
+        },
+        "statements": {
+          "total": 926,
+          "covered": 882,
+          "skipped": 0,
+          "pct": 95.25
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/lib/verification_truth.mjs",
+      "source_hash": "6da72a8d1759139d43aab9d267c576a6491a448217d7e38b9e760f0d416a7b5e",
+      "metrics": {
+        "lines": {
+          "total": 838,
+          "covered": 836,
+          "skipped": 0,
+          "pct": 99.76
+        },
+        "branches": {
+          "total": 310,
+          "covered": 257,
+          "skipped": 0,
+          "pct": 82.9
+        },
+        "functions": {
+          "total": 51,
+          "covered": 50,
+          "skipped": 0,
+          "pct": 98.04
+        },
+        "statements": {
+          "total": 838,
+          "covered": 836,
+          "skipped": 0,
+          "pct": 99.76
+        }
+      }
+    },
+    {
+      "file": ".agent/skills/iterative-planner/scripts/lib/verification_obligations.mjs",
+      "source_hash": "5a5e7af3a8645558c1c3920318b915a1337c2783638f76f7440896e488981772",
+      "metrics": {
+        "lines": {
+          "total": 1263,
+          "covered": 1177,
+          "skipped": 0,
+          "pct": 93.19
+        },
+        "branches": {
+          "total": 299,
+          "covered": 241,
+          "skipped": 0,
+          "pct": 80.6
+        },
+        "functions": {
+          "total": 31,
+          "covered": 31,
+          "skipped": 0,
+          "pct": 100
+        },
+        "statements": {
+          "total": 1263,
+          "covered": 1177,
+          "skipped": 0,
+          "pct": 93.19
+        }
+      }
+    }
+  ]
+}

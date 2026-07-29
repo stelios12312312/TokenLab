@@ -6,16 +6,19 @@
 //   node story_registry.mjs evidence [<story-id>]    Show close-time evidence readiness for one story or all incomplete stories
 //   node story_registry.mjs freshness                Report age of registry (days, commits)
 //   node story_registry.mjs diff <file> [<file>...]  Show stories affected by changed files
+//   node story_registry.mjs prune --safe [--write]   List or safely repair stale evidence refs
 //   node story_registry.mjs summary                  One-line health summary
 //   node story_registry.mjs --json                   Machine-readable output (combine with any command)
 //
 // Reads from: reports/user_story_audit/story_registry.json
 // Exit codes: 0 = OK, 1 = validation errors found
 
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { readFileSync, existsSync, statSync, writeFileSync } from "fs";
+import { isAbsolute, join, resolve, sep } from "path";
 import { spawnSync } from "child_process";
+import { createHash } from "crypto";
 import { fileURLToPath } from "url";
+import { normalizeVerificationStatus } from "./lib/verification_status_vocabulary.mjs";
 
 // Validate that a value is a safe git commit hash (7–40 hex chars).
 // Returns the trimmed hash or null if invalid.
@@ -34,23 +37,248 @@ const AUDIT_PACKET_REQUIRED_FILES = [
   "findings.md",
   "remediation_plan.md",
 ];
+const LEGACY_COVERAGE_CONTRACT_VERSION = 1;
+export const CURRENT_COVERAGE_CONTRACT_VERSION = 2;
+const SUPPORTED_EXECUTED_PROOF_KINDS = new Set(["ive_suite", "executed_test_gate"]);
+const MAX_EXECUTED_PROOF_BYTES = 1_048_576;
 
-function fileExistsForRef(ref) {
-  const filePath = String(ref || "").split(":")[0];
-  return existsSync(join(cwd, filePath));
+function fileExistsForRef(ref, projectRoot = cwd) {
+  const filePath = refPathForFilesystem(ref);
+  return Boolean(filePath) && existsSync(join(projectRoot, filePath));
 }
 
-function collectRefWarnings(story, field, warnings) {
+function refPathForFilesystem(ref) {
+  return String(ref || "").trim().replace(/^\.\//, "").split(":")[0];
+}
+
+function safeProjectFile(root, ref) {
+  const relativePath = refPathForFilesystem(ref);
+  if (!relativePath || isAbsolute(relativePath)) return null;
+  const projectRoot = resolve(root);
+  const target = resolve(projectRoot, relativePath);
+  if (target !== projectRoot && !target.startsWith(`${projectRoot}${sep}`)) return null;
+  return target;
+}
+
+function readJsonArtifact(root, ref) {
+  const target = safeProjectFile(root, ref);
+  if (!target) return { ok: false, error: `unsafe project-relative artifact path '${ref}'` };
+  if (!existsSync(target)) return { ok: false, error: `artifact '${ref}' does not exist` };
+  try {
+    if (statSync(target).size > MAX_EXECUTED_PROOF_BYTES) {
+      return { ok: false, error: `artifact '${ref}' exceeds the ${MAX_EXECUTED_PROOF_BYTES}-byte executed-proof limit` };
+    }
+    return { ok: true, value: JSON.parse(readFileSync(target, "utf-8")), path: target };
+  } catch (error) {
+    return { ok: false, error: `artifact '${ref}' is not valid JSON (${error.message})` };
+  }
+}
+
+function nonEmptyCommand(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function validExecutionWindow(startedAt, finishedAt) {
+  const started = Date.parse(startedAt);
+  const finished = Date.parse(finishedAt);
+  return Number.isFinite(started) && Number.isFinite(finished) && finished >= started;
+}
+
+function executionResultPass(status, exitCode) {
+  return ["pass", "passed"].includes(String(status || "").trim().toLowerCase()) && exitCode === 0;
+}
+
+function proofFailure(proofRef, message) {
+  return {
+    ok: false,
+    kind: String(proofRef?.kind || "unknown"),
+    artifact: String(proofRef?.artifact || ""),
+    selector: String(proofRef?.selector || ""),
+    error: message,
+  };
+}
+
+export function evaluateExecutedProofRef(proofRef, { cwd: projectRoot = cwd } = {}) {
+  if (!proofRef || typeof proofRef !== "object" || Array.isArray(proofRef)) {
+    return proofFailure(proofRef, "executed proof entry must be an object");
+  }
+  const kind = String(proofRef.kind || "").trim();
+  const artifact = String(proofRef.artifact || "").trim();
+  const selector = String(proofRef.selector || "").trim();
+  if (!SUPPORTED_EXECUTED_PROOF_KINDS.has(kind)) {
+    return proofFailure(proofRef, `unsupported executed proof kind '${kind || "(blank)"}'`);
+  }
+  if (!artifact || !selector) {
+    return proofFailure(proofRef, "executed proof requires non-blank artifact and selector");
+  }
+
+  const loaded = readJsonArtifact(projectRoot, artifact);
+  if (!loaded.ok) return proofFailure(proofRef, loaded.error);
+
+  if (kind === "ive_suite") {
+    const suite = Array.isArray(loaded.value?.suites)
+      ? loaded.value.suites.find((entry) => String(entry?.id || "") === selector)
+      : null;
+    if (!suite) return proofFailure(proofRef, `IVE manifest '${artifact}' has no suite '${selector}'`);
+    if (!nonEmptyCommand(suite.command)) return proofFailure(proofRef, `IVE suite '${selector}' has no recorded command`);
+    if (String(suite.status || "").trim().toLowerCase() !== "pass") {
+      return proofFailure(proofRef, `IVE suite '${selector}' did not pass`);
+    }
+    const proofArtifact = String(suite.proof_artifact || "").trim();
+    if (!proofArtifact) return proofFailure(proofRef, `IVE suite '${selector}' has no proof_artifact`);
+    const proofLoaded = readJsonArtifact(projectRoot, proofArtifact);
+    if (!proofLoaded.ok) return proofFailure(proofRef, proofLoaded.error);
+    const proof = proofLoaded.value;
+    if (String(proof?.id || "") !== selector) return proofFailure(proofRef, `IVE proof id does not match selector '${selector}'`);
+    if (!nonEmptyCommand(proof?.command)) return proofFailure(proofRef, `IVE proof '${selector}' has no recorded command`);
+    if (String(proof.command).trim() !== String(suite.command).trim()) {
+      return proofFailure(proofRef, `IVE manifest and proof commands disagree for '${selector}'`);
+    }
+    if (!executionResultPass(proof?.status, proof?.exit_code)) {
+      return proofFailure(proofRef, `IVE proof '${selector}' has no successful observable result`);
+    }
+    if (!validExecutionWindow(proof?.started_at, proof?.finished_at)) {
+      return proofFailure(proofRef, `IVE proof '${selector}' has no valid execution timestamps`);
+    }
+    return {
+      ok: true,
+      kind,
+      artifact,
+      selector,
+      validation_ref: artifact,
+      command: String(proof.command),
+      result: { status: String(proof.status), exit_code: proof.exit_code },
+      started_at: proof.started_at,
+      finished_at: proof.finished_at,
+      proof_artifact: proofArtifact,
+    };
+  }
+
+  const gate = loaded.value?.gates?.[selector];
+  if (!gate) return proofFailure(proofRef, `executed-test-gates artifact '${artifact}' has no gate '${selector}'`);
+  if (String(gate.gate || selector) !== selector) return proofFailure(proofRef, `executed gate id does not match selector '${selector}'`);
+  if (!nonEmptyCommand(gate.command)) return proofFailure(proofRef, `executed gate '${selector}' has no recorded command`);
+  if (!executionResultPass(gate.status, gate.exit_code)) {
+    return proofFailure(proofRef, `executed gate '${selector}' has no successful observable result`);
+  }
+  if (!validExecutionWindow(gate.started_at, gate.finished_at)) {
+    return proofFailure(proofRef, `executed gate '${selector}' has no valid execution timestamps`);
+  }
+  return {
+    ok: true,
+    kind,
+    artifact,
+    selector,
+    validation_ref: artifact,
+    command: String(gate.command),
+    result: { status: String(gate.status), exit_code: gate.exit_code },
+    started_at: gate.started_at,
+    finished_at: gate.finished_at,
+  };
+}
+
+export function storyCoverageContractVersion(story, registry) {
+  const explicit = Number(story?.coverage_contract_version);
+  if (explicit === CURRENT_COVERAGE_CONTRACT_VERSION) return CURRENT_COVERAGE_CONTRACT_VERSION;
+  if (explicit === LEGACY_COVERAGE_CONTRACT_VERSION) return LEGACY_COVERAGE_CONTRACT_VERSION;
+  return LEGACY_COVERAGE_CONTRACT_VERSION;
+}
+
+function legacyStoryIds(registry) {
+  return allRegistryStories(registry)
+    .filter((story) => Number(story?.coverage_contract_version || LEGACY_COVERAGE_CONTRACT_VERSION) === LEGACY_COVERAGE_CONTRACT_VERSION)
+    .map((story) => String(story?.id || ""))
+    .filter(Boolean)
+    .sort();
+}
+
+export function legacyStoryPopulationDigest(registry) {
+  const ids = legacyStoryIds(registry);
+  return {
+    story_count: ids.length,
+    story_ids_sha256: createHash("sha256").update(JSON.stringify(ids)).digest("hex"),
+  };
+}
+
+export function validateCoverageContract(registry) {
+  const errors = [];
+  const contract = registry?.coverage_contract;
+  if (contract === undefined) return { errors, mode: "legacy_unpinned", legacy_population: null };
+  if (!contract || typeof contract !== "object" || Array.isArray(contract)) {
+    return { errors: ["coverage_contract must be an object"], mode: "invalid", legacy_population: null };
+  }
+  if (contract.legacy_version !== LEGACY_COVERAGE_CONTRACT_VERSION) {
+    errors.push(`coverage_contract.legacy_version must be ${LEGACY_COVERAGE_CONTRACT_VERSION}`);
+  }
+  if (contract.current_version !== CURRENT_COVERAGE_CONTRACT_VERSION) {
+    errors.push(`coverage_contract.current_version must be ${CURRENT_COVERAGE_CONTRACT_VERSION}`);
+  }
+  if (typeof contract.effective_at !== "string" || !/^\d{4}-\d{2}-\d{2}T/.test(contract.effective_at) || !Number.isFinite(Date.parse(contract.effective_at))) {
+    errors.push("coverage_contract.effective_at must be an ISO timestamp");
+  }
+  const expected = contract.legacy_population;
+  if (!expected || typeof expected !== "object") {
+    errors.push("coverage_contract.legacy_population must pin story_count and story_ids_sha256");
+  }
+  const actual = legacyStoryPopulationDigest(registry);
+  if (!Number.isInteger(expected?.story_count) || expected.story_count < 0) {
+    errors.push("coverage_contract.legacy_population.story_count must be a non-negative integer");
+  }
+  if (!/^[a-f0-9]{64}$/i.test(String(expected?.story_ids_sha256 || ""))) {
+    errors.push("coverage_contract.legacy_population.story_ids_sha256 must be a SHA-256 digest");
+  }
+  if (Number.isInteger(expected?.story_count) && expected.story_count !== actual.story_count) {
+    errors.push(`coverage_contract legacy population count mismatch (pinned ${expected.story_count}, found ${actual.story_count})`);
+  }
+  if (/^[a-f0-9]{64}$/i.test(String(expected?.story_ids_sha256 || "")) && expected.story_ids_sha256 !== actual.story_ids_sha256) {
+    errors.push(`coverage_contract legacy population digest mismatch (pinned ${expected.story_ids_sha256}, found ${actual.story_ids_sha256})`);
+  }
+  for (const story of allRegistryStories(registry)) {
+    const rawVersion = story?.coverage_contract_version;
+    if (rawVersion !== undefined && ![LEGACY_COVERAGE_CONTRACT_VERSION, CURRENT_COVERAGE_CONTRACT_VERSION].includes(Number(rawVersion))) {
+      errors.push(`${story.id || "unknown"}: coverage_contract_version must be 1 or 2`);
+    }
+  }
+  return { errors, mode: "versioned", legacy_population: actual };
+}
+
+export function evaluateStoryExecutedProof(story, { registry = null, cwd: projectRoot = cwd } = {}) {
+  const contractVersion = storyCoverageContractVersion(story, registry);
+  const refs = story?.executed_proof_refs;
+  const issues = [];
+  const valid = [];
+  if (contractVersion !== CURRENT_COVERAGE_CONTRACT_VERSION) {
+    if (refs !== undefined) issues.push("legacy story declares executed_proof_refs; migrate it to coverage_contract_version 2 first");
+    return { contract_version: contractVersion, valid, issues, executed: false };
+  }
+  if (refs !== undefined && !Array.isArray(refs)) {
+    issues.push("executed_proof_refs must be an array");
+    return { contract_version: contractVersion, valid, issues, executed: false };
+  }
+  for (const proofRef of Array.isArray(refs) ? refs : []) {
+    const result = evaluateExecutedProofRef(proofRef, { cwd: projectRoot });
+    const artifact = String(proofRef?.artifact || "").trim();
+    if (!Array.isArray(story?.validation_refs) || !story.validation_refs.includes(artifact)) {
+      issues.push(`executed proof artifact '${artifact || "(blank)"}' is not present in validation_refs`);
+      continue;
+    }
+    if (result.ok) valid.push(result);
+    else issues.push(result.error);
+  }
+  return { contract_version: contractVersion, valid, issues, executed: valid.length > 0 };
+}
+
+function collectRefWarnings(story, field, warnings, projectRoot = cwd) {
   if (!Array.isArray(story[field])) return;
   const singular = field.replace(/s$/, "");
   for (const ref of story[field]) {
-    if (!fileExistsForRef(ref)) {
+    if (!fileExistsForRef(ref, projectRoot)) {
       warnings.push(`${story.id}: ${singular} '${ref}' — file not found`);
     }
   }
 }
 
-function buildStoryEvidenceReport(story) {
+export function buildStoryEvidenceReport(story, registry = null, projectRoot = cwd) {
   const issues = [];
   const counts = {};
   const status = story.status || "UNKNOWN";
@@ -87,7 +315,7 @@ function buildStoryEvidenceReport(story) {
     }
 
     for (const ref of refs) {
-      if (!fileExistsForRef(ref)) {
+      if (!fileExistsForRef(ref, projectRoot)) {
         issues.push({
           field,
           type: "missing_file",
@@ -95,6 +323,26 @@ function buildStoryEvidenceReport(story) {
           message: `${field} entry '${ref}' points to a missing file`,
         });
       }
+    }
+  }
+
+  const executedProof = evaluateStoryExecutedProof(story, { registry, cwd: projectRoot });
+  counts.executed_proof_refs = Array.isArray(story.executed_proof_refs) ? story.executed_proof_refs.length : 0;
+  counts.executed_proofs_valid = executedProof.valid.length;
+  if (executedProof.contract_version === CURRENT_COVERAGE_CONTRACT_VERSION) {
+    for (const message of executedProof.issues) {
+      issues.push({ field: "executed_proof_refs", type: "invalid_executed_proof", message });
+    }
+    if (!executedProof.executed) {
+      issues.push({
+        field: "executed_proof_refs",
+        type: "missing_executed_proof",
+        message: "current coverage contract requires at least one valid executed proof",
+      });
+    }
+  } else if (executedProof.issues.length > 0) {
+    for (const message of executedProof.issues) {
+      issues.push({ field: "executed_proof_refs", type: "invalid_executed_proof", message });
     }
   }
 
@@ -195,7 +443,7 @@ function validateAuditPacket(registry) {
 // Validation (check)
 // ---------------------------------------------------------------------------
 
-function validateRegistry(registry) {
+export function validateRegistry(registry, projectRoot = cwd) {
   const errors = [];
   const warnings = [];
 
@@ -210,6 +458,9 @@ function validateRegistry(registry) {
     errors.push("Missing or invalid 'stories' field (expected array)");
     return { errors, warnings };
   }
+
+  const coverageContract = validateCoverageContract(registry);
+  errors.push(...coverageContract.errors);
 
   const ids = new Set();
   for (const story of allRegistryStories(registry)) {
@@ -238,12 +489,12 @@ function validateRegistry(registry) {
       }
     }
 
-    collectRefWarnings(story, "code_refs", warnings);
-    collectRefWarnings(story, "test_refs", warnings);
-    collectRefWarnings(story, "validation_refs", warnings);
+    collectRefWarnings(story, "code_refs", warnings, projectRoot);
+    collectRefWarnings(story, "test_refs", warnings, projectRoot);
+    collectRefWarnings(story, "validation_refs", warnings, projectRoot);
 
     if (story.status === "FULLY_COVERED") {
-      const evidence = buildStoryEvidenceReport(story);
+      const evidence = buildStoryEvidenceReport(story, registry, projectRoot);
       if (!evidence.evidence_ready) {
         errors.push(`${story.id}: FULLY_COVERED story is not evidence-ready (${summarizeEvidenceIssues(evidence.issues)})`);
       }
@@ -317,6 +568,239 @@ function allRegistryStories(registry) {
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Prune (safe stale evidence-ref repair)
+// ---------------------------------------------------------------------------
+
+function cleanCandidateToken(token) {
+  let cleaned = String(token || "").trim();
+  cleaned = cleaned.replace(/^['"`]+/, "").replace(/['"`]+$/, "");
+  while (/[),.;\]]$/.test(cleaned)) {
+    cleaned = cleaned.slice(0, -1);
+  }
+  if (cleaned.startsWith("./")) cleaned = cleaned.slice(2);
+  return cleaned.split(":")[0];
+}
+
+function commandPathCandidates(ref) {
+  const text = String(ref || "");
+  const tokenCandidates = text.split(/\s+/);
+  const pathMatches = text.match(/(?:\.\/|\.agent\/|plans\/|reports\/|docs\/|src\/|tests?\/|scripts\/|lib\/|config\/|roadmap_v7\/)[^\s"'`),;]*/g) || [];
+  return [...tokenCandidates, ...pathMatches]
+    .map(cleanCandidateToken)
+    .filter(Boolean);
+}
+
+function isSafeRegistryRelativePath(candidate) {
+  return Boolean(candidate)
+    && !candidate.startsWith("/")
+    && !candidate.startsWith("../")
+    && !candidate.includes("/../");
+}
+
+function findExistingSuccessorRef(ref) {
+  const originalPath = refPathForFilesystem(ref);
+  for (const candidate of commandPathCandidates(ref)) {
+    if (candidate === originalPath) continue;
+    if (!isSafeRegistryRelativePath(candidate)) continue;
+    if (existsSync(join(cwd, candidate))) return candidate;
+  }
+  return null;
+}
+
+function addUniqueRef(nextRefs, seenRefs, ref) {
+  const normalized = String(ref || "").trim();
+  if (!normalized) return false;
+  if (seenRefs.has(normalized)) return false;
+  seenRefs.add(normalized);
+  nextRefs.push(normalized);
+  return true;
+}
+
+function activeEvidenceIssueFieldsFor(story, fieldResults) {
+  const issueFields = [];
+  for (const field of EVIDENCE_FIELDS) {
+    const refs = Object.prototype.hasOwnProperty.call(fieldResults, field)
+      ? fieldResults[field]
+      : (Array.isArray(story[field]) ? story[field] : []);
+    if (refs.length === 0 || refs.some((ref) => !fileExistsForRef(ref))) {
+      issueFields.push(field);
+    }
+  }
+  return issueFields;
+}
+
+function buildPruneNote(change, prunedAt) {
+  const note = {
+    field: change.field,
+    ref: change.ref,
+    action: change.action,
+    reason: change.reason,
+    pruned_at: prunedAt,
+  };
+  if (change.successor_ref) note.successor_ref = change.successor_ref;
+  return note;
+}
+
+function analyzeRegistryPrune(registry, { write = false, prunedAt = new Date().toISOString() } = {}) {
+  const stories = allRegistryStories(registry);
+  const changes = [];
+  const storyUpdates = [];
+  const summary = {
+    stories_scanned: stories.length,
+    stale_refs: 0,
+    replacements: 0,
+    removals: 0,
+    duplicates: 0,
+    stories_changed: 0,
+    stories_downgraded: 0,
+  };
+
+  for (const story of stories) {
+    const fieldResults = {};
+    const storyChanges = [];
+
+    for (const field of EVIDENCE_FIELDS) {
+      if (!Array.isArray(story[field])) continue;
+
+      const nextRefs = [];
+      const seenRefs = new Set();
+      let fieldChanged = false;
+
+      for (const ref of story[field]) {
+        const refString = String(ref || "").trim();
+        if (!refString) {
+          fieldChanged = true;
+          continue;
+        }
+
+        if (fileExistsForRef(refString)) {
+          if (!addUniqueRef(nextRefs, seenRefs, refString)) {
+            const change = {
+              story_id: story.id,
+              field,
+              ref: refString,
+              action: "dedupe",
+              reason: "Duplicate evidence ref removed during safe prune.",
+            };
+            storyChanges.push(change);
+            changes.push(change);
+            summary.duplicates += 1;
+            fieldChanged = true;
+          }
+          continue;
+        }
+
+        const successorRef = findExistingSuccessorRef(refString);
+        if (successorRef) {
+          const added = addUniqueRef(nextRefs, seenRefs, successorRef);
+          const change = {
+            story_id: story.id,
+            field,
+            ref: refString,
+            action: "replace",
+            successor_ref: successorRef,
+            reason: added
+              ? "Command-shaped or stale ref contained an existing artifact path."
+              : "Command-shaped or stale ref normalized to an existing duplicate artifact path.",
+          };
+          storyChanges.push(change);
+          changes.push(change);
+          summary.stale_refs += 1;
+          summary.replacements += 1;
+          fieldChanged = true;
+          continue;
+        }
+
+        const change = {
+          story_id: story.id,
+          field,
+          ref: refString,
+          action: "remove",
+          reason: "Evidence ref points to a missing file and no existing successor path was found.",
+        };
+        storyChanges.push(change);
+        changes.push(change);
+        summary.stale_refs += 1;
+        summary.removals += 1;
+        fieldChanged = true;
+      }
+
+      if (fieldChanged) {
+        fieldResults[field] = nextRefs;
+      }
+    }
+
+    let statusChange = null;
+    if (story.status === "FULLY_COVERED") {
+      const issueFields = activeEvidenceIssueFieldsFor(story, fieldResults);
+      if (issueFields.length > 0) {
+        statusChange = {
+          from: "FULLY_COVERED",
+          to: "PARTIALLY_COVERED",
+          reason: `Safe prune left incomplete active evidence in: ${issueFields.join(", ")}`,
+        };
+        summary.stories_downgraded += 1;
+      }
+    }
+
+    if (storyChanges.length > 0 || statusChange) {
+      summary.stories_changed += 1;
+      const update = {
+        story_id: story.id,
+        title: story.title || "",
+        fields_changed: Object.keys(fieldResults),
+        changes: storyChanges,
+      };
+      if (statusChange) update.status_change = statusChange;
+      storyUpdates.push(update);
+
+      if (write) {
+        for (const [field, refs] of Object.entries(fieldResults)) {
+          story[field] = refs;
+        }
+        if (storyChanges.length > 0) {
+          story.pruned_refs = [
+            ...(Array.isArray(story.pruned_refs) ? story.pruned_refs : []),
+            ...storyChanges.map((change) => buildPruneNote(change, prunedAt)),
+          ];
+        }
+        if (statusChange) {
+          story.status = statusChange.to;
+          story.needs_review = true;
+          const note = statusChange.reason;
+          story.coverage_note = story.coverage_note
+            ? `${story.coverage_note} ${note}.`
+            : `${note}.`;
+        }
+      }
+    }
+  }
+
+  const status = summary.stale_refs > 0 || summary.duplicates > 0 || summary.stories_downgraded > 0
+    ? (write ? "PASS" : "WARN")
+    : "PASS";
+  const hasChanges = summary.stale_refs > 0 || summary.duplicates > 0 || summary.stories_downgraded > 0;
+  return {
+    status,
+    mode: write ? "write" : "dry-run",
+    write,
+    registry_path: "reports/user_story_audit/story_registry.json",
+    summary,
+    changes,
+    story_updates: storyUpdates,
+    message: hasChanges
+      ? (write
+        ? "Safe prune applied. Review story_updates and run story_registry.mjs check."
+        : "Safe prune dry-run complete. Re-run with --safe --write to apply these changes.")
+      : "Safe prune found no stale evidence refs.",
+  };
+}
+
+function writeRegistry(registry) {
+  writeFileSync(registryPath, JSON.stringify(registry, null, 2) + "\n");
+}
+
 function refMatchesFile(file, ref) {
   const normalizedFile = String(file || "").replace(/^\.\//, "");
   const refFile = String(ref || "").split(":")[0].replace(/^\.\//, "");
@@ -381,7 +865,8 @@ function printCheck(registry, jsonMode) {
   if (jsonMode) {
     console.log(JSON.stringify({ status, errors, warnings, storyCount: allRegistryStories(registry).length }, null, 2));
   } else {
-    const icon = status === "PASS" ? "✅" : status === "WARN" ? "⚠️" : "❌";
+    const statusKind = normalizeVerificationStatus(status, "execution").kind;
+    const icon = statusKind === "pass" ? "✅" : statusKind === "pending" ? "⚠️" : "❌";
     console.log(`${icon} ${status} — ${allRegistryStories(registry).length} stories in registry`);
     for (const e of errors) console.log(`  ❌ ${e}`);
     for (const w of warnings) console.log(`  ⚠️  ${w}`);
@@ -436,6 +921,75 @@ function printDiff(files, registry, jsonMode) {
   }
 }
 
+function printPrune(registry, args, jsonMode) {
+  const safe = args.includes("--safe");
+  const write = args.includes("--write");
+
+  if (!safe) {
+    const result = {
+      status: "FAIL",
+      message: "Refusing to prune story_registry.json without --safe.",
+      required_flag: "--safe",
+    };
+    if (jsonMode) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.error("ERROR: 'prune' requires --safe");
+    }
+    process.exit(1);
+  }
+
+  if (!registry) {
+    const result = {
+      status: "SKIP",
+      write: false,
+      message: "No story_registry.json found.",
+      registry_path: "reports/user_story_audit/story_registry.json",
+    };
+    if (jsonMode) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.log("No story_registry.json found; nothing to prune.");
+    }
+    process.exit(0);
+  }
+
+  if (registry._parseError) {
+    const result = { status: "FAIL", errors: [`JSON parse error: ${registry._parseError}`], write: false };
+    if (jsonMode) {
+      console.log(JSON.stringify(result, null, 2));
+    } else {
+      console.error("ERROR: story_registry.json is not valid JSON");
+      console.error(`  ${registry._parseError}`);
+    }
+    process.exit(1);
+  }
+
+  const result = analyzeRegistryPrune(registry, { write });
+  if (write && result.summary.stories_changed > 0) {
+    registry.updated_at = registry.updated_at || registry.updated || new Date().toISOString();
+    writeRegistry(registry);
+    result.wrote = true;
+  } else {
+    result.wrote = false;
+  }
+
+  if (jsonMode) {
+    console.log(JSON.stringify(result, null, 2));
+  } else {
+    console.log(`${result.status} - story registry prune ${result.mode}`);
+    console.log(`  stale refs: ${result.summary.stale_refs}`);
+    console.log(`  replacements: ${result.summary.replacements}`);
+    console.log(`  removals: ${result.summary.removals}`);
+    console.log(`  duplicates: ${result.summary.duplicates}`);
+    console.log(`  stories changed: ${result.summary.stories_changed}`);
+    console.log(`  stories downgraded: ${result.summary.stories_downgraded}`);
+    if (!write && result.summary.stories_changed > 0) {
+      console.log("  Re-run with --safe --write to apply.");
+    }
+  }
+}
+
 function printEvidence(registry, storyId, jsonMode) {
   if (registry._parseError) {
     const result = { status: "FAIL", errors: [`JSON parse error: ${registry._parseError}`] };
@@ -449,7 +1003,7 @@ function printEvidence(registry, storyId, jsonMode) {
   }
 
   const stories = allRegistryStories(registry);
-  const allReports = stories.map(buildStoryEvidenceReport);
+  const allReports = stories.map((story) => buildStoryEvidenceReport(story, registry, cwd));
 
   if (storyId) {
     const report = allReports.find((entry) => entry.id === storyId);
@@ -583,12 +1137,15 @@ if (command === "check") {
   }
   printDiff(files, registry, jsonMode);
 
+} else if (command === "prune") {
+  printPrune(registry, filteredArgs.slice(1), jsonMode);
+
 } else if (command === "summary") {
   printSummary(registry, jsonMode);
 
 } else {
   console.error(`Unknown command: ${command}`);
-  console.error("Usage: story_registry.mjs [check|evidence [story-id]|freshness|diff <files>|summary] [--json]");
+  console.error("Usage: story_registry.mjs [check|evidence [story-id]|freshness|diff <files>|prune --safe [--write]|summary] [--json]");
   process.exit(1);
 }
 

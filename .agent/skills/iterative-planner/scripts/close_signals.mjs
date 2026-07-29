@@ -102,6 +102,24 @@ function suggestionsForReviewIntake(signal) {
   ];
 }
 
+function suggestionsForRecipePromotion(signal) {
+  const candidates = Array.isArray(signal?.candidates) ? signal.candidates : [];
+  const unacknowledged = candidates.filter((candidate) => candidate.status !== "acknowledged");
+  if (unacknowledged.length === 0) {
+    return [
+      "Keep recipe-promotion dispositions in reflection.md or verification.md when a candidate is accepted, deferred, rejected, or waived.",
+    ];
+  }
+  const first = unacknowledged[0];
+  return [
+    `Add a "## Recipe Promotion" section naming ${first.id} and a disposition such as accepted, deferred, rejected, or waived.`,
+    first.bootstrap_command_display
+      ? `If accepted, review then run the suggested bootstrap command explicitly: ${first.bootstrap_command_display}`
+      : "If accepted, run recipe_bootstrap.mjs explicitly with the reviewed runner contract.",
+    "Do not edit state.json.close_signals.recipe_promotion directly; it is regenerated from work-order, journal, and telemetry evidence.",
+  ];
+}
+
 function buildExplainResult({ cwd, planArg }) {
   const resolved = resolvePlan(cwd, planArg);
   if (!resolved.ok) {
@@ -140,6 +158,7 @@ function buildExplainResult({ cwd, planArg }) {
   const afterState = readText(join(resolved.planDir, "state.json"));
   const semanticSubstrate = refresh.closeSignals?.semantic_substrate || null;
   const reviewIntake = refresh.closeSignals?.review_intake || null;
+  const recipePromotion = refresh.closeSignals?.recipe_promotion || null;
 
   return {
     status: refresh.refreshed ? "pass" : "fail",
@@ -158,6 +177,7 @@ function buildExplainResult({ cwd, planArg }) {
     },
     close_signals: refresh.closeSignals || null,
     review_intake: reviewIntake,
+    recipe_promotion: recipePromotion,
     semantic_substrate: semanticSubstrate,
     diagnostics: {
       selected_source_artifacts: semanticSubstrate?.provenance?.source_artifacts || [
@@ -181,6 +201,21 @@ function buildExplainResult({ cwd, planArg }) {
         unresolved_required: reviewIntake?.unresolved_required || [],
         suggested_disposition_edits: suggestionsForReviewIntake(reviewIntake),
       },
+      recipe_promotion: {
+        candidate_count: recipePromotion?.candidate_count || 0,
+        unacknowledged_count: recipePromotion?.unacknowledged_count || 0,
+        candidates: (recipePromotion?.candidates || []).map((candidate) => ({
+          id: candidate.id,
+          status: candidate.status,
+          recipe_id: candidate.recipe_id,
+          capability_id: candidate.capability_id,
+          source_type: candidate.source_type,
+          occurrence_count: candidate.occurrence_count,
+          bootstrap_command_display: candidate.bootstrap_command_display,
+          provenance: candidate.provenance || [],
+        })),
+        suggested_disposition_edits: suggestionsForRecipePromotion(recipePromotion),
+      },
     },
   };
 }
@@ -192,11 +227,14 @@ function printHuman(result) {
   }
   const signal = result.semantic_substrate || {};
   const reviewIntake = result.review_intake || {};
+  const recipePromotion = result.recipe_promotion || {};
   console.log(`close_signals explain: ${result.plan.plan_dir_name}`);
   console.log(`  generated cache: ${result.generated_cache.path}`);
   console.log(`  state mutated: ${result.generated_cache.state_mutated ? "YES" : "NO"}`);
   console.log(`  review intake: ${reviewIntake.status || "unknown"} (required=${reviewIntake.required === true}, satisfied=${reviewIntake.satisfied !== false})`);
   console.log(`  review unresolved: ${reviewIntake.unresolved_required_count || 0}`);
+  console.log(`  recipe promotion: ${recipePromotion.status || "unknown"} (required=${recipePromotion.required === true}, satisfied=${recipePromotion.satisfied !== false})`);
+  console.log(`  recipe candidates: ${recipePromotion.candidate_count || 0}; unacknowledged: ${recipePromotion.unacknowledged_count || 0}`);
   console.log(`  semantic substrate: ${signal.status || "unknown"} (required=${signal.required === true}, satisfied=${signal.satisfied !== false})`);
   console.log(`  relevance: config=${signal.relevance_evidence?.config || "none"}, story=${signal.relevance_evidence?.story_semantics || "none"}`);
   console.log(`  blocking gaps: ${(signal.blocking_gap_ids || []).join(", ") || "none"}`);
@@ -204,6 +242,12 @@ function printHuman(result) {
   console.log("  suggested source edits:");
   for (const suggestion of result.diagnostics.suggested_source_edits || []) {
     console.log(`    - ${suggestion}`);
+  }
+  if ((recipePromotion.candidate_count || 0) > 0) {
+    console.log("  recipe promotion suggestions:");
+    for (const suggestion of result.diagnostics.recipe_promotion?.suggested_disposition_edits || []) {
+      console.log(`    - ${suggestion}`);
+    }
   }
 }
 

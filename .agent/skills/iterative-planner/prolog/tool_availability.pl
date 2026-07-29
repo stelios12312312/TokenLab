@@ -29,7 +29,6 @@ tool_phase(set_problem_statement, plan).
 tool_phase(list_files_to_modify, plan).
 tool_phase(add_step, plan).
 tool_phase(define_verification, plan).
-tool_phase(request_approval, plan).
 
 %% EXECUTE phase tools
 tool_phase(update_progress, execute).
@@ -87,14 +86,6 @@ tool_blocked(create_plan, plan_already_active) :-
 tool_blocked(resume_plan, no_plan_exists) :-
     \+ active_plan(true).
 
-%% Cannot request approval without problem statement and files listed
-tool_blocked(request_approval, missing_problem_statement) :-
-    \+ problem_statement(true).
-tool_blocked(request_approval, missing_file_list) :-
-    \+ files_listed(true).
-tool_blocked(request_approval, missing_verification_strategy) :-
-    \+ verification_strategy(true).
-
 %% Cannot write summary unless validate-to-close gate passed
 tool_blocked(write_summary, validate_gate_not_passed) :-
     \+ gate_passed('validate-to-close', _).
@@ -126,13 +117,6 @@ next_action(define_verification) :-
     current_state(plan),
     files_listed(true),
     \+ verification_strategy(true).
-next_action(request_approval) :-
-    current_state(plan),
-    problem_statement(true),
-    files_listed(true),
-    verification_strategy(true),
-    \+ user_approved(true).
-
 next_action(update_progress) :-
     current_state(execute).
 next_action(add_red_team_vector) :-

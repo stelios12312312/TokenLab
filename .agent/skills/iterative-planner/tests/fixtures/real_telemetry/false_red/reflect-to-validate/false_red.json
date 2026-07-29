@@ -1,0 +1,735 @@
+{
+  "schema_version": 1,
+  "artifact": "false_red.json",
+  "generated_by": "real_telemetry_false_reds.mjs",
+  "transition_gate": "reflect-to-validate",
+  "source": {
+    "fixture_dir": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry",
+    "fixture_count": 27,
+    "corpus_digest": "5fbe9a5aeeb17eaf3299a2d2b3684be8e1e76fcbc606e7ec4e6bd8f726e9c12a",
+    "self_clear_window_sec": 120
+  },
+  "gate_summary": {
+    "attempts": 45,
+    "blocked": 32,
+    "allowed": 13,
+    "self_clearing_unblocks": 4,
+    "self_clear_rate": 0.125,
+    "verdict": "some_self_clearing",
+    "top_failure_codes": [
+      {
+        "code": "GATE-REF-004",
+        "count": 13,
+        "self_cleared": 4
+      },
+      {
+        "code": "GATE-REF-002",
+        "count": 9,
+        "self_cleared": 1
+      },
+      {
+        "code": "GATE-REF-003",
+        "count": 9,
+        "self_cleared": 2
+      },
+      {
+        "code": "GATE-REF-017",
+        "count": 7,
+        "self_cleared": 1
+      },
+      {
+        "code": "GATE-TMP-002",
+        "count": 2,
+        "self_cleared": 1
+      }
+    ]
+  },
+  "failure_codes": [
+    {
+      "code": "GATE-TMP-002",
+      "blocked_on": 22,
+      "self_cleared": 7,
+      "self_clear_rate": 0.318,
+      "systemic_suspect": true
+    },
+    {
+      "code": "GATE-REF-004",
+      "blocked_on": 15,
+      "self_cleared": 4,
+      "self_clear_rate": 0.267,
+      "systemic_suspect": false
+    },
+    {
+      "code": "GATE-REF-002",
+      "blocked_on": 10,
+      "self_cleared": 2,
+      "self_clear_rate": 0.2,
+      "systemic_suspect": false
+    },
+    {
+      "code": "GATE-REF-003",
+      "blocked_on": 9,
+      "self_cleared": 2,
+      "self_clear_rate": 0.222,
+      "systemic_suspect": false
+    },
+    {
+      "code": "GATE-REF-017",
+      "blocked_on": 7,
+      "self_cleared": 1,
+      "self_clear_rate": 0.143,
+      "systemic_suspect": false
+    },
+    {
+      "code": "GATE-REF-016",
+      "blocked_on": 2,
+      "self_cleared": 0,
+      "self_clear_rate": 0,
+      "systemic_suspect": false
+    }
+  ],
+  "fixtures": [
+    {
+      "fixture": "content_marketing_site.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/content_marketing_site.jsonl",
+      "sha256": "0f0285bebcd59890ff560988050b5f646a5b4d56c41c2c1c348a31a0a6e33e7c",
+      "provenance": {
+        "source_project": "content-marketing-site",
+        "plan_id": "plan_2026-06-23_content_marketing_site",
+        "source_path": "/Users/stelios/Documents/Github/content-marketing-site/plans/plan_2026-06-23_content_marketing_site/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-ALLOWED",
+        "record_count": 6,
+        "match_count": 6,
+        "source_chain": "absent",
+        "harvested_at": "2026-06-24T10:23:41.761Z",
+        "harvester": "manual_content_fixture.mjs"
+      },
+      "gate_transitions": 1,
+      "blocked": 0,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [],
+      "replay": {
+        "matched": 6,
+        "mismatched": 0,
+        "gate_transitions": 6,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "crawler_extractor_GATE-TMP-002.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/crawler_extractor_GATE-TMP-002.jsonl",
+      "sha256": "f78d5bba4b543b4d983319e6c4c5a49dc5ef274e6d234d5aa520153cd7396a53",
+      "provenance": {
+        "source_project": "crawler-extractor-agent",
+        "plan_id": "plan_2026-06-03_2078d1f71f26ea3e",
+        "source_path": "legacy-real-telemetry/crawler_extractor_GATE-TMP-002.jsonl",
+        "gate_code": "GATE-TMP-002",
+        "record_count": 13,
+        "match_count": 11,
+        "source_chain": "legacy_unverified",
+        "harvested_at": "2026-06-03T18:01:00.726Z",
+        "harvester": "legacy_real_telemetry_provenance_backfill"
+      },
+      "gate_transitions": 2,
+      "blocked": 1,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-004",
+          "count": 1
+        },
+        {
+          "code": "GATE-TMP-002",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 13,
+        "mismatched": 0,
+        "gate_transitions": 13,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "crawler_extractor_GATE-VAL-015.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/crawler_extractor_GATE-VAL-015.jsonl",
+      "sha256": "2c3bb60bc1a937d1b0a3e73880c234ffc85fe6cbf2fed18395f19d5d7e6dd7bb",
+      "provenance": {
+        "source_project": "crawler-extractor-agent",
+        "plan_id": "plan_2026-04-22_2e7de9553504fbf5",
+        "source_path": "legacy-real-telemetry/crawler_extractor_GATE-VAL-015.jsonl",
+        "gate_code": "GATE-VAL-015",
+        "record_count": 25,
+        "match_count": 3,
+        "source_chain": "legacy_unverified",
+        "harvested_at": "2026-04-22T13:14:19.465Z",
+        "harvester": "legacy_real_telemetry_provenance_backfill"
+      },
+      "gate_transitions": 5,
+      "blocked": 4,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-004",
+          "count": 4
+        },
+        {
+          "code": "GATE-REF-002",
+          "count": 3
+        }
+      ],
+      "replay": {
+        "matched": 25,
+        "mismatched": 0,
+        "gate_transitions": 25,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "generic_ml_pipeline.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/generic_ml_pipeline.jsonl",
+      "sha256": "15d7e54f703ab672b5992c65b4479b10056faec32f3b13a86d75cc1075754f73",
+      "provenance": {
+        "source_project": "generic_ml_pipeline",
+        "plan_id": "plan_2026-06-24_generic_ml_pipeline",
+        "source_path": "/fixture/generic_ml_pipeline/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-EXP-009",
+        "record_count": 3,
+        "match_count": 2,
+        "source_chain": "absent",
+        "harvested_at": "2026-06-24T12:00:00.000Z",
+        "harvester": "synthetic_fixture"
+      },
+      "gate_transitions": 1,
+      "blocked": 1,
+      "allowed": 0,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-017",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 3,
+        "mismatched": 0,
+        "gate_transitions": 3,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "ipbs_GATE-REF-003.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/ipbs_GATE-REF-003.jsonl",
+      "sha256": "408aace81dd409c4bf9ce5ddba95386aa54c146dd4fa96e33fdef51353937fd2",
+      "provenance": {
+        "source_project": "ipbs_datapack_starter",
+        "plan_id": "plan_2026-05-10_828f9fe1d921d0df",
+        "source_path": "legacy-real-telemetry/ipbs_GATE-REF-003.jsonl",
+        "gate_code": "GATE-REF-003",
+        "record_count": 14,
+        "match_count": 2,
+        "source_chain": "legacy_unverified",
+        "harvested_at": "2026-05-10T18:47:50.123Z",
+        "harvester": "legacy_real_telemetry_provenance_backfill"
+      },
+      "gate_transitions": 2,
+      "blocked": 1,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-003",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-004",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-016",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-017",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 14,
+        "mismatched": 0,
+        "gate_transitions": 14,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "portable_agent_kit_GATE-EXP-009.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-EXP-009.jsonl",
+      "sha256": "df9d4b84d0a81d6e1b9cda624890dc34814634a2cdd762c677a62edcc9fe9868",
+      "provenance": {
+        "source_project": "portable-agent-kit",
+        "plan_id": "plan_2026-05-29_5363158b81f5e616",
+        "source_path": "/Users/stelios/Documents/Github/portable-agent-kit/plans/plan_2026-05-29_5363158b81f5e616/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-EXP-009",
+        "record_count": 19,
+        "match_count": 6,
+        "source_chain": "broken",
+        "harvested_at": "2026-05-29T14:31:58.315Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 3,
+      "blocked": 2,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-003",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-017",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 19,
+        "mismatched": 0,
+        "gate_transitions": 19,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "portable_agent_kit_GATE-PLN-017.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-PLN-017.jsonl",
+      "sha256": "6fbbec4e3e56ab1363d5d10505d89de7a9e9772ac02de202ad8cfbf4a70872d8",
+      "provenance": {
+        "source_project": "portable-agent-kit",
+        "plan_id": "plan_2026-05-08_f085931cef014732",
+        "source_path": "/Users/stelios/Documents/Github/portable-agent-kit/plans/plan_2026-05-08_f085931cef014732/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-PLN-017",
+        "record_count": 18,
+        "match_count": 7,
+        "source_chain": "broken",
+        "harvested_at": "2026-05-08T20:15:22.105Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 2,
+      "blocked": 1,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-004",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 18,
+        "mismatched": 0,
+        "gate_transitions": 18,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "portable_agent_kit_GATE-REF-003.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-REF-003.jsonl",
+      "sha256": "95e7ecceda6bbd71ca8016b8873f873b546146ca145331a03bd831d9a73b1d2c",
+      "provenance": {
+        "source_project": "portable-agent-kit",
+        "plan_id": "plan_2026-05-05_2014dfd7bf45f298",
+        "source_path": "/Users/stelios/Documents/Github/portable-agent-kit/plans/plan_2026-05-05_2014dfd7bf45f298/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-REF-003",
+        "record_count": 8,
+        "match_count": 5,
+        "source_chain": "broken",
+        "harvested_at": "2026-05-05T13:53:59.305Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 5,
+      "blocked": 5,
+      "allowed": 0,
+      "unknown": 0,
+      "failure_codes": [],
+      "replay": {
+        "matched": 8,
+        "mismatched": 0,
+        "gate_transitions": 8,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "portable_agent_kit_GATE-REF-004.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-REF-004.jsonl",
+      "sha256": "17eaa753a00a62f4cd6b82e90379d889bfbf8311e70fbf93df3826e4830baeed",
+      "provenance": {
+        "source_project": "portable-agent-kit",
+        "plan_id": "plan_2026-05-05_2014dfd7bf45f298",
+        "source_path": "/Users/stelios/Documents/Github/portable-agent-kit/plans/plan_2026-05-05_2014dfd7bf45f298/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-REF-004",
+        "record_count": 8,
+        "match_count": 5,
+        "source_chain": "broken",
+        "harvested_at": "2026-05-05T13:53:59.305Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 5,
+      "blocked": 5,
+      "allowed": 0,
+      "unknown": 0,
+      "failure_codes": [],
+      "replay": {
+        "matched": 8,
+        "mismatched": 0,
+        "gate_transitions": 8,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "portable_agent_kit_GATE-TMP-002.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-TMP-002.jsonl",
+      "sha256": "02e6d79952c1c03a4b8e3e6477d90d53d3bf53baff57df89c1d640dfbf214aaa",
+      "provenance": {
+        "source_project": "portable-agent-kit",
+        "plan_id": "plan_2026-06-12_da0a49fa15d09541",
+        "source_path": "/Users/stelios/Documents/Github/portable-agent-kit/plans/plan_2026-06-12_da0a49fa15d09541/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-TMP-002",
+        "record_count": 16,
+        "match_count": 14,
+        "source_chain": "absent",
+        "harvested_at": "2026-06-12T22:27:44.670Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 3,
+      "blocked": 2,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-003",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-004",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-017",
+          "count": 1
+        },
+        {
+          "code": "GATE-TMP-002",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 16,
+        "mismatched": 0,
+        "gate_transitions": 16,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "portable_agent_kit_GATE-TRC-002.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-TRC-002.jsonl",
+      "sha256": "2b2ae0ddb61cde457caee2895d38d095f80f6b7e0043d4c4b4a07abbeb7f4f4b",
+      "provenance": {
+        "source_project": "portable-agent-kit",
+        "plan_id": "plan_2026-05-29_5363158b81f5e616",
+        "source_path": "/Users/stelios/Documents/Github/portable-agent-kit/plans/plan_2026-05-29_5363158b81f5e616/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-TRC-002",
+        "record_count": 19,
+        "match_count": 6,
+        "source_chain": "broken",
+        "harvested_at": "2026-05-29T14:31:58.315Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 3,
+      "blocked": 2,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-003",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-017",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 19,
+        "mismatched": 0,
+        "gate_transitions": 19,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "portable_agent_kit_GATE-VAL-010.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-VAL-010.jsonl",
+      "sha256": "07d161a64a9ced950446504d681e47d55bd52c83a780fa7a6134290025505466",
+      "provenance": {
+        "source_project": "portable-agent-kit",
+        "plan_id": "plan_2026-06-09_491155b97ee66701",
+        "source_path": "/Users/stelios/Documents/Github/portable-agent-kit/plans/plan_2026-06-09_491155b97ee66701/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-VAL-010",
+        "record_count": 14,
+        "match_count": 4,
+        "source_chain": "absent",
+        "harvested_at": "2026-06-09T09:47:08.030Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 3,
+      "blocked": 2,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-002",
+          "count": 2
+        },
+        {
+          "code": "GATE-REF-003",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-004",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 14,
+        "mismatched": 0,
+        "gate_transitions": 14,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "portable_agent_kit_GATE-VAL-012.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/portable_agent_kit_GATE-VAL-012.jsonl",
+      "sha256": "0ab4c306f0a01741264d35e93e9d50fce6dbd57abf0b7f98af9e76464b81937c",
+      "provenance": {
+        "source_project": "portable-agent-kit",
+        "plan_id": "plan_2026-06-09_491155b97ee66701",
+        "source_path": "/Users/stelios/Documents/Github/portable-agent-kit/plans/plan_2026-06-09_491155b97ee66701/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-VAL-012",
+        "record_count": 14,
+        "match_count": 4,
+        "source_chain": "absent",
+        "harvested_at": "2026-06-09T09:47:08.030Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 3,
+      "blocked": 2,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-002",
+          "count": 2
+        },
+        {
+          "code": "GATE-REF-003",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-004",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 14,
+        "mismatched": 0,
+        "gate_transitions": 14,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "tokenlab_GATE-EXP-001.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/tokenlab_GATE-EXP-001.jsonl",
+      "sha256": "dded44329338c28d9f21fe73aeea4deb087176bba7acaa831ab4b7c4d07eb221",
+      "provenance": {
+        "source_project": "TokenLab",
+        "plan_id": "plan_2026-05-21_a2428903a5b598f8",
+        "source_path": "legacy-real-telemetry/tokenlab_GATE-EXP-001.jsonl",
+        "gate_code": "GATE-EXP-001",
+        "record_count": 20,
+        "match_count": 3,
+        "source_chain": "legacy_unverified",
+        "harvested_at": "2026-05-21T16:22:04.339Z",
+        "harvester": "legacy_real_telemetry_provenance_backfill"
+      },
+      "gate_transitions": 3,
+      "blocked": 2,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-017",
+          "count": 2
+        },
+        {
+          "code": "GATE-REF-002",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-003",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-004",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 20,
+        "mismatched": 0,
+        "gate_transitions": 20,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "tokenlab_GATE-TMP-002.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/tokenlab_GATE-TMP-002.jsonl",
+      "sha256": "a024960b204612e18274d5d6a2cb49186b6ff4e4bbe750d5ad7134ca111847f5",
+      "provenance": {
+        "source_project": "TokenLab",
+        "plan_id": "plan_2026-06-09_55f19326ff45bbe3",
+        "source_path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/TokenLab/plans/plan_2026-06-09_55f19326ff45bbe3/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-TMP-002",
+        "record_count": 25,
+        "match_count": 14,
+        "source_chain": "absent",
+        "harvested_at": "2026-06-09T14:13:30.311Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 1,
+      "blocked": 0,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [],
+      "replay": {
+        "matched": 25,
+        "mismatched": 0,
+        "gate_transitions": 25,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "trueskill_tennis_GATE-REF-003.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/trueskill_tennis_GATE-REF-003.jsonl",
+      "sha256": "5ee0c63073c70fb35d95f62b5354672d24c2096034a9b7c0b939d2df8bad101f",
+      "provenance": {
+        "source_project": "trueskill-atp-tennis",
+        "plan_id": "plan_2026-04-14_b43573f28fc2ba44",
+        "source_path": "legacy-real-telemetry/trueskill_tennis_GATE-REF-003.jsonl",
+        "gate_code": "GATE-REF-003",
+        "record_count": 11,
+        "match_count": 2,
+        "source_chain": "legacy_unverified",
+        "harvested_at": "2026-04-15T13:53:19.865Z",
+        "harvester": "legacy_real_telemetry_provenance_backfill"
+      },
+      "gate_transitions": 2,
+      "blocked": 1,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-003",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-004",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 11,
+        "mismatched": 0,
+        "gate_transitions": 11,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "valueinvestingai_GATE-PLN-017.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/valueinvestingai_GATE-PLN-017.jsonl",
+      "sha256": "7e8f47ea5b81bbeefe9c7cdde257709724ea0421b57b07ade27368cef5df44bb",
+      "provenance": {
+        "source_project": "ValueInvestingAI",
+        "plan_id": "plan_2026-04-29_f164e79f168f8efa",
+        "source_path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Investment/ValueInvestingAI/plans/plan_2026-04-29_f164e79f168f8efa/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-PLN-017",
+        "record_count": 28,
+        "match_count": 14,
+        "source_chain": "broken",
+        "harvested_at": "2026-04-29T19:22:25.833Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 1,
+      "blocked": 1,
+      "allowed": 0,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-REF-002",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-003",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-004",
+          "count": 1
+        },
+        {
+          "code": "GATE-REF-016",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 28,
+        "mismatched": 0,
+        "gate_transitions": 28,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    }
+  ]
+}
