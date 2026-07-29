@@ -710,10 +710,13 @@ class TokenMetaSimulator:
         log_scale: bool = False,
         multiple: float = 1,
         plot: bool = True,
+        show: bool = False,
     ) -> Union[matplotlib.collections.PolyCollection, pd.DataFrame]:
         """
         Calculates an average for a certain feature in the report, (e.g. price) and then computes
         a lineplot over time, plus 95% confidence interval. Returns both the plot and the transformed data.
+
+        Set show=True to explicitly display the generated figure.
         """
 
         feature_group = self.data.groupby("iteration_time")[feature]
@@ -752,7 +755,8 @@ class TokenMetaSimulator:
             if log_scale:
                 plt.yscale("log")
 
-            plt.show()
+            if show:
+                plt.gcf().show()
 
         return None, final
 
