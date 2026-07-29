@@ -16,7 +16,7 @@ import {
 } from "fs";
 import { randomBytes } from "crypto";
 import { execFileSync, spawnSync } from "child_process";
-import { basename, dirname, join, resolve } from "path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "path";
 import { tmpdir } from "os";
 import { verificationStatusIsPass } from "./verification_status_vocabulary.mjs";
 
@@ -235,13 +235,60 @@ export function readCommittedPlannerVersion(targetPath) {
   }
 }
 
+function managedPreflightScopes(targetPath, scopes = DEFAULT_PREFLIGHT_SCOPES) {
+  const targetRoot = resolve(targetPath);
+  const expanded = new Set();
+  for (const scope of scopes) {
+    const absoluteScope = resolve(targetRoot, scope);
+    const normalizedScope = relative(targetRoot, absoluteScope);
+    if (
+      !normalizedScope
+      || normalizedScope === ".."
+      || normalizedScope.startsWith(`..${sep}`)
+      || isAbsolute(normalizedScope)
+    ) {
+      throw new Error(`managed upgrade preflight scope escapes target repository: ${scope}`);
+    }
+    expanded.add(normalizedScope.split(sep).join("/"));
+
+    let stat;
+    try {
+      stat = lstatSync(absoluteScope);
+    } catch {
+      continue;
+    }
+    if (!stat.isSymbolicLink()) continue;
+
+    let resolvedTarget;
+    try {
+      resolvedTarget = realpathSync(absoluteScope);
+    } catch {
+      throw new Error(`managed upgrade refuses broken managed symlink: ${scope}`);
+    }
+    const relativeTarget = relative(targetRoot, resolvedTarget);
+    if (
+      !relativeTarget
+      || relativeTarget === ".."
+      || relativeTarget.startsWith(`..${sep}`)
+      || isAbsolute(relativeTarget)
+    ) {
+      throw new Error(
+        `managed upgrade refuses managed symlink outside target repository: ${scope} -> ${resolvedTarget}`,
+      );
+    }
+    expanded.add(relativeTarget.split(sep).join("/"));
+  }
+  return [...expanded];
+}
+
 function managedStatus(targetPath, scopes = DEFAULT_PREFLIGHT_SCOPES) {
+  const expandedScopes = managedPreflightScopes(targetPath, scopes);
   return git(targetPath, [
     "status",
     "--porcelain=v1",
     "--untracked-files=all",
     "--",
-    ...scopes,
+    ...expandedScopes,
   ]);
 }
 
@@ -751,6 +798,7 @@ export function runManagedUpgradeTransaction({
 }) {
   const target = gitRoot(targetPath);
   const config = sourceConfig(sourceScript);
+  const managedScopes = managedPreflightScopes(target, config.preflight_scopes);
   const activePath = journalPath(target, config);
   const previous = readJson(activePath);
   if (previous && ACTIVE_PHASES.has(previous.status)) {
@@ -765,7 +813,7 @@ export function runManagedUpgradeTransaction({
     throw error;
   }
 
-  const dirtyManaged = managedStatus(target, config.preflight_scopes);
+  const dirtyManaged = managedStatus(target, managedScopes);
   if (dirtyManaged) {
     const committed = readCommittedPlannerVersion(target);
     const tree = treePlannerVersion(target) || "unknown";
@@ -802,6 +850,7 @@ export function runManagedUpgradeTransaction({
     conformance: [],
     started_at: now,
     updated_at: now,
+    managed_scopes: managedScopes,
   };
   persistJournal(journal);
 
@@ -825,7 +874,7 @@ export function runManagedUpgradeTransaction({
     });
     const candidatePaths = scratchCandidatePaths(
       scratchPath,
-      config.preflight_scopes,
+      managedScopes,
     );
     if (candidatePaths.length === 0) {
       throw new Error("scratch apply produced no candidate changes");

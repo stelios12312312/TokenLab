@@ -1,6 +1,7 @@
 ---
 description: Run the Synthetic CMO advisory — analyze telemetry data against brand guidelines and produce actionable marketing recommendations
 ---
+<!-- planner:host-owned-workflow -->
 
 # /cmo-advisor Workflow
 

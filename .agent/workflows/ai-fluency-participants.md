@@ -1,6 +1,7 @@
 ---
 description: Fetch AI Fluency participants from GHL and Eventbrite
 ---
+<!-- planner:host-owned-workflow -->
 # /ai-fluency-participants Workflow
 
 Use this workflow to extract participants who registered for the AI Fluency training. This will generate a CSV report with unique attendees, deduplicating them across multiple sessions.

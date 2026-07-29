@@ -1,6 +1,7 @@
 ---
 description: Standard workflow for creating a new CRM pipeline and integrating it into the Tesseract Automation Engine.
 ---
+<!-- planner:host-owned-workflow -->
 
 # /create-pipeline
 

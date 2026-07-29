@@ -1,6 +1,7 @@
 ---
 description: Read or refresh the local active-tasks cache — gives instant situational awareness without API calls
 ---
+<!-- planner:host-owned-workflow -->
 
 # /active-tasks Workflow
 

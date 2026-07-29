@@ -1,6 +1,7 @@
 ---
 description: Store an active task — the agent parses what the user says and writes it to PENDING.md + optionally GHL
 ---
+<!-- planner:host-owned-workflow -->
 
 # /add-task Workflow
 

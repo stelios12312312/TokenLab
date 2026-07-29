@@ -1,3 +1,4 @@
+<!-- planner:host-owned-workflow -->
 # /linkedin-outreach — LinkedIn Outreach Automation
 
 Run LinkedIn outreach sequences using HeyReach (primary) or Linked API (alternative).

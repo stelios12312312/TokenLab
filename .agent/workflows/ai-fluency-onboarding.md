@@ -1,6 +1,7 @@
 ---
 description: Onboarding participants to the AI Fluency course
 ---
+<!-- planner:host-owned-workflow -->
 
 # AI Fluency Onboarding Workflow
 

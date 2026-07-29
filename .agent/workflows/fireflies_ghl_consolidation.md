@@ -1,6 +1,7 @@
 ---
 description: Consolidate Fireflies transcripts into GHL and auto-stage pipeline opportunities
 ---
+<!-- planner:host-owned-workflow -->
 
 # Fireflies / GHL Consolidation Workflow
 

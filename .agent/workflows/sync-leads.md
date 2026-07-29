@@ -1,6 +1,7 @@
 ---
 description: Master workflow to align the CRM pipeline and sync specific leads across all platforms (GHL, Gmail, Instantly, Fireflies, Bluehost)
 ---
+<!-- planner:host-owned-workflow -->
 
 # Sync Leads Master Workflow
 

@@ -1,6 +1,7 @@
 ---
 description: Review existing Facebook Ads (draft or published) and generate an HTML report for analysis
 ---
+<!-- planner:host-owned-workflow -->
 
 # /review-ads
 

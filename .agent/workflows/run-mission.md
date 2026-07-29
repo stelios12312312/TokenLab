@@ -1,6 +1,7 @@
 ---
 description: Run a specific mission (lead-triage, daily-brief, or paperclip-sync) in dry-run or live mode
 ---
+<!-- planner:host-owned-workflow -->
 
 # Run Mission
 

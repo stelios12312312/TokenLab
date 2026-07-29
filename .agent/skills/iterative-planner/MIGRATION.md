@@ -2,6 +2,23 @@
 
 How to upgrade projects already using the iterative planner to the current shipped version.
 
+## 10.6.9 — Verified Consumer-Surface Adoption
+
+Version 10.6.9 closes the gap between transactional proof and final install
+verification for consumers with project-specific workflows. When canonical
+source history proves that an extra workflow was never planner-owned, migration
+preserves its content and frontmatter while adding the explicit
+`planner:host-owned-workflow` marker required by the ritual contract.
+
+Managed root-instruction symlinks are also resolved during preflight. A symlink
+to a target inside the same repository keeps the link intact while the resolved
+file is included in cleanliness checks and the atomic candidate commit. Broken
+links and links outside the target repository are refused before writes.
+
+The internal scratch apply now performs final managed-file, setup, and ritual
+contract verification after setup. Any failure exits the scratch apply and
+rolls the transaction back before the live target advances.
+
 ## 10.6.8 — Legacy-Free Migration Fixture
 
 Version 10.6.8 makes the temporary migration project explicitly start without
@@ -856,6 +873,7 @@ If the project has a test suite, run test_baseline.mjs capture "<test-command>" 
 
 | Version | Codename | Key Features |
 |---------|----------|-------------|
+| 10.6.9 | Verified Consumer-Surface Adoption | Marks proven non-canonical workflows as host-owned without disturbing their frontmatter/body, safely includes in-repo targets behind managed root symlinks while refusing external targets, and requires final install/setup/ritual verification before live advancement. |
 | 10.6.8 | Legacy-Free Migration Fixture | Removes the retired `.config_integrity` artifact from the owned temporary project before exercising phase-2 migration, preventing legacy consumer debris from producing a false recreation failure. |
 | 10.6.7 | Consumer-Neutral Receipt Proof | Evaluates checklist-regeneration receipt visibility inside the owned temporary Git fixture instead of inheriting the consumer's root ignore policy, eliminating a false migration rollback without weakening the receipt contract. |
 | 10.6.6 | Isolated Nested Git Fixtures | Clears inherited Git routing variables from migration fixture subprocesses so nested repositories cannot mutate or inspect the caller's worktree, while retaining atomic scratch proof and rollback guarantees. |
@@ -1006,6 +1024,15 @@ and facts recompute from HEAD. Unknown classifications, receipt shapes, unsafe
 paths, dirty authority inputs, and unreachable commits fail closed. No packet
 rewrite, environment variable, remote action, or migration of existing
 administrative closures is required.
+
+## Breaking Changes (v10.6.8 -> v10.6.9)
+
+None. Project-specific workflows that have no same-path canonical source history
+receive an ownership comment during upgrade. Their existing frontmatter and body
+remain intact. A scratch candidate that still fails final install or ritual
+verification is rolled back before live advancement. In-repository managed-root
+symlinks are preserved and their resolved targets participate in the candidate;
+external or broken managed-root symlinks fail closed.
 
 ## Breaking Changes (v10.6.7 -> v10.6.8)
 

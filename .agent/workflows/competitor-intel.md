@@ -1,3 +1,4 @@
+<!-- planner:host-owned-workflow -->
 # /competitor-intel
 
 ## Overview

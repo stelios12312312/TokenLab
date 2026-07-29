@@ -2871,6 +2871,29 @@ function buildDoctorReport(targetPath) {
   };
 }
 
+function validateTransactionApplyCandidate(targetPath) {
+  const manifest = buildExpectedManifest(targetPath);
+  const missing = manifest.filter((entry) => !existsSync(entry.path));
+  const stale = findVerificationDrift(manifest, targetPath);
+  const setupIssues = collectRepairableSetupIssues(targetPath);
+  const ritualContractReadiness = validateRitualContractReadiness(targetPath);
+  const issues = [];
+  if (missing.length > 0) issues.push(`${missing.length} managed file(s) missing`);
+  if (stale.length > 0) issues.push(`${stale.length} managed file(s) stale`);
+  if (setupIssues.length > 0) issues.push(`${setupIssues.length} setup issue(s)`);
+  if (!verificationStatusIsPass(ritualContractReadiness.status, "execution")) {
+    issues.push(`ritual contract readiness ${ritualContractReadiness.status} (${ritualContractReadiness.issue_count} issue(s))`);
+  }
+  return {
+    ok: issues.length === 0,
+    issues,
+    missing,
+    stale,
+    setup_issues: setupIssues,
+    ritual_contract_readiness: ritualContractReadiness,
+  };
+}
+
 /**
  * Copy src → dest if dest is missing OR if dest content differs from src.
  * RT10-MIGRATE: Previous version only checked existsSync() — stale files
@@ -2975,13 +2998,33 @@ function collectObsoletePlannerWorkflowFiles(targetPath) {
   };
 }
 
+function addHostOwnedWorkflowMarker(content) {
+  const marker = `<!-- ${HOST_OWNED_WORKFLOW_MARKER} -->`;
+  if (content.includes(HOST_OWNED_WORKFLOW_MARKER)) return content;
+  const newline = content.includes("\r\n") ? "\r\n" : "\n";
+  if (content.startsWith(`---${newline}`)) {
+    const closingDelimiter = `${newline}---`;
+    const closingIndex = content.indexOf(closingDelimiter, 3 + newline.length);
+    if (closingIndex >= 0) {
+      const insertAt = closingIndex + closingDelimiter.length;
+      return `${content.slice(0, insertAt)}${newline}${marker}${content.slice(insertAt)}`;
+    }
+  }
+  return `${marker}${newline}${content}`;
+}
+
 function pruneObsoletePlannerWorkflowFiles(targetPath, dryRun, log) {
   const { prunable, preserved } = collectObsoletePlannerWorkflowFiles(targetPath);
   for (const path of preserved) {
     if (workflowFileHasExplicitHostOwnerMarker(path)) {
       log.push(`  PRESERVED host-owned workflow: ${basename(path)} (${HOST_OWNED_WORKFLOW_MARKER})`);
+    } else if (dryRun) {
+      log.push(`  WOULD MARK host-owned workflow: ${basename(path)} (no same-path canonical source history)`);
     } else {
-      log.push(`  PRESERVED non-canonical workflow: ${basename(path)} (no same-path canonical source history)`);
+      const beforeHash = fileHash(path);
+      const content = readFileSync(path, "utf-8");
+      writeFileSync(path, addHostOwnedWorkflowMarker(content));
+      log.push(`  MARKED host-owned workflow: ${gitPath(relative(targetPath, path))} before_sha256=${beforeHash || "unavailable"} after_sha256=${fileHash(path) || "unavailable"}`);
     }
   }
   if (prunable.length === 0) {
@@ -3557,6 +3600,9 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   const staleCount = staleEntries.length;
   const obsoleteWorkflows = collectObsoletePlannerWorkflowFiles(targetPath);
   const obsoleteWorkflowCount = obsoleteWorkflows.prunable.length;
+  const unmarkedHostWorkflowCount = obsoleteWorkflows.preserved
+    .filter((path) => !workflowFileHasExplicitHostOwnerMarker(path))
+    .length;
   const obsoleteTests = collectObsoletePlannerTestFiles(targetPath);
   const obsoleteTestCount = obsoleteTests.prunable.length;
   const setupIssues = collectRepairableSetupIssues(targetPath);
@@ -3587,7 +3633,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     };
   }
 
-  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && obsoleteTestCount === 0 && setupIssues.length === 0 && !seedKB) {
+  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && unmarkedHostWorkflowCount === 0 && obsoleteTestCount === 0 && setupIssues.length === 0 && !seedKB) {
     console.log(`\n  ✅ Already at version ${CURRENT_VERSION} with all ${manifest.length} files present and up to date.`);
     console.log(`  No project-level setup repair is required; upgrade is a read-only no-op.`);
     if (advisoryIssues.length > 0) {
@@ -3604,7 +3650,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     };
   }
 
-  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && obsoleteTestCount === 0 && setupIssues.length > 0 && !seedKB) {
+  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && unmarkedHostWorkflowCount === 0 && obsoleteTestCount === 0 && setupIssues.length > 0 && !seedKB) {
     console.log(`\n  ⚠️  Already at version ${CURRENT_VERSION}, but ${setupIssues.length} setup repair issue(s) require project setup.`);
     console.log(`  Planner-managed files are current; setup ${dryRun ? "would run" : "will run"} as the explicit repair step.\n`);
     return {
@@ -3628,6 +3674,9 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   if (version === CURRENT_VERSION && obsoleteWorkflowCount > 0) {
     console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${obsoleteWorkflowCount} obsolete planner workflow file(s) remain. Pruning...`);
   }
+  if (version === CURRENT_VERSION && unmarkedHostWorkflowCount > 0) {
+    console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${unmarkedHostWorkflowCount} preserved host workflow file(s) need ownership markers.`);
+  }
   if (version === CURRENT_VERSION && obsoleteTestCount > 0) {
     console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${obsoleteTestCount} obsolete planner test file(s) remain. Pruning...`);
   }
@@ -3638,6 +3687,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   if (missing.length > 0) changeParts.push(`${missing.length} new`);
   if (staleCount > 0) changeParts.push(`${staleCount} stale`);
   if (obsoleteWorkflowCount > 0) changeParts.push(`${obsoleteWorkflowCount} obsolete workflow${obsoleteWorkflowCount === 1 ? "" : "s"}`);
+  if (unmarkedHostWorkflowCount > 0) changeParts.push(`${unmarkedHostWorkflowCount} host workflow marker${unmarkedHostWorkflowCount === 1 ? "" : "s"}`);
   if (obsoleteTestCount > 0) changeParts.push(`${obsoleteTestCount} obsolete test${obsoleteTestCount === 1 ? "" : "s"}`);
   const changeDesc = changeParts.length > 0 ? changeParts.join(", ") : "0 changes";
   console.log(`║  ${version} → ${CURRENT_VERSION}  (${changeDesc})                  ║`);
@@ -6387,6 +6437,18 @@ if (command === "upgrade-approval-envelope") {
       }
       const upgradeResult = cmdUpgrade(targetPath, seedKB, false);
       if (upgradeResult?.setupNeeded) cmdSetup(targetPath, false);
+      const finalVerification = validateTransactionApplyCandidate(targetPath);
+      if (!finalVerification.ok) {
+        console.error(
+          `ERROR: scratch apply candidate failed final install verification: ${finalVerification.issues.join(", ")}`,
+        );
+        for (const issue of (finalVerification.ritual_contract_readiness.issues || []).slice(0, 5)) {
+          console.error(`  - ${issue.id}: ${issue.message}`);
+        }
+        process.exitCode = 1;
+      } else {
+        console.log("  ✅ FINAL INSTALL VERIFICATION: managed files, setup, and ritual contracts PASS.");
+      }
     } else {
       const preview = cmdUpgrade(targetPath, seedKB, true);
       if (!preview?.blocked && !preview?.noOp && !dryRun) {

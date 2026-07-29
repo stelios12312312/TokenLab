@@ -1,6 +1,7 @@
 ---
 description: Queue and send email drafts using the local JSON draft queue
 ---
+<!-- planner:host-owned-workflow -->
 
 # /send-drafts Workflow
 

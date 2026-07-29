@@ -1,3 +1,4 @@
+<!-- planner:host-owned-workflow -->
 # /campaign-health-check Workflow
 
 Run a health check across all AI Fluency marketing channels. Reports status of GHL, Email, Social, LinkedIn, Facebook Ads, Eventbrite, and Website Traffic.

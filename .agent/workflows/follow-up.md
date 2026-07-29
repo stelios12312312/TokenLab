@@ -1,6 +1,7 @@
 ---
 description: Personalized lead follow-up — research the company first, then draft a tailored email
 ---
+<!-- planner:host-owned-workflow -->
 
 # Personalized Follow-Up Workflow
 

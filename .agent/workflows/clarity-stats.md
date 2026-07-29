@@ -1,6 +1,7 @@
 ---
 description: Fetch live insights from Microsoft Clarity and generate improvement recommendations
 ---
+<!-- planner:host-owned-workflow -->
 # /clarity-stats Workflow
 
 This workflow fetches recent website analytics from Microsoft Clarity via the Data Export API, and analyzes the traffic across different dimensions (e.g., browser, device, source) to provide actionable improvements for the landing pages.

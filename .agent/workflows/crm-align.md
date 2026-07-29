@@ -1,6 +1,7 @@
 ---
 description: Big CRM alignment — dedup, cross-validate, fix stages, fix notes across GHL + Gmail + Calendar + Fireflies + Instantly
 ---
+<!-- planner:host-owned-workflow -->
 
 # CRM Alignment Workflow
 

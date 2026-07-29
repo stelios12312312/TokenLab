@@ -1,6 +1,7 @@
 ---
 description: Verify tokenomics parameters and claims using the compliance harness
 ---
+<!-- planner:host-owned-workflow -->
 
 # /verify-tokenomics Workflow
 

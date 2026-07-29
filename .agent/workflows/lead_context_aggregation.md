@@ -1,6 +1,7 @@
 ---
 description: Aggregate lead context from Instantly, GHL, and Gmail into a local DB with timestamps
 ---
+<!-- planner:host-owned-workflow -->
 
 # Lead Context Aggregation Workflow
 

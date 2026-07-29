@@ -1,6 +1,7 @@
 ---
 description: Fetch all AI Clinic participants from the last few months
 ---
+<!-- planner:host-owned-workflow -->
 # /ai-clinic-participants Workflow
 
 Use this workflow to extract participants who registered for the AI Clinic and enrich them against Gmail, GHL, Google Calendar, and Fireflies. This generates an enriched CSV report with unique attendees, showing engagement status across all platforms.

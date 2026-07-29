@@ -1,6 +1,7 @@
 ---
 description: How to clean up defunct and bounced email addresses in GoHighLevel using Elastic Email intelligence
 ---
+<!-- planner:host-owned-workflow -->
 
 # GHL Email Cleanup Workflow
 

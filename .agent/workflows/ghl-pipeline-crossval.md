@@ -1,6 +1,7 @@
 ---
 description: Cross-validate GHL pipeline opportunities against Gmail, Calendar, Fireflies, and Instantly
 ---
+<!-- planner:host-owned-workflow -->
 
 # GHL Pipeline Cross-Validation
 

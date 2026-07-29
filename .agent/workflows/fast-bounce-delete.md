@@ -1,6 +1,7 @@
 ---
 description: How to instantly purge hard-bounced contacts from GoHighLevel by reverse-querying Elastic Email in bulk
 ---
+<!-- planner:host-owned-workflow -->
 
 # Fast Bounce Deletion Workflow
 

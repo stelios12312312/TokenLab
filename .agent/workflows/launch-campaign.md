@@ -1,3 +1,4 @@
+<!-- planner:host-owned-workflow -->
 # /launch-campaign — Multi-Channel Campaign Orchestration
 
 ## When to use

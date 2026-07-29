@@ -7,9 +7,23 @@
 This planner-managed snapshot is refreshed by `migrate.mjs setup` and `migrate.mjs upgrade`.
 If older planner instructions elsewhere in this file disagree, follow this snapshot.
 
+## Session Start (Mandatory)
+
+At the start of every session, run task intake with the user's actual goal before any other planner command:
+
+```bash
+node .agent/skills/iterative-planner/scripts/task_intake.mjs --goal "<actual goal>" --json
+```
+
+Treat the returned `plans/guidance_packet.json` and `plans/guidance_packet.md` as the working context for the task. Follow the packet's route, gate contracts, persona guardrails, ontology findings, knowledge entries, and matching Program/ticket context.
+
+The eight rules, workflow catalog, transition reference, and knowledge files below remain binding references. Consult them when the guidance packet or selected workflow calls for them; they are not competing session front doors.
+
 ## Domain Persona Autorun
 
 Domain personas are not optional hidden memory. If the request or changed files are domain-shaped, surface the relevant persona obligations to the user and carry them into the plan, verification matrix, and closeout proof.
+
+When `planner.policy.yaml` has `persona.ambient: true` (the default), persona obligations apply to all domain-shaped interactions, not just plan transitions. This includes idea discussions, ticket review and `/program-manager` intake, `/advisor` sessions, analysis-only questions about domain topics, and `/safe-plan` design work. Use the ambient context printed by `bootstrap.mjs status` when available; you do not need to rerun `persona_adapt.mjs scan` only to rediscover the same already-surfaced context.
 
 Before planning or implementing a domain-shaped change, run:
 
@@ -27,7 +41,7 @@ node .agent/skills/iterative-planner/scripts/persona_adapt.mjs apply . --safe
 
 | Task signal | Persona response |
 |-------------|------------------|
-| Quant, scientific, model, ranking, backtest, calibration, optimizer, hyperparameter, betting, odds, TrueSkill, Markov | Use Iterative Planner scientific shape. Activate `quant` plus applicable `quant_target`, `assumptions_challenger`, `wiring_auditor`, and `traceability`. EXPLORE needs the Optimization Scale Contract; PLAN needs target, data lineage, leakage/temporal split, hyperparameter/search surface, controls, and result-claim validation. |
+| Quant, scientific, model, ranking, backtest, calibration, optimizer, hyperparameter, betting, odds, TrueSkill, Markov | Use Iterative Planner scientific shape. Activate `quant` plus applicable `quant_target`, `assumptions_challenger`, `wiring_auditor`, and `traceability`. EXPLORE needs the Optimization Scale Contract with numeric trial budget/completion count, unique parameter count, enumerated families/intervals/directions, coverage numerator/denominator or denominator-unknown reason, and interpretation boundary. PLAN needs target, data lineage, leakage/temporal split, hyperparameter/search surface, controls, and result-claim validation. Negative/no_go summaries must state the tested region in one sentence. |
 | Tokenomics, token economics, token launch, TokenLab, token supply, emissions, vesting, unlocks, liquidity, treasury, governance, staking, airdrop, FDV, APY | Activate `tokenomics` plus `assumptions_challenger`, `wiring_auditor`, and `traceability`. PLAN needs supply/emissions, vesting/unlocks, incentive source, liquidity/treasury/governance authority, and financial/legal advisory boundaries; live launch, investment, or legal decisions require qualified review. |
 | Frontend, UI, UX, browser, accessibility, visual state, responsive layout | Activate `ux_ui` plus assumptions/traceability as needed. Verification should propose rendered journey proof, screenshots or visual artifacts, responsive coverage, and loading/error/empty states where locally feasible. |
 | Integration, orchestration, API, MCP, connector, automation, workflow, external service | Activate `wiring_auditor`, `assumptions_challenger`, and `traceability`. Verification should include an exercised-system path such as dry-run, integration smoke, command/API probe, partial-failure handling, or artifact review. |
@@ -52,12 +66,29 @@ Use the lightest valid flow that preserves semantic correctness. Do not auto-lau
 | 6 | notify-user | `node .agent/skills/iterative-planner/scripts/transition.mjs notify-user` |
 
 Always paste the transition output into the conversation so the user can see it.
+For every state-mutating gate, paste the immediately preceding dry-run output too.
 
 ---
 
 ## Available Workflows
 
 Workflows are slash commands. When the user types one, read the corresponding file and follow its instructions exactly.
+
+If the user did not name a workflow, do not make them choose from the whole catalog. Start with this router, pick the first matching row, and let that front door dispatch specialist follow-ons when needed.
+
+| User situation | First call | What happens next |
+|----------------|------------|-------------------|
+| Unsure what to do, stuck plan, unfamiliar CI failure, or confusing planner state | `/advisor` | Produces one recommended next move and may dispatch to another workflow. |
+| Broad idea, roadmap, backlog item, GitHub Issue/Project item, or ticket generation | `/program-manager` | Creates or updates a local Program Packet before implementation or GitHub publishing. |
+| One bounded implementation, bug fix, refactor, or docs/code change | `/safe-change` | Runs the lightest safe planner path with regression protection. |
+| High-risk, shared-surface, cross-system, migration, security, or hard-to-reverse change | `/safe-change-power` | Escalates proof and audit depth before execution. |
+| Need a plan or design only, with no code edits yet | `/safe-plan` | Builds the plan and stops before implementation. |
+| Trivial, read-only, operational, or analysis-only request | `/ignore-planner` | Explicitly bypasses planner ceremony while keeping a bounded accountability note. |
+| Something went wrong, a bug recurred, or a session needs lessons captured | `/retro` | Extracts reusable lessons and recurrence guards. |
+| Preparing, verifying, or cutting a release | `/release` | Runs release discipline, version, migration, and rollout checks. |
+| Repeated operational flow should become reusable | `/recipe-discovery` | Reviews candidate recipes before tidy/bootstrap creates canonical recipe surfaces. |
+
+Specialist workflows below are still available, but most users should only need the router above. When a front door or gate tells you to run a specialist workflow, read that workflow file and follow it exactly.
 
 | Command | File | When to use |
 |---------|------|-------------|
@@ -70,10 +101,12 @@ Workflows are slash commands. When the user types one, read the corresponding fi
 | `/safe-plan` | `.agent/workflows/safe-plan.md` | Build a detailed, mistake-aware plan without writing code yet |
 | `/safe-change` | `.agent/workflows/safe-change.md` | Any code change with regression protection |
 | `/safe-change-power` | `.agent/workflows/safe-change-power.md` | High-risk or cross-system changes |
+| `/ignore-planner` | `.agent/workflows/ignore-planner.md` | Explicitly bypass the planner for trivial, operational, or analysis-only work |
 | `/recipe-discovery` | `.agent/workflows/recipe-discovery.md` | Propose and review candidate recipes from a concrete prompt/request before recipe bootstrap creates folders and registries |
 | `/recipe-tidy` | `.agent/workflows/recipe-tidy.md` | Normalize messy operational requests into deterministic recipe folders before planning or rebuilding |
 | `/recipe-bootstrap` | `.agent/workflows/recipe-bootstrap.md` | Bootstrap recipe registries and runner contracts from approved discovery candidates |
 | `/story-bootstrap` | `.agent/workflows/story-bootstrap.md` | Story registry is missing or has insufficient coverage |
+| `/register-user-story` | `.agent/workflows/register-user-story.md` | Elicit and register a new user story from a user request |
 | `/red-team-audit` | `.agent/workflows/red-team-audit.md` | Audit code for quality and risk |
 | `/red-team-user-story-audit` | `.agent/workflows/red-team-user-story-audit.md` | Audit user stories for gaps and conflicts |
 | `/retro` | `.agent/workflows/retro.md` | After a bug-fix session or anything that went wrong |
@@ -95,6 +128,7 @@ Workflows are slash commands. When the user types one, read the corresponding fi
 - **Ontology guide**: `.agent/skills/iterative-planner/references/rule-engine-guide.md`
 - **Prolog invariants**: `.agent/skills/iterative-planner/prolog/invariants.pl`
 - **Gate definitions**: `.agent/skills/iterative-planner/config/gates.json`
+- **Autocoder charter**: `docs/autocoder-charter.md`
 <!-- END ITERATIVE-PLANNER MANAGED SNAPSHOT -->
 
 ## Session Start (Mandatory)

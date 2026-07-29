@@ -1,6 +1,7 @@
 ---
 description: Check the current status of the automation engine — pending items, roadmap position, and recent mission health
 ---
+<!-- planner:host-owned-workflow -->
 
 # Status Check
 

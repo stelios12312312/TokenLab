@@ -1,3 +1,4 @@
+<!-- planner:host-owned-workflow -->
 # Brand Compliance Audit
 
 Scan all marketing assets against merged brand rules and report violations.

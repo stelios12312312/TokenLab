@@ -1,6 +1,7 @@
 ---
 description: Onboarding participants to the Tesseract AI Coach platform
 ---
+<!-- planner:host-owned-workflow -->
 
 # Tesseract AI Coach Onboarding Workflow
 

@@ -1,6 +1,7 @@
 ---
 description: Workflow to sync IMAP responses directly from a Bluehost/cPanel sender to GHL Notes.
 ---
+<!-- planner:host-owned-workflow -->
 
 # Sync Bluehost Emails to GHL Notes
 
