@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-05-21T13:00:00.000Z",
+  "updated": "2026-08-03T14:45:00.000Z",
   "stories": [
     {
       "id": "US-Z1-M3-01",
@@ -127,6 +127,46 @@
       "test_refs": ["projects/z1/m3_full_economy/proof_verification_issue9.py"],
       "validation_refs": ["projects/z1/m3_full_economy/proof_verification_issue9.py"],
       "notes": "P1 Fidelity change"
+    },
+    {
+      "id": "US-PM-AUTO-H2A2D347E9E110A84",
+      "title": "Scenario schema and headless runner",
+      "description": "A TokenLab simulation operator or future agent can define an existing-class simulation in versioned YAML or JSON, execute it headlessly, and receive a manifest plus lineage-bearing output tables without changing existing simulation behavior.",
+      "status": "FULLY_COVERED",
+      "priority": "medium",
+      "source": "program_manager_intake",
+      "annotation_refs": [
+        "src/TokenLab/agentic/schema.py",
+        "src/TokenLab/agentic/factory.py",
+        "src/TokenLab/agentic/runner.py",
+        "tests/test_agentic_runner.py"
+      ],
+      "capability_refs": [],
+      "code_refs": [
+        "src/TokenLab/agentic/schema.py",
+        "src/TokenLab/agentic/factory.py",
+        "src/TokenLab/agentic/runner.py",
+        "examples/scenarios/notebook_01_simple_fiat.yaml"
+      ],
+      "test_refs": [
+        "tests/test_agentic_runner.py"
+      ],
+      "validation_refs": [
+        "tests/test_agentic_runner.py",
+        "tests/test_z1_shared_core_parity.py",
+        "tests/test_v2_remediation_regressions.py"
+      ],
+      "doc_refs": [
+        "docs/agentic-runner.md"
+      ],
+      "acceptance_criteria": [
+        "A strict YAML/JSON scenario covers economy, controllers, agent pools, Monte Carlo settings, seed, and artifact format.",
+        "The factory constructs existing TokenLab classes and edits no existing simulation class.",
+        "The headless runner emits an atomic manifest and lineage-bearing CSV or Parquet tables.",
+        "The reference scenario matches the deterministic hand-written notebook 01 simulation on the fixed seed.",
+        "Existing regression, Z1 parity, fresh-clone, annotation, and Program checks pass."
+      ],
+      "notes": "T-INTAKE-277FB9E6; additive existing-class orchestration verified on Python 3.10 with fixed-reference parity, full regression, Z1 golden parity, installed-wheel smoke, atomic artifact review, and no legacy simulation source diff."
     }
   ],
   "generated_at": "2026-05-18T13:00:00.000Z",
