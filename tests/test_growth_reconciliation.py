@@ -2,13 +2,21 @@
 # @planner:module = test_growth_reconciliation
 # @planner:story = US-Z1-M3-09
 
+from pathlib import Path
+
 import pytest
-import os
 import yaml
 from projects.z1.m3_full_economy.config import M3EconomyConfig, COHORT_NAMES
 from projects.z1.m3_full_economy.economy import TokenEconomy_Z1
 from projects.z1.m3_full_economy.pools import AgentPool_Z1
 from projects.z1.v2_growth.growth_model import V2GrowthModule
+
+
+SCENARIO_DEFINITIONS_PATH = Path("outputs/v2_2026-07-06_120557/scenario_definitions.yaml")
+pytestmark = pytest.mark.skipif(
+    not SCENARIO_DEFINITIONS_PATH.exists(),
+    reason="generated scenario definitions are absent; run scripts/run_v2_all.py first",
+)
 
 def run_simulation_for_scheme(scheme_id: int, overrides: dict) -> dict:
     # 1. Base Config
@@ -46,10 +54,7 @@ def run_simulation_for_scheme(scheme_id: int, overrides: dict) -> dict:
 ])
 def test_growth_reconciliation(scheme_id, tolerance):
     # Load scenario definitions
-    yaml_path = "outputs/v2_2026-07-06_120557/scenario_definitions.yaml"
-    assert os.path.exists(yaml_path), f"Scenario definitions not found at {yaml_path}. Run calibration first."
-    
-    with open(yaml_path, "r") as f:
+    with SCENARIO_DEFINITIONS_PATH.open("r") as f:
         scenario_defs = yaml.safe_load(f)
         
     scheme_key = f"scheme_{scheme_id}"

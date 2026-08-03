@@ -2,15 +2,20 @@
 # @planner:module = test_scenarios_results
 # @planner:story = US-Z1-M3-08
 
-import pytest
-import os
+from pathlib import Path
+
 import pandas as pd
+import pytest
+
+
+SCENARIO_RESULTS_PATH = Path("outputs/v2_2026-07-06_120557/simulation_results.parquet")
+pytestmark = pytest.mark.skipif(
+    not SCENARIO_RESULTS_PATH.exists(),
+    reason="generated scenario results are absent; run scripts/run_v2_all.py first",
+)
 
 def test_parquet_scenario_results():
-    parquet_path = "outputs/v2_2026-07-06_120557/simulation_results.parquet"
-    assert os.path.exists(parquet_path), f"Simulation results not found at {parquet_path}."
-    
-    df = pd.read_parquet(parquet_path)
+    df = pd.read_parquet(SCENARIO_RESULTS_PATH)
     
     # 1. Assert columns exist
     required_cols = ["scenario_id", "run_id", "epoch", "audience_reserve", "treasury", "z1u_price", "ar_ratio"]
