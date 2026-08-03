@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import csv
 
-from projects.z1.m3_full_economy.sandbox import mechanism_ablation_catalog, sandbox_status_rows
+from scripts.z1_m3.sandbox import mechanism_ablation_catalog, sandbox_status_rows
 from projects.z1.v4_decision_grade import (
     V4DecisionGradeConfig,
     calibration_template_rows,
