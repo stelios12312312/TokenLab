@@ -1,0 +1,40 @@
+schema_version: 1
+scenario_id: notebook-01-simple-fiat
+economy:
+  type: TokenEconomy_Basic
+  parameters:
+    initial_price: 0.1
+    fiat: "$"
+    token: tokenA
+  holding_time:
+    type: HoldingTime_Constant
+    parameters:
+      holding_time: 1.1
+  supply:
+    type: SupplyController_Constant
+    parameters:
+      supply: 100000000
+  price:
+    type: PriceFunction_EOE
+    parameters: {}
+  supply_pools: []
+  agent_pools:
+    - id: fiat-users
+      type: AgentPool_Basic
+      parameters:
+        currency: "$"
+      users:
+        type: UserGrowth_Constant
+        parameters:
+          constant: 10000
+      transactions:
+        type: TransactionManagement_Constant
+        parameters:
+          average_transaction_value: 1000
+monte_carlo:
+  simulator: TokenMetaSimulator
+  iterations: 60
+  repetitions: 50
+  seed: 20260729
+artifacts:
+  format: csv
