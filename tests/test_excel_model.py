@@ -2,15 +2,20 @@
 # @planner:module = test_excel_model
 # @planner:story = US-Z1-M3-05
 
-import pytest
-import os
+from pathlib import Path
+
 import openpyxl
+import pytest
+
+
+EXCEL_PATH = Path("outputs/v2_2026-07-06_120557/cfo_projection_model.xlsx")
+pytestmark = pytest.mark.skipif(
+    not EXCEL_PATH.exists(),
+    reason="generated CFO workbook is absent; run scripts/run_v2_all.py first",
+)
 
 def test_excel_projection_sheets():
-    excel_path = "outputs/v2_2026-07-06_120557/cfo_projection_model.xlsx"
-    assert os.path.exists(excel_path), f"Excel projection model missing from {excel_path}."
-    
-    wb = openpyxl.load_workbook(excel_path)
+    wb = openpyxl.load_workbook(EXCEL_PATH)
     
     # 1. Assert sheet names exist
     expected_sheets = ["Inputs & Configuration", "Audience Growth", "CFO Projections", "Reconciliation Log"]

@@ -193,4 +193,5 @@ work/
 __pycache__/
 *.ppt
 *.pptx
+docs_final/*.zip
 plans/

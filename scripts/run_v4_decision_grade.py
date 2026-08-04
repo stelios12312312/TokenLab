@@ -27,7 +27,7 @@ from projects.z1.v4_decision_grade import (
     scenario_provenance_rows,
     summarize_risk,
 )
-from projects.z1.m3_full_economy.sandbox import mechanism_ablation_catalog, sandbox_status_rows
+from scripts.z1_m3.sandbox import mechanism_ablation_catalog, sandbox_status_rows
 
 
 OUTPUT_DIR = Path("outputs/v4_decision_grade")
