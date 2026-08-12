@@ -2,7 +2,12 @@
   "roles": [
     "core",
     "tokenomics",
-    "quant"
+    "quant",
+    "assumptions_challenger",
+    "wiring_auditor",
+    "ux_ui",
+    "traceability",
+    "config_integrity"
   ],
   "fail_on": [
     "HIGH",

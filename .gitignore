@@ -170,17 +170,10 @@ projects/.ipynb_checkpoints/
 !projects/z1/
 scratchpad.py
 .DS_Store
-.DS_Store
 demo/celery.sqlite
 *.db
-src/TokenLab/.DS_Store
-.DS_Store
-src/TokenLab/simulationcomponents/.DS_Store
 notebooks/test_tra.py
 .pypirc
-src/TokenLab/simulationcomponents/.DS_Store
-src/TokenLab/simulationcomponents/.DS_Store
-src/TokenLab/simulationcomponents/.DS_Store
 
 # Z1 simulation run outputs (regenerated on demand)
 outputs/
@@ -194,4 +187,11 @@ __pycache__/
 *.ppt
 *.pptx
 docs_final/*.zip
+# Generated dated report bundles are local by default. Existing tracked history is
+# unaffected; intentionally publishing a new bundle requires explicit force-add.
+docs_final/20??-??-??/
 plans/
+plans/.current_plan*
+plans/ACTIVE_PLAN.*
+plans/.thread_targets/
+plans/.audit-archive/

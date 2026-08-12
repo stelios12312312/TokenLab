@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-08-03T14:45:00.000Z",
+  "updated": "2026-08-12T08:12:24.744Z",
   "stories": [
     {
       "id": "US-Z1-M3-01",
@@ -11,9 +11,16 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "code_refs": ["projects/z1/m3_full_economy/economy.py", "projects/z1/m3_full_economy/ledger.py"],
-      "test_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
-      "validation_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
+      "code_refs": [
+        "projects/z1/m3_full_economy/economy.py",
+        "projects/z1/m3_full_economy/ledger.py"
+      ],
+      "test_refs": [
+        "projects/z1/m3_full_economy/proof_verification.py"
+      ],
+      "validation_refs": [
+        "projects/z1/m3_full_economy/proof_verification.py"
+      ],
       "notes": "P0 Structural change"
     },
     {
@@ -24,9 +31,16 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "code_refs": ["projects/z1/m3_full_economy/economy.py", "projects/z1/m3_full_economy/ledger.py"],
-      "test_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
-      "validation_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
+      "code_refs": [
+        "projects/z1/m3_full_economy/economy.py",
+        "projects/z1/m3_full_economy/ledger.py"
+      ],
+      "test_refs": [
+        "projects/z1/m3_full_economy/proof_verification.py"
+      ],
+      "validation_refs": [
+        "projects/z1/m3_full_economy/proof_verification.py"
+      ],
       "notes": "P0 Structural change"
     },
     {
@@ -37,9 +51,16 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "code_refs": ["projects/z1/m3_full_economy/economy.py", "projects/z1/m3_full_economy/ledger.py"],
-      "test_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
-      "validation_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
+      "code_refs": [
+        "projects/z1/m3_full_economy/economy.py",
+        "projects/z1/m3_full_economy/ledger.py"
+      ],
+      "test_refs": [
+        "projects/z1/m3_full_economy/proof_verification.py"
+      ],
+      "validation_refs": [
+        "projects/z1/m3_full_economy/proof_verification.py"
+      ],
       "notes": "P0 Structural change"
     },
     {
@@ -50,9 +71,16 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "code_refs": ["projects/z1/m3_full_economy/economy.py", "projects/z1/m3_full_economy/ledger.py"],
-      "test_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
-      "validation_refs": ["projects/z1/m3_full_economy/proof_verification.py"],
+      "code_refs": [
+        "projects/z1/m3_full_economy/economy.py",
+        "projects/z1/m3_full_economy/ledger.py"
+      ],
+      "test_refs": [
+        "projects/z1/m3_full_economy/proof_verification.py"
+      ],
+      "validation_refs": [
+        "projects/z1/m3_full_economy/proof_verification.py"
+      ],
       "notes": "P0 Structural change"
     },
     {
@@ -63,9 +91,16 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "code_refs": ["projects/z1/m3_full_economy/economy.py", "projects/z1/m3_full_economy/ledger.py"],
-      "test_refs": ["projects/z1/m3_full_economy/proof_verification_issue5.py"],
-      "validation_refs": ["projects/z1/m3_full_economy/proof_verification_issue5.py"],
+      "code_refs": [
+        "projects/z1/m3_full_economy/economy.py",
+        "projects/z1/m3_full_economy/ledger.py"
+      ],
+      "test_refs": [
+        "scripts/z1_m3/proof_verification_issue5.py"
+      ],
+      "validation_refs": [
+        "scripts/z1_m3/proof_verification_issue5.py"
+      ],
       "notes": "P1 Fidelity change"
     },
     {
@@ -76,9 +111,16 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "code_refs": ["projects/z1/m3_full_economy/economy.py", "projects/z1/m3_full_economy/ledger.py"],
-      "test_refs": ["projects/z1/m3_full_economy/proof_verification_issue5.py"],
-      "validation_refs": ["projects/z1/m3_full_economy/proof_verification_issue5.py"],
+      "code_refs": [
+        "projects/z1/m3_full_economy/economy.py",
+        "projects/z1/m3_full_economy/ledger.py"
+      ],
+      "test_refs": [
+        "scripts/z1_m3/proof_verification_issue5.py"
+      ],
+      "validation_refs": [
+        "scripts/z1_m3/proof_verification_issue5.py"
+      ],
       "notes": "P1 Fidelity change"
     },
     {
@@ -94,8 +136,12 @@
         "projects/z1/m3_full_economy/ledger.py",
         "projects/z1/m3_full_economy/economy.py"
       ],
-      "test_refs": ["projects/z1/m3_full_economy/proof_verification_issue6.py"],
-      "validation_refs": ["projects/z1/m3_full_economy/proof_verification_issue6.py"],
+      "test_refs": [
+        "scripts/z1_m3/proof_verification_issue6.py"
+      ],
+      "validation_refs": [
+        "scripts/z1_m3/proof_verification_issue6.py"
+      ],
       "notes": "P1 Fidelity change"
     },
     {
@@ -111,8 +157,12 @@
         "projects/z1/m3_full_economy/ledger.py",
         "projects/z1/m3_full_economy/economy.py"
       ],
-      "test_refs": ["projects/z1/m3_full_economy/proof_verification_issue6.py"],
-      "validation_refs": ["projects/z1/m3_full_economy/proof_verification_issue6.py"],
+      "test_refs": [
+        "scripts/z1_m3/proof_verification_issue6.py"
+      ],
+      "validation_refs": [
+        "scripts/z1_m3/proof_verification_issue6.py"
+      ],
       "notes": "P1 Fidelity change"
     },
     {
@@ -123,9 +173,16 @@
       "source": "dialogue",
       "annotation_refs": [],
       "capability_refs": [],
-      "code_refs": ["projects/z1/m3_full_economy/economy.py", "projects/z1/m3_full_economy/config.py"],
-      "test_refs": ["projects/z1/m3_full_economy/proof_verification_issue9.py"],
-      "validation_refs": ["projects/z1/m3_full_economy/proof_verification_issue9.py"],
+      "code_refs": [
+        "projects/z1/m3_full_economy/economy.py",
+        "projects/z1/m3_full_economy/config.py"
+      ],
+      "test_refs": [
+        "scripts/z1_m3/proof_verification_issue9.py"
+      ],
+      "validation_refs": [
+        "scripts/z1_m3/proof_verification_issue9.py"
+      ],
       "notes": "P1 Fidelity change"
     },
     {
@@ -167,8 +224,207 @@
         "Existing regression, Z1 parity, fresh-clone, annotation, and Program checks pass."
       ],
       "notes": "T-INTAKE-277FB9E6; additive existing-class orchestration verified on Python 3.10 with fixed-reference parity, full regression, Z1 golden parity, installed-wheel smoke, atomic artifact review, and no legacy simulation source diff."
+    },
+    {
+      "id": "US-001",
+      "title": "Generated artifacts stay out of Git tracking",
+      "priority": "MEDIUM",
+      "status": "FULLY_COVERED",
+      "description": "As a TokenLab maintainer, I can regenerate simulation and report artifacts without dirtying Git, while development-only Z1 helpers remain in maintained script and test locations.",
+      "code_refs": [
+        ".gitignore",
+        "scripts/z1_m3/sandbox.py",
+        "scripts/z1_m3/run_smoke.py",
+        "scripts/z1_m3/proof_verification_issue5.py",
+        "scripts/z1_m3/proof_verification_issue6.py",
+        "scripts/z1_m3/proof_verification_issue9.py"
+      ],
+      "test_refs": [
+        "tests/test_z1_m3_monte_carlo.py"
+      ],
+      "doc_refs": [
+        "plans/plan_2026-08-03_3b1371470a0a554f/verification.md"
+      ],
+      "validation_refs": [
+        "plans/plan_2026-08-03_3b1371470a0a554f/verification.md"
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "AC-US-001-001",
+          "description": "Regenerating TokenLab and Z1 reports does not add generated outputs to Git status."
+        },
+        {
+          "id": "AC-US-001-002",
+          "description": "Reusable Z1 helpers live under scripts/z1_m3 or tests, and all live imports reference their maintained locations."
+        },
+        {
+          "id": "AC-US-001-003",
+          "description": "The supported Python 3.10 regression suite and the clean regeneration checks pass after artifact cleanup."
+        }
+      ],
+      "tags": [
+        "maintenance",
+        "repository-hygiene",
+        "traceability"
+      ],
+      "needs_review": false,
+      "created_at": "2026-08-12T07:50:55.137Z",
+      "merged_from": [],
+      "conflicts": []
+    },
+    {
+      "id": "US-PM-AUTO-H75B537078B2E4FEA",
+      "title": "Clean and govern the public GitHub repository",
+      "priority": "MEDIUM",
+      "status": "NOT_IMPLEMENTED",
+      "code_refs": [],
+      "test_refs": [],
+      "validation_refs": [],
+      "doc_refs": [],
+      "tags": [
+        "program_manager",
+        "auto_story",
+        "draft",
+        "fallback"
+      ],
+      "generated_from": {
+        "source": "program_manager_intake",
+        "source_hash": "75b537078b2e4fea",
+        "generated_at": "2026-08-12T08:01:28.372Z",
+        "review_status": "draft_review_needed",
+        "source_title": "Clean and govern the public GitHub repository"
+      },
+      "narrative": {
+        "user": "program operator",
+        "need": "Clean the public TokenLab GitHub surface without removing product history: ignore new dated generated report bundles and OS metadata, remove tracked OS junk, improve README positioning for the declarative runner, set accurate repository topics and description, document the Python 3.10 support path, and configure or explicitly disposition stale GitBook status. Preserve historical client deliverables unless a separate disclosure review authorizes removal. Acceptance requires a clean clone, no gene",
+        "outcome": "The requested Program Manager capability is represented as an implementation-ready backlog story."
+      },
+      "acceptance_criteria": []
+    },
+    {
+      "id": "US-PM-AUTO-HFC7DB1681D268A66",
+      "title": "Create a polished reproducible TokenLab demo",
+      "priority": "MEDIUM",
+      "status": "NOT_IMPLEMENTED",
+      "code_refs": [],
+      "test_refs": [],
+      "validation_refs": [],
+      "doc_refs": [],
+      "tags": [
+        "program_manager",
+        "auto_story",
+        "draft",
+        "fallback"
+      ],
+      "generated_from": {
+        "source": "program_manager_intake",
+        "source_hash": "fc7db1681d268a66",
+        "generated_at": "2026-08-12T08:01:50.821Z",
+        "review_status": "draft_review_needed",
+        "source_title": "Create a polished reproducible TokenLab demo"
+      },
+      "narrative": {
+        "user": "program operator",
+        "need": "Create a polished, repeatable TokenLab demo around the shipped declarative scenario runner. Add one concise public command, quiet terminal output with a saved diagnostic log, a reviewed public-safe scenario distinct from the immutable parity fixture, a versioned dashboard artifact profile that declares available metrics without inventing emissions or treasury semantics, and a short demo script/readme. Demonstrate deterministic lineage and reproducibility while clearly labeling that the reference",
+        "outcome": "The requested Program Manager capability is represented as an implementation-ready backlog story."
+      },
+      "acceptance_criteria": []
+    },
+    {
+      "id": "US-002",
+      "title": "Inspect simulation artifacts in a simple dashboard",
+      "priority": "MEDIUM",
+      "status": "NOT_IMPLEMENTED",
+      "description": "",
+      "code_refs": [],
+      "test_refs": [],
+      "doc_refs": [],
+      "validation_refs": [],
+      "acceptance_criteria": [
+        {
+          "id": "AC-US-002-001",
+          "description": "A user can open a local read-only dashboard and load the versioned public demo artifact bundle without configuring a database or external service."
+        },
+        {
+          "id": "AC-US-002-002",
+          "description": "The dashboard displays only metrics declared by the artifact profile and clearly labels unavailable tokenomics fields instead of inferring them."
+        },
+        {
+          "id": "AC-US-002-003",
+          "description": "The dashboard provides loading, empty, partial-data, invalid-artifact, and successful states on desktop and mobile-sized viewports."
+        },
+        {
+          "id": "AC-US-002-004",
+          "description": "Artifact paths and uploaded content are size-limited, parsed without code execution, and never sent to a remote service."
+        }
+      ],
+      "tags": [
+        "dashboard",
+        "ux",
+        "tokenomics",
+        "artifacts",
+        "traceability"
+      ],
+      "needs_review": false,
+      "created_at": "2026-08-12T08:02:24.891Z",
+      "merged_from": [],
+      "conflicts": []
+    },
+    {
+      "id": "US-003",
+      "title": "Maintain a clean and truthful public repository",
+      "priority": "MEDIUM",
+      "status": "PARTIALLY_COVERED",
+      "description": "",
+      "code_refs": [
+        ".gitignore",
+        "Makefile"
+      ],
+      "test_refs": [
+        "tests/test_repository_hygiene.py",
+        "tests/test_agentic_runner.py"
+      ],
+      "doc_refs": [
+        "README.md",
+        "docs/repository-governance.md"
+      ],
+      "validation_refs": [
+        ".github/workflows/test-suite.yml",
+        ".github/workflows/z1-shared-core-contract.yml"
+      ],
+      "acceptance_criteria": [
+        {
+          "id": "AC-US-003-001",
+          "description": "A fresh checkout contains no tracked .DS_Store files, ignores newly generated dated docs_final bundles, and preserves all previously tracked historical deliverables."
+        },
+        {
+          "id": "AC-US-003-002",
+          "description": "The README documents Python 3.10 and foregrounds the declarative YAML/JSON runner with an executable command."
+        },
+        {
+          "id": "AC-US-003-003",
+          "description": "The public repository description and topics accurately describe TokenLab's current simulation and tokenomics scope."
+        },
+        {
+          "id": "AC-US-003-004",
+          "description": "The supported Python test suite and GitHub Actions pass, and the stale GitBook status is explicitly dispositioned without deleting an integration without fresh approval."
+        }
+      ],
+      "tags": [
+        "repository-hygiene",
+        "github",
+        "documentation",
+        "traceability"
+      ],
+      "needs_review": false,
+      "created_at": "2026-08-12T08:12:24.743Z",
+      "merged_from": [],
+      "conflicts": []
     }
   ],
   "generated_at": "2026-05-18T13:00:00.000Z",
-  "source": "story_registry_bootstrap.mjs"
+  "source": "story_registry_bootstrap.mjs",
+  "updated_at": "2026-08-12T08:12:24.744Z",
+  "commit": "85e02f1",
+  "consolidations": []
 }

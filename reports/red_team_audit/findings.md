@@ -1,5 +1,16 @@
 # Red Team Audit Findings
 
+## GitHub cleanup follow-up — 2026-08-12
+
+- **Coverage**: working tree for Program ticket `T-INTAKE-5E47CAAF` / issue #18 on base `85e02f1`.
+- **Adversarial objective**: make cleanup appear successful while deleting history, hiding intentional artifacts, documenting a nonexistent command, or calling GitHub green despite a failing external status.
+- **Attacks exercised**: tracked-file census, synthetic ignore probe, historical-bundle preservation check, documented Python 3.10 runner smoke, repository metadata readback, Actions/combined-status comparison, full baseline regression, and annotation validation.
+- **Evidence**: no `.DS_Store` remains in the index; 37 historical dated files remain tracked; 14 focused tests pass; the supported suite grows from 141/128 passing to 143/130 passing with zero failures; the runner publishes 3,000 result rows and 60 summary rows; GitHub metadata readback matches the README.
+- **False-green disposition**: repository-owned Actions pass on the base commit, while combined status remains red solely because of legacy GitBook. The governance note reports both facts and no integration was deleted.
+- **New findings**: none at MEDIUM or above in the cleanup boundary. The current runner's 3,027-line console output remains a known demo-quality gap assigned to issue #19; it does not invalidate the generated artifact bundle.
+- **Substrate note**: project health reports 0 failures and 109 warnings, dominated by pre-existing planner/documentation references outside this ticket. They are not hidden or reclassified as cleanup success.
+- **Confidence**: PASS for local repository hygiene, command truthfulness, history preservation, and remote metadata. PR Actions remain pending until publication.
+
 ## Index
 - F-001: Settlement Velocity parameter mismatch (RESOLVED)
 - F-002: Tier Settlement Modifiers bonus mismatch (RESOLVED)
