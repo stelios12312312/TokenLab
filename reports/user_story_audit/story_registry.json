@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-08-12T09:21:45.000Z",
+  "updated": "2026-08-12T10:55:00.000Z",
   "stories": [
     {
       "id": "US-Z1-M3-01",
@@ -360,12 +360,27 @@
       "id": "US-002",
       "title": "Inspect simulation artifacts in a simple dashboard",
       "priority": "MEDIUM",
-      "status": "NOT_IMPLEMENTED",
-      "description": "",
-      "code_refs": [],
-      "test_refs": [],
-      "doc_refs": [],
-      "validation_refs": [],
+      "status": "FULLY_COVERED",
+      "description": "A prospective TokenLab user can run one loopback-only, read-only command against a validated public-demo bundle and inspect only profile-declared metric trajectories, provenance, source downloads, explicit unavailable concepts, and honest loading, empty, partial, invalid, and success states without a database or remote service.",
+      "annotation_refs": [
+        "src/TokenLab/dashboard.py",
+        "tests/test_dashboard.py"
+      ],
+      "code_refs": [
+        "src/TokenLab/dashboard.py",
+        "src/TokenLab/dashboard_static/index.html",
+        "pyproject.toml"
+      ],
+      "test_refs": [
+        "tests/test_dashboard.py"
+      ],
+      "doc_refs": [
+        "README.md",
+        "docs/public-demo.md"
+      ],
+      "validation_refs": [
+        "tests/test_dashboard.py"
+      ],
       "acceptance_criteria": [
         {
           "id": "AC-US-002-001",
@@ -393,6 +408,8 @@
       ],
       "needs_review": false,
       "created_at": "2026-08-12T08:02:24.891Z",
+      "implemented_at": "2026-08-12T10:55:00.000Z",
+      "notes": "GitHub issue #20 / Program ticket T-INTAKE-77CDE27F. Focused Python 3.10 acceptance suite exercises exact profile projection, five UI states, real localhost HTTP, pre-parse byte/path bounds, method/download allowlists, package wiring, and offline asset constraints; rendered screenshots remain explicitly unavailable in this Codex runtime.",
       "merged_from": [],
       "conflicts": []
     },

@@ -15,7 +15,7 @@ python -m pip install .
 ```
 
 The installed command includes both the scenario and its versioned metric
-profile as package data.
+profile as package data, plus the complete offline dashboard asset.
 
 ## Run
 
@@ -33,6 +33,16 @@ evidence counts and a short reproducible-content hash, profile identity, and the
 interpretation boundary. Full numerical-stack and simulator output stays in
 `diagnostics.log`.
 
+Start the visual inspection step in a second terminal:
+
+```bash
+tokenlab-dashboard outputs/demo/public-demo
+```
+
+Open the printed loopback URL (normally `http://127.0.0.1:8765`). The dashboard
+is read-only and offline: it has no upload, mutation, database, authentication,
+or remote-fetch path. Stop it with `Ctrl-C`.
+
 ## Three-minute talk track
 
 ### 0:00–0:30 — What TokenLab is doing
@@ -49,9 +59,22 @@ non-overwriting bundle path. A PASS is reported only after the bundle validator
 has re-read the files, checked exact hashes, and resolved every declared metric
 to a real table column.
 
-### 1:00–1:45 — Show the evidence chain
+### 1:00–1:45 — Open the dashboard
 
-Open the generated directory and show:
+Run `tokenlab-dashboard outputs/demo/public-demo`, open its printed local URL,
+and point out the six metric trajectories. The run summary and provenance come
+from the validated manifest; each chart label, unit, description, source table,
+source column, and point comes from the versioned profile. The page does not act
+as a generic CSV explorer, so undeclared columns never become accidental KPIs.
+
+Show the explicit “Not available in this scenario” section. Emissions,
+vesting/unlocks, liquidity, treasury, governance, staking yield, FDV, and APY
+remain absent with a reason instead of receiving guessed values.
+
+### 1:45–2:30 — Show the evidence chain
+
+Use the dashboard's allowlisted source-table downloads, then open the generated
+directory and show:
 
 - `manifest.json` — scenario id, canonical configuration hash, seed, dimensions,
   lineage, exact file hashes, and canonical reproducible-content hashes;
@@ -63,17 +86,6 @@ Open the generated directory and show:
 The raw file SHA-256 includes the unique `run_id`. The separately named
 `reproducible_content_sha256` excludes only that identity field, so two unique
 bundles can still prove matching serialized scenario content.
-
-### 1:45–2:30 — Show what the profile permits
-
-The profile declares only six table-backed metrics: illustrative token price,
-fiat transaction volume, transaction-controller count, cumulative user-step
-participation, holding time, and token supply. Every metric names its exact
-source column, unit, aggregation, and interpretation.
-
-The same profile explicitly marks emissions, vesting/unlocks, liquidity,
-treasury, governance, staking yield, FDV, and APY unavailable. The later
-dashboard must show those absences rather than infer values.
 
 ### 2:30–3:00 — State the boundary
 
