@@ -58,6 +58,7 @@ Repository = "https://github.com/stelios12312312/TokenLab"
 
 [project.scripts]
 tokenlab = "TokenLab.cli:main"
+tokenlab-dashboard = "TokenLab.dashboard:main"
 tokenlab-demo = "TokenLab.demo_cli:main"
 tokenlab-verify = "TokenLab.utils.verifier:main"
 
@@ -66,6 +67,7 @@ package-dir = { "" = "src" }
 include-package-data = false
 
 [tool.setuptools.package-data]
+"TokenLab" = ["dashboard_static/*.html"]
 "TokenLab.agentic" = ["data/*.json", "data/*.yaml"]
 
 [tool.setuptools.packages.find]

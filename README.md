@@ -49,14 +49,21 @@ python -m pip install .
 Run the reviewed, self-contained scenario from an installed package:
 
 ```bash
-tokenlab-demo --output-dir outputs/demo
+tokenlab-demo --output-dir outputs/demo --run-id public-demo
+tokenlab-dashboard outputs/demo/public-demo
 ```
 
-The command prints a six-line result and writes a non-overwriting evidence
+The first command prints a six-line result and writes a non-overwriting evidence
 bundle containing `manifest.json`, raw and summary CSV tables, the full captured
 `diagnostics.log`, and a validated `artifact_profile.json`. The profile declares
 six metrics that are actually present and explicitly marks emissions, unlocks,
 liquidity, treasury, governance, staking yield, FDV, and APY unavailable.
+
+The second command serves a dependency-free, read-only dashboard at
+`http://127.0.0.1:8765`. It charts only profile-declared metrics, keeps absent
+concepts visible, provides the exact source-table downloads, and shows run
+provenance. The server accepts loopback hosts only, has no upload or mutation
+routes, makes no remote request, and stops with `Ctrl-C`.
 
 The scenario is deterministic and illustrative: repeated paths do not represent
 statistical uncertainty, and the output is not investment, launch, legal,
@@ -91,9 +98,8 @@ The command publishes one non-overwriting bundle at
 
 The supplied reference scenario proves deterministic execution and lineage. It
 is not an investment forecast or a substitute for model, financial, or legal
-review. The public demo above packages the presentation flow; the separate
-artifact dashboard is tracked in GitHub issue
-[#20](https://github.com/stelios12312312/TokenLab/issues/20).
+review. The public demo and local dashboard above are the recommended
+presentation flow.
 
 ### Directory Structure & Organization
 The repository is organized to maintain a clean layout while keeping all client projects perfectly isolated:

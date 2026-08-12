@@ -4,7 +4,7 @@ Proven implementation patterns. Record what worked so future plans can reuse it.
 
 Format: `P-NNN: Short title (date)` — What worked, why it worked, when to apply it.
 
-<!-- Next pattern: P-002 -->
+<!-- Next pattern: P-003 -->
 
 ## P-001: Reproducibility hashes should use persisted representations (2026-08-12)
 
@@ -18,3 +18,17 @@ Format: `P-NNN: Short title (date)` — What worked, why it worked, when to appl
   false-red validator even though the file is correct.
 - **Apply when**: Publishing machine-readable artifacts that another process or
   later run must validate independently.
+
+## P-002: Validate once, then serve immutable snapshots (2026-08-12)
+
+- **Trigger**: A local viewer validates files at startup and later exposes those
+  files through an HTTP download route.
+- **Pattern**: Enforce path and size limits, validate the full artifact bundle,
+  and cache the exact allowlisted bytes. Build both the rendered payload and
+  downloads from that immutable startup snapshot.
+- **Why**: Re-reading a path after validation creates a time-of-check/time-of-use
+  gap: another process can replace the file and make the viewer serve bytes that
+  were never validated.
+- **Apply when**: Building read-only artifact dashboards, report viewers, or
+  other local inspection tools where the source directory can change while the
+  process is running.

@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TokenLab · Artifact Dashboard</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #f4f6f0;
+      --muted: #a7b1ad;
+      --faint: #8e9a95;
+      --paper: #0a0f0d;
+      --panel: #111815;
+      --panel-raised: #17201c;
+      --line: #26342e;
+      --accent: #c8ff63;
+      --accent-soft: rgba(200, 255, 99, .12);
+      --mint: #66e3bd;
+      --amber: #ffc96b;
+      --red: #ff7b7b;
+      --radius: 18px;
+      --shadow: 0 22px 70px rgba(0, 0, 0, .28);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { background: var(--paper); scroll-behavior: smooth; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 78% -8%, rgba(102, 227, 189, .13), transparent 29rem),
+        radial-gradient(circle at 8% 20%, rgba(200, 255, 99, .08), transparent 24rem),
+        var(--paper);
+    }
+
+    a { color: inherit; }
+
+    button, a { -webkit-tap-highlight-color: transparent; }
+
+    :focus-visible {
+      outline: 3px solid var(--accent);
+      outline-offset: 4px;
+      border-radius: 6px;
+    }
+
+    .shell {
+      width: min(1180px, calc(100% - 48px));
+      margin: 0 auto;
+    }
+
+    .site-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      min-height: 84px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      font-weight: 750;
+      letter-spacing: -.02em;
+    }
+
+    .brand-mark {
+      display: grid;
+      place-items: center;
+      width: 38px;
+      height: 38px;
+      border-radius: 11px;
+      color: #11170c;
+      background: var(--accent);
+      box-shadow: 0 0 0 5px rgba(200, 255, 99, .08);
+      font-size: 13px;
+      letter-spacing: -.08em;
+    }
+
+    .eyebrow {
+      margin: 0 0 10px;
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .13em;
+      text-transform: uppercase;
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 34px;
+      padding: 6px 12px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      background: rgba(17, 24, 21, .82);
+      font-size: 13px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 0 4px rgba(255, 201, 107, .1);
+    }
+
+    body[data-view-state="success"] .status-dot { background: var(--mint); }
+    body[data-view-state="partial"] .status-dot { background: var(--amber); }
+    body[data-view-state="empty"] .status-dot,
+    body[data-view-state="invalid"] .status-dot { background: var(--red); }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(280px, .65fr);
+      gap: 54px;
+      align-items: end;
+      padding: 72px 0 46px;
+    }
+
+    h1 {
+      max-width: 780px;
+      margin: 0;
+      font-size: clamp(42px, 6vw, 78px);
+      line-height: .98;
+      letter-spacing: -.065em;
+    }
+
+    .hero-copy {
+      max-width: 680px;
+      margin: 24px 0 0;
+      color: var(--muted);
+      font-size: clamp(17px, 2vw, 20px);
+      line-height: 1.6;
+    }
+
+    .hero-note {
+      padding: 20px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: linear-gradient(140deg, rgba(200, 255, 99, .09), rgba(102, 227, 189, .035));
+    }
+
+    .hero-note strong { display: block; margin-bottom: 7px; font-size: 15px; }
+    .hero-note p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+
+    .state-panel {
+      display: grid;
+      place-items: center;
+      min-height: 290px;
+      margin: 18px 0 34px;
+      padding: 42px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: rgba(17, 24, 21, .78);
+      text-align: center;
+      box-shadow: var(--shadow);
+    }
+
+    .state-panel[hidden], #dashboard[hidden] { display: none; }
+
+    .state-icon {
+      display: grid;
+      place-items: center;
+      width: 52px;
+      height: 52px;
+      margin: 0 auto 20px;
+      border-radius: 16px;
+      color: var(--accent);
+      background: var(--accent-soft);
+      font-weight: 900;
+    }
+
+    .state-panel h2 { margin: 0 0 10px; font-size: 25px; letter-spacing: -.03em; }
+    .state-panel p { max-width: 580px; margin: 0; color: var(--muted); line-height: 1.65; }
+
+    .skeleton {
+      width: min(470px, 90%);
+      height: 11px;
+      margin: 13px auto;
+      overflow: hidden;
+      border-radius: 999px;
+      background: var(--line);
+    }
+
+    .skeleton::after {
+      display: block;
+      width: 40%;
+      height: 100%;
+      content: "";
+      background: linear-gradient(90deg, transparent, rgba(200, 255, 99, .55), transparent);
+      animation: load 1.25s ease-in-out infinite;
+    }
+
+    @keyframes load { from { transform: translateX(-120%); } to { transform: translateX(350%); } }
+
+    .notice {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin: 0 0 24px;
+      padding: 15px 17px;
+      border: 1px solid rgba(255, 201, 107, .32);
+      border-radius: 13px;
+      color: #f5ddb1;
+      background: rgba(255, 201, 107, .08);
+      line-height: 1.5;
+    }
+
+    .notice[hidden] { display: none; }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 46px;
+    }
+
+    .summary-card,
+    .metric-card,
+    .detail-panel {
+      border: 1px solid var(--line);
+      background: rgba(17, 24, 21, .86);
+    }
+
+    .summary-card {
+      min-width: 0;
+      padding: 19px;
+      border-radius: 14px;
+    }
+
+    .summary-card dt {
+      margin-bottom: 8px;
+      color: var(--faint);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+    }
+
+    .summary-card dd {
+      overflow: hidden;
+      margin: 0;
+      font-size: 17px;
+      font-weight: 720;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .section-heading {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+      margin: 0 0 20px;
+    }
+
+    .section-heading h2 { margin: 0; font-size: 28px; letter-spacing: -.04em; }
+    .section-heading p { max-width: 540px; margin: 0; color: var(--muted); line-height: 1.55; }
+
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 64px;
+    }
+
+    .metric-card {
+      min-width: 0;
+      padding: 22px;
+      border-radius: var(--radius);
+      box-shadow: 0 14px 42px rgba(0, 0, 0, .14);
+    }
+
+    .metric-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 14px;
+    }
+
+    .metric-label { margin: 0; color: var(--muted); font-size: 14px; font-weight: 680; }
+    .metric-source { color: var(--faint); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    .metric-value {
+      margin: 15px 0 3px;
+      font-size: clamp(28px, 3.1vw, 41px);
+      font-weight: 760;
+      letter-spacing: -.055em;
+    }
+
+    .metric-unit { min-height: 34px; margin: 0; color: var(--faint); font-size: 12px; line-height: 1.45; }
+    .chart { display: block; width: 100%; height: 112px; margin: 17px 0 12px; overflow: visible; }
+    .chart-line { fill: none; stroke: var(--accent); stroke-linecap: round; stroke-linejoin: round; stroke-width: 2.2; vector-effect: non-scaling-stroke; }
+    .chart-area { fill: url(#chart-fill); opacity: .22; }
+    .chart-guide { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+    .chart-labels { display: flex; justify-content: space-between; color: var(--faint); font-size: 11px; }
+    .metric-description { margin: 18px 0 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+
+    .details-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.1fr) minmax(300px, .9fr);
+      gap: 16px;
+      margin-bottom: 64px;
+    }
+
+    .detail-panel { padding: 25px; border-radius: var(--radius); }
+    .detail-panel h2 { margin: 0 0 8px; font-size: 21px; letter-spacing: -.03em; }
+    .detail-intro { margin: 0 0 20px; color: var(--muted); font-size: 14px; line-height: 1.55; }
+
+    .unavailable-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .unavailable-item { padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: rgba(10, 15, 13, .46); }
+    .unavailable-item strong { display: block; margin-bottom: 6px; font-size: 13px; text-transform: capitalize; }
+    .unavailable-item span { color: var(--faint); font-size: 12px; line-height: 1.45; }
+
+    .provenance { display: grid; grid-template-columns: 1fr 1fr; gap: 15px 18px; margin: 0 0 23px; }
+    .provenance div { min-width: 0; }
+    .provenance dt { margin-bottom: 5px; color: var(--faint); font-size: 11px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+    .provenance dd { overflow-wrap: anywhere; margin: 0; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+    .downloads { display: grid; gap: 9px; }
+    .download-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 13px 14px;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+      text-decoration: none;
+      transition: border-color .18s ease, background .18s ease;
+    }
+    .download-link:hover { border-color: var(--accent); background: var(--accent-soft); }
+    .download-link strong { display: block; margin-bottom: 3px; font-size: 13px; }
+    .download-link small { color: var(--faint); }
+    .download-arrow { color: var(--accent); font-size: 18px; }
+
+    .boundary {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 17px;
+      margin-bottom: 64px;
+      padding: 23px;
+      border: 1px solid rgba(200, 255, 99, .3);
+      border-radius: var(--radius);
+      background: var(--accent-soft);
+    }
+    .boundary svg { width: 32px; height: 32px; color: var(--accent); }
+    .boundary h2 { margin: 0 0 7px; font-size: 18px; }
+    .boundary p { margin: 0; color: #ced8d3; line-height: 1.65; }
+
+    .site-footer {
+      display: flex;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 24px 0 44px;
+      border-top: 1px solid var(--line);
+      color: var(--faint);
+      font-size: 12px;
+    }
+
+    @media (max-width: 920px) {
+      .hero { grid-template-columns: 1fr; gap: 28px; }
+      .hero-note { max-width: 620px; }
+      .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .details-grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 720px) {
+      .shell { width: min(100% - 30px, 1180px); }
+      .site-header { min-height: 70px; }
+      .hero { padding: 52px 0 32px; }
+      h1 { font-size: clamp(40px, 13vw, 61px); }
+      .section-heading { display: block; }
+      .section-heading p { margin-top: 10px; }
+      .metrics-grid { grid-template-columns: 1fr; }
+      .metric-card { padding: 20px; }
+      .chart { height: 132px; }
+      .details-grid, .metrics-grid { margin-bottom: 48px; }
+      .state-panel { min-height: 250px; padding: 28px 20px; }
+    }
+
+    @media (max-width: 420px) {
+      .status-pill span:last-child { display: none; }
+      .summary-grid { grid-template-columns: 1fr; }
+      .unavailable-list, .provenance { grid-template-columns: 1fr; }
+      .detail-panel { padding: 20px; }
+      .boundary { grid-template-columns: 1fr; }
+      .site-footer { display: block; line-height: 1.8; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .skeleton::after { animation: none; background: var(--accent-soft); }
+      .download-link { transition: none; }
+    }
+  </style>
+</head>
+<body data-view-state="loading">
+  <header class="shell site-header">
+    <div class="brand" aria-label="TokenLab artifact dashboard">
+      <span class="brand-mark" aria-hidden="true">TL</span>
+      <span>TokenLab <span style="color:var(--faint);font-weight:500">/ artifact view</span></span>
+    </div>
+    <div class="status-pill" aria-live="polite">
+      <span class="status-dot" aria-hidden="true"></span>
+      <span id="status-text">Validating bundle…</span>
+    </div>
+  </header>
+
+  <main class="shell" id="main-content">
+    <section class="hero" aria-labelledby="page-title">
+      <div>
+        <p class="eyebrow">Local evidence viewer</p>
+        <h1 id="page-title">Simulation evidence, made legible.</h1>
+        <p class="hero-copy">A read-only view of one validated TokenLab bundle. Every chart is tied to a declared source column; missing concepts stay visibly missing.</p>
+      </div>
+      <aside class="hero-note" aria-label="Dashboard trust boundary">
+        <strong>No uploads. No remote data. No hidden metrics.</strong>
+        <p>This page is served from localhost and can only read the bundle selected when the command started.</p>
+      </aside>
+    </section>
+
+    <section class="state-panel" id="state-panel" aria-live="polite" aria-busy="true">
+      <div>
+        <div class="state-icon" aria-hidden="true">···</div>
+        <h2 id="state-title">Reading validated artifacts</h2>
+        <p id="state-message">Checking the bundle contract and preparing declared metrics.</p>
+        <div class="skeleton" aria-hidden="true"></div>
+        <div class="skeleton" aria-hidden="true" style="width:min(330px,70%)"></div>
+      </div>
+    </section>
+
+    <section id="dashboard" hidden>
+      <div class="notice" id="partial-notice" hidden role="status">
+        <span aria-hidden="true">△</span>
+        <span>Some declared points are unavailable. Gaps remain visible and were not replaced with inferred values.</span>
+      </div>
+
+      <dl class="summary-grid" id="summary-grid" aria-label="Run summary"></dl>
+
+      <section aria-labelledby="metrics-title">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Declared output</p>
+            <h2 id="metrics-title">Metric trajectories</h2>
+          </div>
+          <p id="metrics-intro">Only metrics named by the versioned artifact profile appear here.</p>
+        </div>
+        <div class="metrics-grid" id="metrics-grid"></div>
+      </section>
+
+      <div class="details-grid">
+        <section class="detail-panel" aria-labelledby="unavailable-title">
+          <p class="eyebrow">Explicit absence</p>
+          <h2 id="unavailable-title">Not available in this scenario</h2>
+          <p class="detail-intro">TokenLab does not manufacture values for concepts the selected model does not emit.</p>
+          <ul class="unavailable-list" id="unavailable-list"></ul>
+        </section>
+
+        <section class="detail-panel" aria-labelledby="provenance-title">
+          <p class="eyebrow">Evidence chain</p>
+          <h2 id="provenance-title">Run provenance</h2>
+          <p class="detail-intro">Stable identifiers and exact source tables behind this view.</p>
+          <dl class="provenance" id="provenance"></dl>
+          <div class="downloads" id="downloads" aria-label="Source table downloads"></div>
+        </section>
+      </div>
+
+      <section class="boundary" aria-labelledby="boundary-title">
+        <svg role="img" aria-label="Information boundary" viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="14" stroke="currentColor" stroke-width="2"/>
+          <path d="M16 14v9M16 9.5v.5" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        <div>
+          <h2 id="boundary-title">Interpretation boundary</h2>
+          <p id="boundary-copy"></p>
+        </div>
+      </section>
+    </section>
+
+    <noscript>
+      <style>#state-panel { display: none; }</style>
+      <section class="state-panel"><div><h2>JavaScript is required</h2><p>The bundle remains local, but this read-only dashboard needs JavaScript to render its validated JSON response.</p></div></section>
+    </noscript>
+  </main>
+
+  <footer class="shell site-footer">
+    <span>TokenLab · local read-only artifact dashboard</span>
+    <span id="footer-profile">Profile pending</span>
+  </footer>
+
+  <script>
+    "use strict";
+
+    const STATES = ["loading", "empty", "partial", "invalid", "success"];
+    const statePanel = document.querySelector("#state-panel");
+    const dashboard = document.querySelector("#dashboard");
+    const statusText = document.querySelector("#status-text");
+
+    function setState(state, title, message) {
+      const safeState = STATES.includes(state) ? state : "invalid";
+      document.body.dataset.viewState = safeState;
+      statusText.textContent = {
+        loading: "Validating bundle…",
+        success: "Bundle validated",
+        partial: "Bundle validated · partial data",
+        empty: "Bundle validated · no points",
+        invalid: "Bundle rejected"
+      }[safeState];
+      document.querySelector("#state-title").textContent = title;
+      document.querySelector("#state-message").textContent = message;
+      statePanel.setAttribute("aria-busy", safeState === "loading" ? "true" : "false");
+    }
+
+    function showTerminalState(state, message) {
+      dashboard.hidden = true;
+      statePanel.hidden = false;
+      const copy = state === "empty"
+        ? ["No metric points in this bundle", "The profile is valid, but its declared series contain no rows. Nothing was inferred or filled."]
+        : ["This bundle cannot be displayed", message || "The local artifact contract did not validate."];
+      setState(state, copy[0], copy[1]);
+      statePanel.querySelectorAll(".skeleton").forEach((node) => node.remove());
+      statePanel.querySelector(".state-icon").textContent = state === "empty" ? "0" : "!";
+    }
+
+    function textElement(tag, className, text) {
+      const element = document.createElement(tag);
+      if (className) element.className = className;
+      element.textContent = text ?? "—";
+      return element;
+    }
+
+    function formatNumber(value) {
+      if (value === null || value === undefined || !Number.isFinite(Number(value))) return "Unavailable";
+      const number = Number(value);
+      const absolute = Math.abs(number);
+      if (absolute >= 1e9) return `${(number / 1e9).toFixed(2)}B`;
+      if (absolute >= 1e6) return `${(number / 1e6).toFixed(2)}M`;
+      if (absolute >= 1e3) return `${(number / 1e3).toFixed(1)}K`;
+      if (absolute > 0 && absolute < .01) return number.toPrecision(3);
+      return new Intl.NumberFormat("en", { maximumFractionDigits: 3 }).format(number);
+    }
+
+    function addSummary(label, value) {
+      const card = document.createElement("div");
+      card.className = "summary-card";
+      card.append(textElement("dt", "", label), textElement("dd", "", value));
+      document.querySelector("#summary-grid").append(card);
+    }
+
+    function chartFor(metric) {
+      const indexedPoints = metric.points.map((point, index) => ({ point, index }));
+      const valid = indexedPoints.filter(({ point }) => Number.isFinite(point.y));
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("class", "chart");
+      svg.setAttribute("viewBox", "0 0 320 112");
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", `${metric.label} trajectory across ${valid.length} available points`);
+      svg.setAttribute("preserveAspectRatio", "none");
+
+      [20, 56, 92].forEach((y) => {
+        const guide = document.createElementNS(svg.namespaceURI, "line");
+        guide.setAttribute("class", "chart-guide");
+        guide.setAttribute("x1", "0"); guide.setAttribute("x2", "320");
+        guide.setAttribute("y1", String(y)); guide.setAttribute("y2", String(y));
+        svg.append(guide);
+      });
+      if (!valid.length) return svg;
+
+      const ys = valid.map(({ point }) => Number(point.y));
+      const minimum = Math.min(...ys);
+      const maximum = Math.max(...ys);
+      const spread = maximum - minimum || 1;
+      const segments = [];
+      let currentSegment = [];
+      indexedPoints.forEach((entry) => {
+        if (Number.isFinite(entry.point.y)) {
+          currentSegment.push(entry);
+        } else if (currentSegment.length) {
+          segments.push(currentSegment);
+          currentSegment = [];
+        }
+      });
+      if (currentSegment.length) segments.push(currentSegment);
+
+      segments.forEach((segment) => {
+        const coordinates = segment.map(({ point, index }) => {
+          const x = metric.points.length === 1 ? 160 : index * (320 / (metric.points.length - 1));
+          const y = maximum === minimum
+            ? 56
+            : 98 - ((Number(point.y) - minimum) / spread) * 82;
+          return `${x.toFixed(2)},${y.toFixed(2)}`;
+        });
+        if (coordinates.length === 1) {
+          const [cx, cy] = coordinates[0].split(",");
+          const point = document.createElementNS(svg.namespaceURI, "circle");
+          point.setAttribute("cx", cx); point.setAttribute("cy", cy);
+          point.setAttribute("r", "2.5"); point.setAttribute("fill", "currentColor");
+          svg.append(point);
+        } else {
+          const line = document.createElementNS(svg.namespaceURI, "polyline");
+          line.setAttribute("class", "chart-line");
+          line.setAttribute("points", coordinates.join(" "));
+          svg.append(line);
+        }
+      });
+      return svg;
+    }
+
+    function renderMetric(metric) {
+      const card = document.createElement("article");
+      card.className = "metric-card";
+      card.setAttribute("aria-labelledby", `metric-${metric.id}`);
+      const top = document.createElement("div");
+      top.className = "metric-top";
+      const label = textElement("h3", "metric-label", metric.label);
+      label.id = `metric-${metric.id}`;
+      top.append(label, textElement("span", "metric-source", metric.source.column));
+
+      const validPoints = metric.points.filter((point) => point.y !== null);
+      const latest = validPoints.length ? validPoints[validPoints.length - 1].y : null;
+      card.append(
+        top,
+        textElement("p", "metric-value", formatNumber(latest)),
+        textElement("p", "metric-unit", metric.unit),
+        chartFor(metric)
+      );
+      const labels = document.createElement("div");
+      labels.className = "chart-labels";
+      labels.append(
+        textElement("span", "", metric.points.length ? String(metric.points[0].x ?? "gap") : "No points"),
+        textElement("span", "", metric.points.length ? String(metric.points[metric.points.length - 1].x ?? "gap") : "")
+      );
+      card.append(labels, textElement("p", "metric-description", metric.description));
+      return card;
+    }
+
+    function renderDashboard(data) {
+      if (data.state === "invalid") {
+        showTerminalState("invalid", data.error);
+        return;
+      }
+      if (data.state === "empty") {
+        showTerminalState("empty");
+        return;
+      }
+
+      statePanel.hidden = true;
+      dashboard.hidden = false;
+      setState(data.state === "partial" ? "partial" : "success", "", "");
+      document.querySelector("#partial-notice").hidden = data.state !== "partial";
+
+      const run = data.run || {};
+      addSummary("Run", run.run_id);
+      addSummary("Scenario", run.scenario_id);
+      addSummary("Simulation", `${run.iterations ?? "—"} steps × ${run.repetitions ?? "—"} paths`);
+      addSummary("Seed", run.seed);
+
+      const metricsGrid = document.querySelector("#metrics-grid");
+      data.metrics.forEach((metric) => metricsGrid.append(renderMetric(metric)));
+
+      const unavailable = document.querySelector("#unavailable-list");
+      data.unavailable_concepts.forEach((concept) => {
+        const item = document.createElement("li");
+        item.className = "unavailable-item";
+        item.append(
+          textElement("strong", "", concept.id.replaceAll("_", " ")),
+          textElement("span", "", concept.reason)
+        );
+        unavailable.append(item);
+      });
+
+      const provenance = document.querySelector("#provenance");
+      [
+        ["Profile", data.profile.id],
+        ["Profile version", data.profile.version],
+        ["Config hash", run.config_hash],
+        ["Created", run.created_at]
+      ].forEach(([label, value]) => {
+        const group = document.createElement("div");
+        group.append(textElement("dt", "", label), textElement("dd", "", value));
+        provenance.append(group);
+      });
+
+      const downloads = document.querySelector("#downloads");
+      data.downloads.forEach((artifact) => {
+        const link = document.createElement("a");
+        link.className = "download-link";
+        link.href = artifact.url;
+        link.download = artifact.filename;
+        const copy = document.createElement("span");
+        copy.append(
+          textElement("strong", "", artifact.filename),
+          textElement("small", "", `${artifact.rows} rows · ${artifact.sha256.slice(0, 10)}…`)
+        );
+        link.append(copy, textElement("span", "download-arrow", "↓"));
+        downloads.append(link);
+      });
+
+      document.querySelector("#boundary-copy").textContent = data.interpretation_boundary;
+      document.querySelector("#footer-profile").textContent = `${data.profile.id} · v${data.profile.version}`;
+    }
+
+    fetch("/api/dashboard", { headers: { "Accept": "application/json" } })
+      .then((response) => {
+        if (!response.ok) throw new Error(`Local API returned ${response.status}`);
+        return response.json();
+      })
+      .then(renderDashboard)
+      .catch((error) => showTerminalState("invalid", `The local dashboard API could not be read: ${error.message}`));
+  </script>
+</body>
+</html>
