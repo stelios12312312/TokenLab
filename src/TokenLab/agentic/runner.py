@@ -6,23 +6,27 @@
 from __future__ import annotations
 
 import argparse
-from contextlib import contextmanager
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from dataclasses import dataclass
 from datetime import datetime, timezone
-import hashlib
 import json
 from pathlib import Path
 import random
 import re
 import shutil
 import tempfile
-from typing import Any, Dict, Iterator, Sequence, Union
+from typing import Any, Dict, Iterator, Mapping, Sequence, Union
 import uuid
 
 import numpy as np
 import pandas as pd
 import scipy.stats
 
+from .artifact_profile import (
+    file_sha256,
+    reproducible_table_hash,
+    validate_artifact_profile,
+)
 from .factory import ScenarioFactory
 from .schema import ScenarioConfig, load_scenario
 
@@ -120,14 +124,6 @@ class HeadlessRunner:
         ]
         return summary.reset_index()
 
-    @staticmethod
-    def _sha256(path: Path) -> str:
-        digest = hashlib.sha256()
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-        return digest.hexdigest()
-
     def _write_table(
         self, data: pd.DataFrame, path: Path, file_format: str
     ) -> None:
@@ -147,6 +143,9 @@ class HeadlessRunner:
         output_dir: Union[str, Path] = "outputs/agentic",
         *,
         run_id: str | None = None,
+        capture_diagnostics: bool = False,
+        artifact_profile: Mapping[str, Any] | None = None,
+        diagnostic_preamble: str | None = None,
     ) -> RunArtifacts:
         config = scenario if isinstance(scenario, ScenarioConfig) else load_scenario(scenario)
         resolved_run_id = self._run_id(config, run_id)
@@ -155,18 +154,36 @@ class HeadlessRunner:
         bundle_dir = output_root / resolved_run_id
         if bundle_dir.exists():
             raise ArtifactError(f"run bundle already exists: {bundle_dir}")
+        if diagnostic_preamble and not capture_diagnostics:
+            raise ArtifactError(
+                "diagnostic_preamble requires capture_diagnostics=True"
+            )
 
         temporary_path: Path | None = None
         try:
             temporary_path = Path(
                 tempfile.mkdtemp(prefix=f".{resolved_run_id}.", dir=output_root)
             )
-            with _seeded_runtime(config.monte_carlo.seed):
-                built = self.factory.build(config)
-                raw_result = built.simulator.execute(
-                    iterations=config.monte_carlo.iterations,
-                    repetitions=config.monte_carlo.repetitions,
-                )
+            def execute_scenario() -> pd.DataFrame:
+                with _seeded_runtime(config.monte_carlo.seed):
+                    built = self.factory.build(config)
+                    return built.simulator.execute(
+                        iterations=config.monte_carlo.iterations,
+                        repetitions=config.monte_carlo.repetitions,
+                    )
+
+            diagnostic_path: Path | None = None
+            if capture_diagnostics:
+                diagnostic_path = temporary_path / "diagnostics.log"
+                with diagnostic_path.open("w", encoding="utf-8") as stream:
+                    if diagnostic_preamble:
+                        stream.write("[bootstrap diagnostics]\n")
+                        stream.write(diagnostic_preamble.rstrip() + "\n")
+                    stream.write("[simulation diagnostics]\n")
+                    with redirect_stdout(stream), redirect_stderr(stream):
+                        raw_result = execute_scenario()
+            else:
+                raw_result = execute_scenario()
             if not isinstance(raw_result, pd.DataFrame) or raw_result.empty:
                 raise ArtifactError("simulation produced no output rows")
 
@@ -189,12 +206,49 @@ class HeadlessRunner:
             output_metadata: Dict[str, Any] = {}
             for name, (table, path) in tables.items():
                 self._write_table(table, path, config.artifacts.format)
+                persisted_table = (
+                    pd.read_csv(path)
+                    if config.artifacts.format == "csv"
+                    else pd.read_parquet(path)
+                )
                 output_metadata[name] = {
                     "path": path.name,
                     "format": config.artifacts.format,
                     "rows": int(len(table)),
                     "columns": list(table.columns),
-                    "sha256": self._sha256(path),
+                    "sha256": file_sha256(path),
+                    "reproducible_content_sha256": reproducible_table_hash(
+                        persisted_table
+                    ),
+                    "reproducibility_excludes": ["run_id"],
+                }
+
+            attachments: Dict[str, Any] = {}
+            if diagnostic_path is not None:
+                attachments["diagnostics"] = {
+                    "path": diagnostic_path.name,
+                    "media_type": "text/plain; charset=utf-8",
+                    "bytes": diagnostic_path.stat().st_size,
+                    "sha256": file_sha256(diagnostic_path),
+                }
+            if artifact_profile is not None:
+                validated_profile = validate_artifact_profile(
+                    artifact_profile,
+                    {name: table for name, (table, _) in tables.items()},
+                    scenario_id=config.scenario_id,
+                )
+                profile_path = temporary_path / "artifact_profile.json"
+                profile_path.write_text(
+                    json.dumps(validated_profile, indent=2, sort_keys=True) + "\n",
+                    encoding="utf-8",
+                )
+                attachments["artifact_profile"] = {
+                    "path": profile_path.name,
+                    "media_type": "application/json",
+                    "bytes": profile_path.stat().st_size,
+                    "sha256": file_sha256(profile_path),
+                    "profile_version": validated_profile["profile_version"],
+                    "profile_id": validated_profile["profile_id"],
                 }
 
             manifest = {
@@ -211,6 +265,8 @@ class HeadlessRunner:
                 },
                 "outputs": output_metadata,
             }
+            if attachments:
+                manifest["attachments"] = attachments
             manifest_path = temporary_path / "manifest.json"
             manifest_path.write_text(
                 json.dumps(manifest, indent=2, sort_keys=True) + "\n",

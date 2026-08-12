@@ -1,0 +1,45 @@
+schema_version: 1
+scenario_id: public-growth-path-v1
+economy:
+  type: TokenEconomy_Basic
+  parameters:
+    initial_price: 0.05
+    fiat: "$"
+    token: TLAB
+  holding_time:
+    type: HoldingTime_Constant
+    parameters:
+      holding_time: 1.5
+  supply:
+    type: SupplyController_Constant
+    parameters:
+      supply: 250000000
+  price:
+    type: PriceFunction_EOE
+    parameters: {}
+  supply_pools: []
+  agent_pools:
+    - id: illustrative-users
+      type: AgentPool_Basic
+      parameters:
+        currency: "$"
+        name: illustrative-users
+      users:
+        type: UserGrowth_Spaced
+        parameters:
+          initial_users: 2500
+          max_users: 20000
+          num_steps: 24
+      transactions:
+        type: TransactionManagement_Trend
+        parameters:
+          average_transaction_initial: 40
+          average_transaction_final: 120
+          num_steps: 24
+monte_carlo:
+  simulator: TokenMetaSimulator
+  iterations: 24
+  repetitions: 4
+  seed: 20260812
+artifacts:
+  format: csv

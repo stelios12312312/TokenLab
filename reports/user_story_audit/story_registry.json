@@ -305,30 +305,56 @@
       "id": "US-PM-AUTO-HFC7DB1681D268A66",
       "title": "Create a polished reproducible TokenLab demo",
       "priority": "MEDIUM",
-      "status": "NOT_IMPLEMENTED",
-      "code_refs": [],
-      "test_refs": [],
-      "validation_refs": [],
-      "doc_refs": [],
+      "status": "FULLY_COVERED",
+      "description": "As a prospective public evaluator or TokenLab maintainer, I need one installed command that runs a reviewed illustrative scenario with bounded terminal output and publishes a validated, reproducible, dashboard-ready evidence bundle without inventing absent tokenomics metrics.",
+      "code_refs": [
+        "src/TokenLab/demo_cli.py",
+        "src/TokenLab/agentic/demo.py",
+        "src/TokenLab/agentic/artifact_profile.py",
+        "src/TokenLab/agentic/runner.py",
+        "src/TokenLab/agentic/data/public_demo.yaml",
+        "src/TokenLab/agentic/data/public_demo_profile.json",
+        "pyproject.toml"
+      ],
+      "test_refs": [
+        "tests/test_public_demo.py",
+        "tests/test_agentic_runner.py"
+      ],
+      "validation_refs": [
+        "plans/plan_2026-08-12_e8bdd109f801da98/verification.md"
+      ],
+      "doc_refs": [
+        "README.md",
+        "docs/public-demo.md",
+        "docs/agentic-runner.md"
+      ],
       "tags": [
         "program_manager",
         "auto_story",
-        "draft",
-        "fallback"
+        "demo",
+        "tokenomics",
+        "artifacts",
+        "traceability"
       ],
       "generated_from": {
         "source": "program_manager_intake",
         "source_hash": "fc7db1681d268a66",
         "generated_at": "2026-08-12T08:01:50.821Z",
-        "review_status": "draft_review_needed",
+        "review_status": "implemented_and_verified",
         "source_title": "Create a polished reproducible TokenLab demo"
       },
       "narrative": {
-        "user": "program operator",
-        "need": "Create a polished, repeatable TokenLab demo around the shipped declarative scenario runner. Add one concise public command, quiet terminal output with a saved diagnostic log, a reviewed public-safe scenario distinct from the immutable parity fixture, a versioned dashboard artifact profile that declares available metrics without inventing emissions or treasury semantics, and a short demo script/readme. Demonstrate deterministic lineage and reproducibility while clearly labeling that the reference",
-        "outcome": "The requested Program Manager capability is represented as an implementation-ready backlog story."
+        "user": "prospective public evaluator and TokenLab maintainer",
+        "need": "Run a polished, repeatable TokenLab demo around the shipped declarative runner using one installed command, bounded terminal output, preserved diagnostics, a reviewed public-safe scenario, and a versioned dashboard artifact profile that declares only emitted metrics.",
+        "outcome": "The evaluator receives an atomically published and validated evidence bundle with deterministic lineage and reproducible content hashes, while deterministic repetition and absent tokenomics domains are labeled honestly and the result remains explicitly non-advisory."
       },
-      "acceptance_criteria": []
+      "acceptance_criteria": [
+        {
+          "id": "AC-T-INTAKE-F1441552",
+          "description": "One documented installed command runs the reviewed public scenario with at most 10 presentation lines, preserves complete diagnostics, validates manifest/results/summary/profile artifacts, reproduces canonical table-content hashes across unique bundles, and states the illustrative non-advisory boundary."
+        }
+      ],
+      "needs_review": false
     },
     {
       "id": "US-002",
@@ -431,8 +457,18 @@
       "priority": "LOW",
       "status": "PARTIALLY_COVERED",
       "description": "As a TokenLab maintainer, I need every legacy source surface assigned to an explicit inventory baseline so repository-wide traceability failures are visible and future ownership decisions remain deliberate. Inventory membership proves ownership only; it does not claim behavioral, scientific, security, legal, financial, or product validation.",
-      "code_refs": [],
-      "test_refs": [],
+      "code_refs": [
+        "scripts/generate_empirical_validation.py",
+        "scripts/generate_validation_matrix.py",
+        "scripts/generate_z1_lifecycle_model_validation.py",
+        "scripts/run_empirical_calibrated_simulation.py"
+      ],
+      "test_refs": [
+        "tests/test_empirical_validation_readiness.py",
+        "tests/test_empirical_calibrated_simulation.py",
+        "tests/test_v2_remediation_regressions.py",
+        "tests/test_z1_report_data_layers.py"
+      ],
       "doc_refs": [
         "docs_final/2026-06-19/parameter_locks_report.html",
         "docs_final/2026-06-23/parameter_locks_report.html",

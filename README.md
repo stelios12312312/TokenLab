@@ -44,6 +44,26 @@ Install the core library and command-line tools:
 python -m pip install .
 ```
 
+### Public demo — the best place to start
+
+Run the reviewed, self-contained scenario from an installed package:
+
+```bash
+tokenlab-demo --output-dir outputs/demo
+```
+
+The command prints a six-line result and writes a non-overwriting evidence
+bundle containing `manifest.json`, raw and summary CSV tables, the full captured
+`diagnostics.log`, and a validated `artifact_profile.json`. The profile declares
+six metrics that are actually present and explicitly marks emissions, unlocks,
+liquidity, treasury, governance, staking yield, FDV, and APY unavailable.
+
+The scenario is deterministic and illustrative: repeated paths do not represent
+statistical uncertainty, and the output is not investment, launch, legal,
+financial, forecast, or decision-grade advice. See the
+[three-minute presenter guide](docs/public-demo.md) for the recommended talk
+track and reproducibility check.
+
 For repository development, including the Z1, reporting, and test extras:
 
 ```bash
@@ -71,8 +91,8 @@ The command publishes one non-overwriting bundle at
 
 The supplied reference scenario proves deterministic execution and lineage. It
 is not an investment forecast or a substitute for model, financial, or legal
-review. A polished public demo and artifact dashboard are tracked in GitHub
-issues [#19](https://github.com/stelios12312312/TokenLab/issues/19) and
+review. The public demo above packages the presentation flow; the separate
+artifact dashboard is tracked in GitHub issue
 [#20](https://github.com/stelios12312312/TokenLab/issues/20).
 
 ### Directory Structure & Organization
