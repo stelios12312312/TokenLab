@@ -50,6 +50,31 @@ For repository development, including the Z1, reporting, and test extras:
 python -m pip install -r requirements.txt
 ```
 
+### Declarative scenario runner
+
+TokenLab can run a complete simulation from a reviewed YAML or JSON scenario—no
+notebook editing or client-project code is required. From a repository checkout:
+
+```bash
+python -m TokenLab.agentic.runner \
+  examples/scenarios/notebook_01_simple_fiat.yaml \
+  --output-dir outputs/agentic \
+  --run-id quickstart
+```
+
+The command publishes one non-overwriting bundle at
+`outputs/agentic/quickstart/` containing:
+
+- `manifest.json` with scenario hash, seed, run lineage, and output checksums;
+- `results.csv` with repetition-level simulation output; and
+- `iteration_summary.csv` with per-iteration summary statistics.
+
+The supplied reference scenario proves deterministic execution and lineage. It
+is not an investment forecast or a substitute for model, financial, or legal
+review. A polished public demo and artifact dashboard are tracked in GitHub
+issues [#19](https://github.com/stelios12312312/TokenLab/issues/19) and
+[#20](https://github.com/stelios12312312/TokenLab/issues/20).
+
 ### Directory Structure & Organization
 The repository is organized to maintain a clean layout while keeping all client projects perfectly isolated:
 - `src/`: Core Python package `TokenLab` containing the modular simulation framework.
@@ -89,6 +114,9 @@ external project root.
 
 Existing source-checkout commands such as `python run_sim.py --list` remain
 supported and use the repository's own `projects/` directory.
+
+Repository status, generated-artifact policy, and the legacy GitBook status are
+documented in [Repository governance](docs/repository-governance.md).
 
 Notebook execution is optional and requires
 `python -m pip install ".[notebook]"`.
