@@ -31,6 +31,34 @@ outputs/agentic/notebook-01-reference/
 tables repeat the four lineage fields. The bundle is assembled in a temporary
 directory and renamed into place only after both tables and the manifest exist.
 
+Each table has two deliberately different integrity fields:
+
+- `sha256` verifies the exact on-disk file, including its unique `run_id`.
+- `reproducible_content_sha256` canonicalizes the persisted table and excludes
+  only `run_id`. Matching values prove identical serialized scenario content
+  when `scenario_id`, `config_hash`, and `seed` also match.
+
+The optional programmatic `capture_diagnostics=True` and `artifact_profile=...`
+arguments add `diagnostics.log` and a validated `artifact_profile.json` under a
+separate manifest `attachments` object. Both files are written and checksummed
+before the same atomic rename; default runner behavior and the `outputs` table
+contract remain compatible.
+
+## Installed public demo
+
+The shortest reviewed presentation flow is:
+
+```bash
+tokenlab-demo --output-dir outputs/demo
+```
+
+The scenario and v1 profile are installed package data, so the command does not
+depend on `examples/` or a repository checkout. It captures native numerical
+stack import messages, simulator progress, and per-step legacy output in the
+diagnostic attachment, then prints at most six presentation lines. The completed
+bundle is validated before the command reports success. See
+[`public-demo.md`](public-demo.md) for the talk track.
+
 ## Scenario contract
 
 Schema version 1 has five top-level keys:
@@ -92,6 +120,11 @@ are deterministic, and its parity test compares every original output value to
 the hand-written construction. This is not a universal determinism guarantee:
 some legacy stochastic controllers derive local random state from wall-clock
 time. Their existing behavior is preserved under the extension contract.
+
+The public demo avoids those stochastic controllers. It uses deterministic
+spaced user inputs and a deterministic transaction trend to create a changing
+trajectory. Its four repeated paths are identical by construction; their zero
+dispersion is not statistical uncertainty evidence.
 
 ## Interpretation boundary
 
