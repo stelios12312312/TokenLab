@@ -28,7 +28,7 @@ None found in the scoped boundary. The verbose runner console is a known UX gap 
 
 ## Story Coverage
 
-- `US-003` has code, test, documentation, and validation references and remains `PARTIALLY_COVERED` until the cleanup PR's Actions and durable PR reference are available.
+- `US-003` has code, test, documentation, and validation references and is `FULLY_COVERED`; PR #21 provides the durable remote review surface and both repository-owned workflows pass.
 - The existing declarative-runner story remains covered by its integration and parity tests.
 
 ## Formal Checks
@@ -39,4 +39,4 @@ None found in the scoped boundary. The verbose runner console is a known UX gap 
 
 ## Verdict
 
-**PASS (local)** — 0 new regressions, 0 parity violations, and 0 silent degradations. Remote PR Actions are the remaining verification boundary.
+**PASS** — 0 new regressions, 0 parity violations, and 0 silent degradations. A clean clone passed all 14 focused checks, and both repository-owned workflows passed on PR #21.

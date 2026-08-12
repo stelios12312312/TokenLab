@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-08-12T08:12:24.744Z",
+  "updated": "2026-08-12T08:51:35.000Z",
   "stories": [
     {
       "id": "US-Z1-M3-01",
@@ -374,7 +374,7 @@
       "id": "US-003",
       "title": "Maintain a clean and truthful public repository",
       "priority": "MEDIUM",
-      "status": "PARTIALLY_COVERED",
+      "status": "FULLY_COVERED",
       "description": "",
       "code_refs": [
         ".gitignore",
@@ -424,7 +424,7 @@
   ],
   "generated_at": "2026-05-18T13:00:00.000Z",
   "source": "story_registry_bootstrap.mjs",
-  "updated_at": "2026-08-12T08:12:24.744Z",
+  "updated_at": "2026-08-12T08:51:35.000Z",
   "commit": "85e02f1",
   "consolidations": []
 }

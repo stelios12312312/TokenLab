@@ -9,7 +9,7 @@
 - **False-green disposition**: repository-owned Actions pass on the base commit, while combined status remains red solely because of legacy GitBook. The governance note reports both facts and no integration was deleted.
 - **New findings**: none at MEDIUM or above in the cleanup boundary. The current runner's 3,027-line console output remains a known demo-quality gap assigned to issue #19; it does not invalidate the generated artifact bundle.
 - **Substrate note**: project health reports 0 failures and 109 warnings, dominated by pre-existing planner/documentation references outside this ticket. They are not hidden or reclassified as cleanup success.
-- **Confidence**: PASS for local repository hygiene, command truthfulness, history preservation, and remote metadata. PR Actions remain pending until publication.
+- **Confidence**: PASS for repository hygiene, command truthfulness, history preservation, remote metadata, a clean-clone smoke, and both repository-owned PR Actions workflows on PR #21.
 
 ## Index
 - F-001: Settlement Velocity parameter mismatch (RESOLVED)
