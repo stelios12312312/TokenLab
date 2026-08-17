@@ -70,7 +70,7 @@ def test_packaged_registry_declares_reviewed_presets_and_bounded_controls():
 
     assert registry.registry_version == 1
     assert registry.gallery_id == "tokenlab-public-gallery-v1"
-    assert len(registry.demos) == 8
+    assert len(registry.demos) == 12
     demo = registry.demos[0]
     assert demo.id == "growth-path"
     assert demo.kind == "deterministic"
@@ -190,6 +190,76 @@ def test_packaged_registry_declares_reviewed_presets_and_bounded_controls():
     assert "not investment" in adapted.boundary.lower()
     assert "scenario evidence" in adapted.summary.lower()
     assert "blocked" in adapted.boundary.lower()
+
+    staking = registry.demos[8]
+    assert staking.id == "public-staking-rewards-v3"
+    assert staking.kind == "stochastic"
+    assert staking.role == "historical-archetype"
+    assert staking.default_run_tier == "fast"
+    assert staking.interactive_run_tiers == ("test", "fast", "standard")
+    assert staking.cli_only_run_tiers == ("deep",)
+    assert staking.maturity == "illustrative"
+    assert "not investment" in staking.boundary.lower()
+    assert "synthetic" in staking.summary.lower()
+    assert "never apy" in staking.boundary.lower()
+
+    multitoken = registry.demos[9]
+    assert multitoken.id == "public-multitoken-dependency-v3"
+    assert multitoken.kind == "stochastic"
+    assert multitoken.role == "historical-archetype"
+    assert multitoken.default_run_tier == "fast"
+    assert multitoken.interactive_run_tiers == ("test", "fast", "standard")
+    assert multitoken.cli_only_run_tiers == ("deep",)
+    assert multitoken.maturity == "illustrative"
+    assert "not investment" in multitoken.boundary.lower()
+    assert "channel" in multitoken.summary.lower()
+    assert "no liquidity depth" in multitoken.boundary.lower()
+
+    staking_control = registry.demos[10]
+    assert staking_control.id == "public-staking-constant-v1"
+    assert staking_control.kind == "deterministic"
+    assert staking_control.role == "control"
+    assert "not monte carlo" in staking_control.summary.lower()
+    assert "zero-variance" in staking_control.summary.lower()
+    assert {preset.id for preset in staking_control.presets} == {
+        "baseline",
+        "downside",
+        "upside",
+    }
+    assert {control.id for control in staking_control.controls} == {
+        "average_transaction_value",
+        "holding_time",
+    }
+    assert all(
+        control.minimum < control.maximum for control in staking_control.controls
+    )
+    assert "not investment" in staking_control.boundary.lower()
+
+    disconnected = registry.demos[11]
+    assert disconnected.id == "public-multitoken-disconnected-v3"
+    assert disconnected.kind == "deterministic"
+    assert disconnected.role == "control"
+    assert "not monte carlo" in disconnected.summary.lower()
+    assert "zero-variance" in disconnected.summary.lower()
+    assert {preset.id for preset in disconnected.presets} == {
+        "baseline",
+        "downside",
+        "upside",
+    }
+    assert {control.id for control in disconnected.controls} == {
+        "master_demand_final",
+        "master_holding_time",
+    }
+    assert all(
+        control.minimum < control.maximum for control in disconnected.controls
+    )
+    # The disconnected control's numeric controls root at one declared
+    # ecosystem economy (schema v3 additive path shape).
+    assert all(
+        control.path[:2] == ("ecosystem", "economies")
+        for control in disconnected.controls
+    )
+    assert "not investment" in disconnected.boundary.lower()
 
 
 def test_public_catalog_hides_package_resources_and_nested_paths():
@@ -659,6 +729,10 @@ def test_job_progress_cancel_and_incomplete_states(tmp_path):
             "public-vesting-smoothed-v2": "stochastic",
             "public-vesting-constant-v1": "deterministic",
             "z1-solvency-adapted-v1": "adapted",
+            "public-staking-rewards-v3": "stochastic",
+            "public-multitoken-dependency-v3": "stochastic",
+            "public-staking-constant-v1": "deterministic",
+            "public-multitoken-disconnected-v3": "deterministic",
         }
         status, control = _json_post(
             base_url,
@@ -1330,5 +1404,300 @@ def test_adapted_demo_projection_serves_precomputed_bundles_read_only(tmp_path):
                 "demo_id": "z1-solvency-adapted-v1",
                 "preset_id": "baseline",
                 "parameters": {"settlement_ratio": 2.0},
+            }
+        )
+
+
+def test_staking_demo_catalog_contract_and_prior_edits(tmp_path):
+    gallery = DemoGallery(tmp_path / "mc")
+    catalog = gallery.catalog()
+    views = {demo["id"]: demo for demo in catalog["demos"]}
+    staking = views["public-staking-rewards-v3"]
+
+    assert staking["kind"] == "stochastic"
+    assert staking["role"] == "historical-archetype"
+    assert staking["default_run_tier"] == "fast"
+    assert set(staking["run_tiers"]) == {"test", "fast", "standard", "deep"}
+    assert staking["run_tiers"]["test"]["interactive"] is True
+    assert staking["run_tiers"]["deep"]["interactive"] is False
+    priors = staking["uncertainty_parameters"]
+    assert {prior["id"] for prior in priors} == {
+        "staking_amount",
+        "staking_reward_amount",
+        "lockup_duration",
+    }
+    assert all(prior["calibration"] == "illustrative" for prior in priors)
+    assert all(prior["approval"] == "approved" for prior in priors)
+    assert all(prior["dependence"] == "independent" for prior in priors)
+    assert all(prior["distribution"]["family"] == "triangular" for prior in priors)
+    assert all(prior["value_type"] == "integer" for prior in priors)
+    assert staking["seed"] == 20260821
+    assert staking["iterations"] == 36
+    # The public catalog never leaks scenario resources or economy paths.
+    serialized = json.dumps(staking)
+    assert '"path"' not in serialized
+    assert ".yaml" not in serialized
+
+    manager = StochasticJobManager(gallery)
+
+    # Downward approval edits render invalid-spec and execute nothing.
+    with pytest.raises(InvalidSpecError):
+        manager._resolve_request(
+            {
+                "demo_id": "public-staking-rewards-v3",
+                "run_tier": "test",
+                "priors": {"lockup_duration": {"approval": "draft"}},
+            }
+        )
+
+    # Triangular support edits inside the declared bounds resolve and validate.
+    _, config, _, _, _ = manager._resolve_request(
+        {
+            "demo_id": "public-staking-rewards-v3",
+            "run_tier": "test",
+            "priors": {"lockup_duration": {"maximum": 11}},
+        }
+    )
+    spec = next(
+        spec for spec in config.uncertainty.parameters if spec.id == "lockup_duration"
+    )
+    assert spec.distribution.parameters["maximum"] == 11
+
+    # The deep tier is CLI/background-only for this demo too.
+    with pytest.raises(GalleryError, match="CLI/background-only"):
+        manager._resolve_request(
+            {"demo_id": "public-staking-rewards-v3", "run_tier": "deep"}
+        )
+
+
+def test_multitoken_demo_catalog_contract_and_prior_edits(tmp_path):
+    gallery = DemoGallery(tmp_path / "mc")
+    catalog = gallery.catalog()
+    views = {demo["id"]: demo for demo in catalog["demos"]}
+    multitoken = views["public-multitoken-dependency-v3"]
+
+    assert multitoken["kind"] == "stochastic"
+    assert multitoken["role"] == "historical-archetype"
+    assert set(multitoken["run_tiers"]) == {"test", "fast", "standard", "deep"}
+    priors = multitoken["uncertainty_parameters"]
+    assert {prior["id"] for prior in priors} == {
+        "channel_percentage",
+        "master_demand_final",
+    }
+    assert all(prior["calibration"] == "illustrative" for prior in priors)
+    assert all(prior["approval"] == "approved" for prior in priors)
+    assert all(prior["dependence"] == "independent" for prior in priors)
+    assert multitoken["seed"] == 20260822
+    assert multitoken["iterations"] == 36
+    serialized = json.dumps(multitoken)
+    assert '"path"' not in serialized
+    assert ".yaml" not in serialized
+
+    manager = StochasticJobManager(gallery)
+
+    # Triangular support edits inside the declared bounds resolve and validate
+    # against the ecosystem channel path (schema v3 uncertainty extension).
+    _, config, _, _, _ = manager._resolve_request(
+        {
+            "demo_id": "public-multitoken-dependency-v3",
+            "run_tier": "test",
+            "priors": {"channel_percentage": {"maximum": 0.006}},
+        }
+    )
+    spec = next(
+        spec
+        for spec in config.uncertainty.parameters
+        if spec.id == "channel_percentage"
+    )
+    assert spec.distribution.parameters["maximum"] == 0.006
+    assert spec.path == "ecosystem.channels[0].percentage"
+
+    with pytest.raises(GalleryError, match="CLI/background-only"):
+        manager._resolve_request(
+            {"demo_id": "public-multitoken-dependency-v3", "run_tier": "deep"}
+        )
+
+
+def test_staking_stochastic_job_runs_real_runner(tmp_path):
+    gallery = DemoGallery(tmp_path / "mc-jobs")
+    manager = StochasticJobManager(gallery)
+    job = manager.start({"demo_id": "public-staking-rewards-v3", "run_tier": "test"})
+    assert job["requested"] == 32
+    job_id = job["job_id"]
+    deadline = time.time() + 180
+    final = manager.status(job_id)
+    while time.time() < deadline:
+        final = manager.status(job_id)
+        if final["state"] in _TERMINAL_JOB_STATES:
+            break
+        time.sleep(0.05)
+    assert final["state"] == "success"
+    assert (final["requested"], final["completed"], final["failed"]) == (32, 32, 0)
+
+    result = final["result"]
+    assert result["run"]["run_tier"] == "test"
+    assert result["run"]["sampler_version"] == "tokenlab-rng-v1"
+    assert {metric["id"] for metric in result["metrics"]} == {
+        "terminal_token_price",
+        "terminal_circulating_supply",
+        "terminal_staking_transaction_volume",
+        "terminal_fiat_transaction_volume",
+    }
+    assert all(len(metric["fan"]["x"]) == 36 for metric in result["metrics"])
+    assert all(len(metric["terminal_values"]) == 32 for metric in result["metrics"])
+    by_id = {metric["id"]: metric for metric in result["metrics"]}
+    # The replayed exogenous staking-demand series is not an uncertain
+    # parameter: identical terminal volume across paths, while the sampled
+    # staking amount/reward/lockup priors disperse the terminal supply.
+    volume = by_id["terminal_staking_transaction_volume"]
+    assert len(set(volume["terminal_values"])) == 1
+    assert len(set(by_id["terminal_circulating_supply"]["terminal_values"])) > 1
+    coverage = result["tokenomics_coverage"]
+    assert coverage["staking_reward_source"]["status"] == "modeled"
+    assert "minted" in coverage["staking_reward_source"]["detail"].lower()
+    assert coverage["apy"]["status"] == "absent"
+    assert coverage["liquidity"]["status"] == "absent"
+    assert "not investment" in result["interpretation_boundary"].lower()
+
+
+def test_multitoken_stochastic_job_runs_real_runner(tmp_path):
+    gallery = DemoGallery(tmp_path / "mc-jobs")
+    manager = StochasticJobManager(gallery)
+    job = manager.start(
+        {"demo_id": "public-multitoken-dependency-v3", "run_tier": "test"}
+    )
+    assert job["requested"] == 32
+    job_id = job["job_id"]
+    deadline = time.time() + 180
+    final = manager.status(job_id)
+    while time.time() < deadline:
+        final = manager.status(job_id)
+        if final["state"] in _TERMINAL_JOB_STATES:
+            break
+        time.sleep(0.05)
+    assert final["state"] == "success"
+    assert (final["requested"], final["completed"], final["failed"]) == (32, 32, 0)
+
+    result = final["result"]
+    assert result["run"]["run_tier"] == "test"
+    assert {metric["id"] for metric in result["metrics"]} == {
+        "terminal_master_price",
+        "terminal_master_supply",
+        "terminal_dependent_price",
+        "terminal_dependent_supply",
+        "terminal_channeled_value",
+    }
+    assert all(len(metric["fan"]["x"]) == 36 for metric in result["metrics"])
+    assert all(len(metric["terminal_values"]) == 32 for metric in result["metrics"])
+    by_id = {metric["id"]: metric for metric in result["metrics"]}
+    # The sampled channel percentage prior disperses the channeled value.
+    assert len(set(by_id["terminal_channeled_value"]["terminal_values"])) > 1
+    assert all(
+        value > 0 for value in by_id["terminal_channeled_value"]["terminal_values"]
+    )
+    coverage = result["tokenomics_coverage"]
+    assert coverage["dependencies_channels"]["status"] == "modeled"
+    assert coverage["liquidity"]["status"] == "absent"
+    assert coverage["apy"]["status"] == "absent"
+    assert "not investment" in result["interpretation_boundary"].lower()
+
+
+def test_staking_constant_control_is_deterministic_and_bounded(tmp_path):
+    gallery = DemoGallery(tmp_path / "runs")
+
+    baseline = gallery.run_request(
+        {"demo_id": "public-staking-constant-v1", "preset_id": "baseline", "parameters": {}}
+    )
+    custom = gallery.run_request(
+        {
+            "demo_id": "public-staking-constant-v1",
+            "preset_id": "downside",
+            "parameters": {"average_transaction_value": 300000},
+        }
+    )
+
+    assert baseline.bundle_dir != custom.bundle_dir
+    assert validate_bundle(baseline.bundle_dir)["status"] == "pass"
+    assert baseline.application.payload["state"] == "success"
+    assert baseline.application.payload["variability"]["status"] == "unavailable"
+    assert "monte carlo" not in json.dumps(baseline.application.payload).lower()
+    assert custom.resolved_parameters == {
+        "average_transaction_value": 300000,
+        "holding_time": 4.0,
+    }
+
+    # Zero variance across the repeated deterministic paths, and the supply
+    # is exactly the cumulative exogenous series: no staking controller
+    # mints rewards in this control.
+    results = pd.read_csv(baseline.bundle_dir / "results.csv")
+    numeric = [
+        column
+        for column in results.select_dtypes(include=[np.number]).columns
+        if column not in {"iteration_time", "repetition_run", "seed"}
+    ]
+    spread = results.groupby("iteration_time")[numeric].std(ddof=1).fillna(0.0)
+    assert (spread == 0.0).all().all()
+
+    # Bounded control: out-of-range values are rejected without running.
+    with pytest.raises(GalleryError, match="between"):
+        gallery.run_request(
+            {
+                "demo_id": "public-staking-constant-v1",
+                "preset_id": "baseline",
+                "parameters": {"average_transaction_value": 100},
+            }
+        )
+
+
+def test_multitoken_disconnected_control_is_deterministic_and_bounded(tmp_path):
+    gallery = DemoGallery(tmp_path / "runs")
+
+    baseline = gallery.run_request(
+        {
+            "demo_id": "public-multitoken-disconnected-v3",
+            "preset_id": "baseline",
+            "parameters": {},
+        }
+    )
+    custom = gallery.run_request(
+        {
+            "demo_id": "public-multitoken-disconnected-v3",
+            "preset_id": "downside",
+            "parameters": {"master_demand_final": 320000},
+        }
+    )
+
+    assert baseline.bundle_dir != custom.bundle_dir
+    assert validate_bundle(baseline.bundle_dir)["status"] == "pass"
+    assert baseline.application.payload["state"] == "success"
+    assert baseline.application.payload["variability"]["status"] == "unavailable"
+    assert "monte carlo" not in json.dumps(baseline.application.payload).lower()
+    # The ecosystem-rooted control applied inside the declared master economy.
+    assert custom.resolved_parameters == {
+        "master_demand_final": 320000,
+        "master_holding_time": 3.0,
+    }
+
+    # Zero variance across the repeated deterministic paths.
+    results = pd.read_csv(baseline.bundle_dir / "results.csv")
+    numeric = [
+        column
+        for column in results.select_dtypes(include=[np.number]).columns
+        if column not in {"iteration_time", "repetition_run", "seed"}
+    ]
+    spread = results.groupby("iteration_time")[numeric].std(ddof=1).fillna(0.0)
+    assert (spread == 0.0).all().all()
+    # The dependent inflow is the exogenous series, not a channel: the
+    # dependent economy exists and its suffixed columns are emitted.
+    assert "transactions_MTLB_MTDB" in results.columns
+    assert results["transactions_MTLB_MTDB"].iloc[-1] > 0
+
+    # Bounded control: out-of-range values are rejected without running.
+    with pytest.raises(GalleryError, match="between"):
+        gallery.run_request(
+            {
+                "demo_id": "public-multitoken-disconnected-v3",
+                "preset_id": "baseline",
+                "parameters": {"master_demand_final": 100},
             }
         )

@@ -47,18 +47,34 @@ _VESTING_SMOOTHED_V2_SCENARIO_RESOURCE = _DATA_ROOT.joinpath(
 _VESTING_SMOOTHED_V2_PROFILE_RESOURCE = _DATA_ROOT.joinpath(
     "public_vesting_smoothed_v2_profile.json"
 )
+_STAKING_V3_SCENARIO_RESOURCE = _DATA_ROOT.joinpath(
+    "public_staking_rewards_v3.yaml"
+)
+_STAKING_V3_PROFILE_RESOURCE = _DATA_ROOT.joinpath(
+    "public_staking_rewards_v3_profile.json"
+)
+_MULTITOKEN_V3_SCENARIO_RESOURCE = _DATA_ROOT.joinpath(
+    "public_multitoken_dependency_v3.yaml"
+)
+_MULTITOKEN_V3_PROFILE_RESOURCE = _DATA_ROOT.joinpath(
+    "public_multitoken_dependency_v3_profile.json"
+)
 
 DEMO_SCENARIO_V1 = "public-growth-path-v1"
 DEMO_SCENARIO_V2 = "public-growth-uncertainty-v2"
 DEMO_SCENARIO_DEMAND_V2 = "public-demand-history-v2"
 DEMO_SCENARIO_VESTING_CONCENTRATED_V2 = "public-vesting-concentrated-v2"
 DEMO_SCENARIO_VESTING_SMOOTHED_V2 = "public-vesting-smoothed-v2"
+DEMO_SCENARIO_STAKING_V3 = "public-staking-rewards-v3"
+DEMO_SCENARIO_MULTITOKEN_V3 = "public-multitoken-dependency-v3"
 DEMO_SCENARIOS = (
     DEMO_SCENARIO_V1,
     DEMO_SCENARIO_V2,
     DEMO_SCENARIO_DEMAND_V2,
     DEMO_SCENARIO_VESTING_CONCENTRATED_V2,
     DEMO_SCENARIO_VESTING_SMOOTHED_V2,
+    DEMO_SCENARIO_STAKING_V3,
+    DEMO_SCENARIO_MULTITOKEN_V3,
 )
 _V2_RESOURCES = {
     DEMO_SCENARIO_V2: (_V2_SCENARIO_RESOURCE, _V2_PROFILE_RESOURCE),
@@ -73,6 +89,14 @@ _V2_RESOURCES = {
     DEMO_SCENARIO_VESTING_SMOOTHED_V2: (
         _VESTING_SMOOTHED_V2_SCENARIO_RESOURCE,
         _VESTING_SMOOTHED_V2_PROFILE_RESOURCE,
+    ),
+    DEMO_SCENARIO_STAKING_V3: (
+        _STAKING_V3_SCENARIO_RESOURCE,
+        _STAKING_V3_PROFILE_RESOURCE,
+    ),
+    DEMO_SCENARIO_MULTITOKEN_V3: (
+        _MULTITOKEN_V3_SCENARIO_RESOURCE,
+        _MULTITOKEN_V3_PROFILE_RESOURCE,
     ),
 }
 
@@ -136,16 +160,17 @@ def run_public_demo_v2(
 ) -> MonteCarloRunArtifacts:
     """Run a packaged stochastic demo through the real MonteCarloRunner.
 
-    ``scenario`` selects one of the packaged v2 demo ids (the growth
-    flagship, the demand-history archetype, or the two vesting/unlock
-    archetypes). ``capture_stream`` optionally receives the numerical
+    ``scenario`` selects one of the packaged stochastic demo ids (the growth
+    flagship, the demand-history archetype, the two vesting/unlock
+    archetypes, or the two schema v3 staking/multi-token archetypes).
+    ``capture_stream`` optionally receives the numerical
     stack's per-path console output so presentation surfaces stay bounded.
     """
 
     try:
         scenario_resource, profile_resource = _V2_RESOURCES[scenario]
     except KeyError:
-        raise ArtifactError(f"unknown v2 demo scenario {scenario!r}") from None
+        raise ArtifactError(f"unknown stochastic demo scenario {scenario!r}") from None
     profile = json.loads(profile_resource.read_text(encoding="utf-8"))
     with resources.as_file(scenario_resource) as scenario_path:
         config = load_scenario(scenario_path)
@@ -180,8 +205,10 @@ def _parser() -> argparse.ArgumentParser:
             "Packaged demo id: public-growth-path-v1 (deterministic control, "
             "default), public-growth-uncertainty-v2 (stochastic Monte Carlo), "
             "public-demand-history-v2 (stochastic demand-history archetype), "
-            "or public-vesting-concentrated-v2 / public-vesting-smoothed-v2 "
-            "(stochastic vesting/unlock archetypes)"
+            "public-vesting-concentrated-v2 / public-vesting-smoothed-v2 "
+            "(stochastic vesting/unlock archetypes), or "
+            "public-staking-rewards-v3 / public-multitoken-dependency-v3 "
+            "(stochastic schema v3 staking/multi-token archetypes)"
         ),
     )
     parser.add_argument(
@@ -195,7 +222,7 @@ def _parser() -> argparse.ArgumentParser:
         choices=sorted(RUN_TIERS),
         default="fast",
         help=(
-            "Monte Carlo run tier for the v2 stochastic demo "
+            "Monte Carlo run tier for the stochastic demos "
             "(default: fast = 100 paths); ignored for the v1 control"
         ),
     )

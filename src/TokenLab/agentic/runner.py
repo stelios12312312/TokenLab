@@ -569,9 +569,14 @@ class MonteCarloRunner:
         ]
 
     def _path_config(self, config: ScenarioConfig, sample_set: Any) -> ScenarioConfig:
-        """A fresh v1-shaped config with this path's sampled values applied."""
+        """A fresh uncertainty-free config with this path's values applied.
+
+        v2 documents degrade to schema v1 (v2 is v1 plus uncertainty); v3
+        documents keep version 3 because v1 cannot express the v3 blocks —
+        the v3 parser accepts documents without an uncertainty block.
+        """
         data = config.to_dict()
-        data["schema_version"] = 1
+        data["schema_version"] = 1 if config.schema_version == 2 else 3
         data.pop("uncertainty", None)
         data["monte_carlo"]["repetitions"] = 1
         for sample in sample_set:
@@ -972,9 +977,9 @@ class MonteCarloRunner:
         cancel_event: Any = None,
     ) -> MonteCarloRunArtifacts:
         config = scenario if isinstance(scenario, ScenarioConfig) else load_scenario(scenario)
-        if config.schema_version != 2 or config.uncertainty is None:
+        if config.schema_version not in (2, 3) or config.uncertainty is None:
             raise MonteCarloError(
-                "MonteCarloRunner requires a schema v2 scenario with an "
+                "MonteCarloRunner requires a schema v2 or v3 scenario with an "
                 "uncertainty block"
             )
         plan = self._resolve_run_plan(run_tier, paths, bootstrap_resamples)
@@ -1237,24 +1242,24 @@ def _parser() -> argparse.ArgumentParser:
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     config = load_scenario(args.scenario)
-    v2_requested = (
-        config.schema_version == 2
+    mc_requested = (
+        config.schema_version in (2, 3)
         or args.run_tier is not None
         or args.paths is not None
     )
-    if not v2_requested:
+    if not mc_requested:
         artifacts = HeadlessRunner().run(
             args.scenario, args.output_dir, run_id=args.run_id
         )
         print(artifacts.bundle_dir)
         return 0
-    if config.schema_version != 2:
+    if config.schema_version not in (2, 3):
         print(
             json.dumps(
                 {
                     "status": "error",
                     "error_class": "MonteCarloError",
-                    "message": "--run-tier/--paths require a schema v2 scenario",
+                    "message": "--run-tier/--paths require a schema v2 or v3 scenario",
                 },
                 sort_keys=True,
             ),

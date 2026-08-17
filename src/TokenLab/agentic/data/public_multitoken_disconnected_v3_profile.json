@@ -1,0 +1,136 @@
+{
+  "profile_version": 1,
+  "profile_id": "tokenlab-public-multitoken-disconnected-v3",
+  "scenario_id": "public-multitoken-disconnected-v3",
+  "source_artifacts": {
+    "results": {
+      "manifest_output": "results",
+      "role": "one row per deterministic path and simulation step"
+    },
+    "iteration_summary": {
+      "manifest_output": "iteration_summary",
+      "role": "per-step descriptive summary across repeated deterministic paths"
+    }
+  },
+  "time_axis": {
+    "artifact": "iteration_summary",
+    "column": "iteration_time",
+    "label": "Simulation step",
+    "unit": "illustrative step"
+  },
+  "metrics": [
+    {
+      "id": "master_price",
+      "label": "Illustrative master token price",
+      "unit": "illustrative $ per MTLB",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Master price emitted by the configured PriceFunction_IssuanceCurve component with the allowlisted named curve log_power; not a market forecast.",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "MTLB_price_MTLB_mean"
+      }
+    },
+    {
+      "id": "master_supply",
+      "label": "Master circulating supply",
+      "unit": "MTLB",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Master circulating supply: issuance-curve minting minus the dependent economy's fiat-denominated inflow drawn after each dependent execute (illustrative, uncalibrated).",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "supply_MTLB_mean"
+      }
+    },
+    {
+      "id": "dependent_price",
+      "label": "Illustrative dependent token price",
+      "unit": "MTLB per MTDB",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Dependent price emitted by the configured PriceFunction_BondingCurve component with the allowlisted named curve quadratic; not a market forecast.",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "MTDB_price_MTDB_mean"
+      }
+    },
+    {
+      "id": "dependent_supply",
+      "label": "Dependent circulating supply",
+      "unit": "MTDB",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Dependent circulating supply minted by the bonding curve from the exogenous synthetic dependent-demand series; no channel feeds this control.",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "supply_MTDB_mean"
+      }
+    },
+    {
+      "id": "dependent_inflow",
+      "label": "Dependent fiat-denominated inflow",
+      "unit": "illustrative MTLB per step",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Exogenous synthetic dependent-demand series (gentle linear ramp, recorded seed 20260824) replayed through TransactionManagement_FromData; the disconnected companion to the channeled inflow of the multi-token demo.",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "transactions_MTLB_MTDB_mean"
+      }
+    },
+    {
+      "id": "master_fiat_transaction_volume",
+      "label": "Master fiat transaction volume",
+      "unit": "illustrative $ per step",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Documented linear master demand trend (120,000 to 480,000 illustrative $ per step) replayed by the Trend controller.",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "transactions_$_MTLB_mean"
+      }
+    }
+  ],
+  "unavailable_concepts": [
+    {
+      "id": "emissions",
+      "reason": "No standalone emissions schedule is configured; issuance is curve-driven by modeled demand."
+    },
+    {
+      "id": "vesting_unlocks",
+      "reason": "No vesting or unlock controller is configured in this control."
+    },
+    {
+      "id": "liquidity",
+      "reason": "The emitted tables contain no liquidity depth or pool state."
+    },
+    {
+      "id": "treasury",
+      "reason": "No treasury component or treasury authority is configured."
+    },
+    {
+      "id": "governance",
+      "reason": "The scenario models no governance process or authority."
+    },
+    {
+      "id": "staking_yield",
+      "reason": "No staking pool, reward source, or staking yield is modeled."
+    },
+    {
+      "id": "channels",
+      "reason": "No channels are declared in this disconnected control; the channeled multi-token demo models proportional value transfer separately."
+    },
+    {
+      "id": "fdv",
+      "reason": "FDV is not emitted or declared by the selected artifact contract."
+    },
+    {
+      "id": "apy",
+      "reason": "APY is not emitted and cannot be inferred from these tables."
+    }
+  ],
+  "repeatability": {
+    "status": "scenario_specific_deterministic",
+    "explanation": "For this reviewed scenario, matching config hash and seed produce matching canonical table-content hashes. Exact file hashes also include the unique run_id lineage field."
+  },
+  "variability": {
+    "status": "unavailable",
+    "explanation": "All selected controllers are deterministic, so repeated paths are identical and do not provide statistical uncertainty evidence."
+  },
+  "interpretation_boundary": "This is an illustrative, uncalibrated scenario. It is not investment, launch, legal, financial, forecast, or decision-grade advice; live decisions require qualified review and external evidence."
+}

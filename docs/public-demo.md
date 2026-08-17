@@ -26,7 +26,7 @@ tokenlab-dashboard --gallery --output-dir outputs/demo-gallery
 ```
 
 Open the printed loopback URL (normally `http://127.0.0.1:8765`). The gallery
-offers eight reviewed demos:
+offers twelve reviewed demos:
 
 - **Stochastic growth — Monte Carlo uncertainty** (flagship). The reviewed
   public economy with three approved, illustrative, explicitly independent
@@ -78,6 +78,39 @@ offers eight reviewed demos:
   1/3 blocked upstream): not Monte Carlo, not a probability estimate, not a
   forecast, and not investment, launch, legal, financial, or decision-grade
   advice.
+- **Staking rewards, minted — Monte Carlo uncertainty** (historical
+  archetype, schema v3). A synthetic illustrative STLB economy on a
+  documented exogenous release series whose staking cohort locks a fixed
+  illustrative amount through `SupplyStakerLockup` (`reward_as_perc` pinned
+  `false`) and receives a fixed illustrative token reward at unlock; with
+  no declared treasury, rewards are honestly modeled as minted dilution.
+  Three approved, illustrative, independent per-path priors (staking
+  amount, fixed reward amount, lockup duration). The reward is a fixed
+  token quantity per staker, never a rate and never APY.
+- **Multi-token dependency — Monte Carlo uncertainty** (historical
+  archetype, schema v3 ecosystem). A synthetic illustrative two-economy
+  ecosystem whose master (MTLB) prices through an allowlisted named
+  issuance curve over a documented linear demand trend and whose dependent
+  (MTDB) prices through an allowlisted named bonding curve, fed by one
+  directional channel moving a fixed illustrative percentage of the
+  master's token-denominated volume; the channeled value is subtracted from
+  the master supply each step (the pinned conservation point). Two
+  approved, illustrative, independent per-path priors (channel percentage,
+  master demand scale). The channel models directional value transfer only:
+  no liquidity depth, order flow, or market impact is simulated.
+- **No staking — deterministic control** (control). The same illustrative
+  token skeleton as the staking demo with a plain `AgentPool_Basic` — no
+  staking controller, no staking rewards, so circulating supply is exactly
+  the cumulative release series — and deterministic controllers: the
+  no-staking companion and zero-variance negative control for the staking
+  archetype. It is not Monte Carlo.
+- **Disconnected dependent — deterministic control** (control). The same
+  illustrative two-economy ecosystem skeleton as the multi-token demo but
+  with no channels declared — the dependent is fed by an exogenous
+  synthetic dependent-demand series instead of a channel — and
+  deterministic controllers: it isolates proportional channel coupling from
+  exogenous dependent demand as the zero-variance negative control for the
+  multi-token archetype. It is not Monte Carlo.
 
 For the deterministic explorer, select one of
 the baseline, downside, or upside presets, adjust a bounded control, and choose
@@ -137,6 +170,13 @@ As are the two vesting/unlock archetypes:
 ```bash
 tokenlab-demo public-vesting-concentrated-v2 --run-tier fast --output-dir outputs/demo
 tokenlab-demo public-vesting-smoothed-v2 --run-tier fast --output-dir outputs/demo
+```
+
+And the two schema v3 staking/multi-token archetypes:
+
+```bash
+tokenlab-demo public-staking-rewards-v3 --run-tier fast --output-dir outputs/demo
+tokenlab-demo public-multitoken-dependency-v3 --run-tier fast --output-dir outputs/demo
 ```
 
 It prints the same bounded summary plus requested/completed/failed paths and

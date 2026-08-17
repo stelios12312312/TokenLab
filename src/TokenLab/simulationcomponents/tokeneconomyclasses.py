@@ -75,7 +75,7 @@ class TokenEconomy_Basic(TokenEconomy):
         name: str = None,
         safeguard_current_supply_level: bool = True,
         ignore_supply_controller: bool = False,
-        treasuries: List[TreasuryBasic] = [],
+        treasuries: List[TreasuryBasic] = None,
         max_supply: float = np.inf,
         dynamic_price: bool = False,
         multiple: float = 1,
@@ -192,7 +192,10 @@ class TokenEconomy_Basic(TokenEconomy):
 
         self.ignore_supply_controller = ignore_supply_controller
 
-        self.treasuries = treasuries
+        # Fresh list per economy: a mutable default would be shared across
+        # every TokenEconomy instance in the process, leaking one economy's
+        # treasury (and its emitted treasury columns) into unrelated builds.
+        self.treasuries = list(treasuries) if treasuries is not None else []
 
         self.dynamic_price = dynamic_price
 
@@ -820,6 +823,8 @@ class TokenEconomy_Dependent(TokenEconomy_Basic):
         supply_is_added: bool = True,
         name: str = None,
         ignore_supply_controller: bool = False,
+        safeguard_current_supply_level: bool = True,
+        rng=None,
     ) -> None:
 
         if name == None:
@@ -834,10 +839,14 @@ class TokenEconomy_Dependent(TokenEconomy_Basic):
             price_function=price_function,
             price_function_parameters=price_function_parameters,
             unit_of_time=unit_of_time,
+            agent_pools=agent_pools,
             burn_token=burn_token,
             supply_is_added=supply_is_added,
             name=name,
             ignore_supply_controller=ignore_supply_controller,
+            safeguard_current_supply_level=safeguard_current_supply_level,
+            supply_pools=supply_pools,
+            rng=rng,
         )
 
         self._token_economy = dependent_token_economy
@@ -900,7 +909,7 @@ class TokenEcosystem(TokenEconomy):
             datum["name"] = tokenec.name
             cols = datum.columns
             cols = [col + "_" + tokenec.name for col in cols]
-            datum.set_axis(cols, axis=1, inplace=True)
+            datum = datum.set_axis(cols, axis=1)
             data.append(datum)
         data = pd.concat(data, axis=1)
 

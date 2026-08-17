@@ -338,10 +338,12 @@ class SupplyStakerLockup(SupplyStaker):
             self.quit_staking()
 
     def _get_value(self, param):
-        try:
-            return param.rvs(1)[0]  # Sample from the distribution
-        except:
-            return param  # Use the float value directly
+        # Distribution-shaped parameters are drawn with the instance
+        # generator (injected or lazily created), never the global
+        # np.random state; scalars pass through unchanged.
+        if hasattr(param, "rvs"):
+            return param.rvs(1, random_state=self._draw_rng())[0]
+        return param
 
 
 class SupplyStakerMonthly(SupplyStaker):
@@ -410,10 +412,12 @@ class SupplyStakerMonthly(SupplyStaker):
             self.quit_staking()
 
     def _get_value(self, param):
-        try:
-            return param.rvs(1)[0]
-        except:
-            return param
+        # Distribution-shaped parameters are drawn with the instance
+        # generator (injected or lazily created), never the global
+        # np.random state; scalars pass through unchanged.
+        if hasattr(param, "rvs"):
+            return param.rvs(1, random_state=self._draw_rng())[0]
+        return param
 
 
 class SupplyController_Bonding(SupplyController):

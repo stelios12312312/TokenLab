@@ -1,0 +1,123 @@
+# Disconnected companion control for the public multi-token dependency demo.
+#
+# Deterministic negative control (schema v3 ecosystem, no uncertainty
+# block): the same two-economy illustrative ecosystem skeleton as the
+# multi-token demo (master MTLB with the allowlisted named issuance curve,
+# dependent MTDB as a TokenEconomy_Dependent with the allowlisted named
+# bonding curve) but with NO channels declared — the dependent is fed by an
+# exogenous synthetic dependent-demand series (gentle linear ramp, recorded
+# seed 20260824, documented in
+# TokenLab.agentic.data.synthetic_staking) replayed through
+# TransactionManagement_FromData instead of a channel. The dependent still
+# draws its fiat-denominated inflow from the master supply after each
+# execute (the TokenEconomy_Dependent archetype mechanics), so the
+# comparison against the channeled demo isolates proportional channel
+# coupling from exogenous dependent demand. Every controller is
+# deterministic; repeated paths are identical by construction: zero
+# dispersion is a property of the deterministic controllers, not
+# statistical evidence. This scenario is NOT Monte Carlo. All values are
+# synthetic, illustrative, and uncalibrated; the master/dependent shape
+# family is the only lineage.
+schema_version: 3
+scenario_id: public-multitoken-disconnected-v3
+ecosystem:
+  # master names the id of the economy whose supply funds the dependent
+  # economies; it must be declared first so it builds before them.
+  master: master
+  economies:
+    - id: master
+      type: TokenEconomy_Basic
+      parameters:
+        initial_price: 0.1
+        fiat: "$"
+        token: MTLB
+        name: MTLB
+        supply_is_added: true
+        # The issuance curve itself caps and grows the supply; the fiat
+        # safeguard cap would deadlock a bonding-style economy at zero.
+        safeguard_current_supply_level: false
+      holding_time:
+        type: HoldingTime_Constant
+        parameters:
+          holding_time: 4.0
+      supply:
+        type: SupplyController_Bonding
+        parameters: {}
+      price:
+        type: PriceFunction_IssuanceCurve
+        parameters:
+          function:
+            name: log_power
+            params: {multiplier: 0.1, growth: 0.05, base: 1.5}
+      supply_pools: []
+      agent_pools:
+        - id: master-demand
+          type: AgentPool_Basic
+          parameters:
+            currency: "$"
+            name: master-demand
+          users:
+            # Placeholder cohort: the Trend controller replays the
+            # documented linear demand ramp and ignores the user count.
+            type: UserGrowth_Constant
+            parameters:
+              constant: 1
+          transactions:
+            type: TransactionManagement_Trend
+            parameters:
+              average_transaction_initial: 120000
+              average_transaction_final: 480000
+              num_steps: 36
+    - id: dependent
+      type: TokenEconomy_Dependent
+      parameters:
+        initial_price: 1.0
+        fiat: MTLB
+        token: MTDB
+        name: MTDB
+        ignore_supply_controller: true
+        safeguard_current_supply_level: false
+      holding_time:
+        type: HoldingTime_Constant
+        parameters:
+          holding_time: 4.0
+      supply:
+        # Ignored (ignore_supply_controller): the bonding curve owns the
+        # dependent supply. The constant controller documents this.
+        type: SupplyController_Constant
+        parameters:
+          supply: 0
+      price:
+        type: PriceFunction_BondingCurve
+        parameters:
+          function:
+            name: quadratic
+            params: {base: 0.5, coefficient: 1.0e-9, exponent: 2}
+          max_supply: 1250000
+      supply_pools: []
+      agent_pools:
+        - id: dependent-demand
+          type: AgentPool_Basic
+          parameters:
+            currency: MTLB
+            name: dependent-demand
+          users:
+            type: UserGrowth_Constant
+            parameters:
+              constant: 1
+          transactions:
+            # Disconnected: exogenous synthetic dependent-demand series
+            # (inline copy of
+            # synthetic_staking.synthetic_dependent_demand_series(),
+            # recorded seed 20260824); no channel is declared.
+            type: TransactionManagement_FromData
+            parameters:
+              data: [204, 210, 214, 233, 231, 236, 247, 253, 268, 264, 281, 287, 293, 300, 304, 329, 324, 341, 341, 348, 362, 369, 370, 393, 372, 403, 423, 405, 429, 421, 455, 449, 461, 460, 466, 487]
+  channels: []
+monte_carlo:
+  simulator: TokenMetaSimulator
+  iterations: 36
+  repetitions: 4
+  seed: 20260822
+artifacts:
+  format: csv

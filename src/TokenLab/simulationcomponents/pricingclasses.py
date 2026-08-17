@@ -317,7 +317,11 @@ class PriceFunction_BondingCurve(PriceFunctionController):
         self._bonding_function = function
         self._max_supply = max_supply
 
-    def execute(self) -> float:
+    def execute(self, use_previous_supply: bool = True) -> float:
+        # ``use_previous_supply`` is accepted for interface parity with the
+        # other price controllers (TokenEconomy.execute passes it when
+        # dynamic_price is False); the bonding curve is always a function of
+        # the current supply, so the flag does not alter the computation.
         tokeneconomy = self.dependencies[TokenEconomy]
         current_supply = tokeneconomy.supply
         transaction_volume = tokeneconomy.transactions_volume_in_tokens
@@ -370,7 +374,11 @@ class PriceFunction_IssuanceCurve(PriceFunctionController):
         self._tokens_ever_issued = 0
         self._max_supply = max_supply
 
-    def execute(self) -> float:
+    def execute(self, use_previous_supply: bool = True) -> float:
+        # ``use_previous_supply`` is accepted for interface parity with the
+        # other price controllers (TokenEconomy.execute passes it when
+        # dynamic_price is False); the issuance curve always prices over all
+        # tokens ever issued, so the flag does not alter the computation.
         tokeneconomy = self.dependencies[TokenEconomy]
         supply_of_tokens = tokeneconomy.transactions_volume_in_tokens
 

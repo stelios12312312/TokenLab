@@ -1,0 +1,59 @@
+# No-staking companion control for the public staking/rewards demo.
+#
+# Deterministic negative control: same illustrative token skeleton as the
+# staking scenario (STLB, $ fiat, 36 steps, the same synthetic exogenous
+# release series) but with a PLAIN AgentPool_Basic — no staking controller,
+# no staking rewards, no minting at unlock — so circulating supply is exactly
+# the cumulative exogenous series at every step. Every controller is
+# deterministic: constant holding time, equation-of-exchange price, the
+# recorded synthetic release series, and a constant token-denominated
+# transaction volume. All values are illustrative and uncalibrated. Repeated
+# paths are identical by construction: zero dispersion is a property of the
+# deterministic controllers, not statistical evidence. This scenario is NOT
+# Monte Carlo.
+schema_version: 1
+scenario_id: public-staking-constant-v1
+economy:
+  type: TokenEconomy_Basic
+  parameters:
+    initial_price: 0.05
+    fiat: "$"
+    token: STLB
+  holding_time:
+    type: HoldingTime_Constant
+    parameters:
+      holding_time: 6.0
+  supply:
+    # The same documented synthetic_staking release series as the staking
+    # demo (linear ramp, recorded seed 20260821); with no staking pools the
+    # cumulative series is the whole supply story.
+    type: SupplyController_FromData
+    parameters:
+      values: [2103343, 2089347, 2330034, 2335061, 2497140, 2489182, 2575887, 2798936, 2991846, 3098928, 3245311, 3178317, 3332707, 3444824, 3597637, 3816786, 3805374, 4013117, 4104438, 4076318, 4383481, 4444060, 4473345, 4539965, 4654297, 4746698, 5021385, 4877029, 5102675, 5318124, 5516273, 5473053, 5656672, 5818645, 5688191, 6147166]
+  price:
+    type: PriceFunction_EOE
+    parameters: {}
+  supply_pools: []
+  agent_pools:
+    - id: staking-constant
+      type: AgentPool_Basic
+      parameters:
+        currency: STLB
+        name: staking-constant
+      users:
+        type: UserGrowth_Constant
+        parameters:
+          constant: 240
+      transactions:
+        # Constant token-denominated volume: the bounded companion to the
+        # replayed staking-demand series of the staking demo.
+        type: TransactionManagement_Constant
+        parameters:
+          average_transaction_value: 400000
+monte_carlo:
+  simulator: TokenMetaSimulator
+  iterations: 36
+  repetitions: 4
+  seed: 20260821
+artifacts:
+  format: csv

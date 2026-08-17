@@ -1,0 +1,41 @@
+{
+ "console": [],
+ "network": [
+  {
+   "url": "http://127.0.0.1:8791/",
+   "status": 200
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/gallery",
+   "status": 200
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/stochastic/runs",
+   "status": 202
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/stochastic/runs/mc-7c0a5af27e31",
+   "status": 200
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/stochastic/runs/mc-7c0a5af27e31",
+   "status": 200
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/stochastic/runs/mc-7c0a5af27e31",
+   "status": 200
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/stochastic/runs/mc-7c0a5af27e31",
+   "status": 200
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/stochastic/runs/mc-7c0a5af27e31",
+   "status": 200
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/stochastic/runs/mc-7c0a5af27e31",
+   "status": 200
+  }
+ ]
+}

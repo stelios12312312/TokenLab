@@ -22,6 +22,20 @@ from .transactionclasses import (
 from .treasuryclasses import TreasuryBasic
 
 
+def _accepts_rng_kwarg(component) -> bool:
+    """True when a class constructor takes an ``rng`` keyword."""
+    import inspect
+
+    try:
+        signature = inspect.signature(component.__init__)
+    except (TypeError, ValueError, AttributeError):
+        return False
+    return any(
+        parameter.name == "rng" or parameter.kind == inspect.Parameter.VAR_KEYWORD
+        for parameter in signature.parameters.values()
+    )
+
+
 class AgentPool_Basic(AgentPool, Initialisable):
     """
     Simulates a set of agents within a token economy.
@@ -509,19 +523,20 @@ class AgentPool_Staking(AgentPool_Basic):
         """
         Calculates the staking amount based on the staking controller parameters.
 
+        Distribution-shaped staking amounts are drawn with the instance
+        generator (injected or lazily created), never the global np.random
+        state.
+
         Returns:
         - The calculated staking amount.
         """
-        try:
-            staking_amount = (
-                self.staking_controller_params["staking_amount"]
-                - self.staking_controller_params["staking_amount"] * self.fee
-            )
-        except:
-            staking_amount = self.staking_controller_params["staking_amount"].rvs(1)[0]
-            staking_amount = staking_amount - staking_amount * self.fee
+        staking_amount = self.staking_controller_params["staking_amount"]
+        if hasattr(staking_amount, "rvs"):
+            staking_amount = staking_amount.rvs(
+                1, random_state=self._draw_rng()
+            )[0]
 
-        return staking_amount
+        return staking_amount - staking_amount * self.fee
 
     def _update_treasury(self) -> None:
         """
@@ -549,7 +564,12 @@ class AgentPool_Staking(AgentPool_Basic):
         """
         new_pools = []
         for _ in range(number_of_stakers):
-            new_staker = self.staking_controller(**self.staking_controller_params)
+            params = dict(self.staking_controller_params)
+            if "rng" not in params and _accepts_rng_kwarg(self.staking_controller):
+                # Forward this pool's generator so every stochastic draw of
+                # the spawned staker flows through the injected stream.
+                params["rng"] = self._draw_rng()
+            new_staker = self.staking_controller(**params)
             new_staker.link(AgentPool, self)
             new_staker.execute()
             new_pools.append(("SupplyPool", new_staker))

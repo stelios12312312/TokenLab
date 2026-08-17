@@ -282,21 +282,37 @@ def _control_path(value: Any, field: str) -> Tuple[Union[str, int], ...]:
     allowed_shape = False
     if path[0] == "economy" and path[-2] == "parameters":
         middle = path[1:-2]
-        allowed_shape = middle in {
-            (),
-            ("holding_time",),
-            ("supply",),
-            ("price",),
-        }
-        if len(middle) == 2 and middle[0] == "supply_pools":
-            allowed_shape = isinstance(middle[1], int)
-        if len(middle) in {2, 3} and middle[0] == "agent_pools":
-            allowed_shape = isinstance(middle[1], int) and (
-                len(middle) == 2 or middle[2] in {"users", "transactions"}
-            )
+        allowed_shape = _economy_middle_allowed(middle)
+    elif (
+        len(path) >= 5
+        and path[0] == "ecosystem"
+        and path[1] == "economies"
+        and isinstance(path[2], int)
+        and path[-2] == "parameters"
+    ):
+        # Schema v3 ecosystem documents: the same parameter shapes, rooted
+        # at one declared economy (ecosystem.economies[i].<middle>.parameters).
+        allowed_shape = _economy_middle_allowed(path[3:-2])
     if not allowed_shape:
         raise GalleryError(f"{field} must be an allowed parameter path")
     return path
+
+
+def _economy_middle_allowed(middle: Tuple[Union[str, int], ...]) -> bool:
+    """The parameter shapes a numeric control may target within one economy."""
+    allowed = middle in {
+        (),
+        ("holding_time",),
+        ("supply",),
+        ("price",),
+    }
+    if len(middle) == 2 and middle[0] == "supply_pools":
+        allowed = isinstance(middle[1], int)
+    if len(middle) in {2, 3} and middle[0] == "agent_pools":
+        allowed = isinstance(middle[1], int) and (
+            len(middle) == 2 or middle[2] in {"users", "transactions"}
+        )
+    return allowed
 
 
 def _parse_control(value: Any, field: str) -> NumericControl:

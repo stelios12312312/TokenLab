@@ -568,18 +568,44 @@ def _tokenomics_coverage(config: ScenarioConfig) -> Dict[str, Dict[str, str]]:
             "status": "absent",
             "basis": "no liquidity or pool-depth component is configured",
         }
-    coverage["treasury"] = {
-        "status": "absent",
-        "basis": "no treasury component or authority is configured",
-    }
+    if config.treasuries:
+        coverage["treasury"] = {
+            "status": "modeled",
+            "basis": (
+                "declared treasuries configured: "
+                + ", ".join(treasury.id for treasury in config.treasuries)
+            ),
+        }
+    else:
+        coverage["treasury"] = {
+            "status": "absent",
+            "basis": "no treasury component or authority is configured",
+        }
     coverage["governance"] = {
         "status": "absent",
         "basis": "no governance process or authority is configured",
     }
-    coverage["staking"] = {
-        "status": "absent",
-        "basis": "no staking pool or reward source is configured",
-    }
+    staking_pools = [
+        pool for pool in economy.agent_pools if pool.staking is not None
+    ]
+    if staking_pools:
+        funded = any(pool.treasury is not None for pool in staking_pools)
+        coverage["staking"] = {
+            "status": "modeled",
+            "basis": (
+                "staking pools configured with reward source: "
+                + (
+                    "declared treasury (treasury-drawn rewards)"
+                    if funded
+                    else "minted dilution (no declared treasury)"
+                )
+            ),
+        }
+    else:
+        coverage["staking"] = {
+            "status": "absent",
+            "basis": "no staking pool or reward source is configured",
+        }
     coverage["fdv"] = {
         "status": "absent",
         "basis": "FDV is not emitted by this scenario and is never inferred",
@@ -605,8 +631,19 @@ def inspect_assumptions(
     except ScenarioError as exc:
         return _error(operation, [str(exc)])
 
+    if config.ecosystem is not None:
+        return _error(
+            operation,
+            [
+                "ecosystem (schema v3) scenarios are not supported by "
+                "inspect_assumptions yet; run them through the Monte Carlo "
+                "runner or the gallery, which validate the same uncertainty "
+                "contract"
+            ],
+        )
+
     assumptions: List[Dict[str, Any]] = []
-    if config.schema_version == 2 and config.uncertainty is not None:
+    if config.schema_version in (2, 3) and config.uncertainty is not None:
         assumptions.extend(_spec_entry(spec) for spec in config.uncertainty.parameters)
     else:
         assumptions.extend(_v1_entry(path, value) for path, value in _v1_leaves(config))

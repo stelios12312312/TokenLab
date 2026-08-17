@@ -1,0 +1,165 @@
+# Canonical public multi-token dependency demo (schema v3 ecosystem).
+#
+# Master/dependent archetype: a two-economy illustrative ecosystem. The
+# master economy (MTLB, fiat $) prices through an issuance curve over all
+# tokens ever issued (PriceFunction_IssuanceCurve with the allowlisted
+# named curve log_power: price(x) = multiplier * (1 + growth) **
+# log(max(x, 1), base)) fed by a documented linear demand trend
+# (120,000 -> 480,000 illustrative $ per step). The dependent economy
+# (MTDB, fiat MTLB) is a TokenEconomy_Dependent priced through a bonding
+# curve over its current supply (PriceFunction_BondingCurve with the
+# allowlisted named curve quadratic: price(x) = base + coefficient *
+# x ** exponent) and is fed by one directional channel moving a small
+# fixed percentage of the master's token-denominated transaction volume
+# (kind: token); the channeled MTLB value is subtracted from the master's
+# supply after each dependent execute — the cross-economy conservation
+# point pinned by the conservation tests. Curves are named against the
+# finite schema v3 allowlist; no callables or import strings exist anywhere
+# in this document. All values are synthetic, illustrative, and
+# uncalibrated; the master/dependent shape family is the only lineage. The
+# two priors are illustrative, uncalibrated, explicitly independent,
+# per-path parameter draws. They are not fitted to data and are not a
+# forecast. No liquidity depth, FDV, or APY is modeled or emitted.
+schema_version: 3
+scenario_id: public-multitoken-dependency-v3
+ecosystem:
+  # master names the id of the economy whose supply funds the dependent
+  # economies; it must be declared first so it builds before them.
+  master: master
+  economies:
+    - id: master
+      type: TokenEconomy_Basic
+      parameters:
+        initial_price: 0.1
+        fiat: "$"
+        token: MTLB
+        name: MTLB
+        supply_is_added: true
+        # The issuance curve itself caps and grows the supply; the fiat
+        # safeguard cap would deadlock a bonding-style economy at zero.
+        safeguard_current_supply_level: false
+      holding_time:
+        type: HoldingTime_Constant
+        parameters:
+          holding_time: 4.0
+      supply:
+        type: SupplyController_Bonding
+        parameters: {}
+      price:
+        type: PriceFunction_IssuanceCurve
+        parameters:
+          function:
+            name: log_power
+            params: {multiplier: 0.1, growth: 0.05, base: 1.5}
+      supply_pools: []
+      agent_pools:
+        - id: master-demand
+          type: AgentPool_Basic
+          parameters:
+            currency: "$"
+            name: master-demand
+          users:
+            # Placeholder cohort: the Trend controller replays the
+            # documented linear demand ramp and ignores the user count.
+            type: UserGrowth_Constant
+            parameters:
+              constant: 1
+          transactions:
+            type: TransactionManagement_Trend
+            parameters:
+              average_transaction_initial: 120000
+              average_transaction_final: 480000
+              num_steps: 36
+    - id: dependent
+      type: TokenEconomy_Dependent
+      parameters:
+        initial_price: 1.0
+        fiat: MTLB
+        token: MTDB
+        name: MTDB
+        ignore_supply_controller: true
+        safeguard_current_supply_level: false
+      holding_time:
+        type: HoldingTime_Constant
+        parameters:
+          holding_time: 4.0
+      supply:
+        # Ignored (ignore_supply_controller): the bonding curve owns the
+        # dependent supply. The constant controller documents this.
+        type: SupplyController_Constant
+        parameters:
+          supply: 0
+      price:
+        type: PriceFunction_BondingCurve
+        parameters:
+          function:
+            name: quadratic
+            params: {base: 0.5, coefficient: 1.0e-9, exponent: 2}
+          max_supply: 1250000
+      supply_pools: []
+      agent_pools:
+        - id: dependent-demand
+          type: AgentPool_Basic
+          parameters:
+            currency: MTLB
+            name: dependent-demand
+          users:
+            type: UserGrowth_Constant
+            parameters:
+              constant: 1
+          transactions:
+            # Wired from the declared channel below: from the master
+            # economy, token-denominated, fixed percentage.
+            type: TransactionManagement_Channeled
+            parameters:
+              channel: master
+  channels:
+    - from: master
+      to: dependent
+      kind: token
+      percentage: 0.004
+monte_carlo:
+  simulator: TokenMetaSimulator
+  iterations: 36
+  repetitions: 1
+  seed: 20260822
+artifacts:
+  format: csv
+uncertainty:
+  parameters:
+    - id: channel_percentage
+      path: ecosystem.channels[0].percentage
+      value_type: number
+      unit: fraction of master token transaction volume channeled per step
+      layer: parameter
+      cadence: per_path
+      distribution:
+        family: triangular
+        minimum: 0.002
+        mode: 0.004
+        maximum: 0.008
+      bounds: {minimum: 0.002, maximum: 0.008}
+      provenance: "Illustrative bracket around the declared synthetic channel percentage, uncalibrated; sanitized illustrative demo assumption."
+      rationale: "Varies the directional master-to-dependent channel strength from half to double the declared 0.004 fraction, keeping the wiring and both curves unchanged."
+      calibration: illustrative
+      approval: approved
+      dependence: independent
+    - id: master_demand_final
+      path: ecosystem.economies[0].agent_pools[0].transactions.parameters.average_transaction_final
+      value_type: integer
+      unit: illustrative $ per step
+      rounding: nearest_integer
+      layer: parameter
+      cadence: per_path
+      distribution:
+        family: triangular
+        minimum: 200000
+        mode: 480000
+        maximum: 720000
+      bounds: {minimum: 200000, maximum: 720000}
+      provenance: "Illustrative bracket around the declared synthetic terminal demand level, uncalibrated; sanitized illustrative demo assumption."
+      rationale: "Scales the terminal level of the master's documented linear demand ramp across an illustrative 200,000 to 720,000 $ per step range centered on the declared 480,000, probing demand-scale sensitivity of both economies."
+      calibration: illustrative
+      approval: approved
+      dependence: independent
+  dependence_groups: []

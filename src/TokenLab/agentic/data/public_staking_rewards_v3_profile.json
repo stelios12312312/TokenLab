@@ -1,0 +1,105 @@
+{
+  "profile_version": 2,
+  "profile_id": "tokenlab-public-staking-rewards-v3",
+  "scenario_id": "public-staking-rewards-v3",
+  "units": {
+    "STLB_price": "$ per STLB",
+    "transactions_$": "illustrative $ per step",
+    "transactions_STLB": "illustrative STLB per step",
+    "supply": "STLB"
+  },
+  "terminal_metrics": [
+    {
+      "id": "terminal_token_price",
+      "column": "STLB_price",
+      "label": "Terminal modeled token price",
+      "unit": "$ per STLB",
+      "kind": "continuous",
+      "absolute_tolerance": 0.000001,
+      "description": "Final-step price emitted by the configured PriceFunction_EOE component across Monte Carlo paths; a modeled outcome, not a market forecast."
+    },
+    {
+      "id": "terminal_circulating_supply",
+      "column": "supply",
+      "label": "Terminal circulating supply",
+      "unit": "STLB",
+      "kind": "continuous",
+      "absolute_tolerance": 100,
+      "description": "Final-step circulating supply: the cumulative synthetic exogenous release series plus staking reward payouts minted at unlock (no treasury is declared, so rewards are modeled as dilution). Dispersion across paths comes from the sampled staking amount, reward amount, and lockup duration priors."
+    },
+    {
+      "id": "terminal_staking_transaction_volume",
+      "column": "transactions_STLB",
+      "label": "Terminal staking-denominated transaction volume",
+      "unit": "illustrative STLB per step",
+      "kind": "continuous",
+      "absolute_tolerance": 1000,
+      "description": "Final-step token-denominated transaction value replayed from the documented synthetic staking-demand series (seed 20260823); it is identical across paths because the exogenous series is not an uncertain parameter."
+    },
+    {
+      "id": "terminal_fiat_transaction_volume",
+      "column": "transactions_$",
+      "label": "Terminal fiat transaction volume",
+      "unit": "illustrative $ per step",
+      "kind": "continuous",
+      "absolute_tolerance": 1,
+      "description": "Final-step fiat-denominated transaction value reported by the economy (token-denominated staking demand converted at the modeled price); a modeled outcome, not a market forecast."
+    }
+  ],
+  "convergence": {
+    "relative_drift": 0.05,
+    "absolute_tolerance": {
+      "STLB_price": 0.000001,
+      "supply": 100,
+      "transactions_STLB": 1000,
+      "transactions_$": 1
+    }
+  },
+  "tokenomics_coverage": {
+    "supply": {
+      "status": "modeled",
+      "detail": "Supply grows through a synthetic exogenous release series (linear ramp 2,000,000 to 6,000,000 STLB per step, recorded seed 20260821, documented in TokenLab.agentic.data.synthetic_staking) plus staking payouts minted at unlock; illustrative, uncalibrated, and disjoint from any client schedule."
+    },
+    "emissions": {
+      "status": "modeled",
+      "detail": "The exogenous release series is the only emission schedule; it is synthetic, deterministic, and documented with its recorded seed. Staking payouts are modeled separately under staking_reward_source."
+    },
+    "vesting_unlocks": {
+      "status": "absent",
+      "detail": "The scenario models no vesting or unlock schedule."
+    },
+    "liquidity": {
+      "status": "absent",
+      "detail": "The scenario models no liquidity depth or pool state."
+    },
+    "treasury": {
+      "status": "absent",
+      "detail": "No treasury component or treasury authority is configured; the funded-reward contrast (declared treasury wiring) is exercised in the conservation tests, not in this demo."
+    },
+    "governance": {
+      "status": "absent",
+      "detail": "The scenario models no governance process or authority."
+    },
+    "staking_reward_source": {
+      "status": "modeled",
+      "detail": "modeled (minted dilution): stakers lock a fixed illustrative STLB amount for a fixed illustrative lockup and receive a fixed illustrative token amount at unlock (reward_as_perc pinned false; the multiplicative library default is never inherited). No treasury is declared, so every payout mints into circulating supply — pure dilution, distinguished from treasury-drawn rewards in the conservation tests. The reward is a fixed token quantity per staker, never a rate and never APY."
+    },
+    "fdv": {
+      "status": "absent",
+      "detail": "FDV is not emitted or declared by this scenario's artifact contract."
+    },
+    "apy": {
+      "status": "absent",
+      "detail": "APY is not emitted and cannot be inferred from the published tables; the staking reward is a fixed token amount per staker per lockup, never an annualized rate."
+    },
+    "demand_series": {
+      "status": "synthetic_illustrative",
+      "detail": "The replayed staking-demand series is generated from a documented floored logistic formula with recorded seed 20260823 (36 steps, illustrative STLB per step); it is not observed data and carries no client or market lineage."
+    },
+    "priors": {
+      "status": "illustrative_uncalibrated",
+      "detail": "All three uncertain parameters are illustrative, uncalibrated, and declared independent: the integer staking amount (triangular 20,000/40,000/80,000 STLB), the integer fixed reward amount (triangular 800/1,600/3,200 STLB — a token quantity, never a rate), and the integer lockup duration (triangular 6/9/12 months). None is fitted to data."
+    }
+  },
+  "interpretation_boundary": "Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes under illustrative, uncalibrated, independent priors and synthetic supply/demand series; they are not confidence intervals, not forecasts, and not investment, launch, legal, financial, or decision-grade advice. Staking rewards are fixed illustrative token amounts minted at unlock (modeled dilution); they are not a yield, not a rate, and never APY, and nothing here is a staking-yield recommendation. Estimator confidence intervals name their estimator, method, and level separately. Live token decisions require qualified review and evidence outside this demo."
+}

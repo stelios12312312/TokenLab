@@ -538,3 +538,101 @@ def test_vesting_demos_run_via_demo_module(tmp_path):
         rtol=0,
         atol=1e-4,
     )
+
+
+def test_staking_and_multitoken_v3_demos_run_via_demo_module(tmp_path):
+    from TokenLab.agentic.demo import (
+        DEMO_SCENARIO_MULTITOKEN_V3,
+        DEMO_SCENARIO_STAKING_V3,
+    )
+
+    assert DEMO_SCENARIO_STAKING_V3 in DEMO_SCENARIOS
+    assert DEMO_SCENARIO_MULTITOKEN_V3 in DEMO_SCENARIOS
+
+    artifacts = run_public_demo_v2(
+        tmp_path / "runs",
+        run_id="staking-v3",
+        run_tier="test",
+        scenario=DEMO_SCENARIO_STAKING_V3,
+    )
+    manifest = artifacts.manifest
+    assert manifest["scenario_id"] == DEMO_SCENARIO_STAKING_V3
+    assert manifest["run_tier"] == "test"
+    assert (
+        manifest["requested_paths"],
+        manifest["completed_paths"],
+        manifest["failed_paths"],
+    ) == (32, 32, 0)
+    claim = manifest["claim_eligibility"]
+    assert claim["eligible"] is True
+    assert claim["reasons"] == []
+
+    # Exactly the three declared priors are sampled per path.
+    samples = artifacts.parameter_samples
+    expected_priors = {"staking_amount", "staking_reward_amount", "lockup_duration"}
+    per_path = samples.groupby("path_index")["id"].agg(set)
+    assert len(per_path) == 32
+    assert all(ids == expected_priors for ids in per_path)
+    assert samples["family"].eq("triangular").all()
+    assert samples["calibration"].eq("illustrative").all()
+    assert samples["approval"].eq("approved").all()
+    assert samples["dependence"].eq("independent").all()
+    # Integer rounding on all three priors, within their declared supports.
+    for prior_id, low, high in (
+        ("staking_amount", 20000, 80000),
+        ("staking_reward_amount", 800, 3200),
+        ("lockup_duration", 6, 12),
+    ):
+        values = samples.loc[samples["id"] == prior_id, "value"]
+        assert all(float(value).is_integer() for value in values)
+        assert values.astype(float).between(low, high).all()
+
+    # The exogenous series are fixed; the sampled priors disperse supply.
+    terminal = (
+        artifacts.results.sort_values("iteration_time")
+        .groupby("path_index")
+        .tail(1)
+    )
+    assert terminal["transactions_STLB"].nunique() == 1
+    assert terminal["supply"].nunique() > 1
+
+    results_csv = pd.read_csv(artifacts.bundle_dir / "results.csv")
+    assert results_csv["path_index"].nunique() == 32
+    assert len(results_csv) == 32 * 36
+
+    ecosystem = run_public_demo_v2(
+        tmp_path / "runs",
+        run_id="multitoken-v3",
+        run_tier="test",
+        scenario=DEMO_SCENARIO_MULTITOKEN_V3,
+    )
+    eco_manifest = ecosystem.manifest
+    assert eco_manifest["scenario_id"] == DEMO_SCENARIO_MULTITOKEN_V3
+    assert (
+        eco_manifest["requested_paths"],
+        eco_manifest["completed_paths"],
+        eco_manifest["failed_paths"],
+    ) == (32, 32, 0)
+    assert eco_manifest["claim_eligibility"]["eligible"] is True
+
+    eco_samples = ecosystem.parameter_samples
+    eco_priors = {"channel_percentage", "master_demand_final"}
+    eco_per_path = eco_samples.groupby("path_index")["id"].agg(set)
+    assert len(eco_per_path) == 32
+    assert all(ids == eco_priors for ids in eco_per_path)
+    channel = eco_samples.loc[eco_samples["id"] == "channel_percentage", "value"]
+    assert channel.astype(float).between(0.002, 0.008).all()
+
+    # The sampled channel percentage disperses the channeled value; the
+    # dependent economy's suffixed columns are emitted on every path.
+    eco_terminal = (
+        ecosystem.results.sort_values("iteration_time")
+        .groupby("path_index")
+        .tail(1)
+    )
+    assert eco_terminal["transactions_MTLB_MTDB"].nunique() > 1
+    assert (eco_terminal["transactions_MTLB_MTDB"] > 0).all()
+
+    eco_csv = pd.read_csv(ecosystem.bundle_dir / "results.csv")
+    assert eco_csv["path_index"].nunique() == 32
+    assert len(eco_csv) == 32 * 36

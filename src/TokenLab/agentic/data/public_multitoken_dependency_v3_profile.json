@@ -1,0 +1,120 @@
+{
+  "profile_version": 2,
+  "profile_id": "tokenlab-public-multitoken-dependency-v3",
+  "scenario_id": "public-multitoken-dependency-v3",
+  "units": {
+    "MTLB_price_MTLB": "illustrative $ per MTLB",
+    "MTDB_price_MTDB": "MTLB per MTDB",
+    "supply_MTLB": "MTLB",
+    "supply_MTDB": "MTDB",
+    "transactions_MTLB_MTDB": "illustrative MTLB per step"
+  },
+  "terminal_metrics": [
+    {
+      "id": "terminal_master_price",
+      "column": "MTLB_price_MTLB",
+      "label": "Terminal modeled master token price",
+      "unit": "illustrative $ per MTLB",
+      "kind": "continuous",
+      "absolute_tolerance": 0.001,
+      "description": "Final-step master price emitted by the configured PriceFunction_IssuanceCurve component with the allowlisted named curve log_power across Monte Carlo paths; a modeled outcome, not a market forecast."
+    },
+    {
+      "id": "terminal_master_supply",
+      "column": "supply_MTLB",
+      "label": "Terminal master circulating supply",
+      "unit": "MTLB",
+      "kind": "continuous",
+      "absolute_tolerance": 1000,
+      "description": "Final-step master circulating supply: issuance-curve minting minus the channeled value subtracted after each dependent execute (the cross-economy conservation point pinned by the conservation tests). Dispersion across paths comes from the sampled channel percentage and master demand-scale priors."
+    },
+    {
+      "id": "terminal_dependent_price",
+      "column": "MTDB_price_MTDB",
+      "label": "Terminal modeled dependent token price",
+      "unit": "MTLB per MTDB",
+      "kind": "continuous",
+      "absolute_tolerance": 0.001,
+      "description": "Final-step dependent price emitted by the configured PriceFunction_BondingCurve component with the allowlisted named curve quadratic across Monte Carlo paths; a modeled outcome, not a market forecast."
+    },
+    {
+      "id": "terminal_dependent_supply",
+      "column": "supply_MTDB",
+      "label": "Terminal dependent circulating supply",
+      "unit": "MTDB",
+      "kind": "continuous",
+      "absolute_tolerance": 10,
+      "description": "Final-step dependent circulating supply minted by the bonding curve from the channeled inflow; a modeled outcome, not a market forecast."
+    },
+    {
+      "id": "terminal_channeled_value",
+      "column": "transactions_MTLB_MTDB",
+      "label": "Terminal channeled value",
+      "unit": "illustrative MTLB per step",
+      "kind": "continuous",
+      "absolute_tolerance": 10,
+      "description": "Final-step value moved by the directional master-to-dependent channel: the sampled fixed percentage of the master's token-denominated transaction volume, subtracted from the master supply in the same step. Dispersion across paths comes from the sampled channel percentage prior."
+    }
+  ],
+  "convergence": {
+    "relative_drift": 0.05,
+    "absolute_tolerance": {
+      "MTLB_price_MTLB": 0.001,
+      "supply_MTLB": 1000,
+      "MTDB_price_MTDB": 0.001,
+      "supply_MTDB": 10,
+      "transactions_MTLB_MTDB": 10
+    }
+  },
+  "tokenomics_coverage": {
+    "supply": {
+      "status": "modeled",
+      "detail": "Master supply is minted by the allowlisted named issuance curve (log_power) from a synthetic linear demand trend and drained by the declared channel; dependent supply is minted by the allowlisted named bonding curve (quadratic) from the channeled inflow. All values are illustrative and uncalibrated."
+    },
+    "emissions": {
+      "status": "absent",
+      "detail": "No standalone emissions schedule is configured; issuance is curve-driven by modeled demand, not a time-based schedule."
+    },
+    "vesting_unlocks": {
+      "status": "absent",
+      "detail": "The scenario models no vesting or unlock schedule."
+    },
+    "liquidity": {
+      "status": "absent",
+      "detail": "The scenario models no liquidity depth or pool state; the channel moves a fixed illustrative percentage of modeled master volume and says nothing about executable liquidity, slippage, or market depth."
+    },
+    "treasury": {
+      "status": "absent",
+      "detail": "No treasury component or treasury authority is configured."
+    },
+    "governance": {
+      "status": "absent",
+      "detail": "The scenario models no governance process or authority."
+    },
+    "staking_reward_source": {
+      "status": "absent",
+      "detail": "No staking pool, reward source, or staking yield is modeled."
+    },
+    "dependencies_channels": {
+      "status": "modeled",
+      "detail": "modeled (one directional channel): the master economy (MTLB) funds the dependent economy (MTDB) through a single declared channel moving a fixed illustrative percentage of the master's token-denominated transaction volume per step (kind: token); the channeled value is subtracted from the master supply after each dependent execute, and the conservation tests pin the equality exactly. Channels are directional, acyclic, and validated at schema time."
+    },
+    "fdv": {
+      "status": "absent",
+      "detail": "FDV is not emitted or declared by this scenario's artifact contract."
+    },
+    "apy": {
+      "status": "absent",
+      "detail": "APY is not emitted and cannot be inferred from the published tables."
+    },
+    "demand_series": {
+      "status": "synthetic_illustrative",
+      "detail": "Master demand is a documented linear trend (120,000 to 480,000 illustrative $ per step over 36 steps, documented in TokenLab.agentic.data.synthetic_staking); it is not observed data and carries no client or market lineage."
+    },
+    "priors": {
+      "status": "illustrative_uncalibrated",
+      "detail": "Both uncertain parameters are illustrative, uncalibrated, and declared independent: the channel percentage (triangular 0.002/0.004/0.008 of master token volume) and the master terminal demand level (integer triangular 200,000/480,000/720,000 illustrative $ per step). Neither is fitted to data."
+    }
+  },
+  "interpretation_boundary": "Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes under illustrative, uncalibrated, independent priors and a synthetic demand trend; they are not confidence intervals, not forecasts, and not investment, launch, legal, financial, or decision-grade advice. The master/dependent wiring models directional value transfer only: no liquidity depth, order flow, or market impact is simulated, and the channel percentage is illustrative. Estimator confidence intervals name their estimator, method, and level separately. Live token decisions require qualified review and evidence outside this demo."
+}

@@ -249,14 +249,21 @@ class UncertaintyBlock:
         }
 
     @classmethod
-    def from_dict(cls, block: Any, economy_spec: EconomySpec) -> "UncertaintyBlock":
+    def from_dict(
+        cls,
+        block: Any,
+        economy_spec: Optional[EconomySpec] = None,
+        *,
+        ecosystem: Any = None,
+    ) -> "UncertaintyBlock":
         """Parse and structurally validate a raw block, raising on errors.
 
         Approval states (``draft``/``needs_evidence``) are not structural
         errors: they parse into specs and are reported by
-        :func:`validate_v2_scenario` instead.
+        :func:`validate_v2_scenario` instead. ``ecosystem`` (schema v3 only)
+        enables ``ecosystem.…`` path resolution.
         """
-        validation = parse_uncertainty(block, economy_spec)
+        validation = parse_uncertainty(block, economy_spec, ecosystem)
         if validation.errors:
             summary = "; ".join(
                 f"{error['id'] or 'uncertainty'}: {error['reason']}"
@@ -368,16 +375,29 @@ def _value_matches_type(value: Any, value_type: str) -> bool:
     return isinstance(value, str)
 
 
-def _resolve_path(path: Any, economy_tree: Mapping[str, Any]) -> Tuple[bool, Any]:
-    """Resolve ``economy.a.b[0].c`` against the economy spec tree.
+def _resolve_path(
+    path: Any,
+    economy_tree: Optional[Mapping[str, Any]],
+    ecosystem_tree: Optional[Mapping[str, Any]] = None,
+) -> Tuple[bool, Any]:
+    """Resolve ``economy.a.b[0].c`` (or ``ecosystem.…`` for v3) against a tree.
 
     Returns ``(resolved, value)``; the target must be an existing JSON scalar
-    leaf (not an object or array).
+    leaf (not an object or array). ``ecosystem.`` paths resolve only when an
+    ecosystem spec tree is supplied (schema v3 ecosystem documents), keeping
+    v1/v2 resolution byte-identical.
     """
-    if not isinstance(path, str) or not path.startswith("economy."):
+    if not isinstance(path, str):
         return False, None
-    node: Any = economy_tree
-    for segment in path.split(".")[1:]:
+    if path.startswith("economy."):
+        node: Any = economy_tree
+        segments = path.split(".")[1:]
+    elif path.startswith("ecosystem.") and ecosystem_tree is not None:
+        node = ecosystem_tree
+        segments = path.split(".")[1:]
+    else:
+        return False, None
+    for segment in segments:
         match = _SEGMENT.match(segment)
         if match is None:
             return False, None
@@ -521,7 +541,8 @@ def _parse_distribution(
 def _parse_parameter(
     raw: Any,
     index: int,
-    economy_tree: Mapping[str, Any],
+    economy_tree: Optional[Mapping[str, Any]],
+    ecosystem_tree: Optional[Mapping[str, Any]],
     seen_ids: set,
     seen_paths: set,
     errors: List[Dict[str, Any]],
@@ -569,10 +590,11 @@ def _parse_parameter(
     seen_ids.add(raw["id"])
     ident = raw["id"]
 
-    resolved, _ = _resolve_path(raw["path"], economy_tree)
+    resolved, _ = _resolve_path(raw["path"], economy_tree, ecosystem_tree)
     if not resolved:
         return fail(
-            f"path {raw['path']!r} does not resolve to a scalar leaf of the economy spec"
+            f"path {raw['path']!r} does not resolve to a scalar leaf of the "
+            "economy/ecosystem spec"
         )
     if raw["path"] in seen_paths:
         return fail(f"path {raw['path']!r} is governed by more than one entry")
@@ -762,13 +784,21 @@ def _parse_group(
     )
 
 
-def parse_uncertainty(block: Any, economy_spec: EconomySpec) -> UncertaintyValidation:
+def parse_uncertainty(
+    block: Any,
+    economy_spec: Optional[EconomySpec],
+    ecosystem: Any = None,
+) -> UncertaintyValidation:
     """Validate a raw ``uncertainty`` block against an economy spec.
 
     Pure validation: no sampling, no execution. Structural problems are
     collected as ``{"id": ..., "reason": ...}`` errors; non-approved entries
     become warnings and make the result non-executable; uncalibrated entries
     raise evidence questions.
+
+    ``ecosystem`` (schema v3 only) supplies the ecosystem spec tree so
+    ``ecosystem.economies[i].…`` and ``ecosystem.channels[i].…`` paths
+    resolve; v1/v2 callers omit it and behavior is unchanged.
     """
     errors: List[Dict[str, Any]] = []
     warnings: List[Dict[str, Any]] = []
@@ -793,13 +823,14 @@ def parse_uncertainty(block: Any, economy_spec: EconomySpec) -> UncertaintyValid
         _issue(errors, None, "uncertainty.dependence_groups must be an array")
         return UncertaintyValidation(errors, warnings, questions, False, [], [])
 
-    economy_tree = economy_spec.to_dict()
+    economy_tree = economy_spec.to_dict() if economy_spec is not None else None
+    ecosystem_tree = ecosystem.to_dict() if ecosystem is not None else None
     seen_ids: set = set()
     seen_paths: set = set()
     pending: List[Tuple[UncertaintySpec, Optional[str]]] = []
     for index, raw in enumerate(raw_parameters):
         spec, group_id = _parse_parameter(
-            raw, index, economy_tree, seen_ids, seen_paths, errors
+            raw, index, economy_tree, ecosystem_tree, seen_ids, seen_paths, errors
         )
         if spec is not None:
             pending.append((spec, group_id))
@@ -875,11 +906,14 @@ def validate_v2_scenario(config: ScenarioConfig) -> UncertaintyValidation:
     """Validate the uncertainty block of a parsed scenario config.
 
     v1 configs carry no uncertainty: they validate as an empty, executable,
-    fully deterministic spec set (the v1 adapter contract).
+    fully deterministic spec set (the v1 adapter contract). v3 ecosystem
+    configs resolve ``ecosystem.…`` paths against the ecosystem spec tree.
     """
     if config.uncertainty is None:
         return UncertaintyValidation([], [], [], True, [], [])
-    return parse_uncertainty(config.uncertainty.to_dict(), config.economy)
+    return parse_uncertainty(
+        config.uncertainty.to_dict(), config.economy, config.ecosystem
+    )
 
 
 def _apply_rounding(value: float, rounding: Optional[str]) -> Union[float, int]:
