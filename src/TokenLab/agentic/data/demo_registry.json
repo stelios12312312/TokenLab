@@ -95,6 +95,84 @@
       "default_run_tier": "fast",
       "interactive_run_tiers": ["test", "fast", "standard"],
       "cli_only_run_tiers": ["deep"]
+    },
+    {
+      "id": "public-demand-history-v2",
+      "kind": "stochastic",
+      "role": "historical-archetype",
+      "title": "Demand history replay — Monte Carlo uncertainty",
+      "summary": "Historical-demand archetype: a documented synthetic fiat volume series (logistic rise, plateau, terminal dip; recorded seed, no external data lineage) replayed through the real Monte Carlo runner with three approved, illustrative, independent per-path priors (price noise scale, price anchoring, holding-time dispersion), seeded reproducibility, outcome intervals, estimator confidence intervals, sensitivity, and convergence evidence.",
+      "maturity": "illustrative",
+      "boundary": "This Monte Carlo demo replays a synthetic, uncalibrated demand series and samples three illustrative, uncalibrated, explicitly independent priors bracketing library defaults. Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes, not confidence intervals and not forecasts. It is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_demand_history_v2.yaml",
+      "profile_resource": "public_demand_history_v2_profile.json",
+      "default_run_tier": "fast",
+      "interactive_run_tiers": ["test", "fast", "standard"],
+      "cli_only_run_tiers": ["deep"]
+    },
+    {
+      "id": "public-demand-constant-v1",
+      "kind": "deterministic",
+      "role": "control",
+      "title": "Constant demand — deterministic control",
+      "summary": "Deterministic control: constant fiat transaction volume on the same illustrative token skeleton as the demand-history demo, running repeated identical deterministic paths. This is NOT Monte Carlo and carries no statistical uncertainty evidence; it is the constant-volume companion and zero-variance negative control for the demand-history archetype.",
+      "maturity": "illustrative",
+      "boundary": "This deterministic scenario explorer demonstrates model wiring and comparative UX only. Its repeated paths are identical by construction: zero dispersion is a property of the deterministic controllers, not statistical evidence. It is not Monte Carlo, is uncalibrated, and is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_demand_constant_v1.yaml",
+      "profile_resource": "public_demand_constant_v1_profile.json",
+      "controls": [
+        {
+          "id": "average_transaction_value",
+          "label": "Constant transaction volume",
+          "description": "Constant fiat-denominated transaction value per illustrative step assumed by the control.",
+          "type": "integer",
+          "path": ["economy", "agent_pools", 0, "transactions", "parameters", "average_transaction_value"],
+          "minimum": 200000,
+          "maximum": 1600000,
+          "step": 100000,
+          "unit": "illustrative $ per step"
+        },
+        {
+          "id": "holding_time",
+          "label": "Holding time",
+          "description": "Constant illustrative holding-time assumption used by the control.",
+          "type": "number",
+          "path": ["economy", "holding_time", "parameters", "holding_time"],
+          "minimum": 0.5,
+          "maximum": 4.0,
+          "step": 0.25,
+          "unit": "illustrative time units"
+        }
+      ],
+      "presets": [
+        {
+          "id": "baseline",
+          "label": "Baseline",
+          "summary": "The reviewed constant-volume control assumptions.",
+          "values": {
+            "average_transaction_value": 900000,
+            "holding_time": 1.0
+          }
+        },
+        {
+          "id": "downside",
+          "label": "Downside",
+          "summary": "Lower constant demand with faster token turnover.",
+          "values": {
+            "average_transaction_value": 500000,
+            "holding_time": 0.75
+          }
+        },
+        {
+          "id": "upside",
+          "label": "Upside",
+          "summary": "Higher constant demand with longer holding time.",
+          "values": {
+            "average_transaction_value": 1400000,
+            "holding_time": 1.5
+          }
+        }
+      ]
     }
   ]
 }

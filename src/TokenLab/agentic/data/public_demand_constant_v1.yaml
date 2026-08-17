@@ -1,0 +1,51 @@
+# Constant-volume companion control for the public demand-history demo.
+#
+# Deterministic negative control: same illustrative token skeleton as
+# public_demand_history_v2.yaml (DTLB, fixed 1e9 supply, $ fiat, 20 steps),
+# but every controller is deterministic — constant holding time, equation-
+# of-exchange price, and a constant fiat transaction volume instead of the
+# replayed synthetic series. All values are illustrative and uncalibrated.
+# Repeated paths are identical by construction:
+# zero dispersion is a property of the deterministic controllers, not
+# statistical evidence. This scenario is NOT Monte Carlo.
+schema_version: 1
+scenario_id: public-demand-constant-v1
+economy:
+  type: TokenEconomy_Basic
+  parameters:
+    initial_price: 0.01
+    fiat: "$"
+    token: DTLB
+  holding_time:
+    type: HoldingTime_Constant
+    parameters:
+      holding_time: 1.0
+  supply:
+    type: SupplyController_Constant
+    parameters:
+      supply: 1000000000
+  price:
+    type: PriceFunction_EOE
+    parameters: {}
+  supply_pools: []
+  agent_pools:
+    - id: demand-constant
+      type: AgentPool_Basic
+      parameters:
+        currency: "$"
+        name: demand-constant
+      users:
+        type: UserGrowth_Constant
+        parameters:
+          constant: 1
+      transactions:
+        type: TransactionManagement_Constant
+        parameters:
+          average_transaction_value: 900000
+monte_carlo:
+  simulator: TokenMetaSimulator
+  iterations: 20
+  repetitions: 4
+  seed: 20260817
+artifacts:
+  format: csv

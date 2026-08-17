@@ -912,11 +912,28 @@
    "id": "US-PM-AUTO-H29A44FC56887127A",
    "title": "Migrate a historical demand model into a sanitized demo",
    "priority": "MEDIUM",
-   "status": "NOT_IMPLEMENTED",
-   "code_refs": [],
-   "test_refs": [],
-   "validation_refs": [],
-   "doc_refs": [],
+   "status": "PARTIALLY_COVERED",
+   "code_refs": [
+    "src/TokenLab/agentic/data/synthetic_demand.py",
+    "src/TokenLab/agentic/data/public_demand_history_v2.yaml",
+    "src/TokenLab/agentic/factory.py",
+    "src/TokenLab/simulationcomponents/pricingclasses.py",
+    "src/TokenLab/agentic/demo.py",
+    "src/TokenLab/agentic/data/__init__.py"
+   ],
+   "test_refs": [
+    "tests/test_demand_migration_parity.py",
+    "tests/test_demand_sanitization.py"
+   ],
+   "validation_refs": [
+    "tests/test_demand_migration_parity.py",
+    "tests/test_demand_sanitization.py",
+    "tests/test_demo_gallery.py",
+    "tests/test_public_demo.py"
+   ],
+   "doc_refs": [
+    "docs/public-demo.md"
+   ],
    "tags": [
     "program_manager",
     "auto_story",
@@ -935,7 +952,8 @@
     "need": "What happened: several historical TokenLab projects use the classic constant-user or historical-volume shape and still run, but they are hand-written Python scripts with client identifiers. A representative Henergy-style graph has already been constructed successfully through the new declarative factory.\n\nTarget and outcome: create a package-owned, sanitized demand-and-price demo derived from the historical-volume archetype. It runs from declarative YAML or JSON, emits a validated artifact profi",
     "outcome": "The requested Program Manager capability is represented as an implementation-ready backlog story."
    },
-   "acceptance_criteria": []
+   "acceptance_criteria": [],
+   "notes": " Demand adapter executed under child plan plan_2026-08-17_294429c6635af13c: sanitized schema-v2 demo public-demand-history-v2 with documented synthetic series, legacy-vs-declarative parity fixture, replay hashes, sanitization audit, gallery registration, browser smoke 12/13 (non-required convenience assertion only). PARTIALLY_COVERED pending planner close gates."
   },
   {
    "id": "US-PM-AUTO-H712BCED4E550A1F1",
@@ -1074,7 +1092,7 @@
  ],
  "generated_at": "2026-05-18T13:00:00.000Z",
  "source": "story_registry_bootstrap.mjs",
- "updated_at": "2026-08-16T17:55:01.245769+00:00",
+ "updated_at": "2026-08-17T09:52:41.860405+00:00",
  "commit": "21ee728",
  "consolidations": []
 }

@@ -399,6 +399,8 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         std_prior: float = 0.1,
         anchoring: float = 0.3,
         proportionate_noise=True,
+        *,
+        rng=None,
     ):
         """
 
@@ -414,6 +416,11 @@ class PriceFunction_LinearRegression(PriceFunctionController):
             equal to std_prior*previous_price. Hence the variance increases as the price increases.
             This relationship has been confirmed through empirical data, but the exact prior requires
             further validation.
+        rng : numpy.random.Generator, optional
+            When provided, the t-distribution noise draws of this instance come
+            from it. When None, a private generator seeded from OS entropy is
+            created lazily (no wall-clock, no global state); legacy callers
+            keep nondeterministic behavior.
 
         Returns
         -------
@@ -427,6 +434,13 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         self.std_prior = std_prior
         self.anchoring = anchoring
         self.proportionate_noise = proportionate_noise
+        self._rng = rng
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def execute(self, use_previous_supply: bool = True) -> float:
         tokeneconomy = self.dependencies[TokenEconomy]
@@ -462,10 +476,14 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         if self.proportionate_noise:
             sample = (
                 log_price_new
-                + scipy.stats.t(13000).rvs(1) * self.std_prior * previous_price
+                + scipy.stats.t(13000).rvs(1, random_state=self._draw_rng())
+                * self.std_prior
+                * previous_price
             )
         else:
-            sample = log_price_new + scipy.stats.t(13000).rvs(1) * self.std_prior
+            sample = log_price_new + scipy.stats.t(13000).rvs(
+                1, random_state=self._draw_rng()
+            ) * self.std_prior
 
         price_new = (1 - self.anchoring) * np.exp(
             sample[0]

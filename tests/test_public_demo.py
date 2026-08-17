@@ -20,7 +20,9 @@ from TokenLab.agentic.artifact_profile import (
 )
 from TokenLab.agentic.assumptions import summarize_evidence
 from TokenLab.agentic.demo import (
+    DEMO_SCENARIO_DEMAND_V2,
     DEMO_SCENARIO_V2,
+    DEMO_SCENARIOS,
     load_public_profile,
     public_scenario_path,
     public_v2_scenario_path,
@@ -385,3 +387,59 @@ def test_deterministic_control_cannot_claim_monte_carlo(tmp_path):
     assert summary["claim"] == "deterministic"
     assert "claim_eligibility" not in summary
     assert "no Monte Carlo statistics" in summary["note"]
+
+
+def test_demand_history_demo_runs_via_demo_module(tmp_path):
+    assert DEMO_SCENARIO_DEMAND_V2 in DEMO_SCENARIOS
+
+    artifacts = run_public_demo_v2(
+        tmp_path / "runs",
+        run_id="demand-v2",
+        run_tier="test",
+        scenario=DEMO_SCENARIO_DEMAND_V2,
+    )
+    manifest = artifacts.manifest
+    assert manifest["scenario_id"] == DEMO_SCENARIO_DEMAND_V2
+    assert manifest["run_tier"] == "test"
+    assert (
+        manifest["requested_paths"],
+        manifest["completed_paths"],
+        manifest["failed_paths"],
+    ) == (32, 32, 0)
+    claim = manifest["claim_eligibility"]
+    assert claim["eligible"] is True
+    assert claim["reasons"] == []
+    assert all(
+        "insufficient_checkpoints" in limitation
+        for limitation in claim["limitations"]
+    )
+
+    # Exactly the three declared priors are sampled per path.
+    samples = artifacts.parameter_samples
+    expected_priors = {
+        "price_std_prior",
+        "price_anchoring",
+        "holding_time_dispersion",
+    }
+    per_path = samples.groupby("path_index")["id"].agg(set)
+    assert len(per_path) == 32
+    assert all(ids == expected_priors for ids in per_path)
+    assert samples["family"].eq("triangular").all()
+    assert samples["calibration"].eq("illustrative").all()
+    assert samples["approval"].eq("approved").all()
+    assert samples["dependence"].eq("independent").all()
+    anchoring = samples.loc[samples["id"] == "price_anchoring", "value"]
+    assert anchoring.astype(float).between(0.1, 0.5).all()
+
+    # Nonzero dispersion in the price; the exogenous volume replay is fixed.
+    terminal = (
+        artifacts.results.sort_values("iteration_time")
+        .groupby("path_index")
+        .tail(1)
+    )
+    assert float(np.std(terminal["DTLB_price"].to_numpy(dtype=float), ddof=1)) > 0
+    assert terminal["transactions_$"].nunique() == 1
+
+    results_csv = pd.read_csv(artifacts.bundle_dir / "results.csv")
+    assert results_csv["path_index"].nunique() == 32
+    assert len(results_csv) == 32 * 20

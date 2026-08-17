@@ -233,6 +233,7 @@ class ScenarioFactory:
             ("economy", "economy", economy.type),
             ("economy.holding_time", "holding_time", economy.holding_time.type),
             ("economy.supply", "supply", economy.supply.type),
+            ("economy.price", "price", economy.price.type),
         ]
         for index, pool in enumerate(economy.supply_pools):
             contexts.append(
@@ -307,7 +308,8 @@ class ScenarioFactory:
 
         ``rng_plan`` maps build contexts to numpy generators. Valid keys are
         ``economy``, ``economy.holding_time``, ``economy.supply``,
-        ``economy.supply_pools[i]``, ``economy.agent_pools[i]``,
+        ``economy.price``, ``economy.supply_pools[i]``,
+        ``economy.agent_pools[i]``,
         ``economy.agent_pools[i].users``, ``economy.agent_pools[i].transactions``
         and ``monte_carlo.simulator``. A plan entry whose component class does
         not accept an ``rng`` keyword raises ``ScenarioBuildError`` (use
@@ -343,6 +345,15 @@ class ScenarioFactory:
             ),
         )
         price_class = self.registry.resolve("price", economy_spec.price.type)
+        # The price controller is constructed by the economy itself from
+        # ``price_function_parameters``, so its rng is injected through those
+        # parameters under the ``economy.price`` context.
+        price_parameters = deepcopy(economy_spec.price.parameters)
+        price_parameters.update(
+            self._rng_injection(
+                plan, consumed, "economy.price", "price", economy_spec.price.type
+            )
+        )
         supply_pools = [
             self.registry.create(
                 "supply",
@@ -411,9 +422,7 @@ class ScenarioFactory:
                 "holding_time": holding_time,
                 "supply": supply,
                 "price_function": price_class,
-                "price_function_parameters": deepcopy(
-                    economy_spec.price.parameters
-                ),
+                "price_function_parameters": price_parameters,
                 "supply_pools": supply_pools,
                 "agent_pools": agent_pools,
             }

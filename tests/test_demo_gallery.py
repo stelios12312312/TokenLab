@@ -11,6 +11,8 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 import pytest
+import numpy as np
+import pandas as pd
 import yaml
 
 from TokenLab.agentic.artifact_profile import validate_bundle
@@ -68,7 +70,7 @@ def test_packaged_registry_declares_reviewed_presets_and_bounded_controls():
 
     assert registry.registry_version == 1
     assert registry.gallery_id == "tokenlab-public-gallery-v1"
-    assert len(registry.demos) == 2
+    assert len(registry.demos) == 4
     demo = registry.demos[0]
     assert demo.id == "growth-path"
     assert demo.kind == "deterministic"
@@ -98,6 +100,37 @@ def test_packaged_registry_declares_reviewed_presets_and_bounded_controls():
     assert flagship.interactive_run_tiers == ("test", "fast", "standard")
     assert flagship.cli_only_run_tiers == ("deep",)
     assert "not investment" in flagship.boundary.lower()
+
+    demand = registry.demos[2]
+    assert demand.id == "public-demand-history-v2"
+    assert demand.kind == "stochastic"
+    assert demand.role == "historical-archetype"
+    assert demand.default_run_tier == "fast"
+    assert demand.interactive_run_tiers == ("test", "fast", "standard")
+    assert demand.cli_only_run_tiers == ("deep",)
+    assert demand.maturity == "illustrative"
+    assert "not investment" in demand.boundary.lower()
+    assert "synthetic" in demand.summary.lower()
+
+    demand_control = registry.demos[3]
+    assert demand_control.id == "public-demand-constant-v1"
+    assert demand_control.kind == "deterministic"
+    assert demand_control.role == "control"
+    assert "not monte carlo" in demand_control.summary.lower()
+    assert "zero-variance" in demand_control.summary.lower()
+    assert {preset.id for preset in demand_control.presets} == {
+        "baseline",
+        "downside",
+        "upside",
+    }
+    assert {control.id for control in demand_control.controls} == {
+        "average_transaction_value",
+        "holding_time",
+    }
+    assert all(
+        control.minimum < control.maximum for control in demand_control.controls
+    )
+    assert "not investment" in demand_control.boundary.lower()
 
 
 def test_public_catalog_hides_package_resources_and_nested_paths():
@@ -558,6 +591,8 @@ def test_job_progress_cancel_and_incomplete_states(tmp_path):
         assert kinds == {
             "growth-path": "deterministic",
             "public-growth-uncertainty-v2": "stochastic",
+            "public-demand-history-v2": "stochastic",
+            "public-demand-constant-v1": "deterministic",
         }
         status, control = _json_post(
             base_url,
@@ -833,3 +868,153 @@ def test_support_edits_auto_sync_bounds_for_equal_support_families(
     assert spec.distribution.parameters["maximum"] == 40000
     assert spec.bounds.maximum == 40000
     assert spec.bounds.minimum == 12000
+
+
+def test_demand_history_demo_catalog_contract_and_prior_edits(tmp_path):
+    gallery = DemoGallery(tmp_path / "mc")
+    catalog = gallery.catalog()
+    views = {demo["id"]: demo for demo in catalog["demos"]}
+    demand = views["public-demand-history-v2"]
+
+    assert demand["kind"] == "stochastic"
+    assert demand["role"] == "historical-archetype"
+    assert demand["default_run_tier"] == "fast"
+    assert set(demand["run_tiers"]) == {"test", "fast", "standard", "deep"}
+    assert demand["run_tiers"]["test"]["interactive"] is True
+    assert demand["run_tiers"]["deep"]["interactive"] is False
+    priors = demand["uncertainty_parameters"]
+    assert {prior["id"] for prior in priors} == {
+        "price_std_prior",
+        "price_anchoring",
+        "holding_time_dispersion",
+    }
+    assert all(prior["calibration"] == "illustrative" for prior in priors)
+    assert all(prior["approval"] == "approved" for prior in priors)
+    assert all(prior["dependence"] == "independent" for prior in priors)
+    assert all(prior["distribution"]["family"] == "triangular" for prior in priors)
+    assert demand["seed"] == 20260817
+    assert demand["iterations"] == 20
+    # The public catalog never leaks scenario resources or economy paths.
+    serialized = json.dumps(demand)
+    assert '"path"' not in serialized
+    assert "public_demand_history_v2.yaml" not in serialized
+
+    manager = StochasticJobManager(gallery)
+
+    # Downward approval edits render invalid-spec and execute nothing.
+    with pytest.raises(InvalidSpecError):
+        manager._resolve_request(
+            {
+                "demo_id": "public-demand-history-v2",
+                "run_tier": "test",
+                "priors": {"price_anchoring": {"approval": "draft"}},
+            }
+        )
+
+    # Triangular support edits inside the declared bounds resolve and validate.
+    _, config, _, _, _ = manager._resolve_request(
+        {
+            "demo_id": "public-demand-history-v2",
+            "run_tier": "test",
+            "priors": {"price_std_prior": {"maximum": 0.15}},
+        }
+    )
+    spec = next(
+        spec for spec in config.uncertainty.parameters if spec.id == "price_std_prior"
+    )
+    assert spec.distribution.parameters["maximum"] == 0.15
+
+    # The deep tier is CLI/background-only for this demo too.
+    with pytest.raises(GalleryError, match="CLI/background-only"):
+        manager._resolve_request(
+            {"demo_id": "public-demand-history-v2", "run_tier": "deep"}
+        )
+
+
+def test_demand_history_stochastic_job_runs_real_runner(tmp_path):
+    gallery = DemoGallery(tmp_path / "mc-jobs")
+    manager = StochasticJobManager(gallery)
+    job = manager.start({"demo_id": "public-demand-history-v2", "run_tier": "test"})
+    assert job["requested"] == 32
+    job_id = job["job_id"]
+    deadline = time.time() + 180
+    final = manager.status(job_id)
+    while time.time() < deadline:
+        final = manager.status(job_id)
+        if final["state"] in _TERMINAL_JOB_STATES:
+            break
+        time.sleep(0.05)
+    assert final["state"] == "success"
+    assert (final["requested"], final["completed"], final["failed"]) == (32, 32, 0)
+
+    result = final["result"]
+    assert result["run"]["run_tier"] == "test"
+    assert result["run"]["sampler_version"] == "tokenlab-rng-v1"
+    assert {metric["id"] for metric in result["metrics"]} == {
+        "terminal_token_price",
+        "terminal_fiat_transaction_volume",
+        "terminal_holding_time",
+    }
+    assert all(len(metric["fan"]["x"]) == 20 for metric in result["metrics"])
+    assert all(len(metric["terminal_values"]) == 32 for metric in result["metrics"])
+    # The replayed exogenous series is not an uncertain parameter: identical
+    # terminal volume across paths, while price and holding time disperse.
+    by_id = {metric["id"]: metric for metric in result["metrics"]}
+    volume = by_id["terminal_fiat_transaction_volume"]
+    assert len(set(volume["terminal_values"])) == 1
+    assert len(set(by_id["terminal_token_price"]["terminal_values"])) > 1
+    assert len(set(by_id["terminal_holding_time"]["terminal_values"])) > 1
+    assert result["sensitivity"]["completed_paths"] == 32
+    assert {
+        record["status"] for record in result["sensitivity"]["results"]
+    } == {"insufficient_paths"}
+    coverage = result["tokenomics_coverage"]
+    assert coverage["supply"]["status"] == "fixed"
+    assert coverage["vesting_unlocks"]["status"] == "absent"
+    assert coverage["demand_series"]["status"] == "synthetic_illustrative"
+    assert "not investment" in result["interpretation_boundary"].lower()
+
+
+def test_demand_constant_control_is_deterministic_and_bounded(tmp_path):
+    gallery = DemoGallery(tmp_path / "runs")
+
+    baseline = gallery.run_request(
+        {"demo_id": "public-demand-constant-v1", "preset_id": "baseline", "parameters": {}}
+    )
+    custom = gallery.run_request(
+        {
+            "demo_id": "public-demand-constant-v1",
+            "preset_id": "downside",
+            "parameters": {"average_transaction_value": 600000},
+        }
+    )
+
+    assert baseline.bundle_dir != custom.bundle_dir
+    assert validate_bundle(baseline.bundle_dir)["status"] == "pass"
+    assert baseline.application.payload["state"] == "success"
+    assert baseline.application.payload["variability"]["status"] == "unavailable"
+    assert "monte carlo" not in json.dumps(baseline.application.payload).lower()
+    assert custom.resolved_parameters == {
+        "average_transaction_value": 600000,
+        "holding_time": 0.75,
+    }
+
+    # Zero variance across the repeated deterministic paths.
+    results = pd.read_csv(baseline.bundle_dir / "results.csv")
+    numeric = [
+        column
+        for column in results.select_dtypes(include=[np.number]).columns
+        if column not in {"iteration_time", "repetition_run", "seed"}
+    ]
+    spread = results.groupby("iteration_time")[numeric].std(ddof=1).fillna(0.0)
+    assert (spread == 0.0).all().all()
+
+    # Bounded control: out-of-range values are rejected without running.
+    with pytest.raises(GalleryError, match="between"):
+        gallery.run_request(
+            {
+                "demo_id": "public-demand-constant-v1",
+                "preset_id": "baseline",
+                "parameters": {"average_transaction_value": 100},
+            }
+        )

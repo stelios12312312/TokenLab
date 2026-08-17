@@ -26,7 +26,7 @@ tokenlab-dashboard --gallery --output-dir outputs/demo-gallery
 ```
 
 Open the printed loopback URL (normally `http://127.0.0.1:8765`). The gallery
-offers two reviewed demos:
+offers four reviewed demos:
 
 - **Stochastic growth — Monte Carlo uncertainty** (flagship). The reviewed
   public economy with three approved, illustrative, explicitly independent
@@ -36,6 +36,16 @@ offers two reviewed demos:
   It runs repeated *identical* deterministic paths: it is not Monte Carlo, and
   its zero dispersion is the zero-variance negative control for the flagship,
   not statistical evidence.
+- **Demand history replay — Monte Carlo uncertainty** (historical archetype).
+  A documented synthetic fiat volume series (logistic rise, plateau, one
+  terminal dip; recorded seed, no external data lineage) replayed through the
+  real Monte Carlo runner with three approved, illustrative, independent
+  per-path priors (price noise scale, price anchoring, holding-time
+  dispersion).
+- **Constant demand — deterministic control** (control). The same illustrative
+  token skeleton with a constant fiat transaction volume and deterministic
+  controllers: the constant-volume companion and zero-variance negative
+  control for the demand-history archetype. It is not Monte Carlo.
 
 For the deterministic explorer, select one of
 the baseline, downside, or upside presets, adjust a bounded control, and choose
@@ -82,6 +92,12 @@ The stochastic demo is also available as one command:
 
 ```bash
 tokenlab-demo public-growth-uncertainty-v2 --run-tier fast --output-dir outputs/demo
+```
+
+The demand-history archetype is available the same way:
+
+```bash
+tokenlab-demo public-demand-history-v2 --run-tier fast --output-dir outputs/demo
 ```
 
 It prints the same bounded summary plus requested/completed/failed paths and
@@ -216,9 +232,9 @@ because every emitted table truthfully carries its unique `run_id`.
 
 ## Interpretation boundary
 
-Both bundled scenarios are public-safe, illustrative, and uncalibrated. The
-deterministic explorer's repeated paths are identical by construction; the
-stochastic flagship samples illustrative, independent priors and reports
+All bundled scenarios are public-safe, illustrative, and uncalibrated. The
+deterministic explorers' repeated paths are identical by construction; the
+stochastic demos sample illustrative, independent priors and report
 modeled outcome intervals (not confidence intervals, not forecasts). The output
 of either demo is not investment advice and does not establish token
 sustainability, expected returns, launch readiness, regulatory compliance, or
