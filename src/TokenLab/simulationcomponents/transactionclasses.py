@@ -475,6 +475,7 @@ class TransactionManagement_MarketcapStochastic(TransactionManagement):
         distribution=scipy.stats.norm,
         distribution_params={"loc": 0, "scale": 0.25},
         sign="any",
+        rng=None,
     ):
         super(TransactionManagement_MarketcapStochastic, self).__init__()
 
@@ -483,13 +484,22 @@ class TransactionManagement_MarketcapStochastic(TransactionManagement):
         self.distribution_params = distribution_params
         self.sign = sign
         self.num_transactions = 1
+        self._rng = rng
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def execute(self) -> float:
 
         tokeneconomy = self.dependencies[AgentPool].get_tokeneconomy()
         marketcap = tokeneconomy.price * tokeneconomy.supply
 
-        random_perc = scipy.stats.norm(**self.distribution_params).rvs(1)[0]
+        random_perc = scipy.stats.norm(**self.distribution_params).rvs(
+            1, random_state=self._draw_rng()
+        )[0]
         transactions = random_perc * marketcap
 
         if self.sign == "any":
@@ -566,6 +576,7 @@ class TransactionManagement_Stochastic(TransactionManagement):
         name: str = None,
         activity_probs: Union[float, List[float]] = 1,
         type_transaction: str = "positive",
+        rng=None,
     ) -> None:
         """
 
@@ -690,7 +701,15 @@ class TransactionManagement_Stochastic(TransactionManagement):
                 "When supplying lists as arguments, they should all have the same length."
             )
 
+        self._rng = rng
+
         return None
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def execute(self, dependency: str = "AgentPool") -> float:
         if dependency == "AgentPool":
@@ -710,8 +729,9 @@ class TransactionManagement_Stochastic(TransactionManagement):
         else:
             act = self.activity_probabilities
 
-        seed = int(int(time.time()) * np.random.rand())
-        self.active_users = int(binom.rvs(int(num_users), act, random_state=seed))
+        self.active_users = int(
+            binom.rvs(int(num_users), act, random_state=self._draw_rng())
+        )
 
         if isinstance(self.transaction_dist_parameters, (list, np.ndarray)):
             trans_param = self.transaction_dist_parameters[self.iteration]
@@ -720,10 +740,9 @@ class TransactionManagement_Stochastic(TransactionManagement):
 
         # Get the transactions.
         if self.transactions_per_user is None:
-            seed = int(int(time.time()) * np.random.rand())
             trans = np.mean(
                 self.transactions_distribution.rvs(
-                    size=1000, **trans_param, random_state=seed
+                    size=1000, **trans_param, random_state=self._draw_rng()
                 )
             )
         else:
@@ -738,9 +757,10 @@ class TransactionManagement_Stochastic(TransactionManagement):
             val_param = self.value_dist_parameters
 
         if self.value_per_transaction is None:
-            seed = int(int(time.time()) * np.random.rand())
             value_mean = np.mean(
-                self.value_distribution.rvs(size=1000, **val_param, random_state=seed)
+                self.value_distribution.rvs(
+                    size=1000, **val_param, random_state=self._draw_rng()
+                )
             )
 
             # try:

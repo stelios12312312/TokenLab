@@ -1,0 +1,90 @@
+{
+  "profile_version": 2,
+  "profile_id": "tokenlab-public-growth-uncertainty-v2",
+  "scenario_id": "public-growth-uncertainty-v2",
+  "units": {
+    "TLAB_price": "$ per TLAB",
+    "transactions_$": "$ per illustrative step",
+    "num_users": "modeled user-step participations"
+  },
+  "terminal_metrics": [
+    {
+      "id": "terminal_token_price",
+      "column": "TLAB_price",
+      "label": "Terminal modeled token price",
+      "unit": "$ per TLAB",
+      "kind": "continuous",
+      "absolute_tolerance": 0.001,
+      "description": "Final-step price emitted by the configured PriceFunction_EOE component across Monte Carlo paths; a modeled outcome, not a market forecast."
+    },
+    {
+      "id": "terminal_fiat_transaction_volume",
+      "column": "transactions_$",
+      "label": "Terminal fiat transaction volume",
+      "unit": "$ per illustrative step",
+      "kind": "continuous",
+      "absolute_tolerance": 1000,
+      "description": "Final-step aggregate fiat-denominated transaction value for the illustrative user cohort across Monte Carlo paths."
+    },
+    {
+      "id": "cumulative_users",
+      "column": "num_users",
+      "label": "Cumulative user participation",
+      "unit": "modeled user-step participations",
+      "kind": "continuous",
+      "absolute_tolerance": 1000,
+      "description": "Final-step cumulative sum of the configured per-step cohort counts reported by TokenEconomy; it is not a distinct or active-user count."
+    }
+  ],
+  "convergence": {
+    "relative_drift": 0.05,
+    "absolute_tolerance": {
+      "TLAB_price": 0.001,
+      "transactions_$": 1000,
+      "num_users": 1000
+    }
+  },
+  "tokenomics_coverage": {
+    "supply": {
+      "status": "fixed",
+      "detail": "Constant supply of 250,000,000 TLAB is configured and held fixed across every path; no mint or burn is modeled."
+    },
+    "emissions": {
+      "status": "absent",
+      "detail": "The selected constant-supply scenario emits no emissions schedule."
+    },
+    "vesting_unlocks": {
+      "status": "absent",
+      "detail": "No vesting or unlock controller is configured in this scenario."
+    },
+    "liquidity": {
+      "status": "absent",
+      "detail": "The scenario models no liquidity depth or pool state."
+    },
+    "treasury": {
+      "status": "absent",
+      "detail": "No treasury component or treasury authority is configured."
+    },
+    "governance": {
+      "status": "absent",
+      "detail": "The scenario models no governance process or authority."
+    },
+    "staking_reward_source": {
+      "status": "absent",
+      "detail": "No staking pool, reward source, or staking yield is modeled."
+    },
+    "fdv": {
+      "status": "absent",
+      "detail": "FDV is not emitted or declared by this scenario's artifact contract."
+    },
+    "apy": {
+      "status": "absent",
+      "detail": "APY is not emitted and cannot be inferred from the published tables."
+    },
+    "priors": {
+      "status": "illustrative_uncalibrated",
+      "detail": "All three uncertain parameters are illustrative, uncalibrated, and declared independent; their triangular ranges derive from the reviewed public downside/baseline/upside presets, not from fitted data."
+    }
+  },
+  "interpretation_boundary": "Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes under illustrative, uncalibrated, independent priors; they are not confidence intervals, not forecasts, and not investment, launch, legal, financial, or decision-grade advice. Estimator confidence intervals name their estimator, method, and level separately. Live token decisions require qualified review and evidence outside this demo."
+}

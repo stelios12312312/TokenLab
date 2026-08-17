@@ -1,5 +1,64 @@
 # Red Team Audit Findings
 
+## Demo gallery audit — 2026-08-14
+
+- **Scope**: GitHub issue #24 / Program ticket `T-INTAKE-BDAE920E`; registry, bounded scenario resolver, gallery HTTP application, offline UI, focused tests, documentation, and story linkage.
+- **Adversarial objective**: make the gallery publish plausible results after unsafe input, concurrent RNG mutation, partial failure, path injection, repeated submissions, or a UI-only fake run.
+- **Audit mode**: **PROVISIONAL**. Runtime/code findings were remediated and the supported Python 3.10 suite is green, but rendered desktop/mobile proof is unavailable in this session and the repository ontology is operating with its pre-existing degraded scaffold.
+
+### Substrate risks
+
+- The intentional issue-24 story-registry edit has not yet crossed a signed planner transition, so `registry_tampered` remains expected until the next state transition refreshes the hash.
+- Canonical `.agent/ontology/facts/*.yaml` files remain absent; formal claim support is degraded independently of this feature.
+- The in-app browser controller is unavailable. Static accessibility/responsive contracts pass, but no screenshot or rendered-layout claim is promoted.
+- The planner's `integration-probes.yaml` cannot be parsed by its checklist runner, and the governed `migration-bootstrap` fixture suite has four cleanliness/receipt failures in untouched planner code. These are disclosed planner-substrate defects, not TokenLab product failures.
+
+### F-DG-001: Per-application lock did not protect process-global RNG
+
+- **Severity**: HIGH
+- **Status**: **RESOLVED**
+- **Category**: Data Integrity / State Isolation
+- **Files**: `src/TokenLab/dashboard.py`, `tests/test_demo_gallery.py`
+- **Description**: each `GalleryApplication` originally received its own lock while `HeadlessRunner` saves, seeds, and restores Python/NumPy process-global RNG state. Two embedded servers in one process could therefore overlap runs and restore the wrong state.
+- **Impact**: concurrent results could be nondeterministic or silently cross-contaminated even though each server believed it had serialized execution.
+- **Reproduction**: create two `GalleryApplication` instances, acquire the first lock, and submit through the second; the original implementation did not return busy.
+- **Resolution**: all gallery applications now share one module-level run lock; the regression test proves the second application receives `GalleryBusyError`.
+
+### F-DG-002: Completed run eviction did not bound persistent work
+
+- **Severity**: MEDIUM
+- **Status**: **RESOLVED**
+- **Category**: Resource Exhaustion / Failure Modes
+- **Files**: `src/TokenLab/dashboard.py`, `tests/test_demo_gallery.py`
+- **Description**: the original `MAX_GALLERY_RUNS` logic evicted old in-memory downloads after every new run but retained every bundle on disk, allowing one server process to accept unlimited expensive runs.
+- **Impact**: a local page or script could consume unbounded CPU and disk while the application appeared bounded.
+- **Resolution**: the process now rejects a submission with HTTP 429 after 100 validated completed runs. Restarting with a fresh output directory is explicit; cross-restart retention remains operator-managed.
+
+### F-DG-003: Unexpected backend failures could terminate the HTTP response
+
+- **Severity**: MEDIUM
+- **Status**: **RESOLVED**
+- **Category**: Error Handling / Information Boundary
+- **Files**: `src/TokenLab/dashboard.py`, `tests/test_demo_gallery.py`
+- **Description**: the handler sanitized known artifact exceptions but did not cover an unexpected ordinary exception raised by a future runner/profile implementation.
+- **Impact**: the browser could receive a dropped connection instead of a truthful invalid state; server diagnostics could diverge from the public error contract.
+- **Resolution**: the outer request boundary converts unexpected `Exception` instances to the same path-free HTTP 422 response. A fake backend containing a private path proves the response remains sanitized.
+
+### Formal sweep
+
+- `story_registry.mjs check`: PASS (21 stories).
+- `story_registry.mjs evidence --json`: PASS, no incomplete full-coverage claims.
+- `rule_engine.mjs find-conflicts`: PASS, no conflicts.
+- `rule_engine.mjs reachability-audit`: PASS, zero issues.
+- `annotation_parser.mjs --validate`: PASS with 59 pre-existing warnings and zero errors.
+- Final invariant confidence remains provisional until the intentional registry hash is signed by the next transition.
+
+### Priority order
+
+1. Keep F-DG-001 through F-DG-003 regression tests green.
+2. Record rendered desktop and narrow-viewport observation when browser control is available.
+3. Handle the unrelated planner migration/bootstrap and ontology substrate in separate maintenance work; do not confuse those defects with gallery runtime status.
+
 ## GitHub cleanup follow-up — 2026-08-12
 
 - **Coverage**: working tree for Program ticket `T-INTAKE-5E47CAAF` / issue #18 on base `85e02f1`.

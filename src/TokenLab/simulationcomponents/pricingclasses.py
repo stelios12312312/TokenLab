@@ -80,6 +80,7 @@ class HoldingTime_Stochastic(HoldingTimeController):
             "s": 1,
         },
         minimum: float = 0.1,
+        rng=None,
     ):
         """
 
@@ -92,6 +93,10 @@ class HoldingTime_Stochastic(HoldingTimeController):
             The parameters of the distribution. The default is {'loc':0,'scale':1}.
         minimum : float, optional
             The minimum possible holding time. If the sampled holding time is <1, then it reverts to minimum. The default is 0.1.
+        rng : numpy.random.Generator, optional
+            When provided, all randomness for this instance is drawn from it. When None,
+            a private generator seeded from OS entropy is created (no wall-clock, no
+            global state).
 
         Returns
         -------
@@ -103,7 +108,14 @@ class HoldingTime_Stochastic(HoldingTimeController):
         self.distribution = distribution
         self.dist_params = holding_time_params
         self.minimum = minimum
+        self._rng = rng
         self.execute()
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def execute(self) -> float:
         """
@@ -115,8 +127,6 @@ class HoldingTime_Stochastic(HoldingTimeController):
             The holding time.
 
         """
-        seed = int(int(time.time()) * np.random.rand())
-
         if type(self.dist_params) == type([]):
             # if the end of the iteration has been reached simply use the last one
             try:
@@ -127,7 +137,7 @@ class HoldingTime_Stochastic(HoldingTimeController):
             parameters = self.dist_params
 
         self.holding_time = self.distribution.rvs(
-            size=1, **parameters, random_state=seed
+            size=1, **parameters, random_state=self._draw_rng()
         )[0]
         if self.holding_time < self.minimum:
             self.holding_time = self.minimum

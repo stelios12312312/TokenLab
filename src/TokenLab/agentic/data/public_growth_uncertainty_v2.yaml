@@ -1,0 +1,107 @@
+# Canonical public stochastic demo (schema v2).
+#
+# Same reviewed economy skeleton as public_demo.yaml (public-growth-path-v1),
+# plus an approved uncertainty block. The three priors are illustrative,
+# uncalibrated, explicitly independent, per-path parameter draws whose
+# min/mode/max are derived from the reviewed public downside/baseline/upside
+# presets. They are not fitted to data and are not a forecast.
+schema_version: 2
+scenario_id: public-growth-uncertainty-v2
+economy:
+  type: TokenEconomy_Basic
+  parameters:
+    initial_price: 0.05
+    fiat: "$"
+    token: TLAB
+  holding_time:
+    type: HoldingTime_Constant
+    parameters:
+      holding_time: 1.5
+  supply:
+    type: SupplyController_Constant
+    parameters:
+      supply: 250000000
+  price:
+    type: PriceFunction_EOE
+    parameters: {}
+  supply_pools: []
+  agent_pools:
+    - id: illustrative-users
+      type: AgentPool_Basic
+      parameters:
+        currency: "$"
+        name: illustrative-users
+      users:
+        type: UserGrowth_Spaced
+        parameters:
+          initial_users: 2500
+          max_users: 20000
+          num_steps: 24
+      transactions:
+        type: TransactionManagement_Trend
+        parameters:
+          average_transaction_initial: 40
+          average_transaction_final: 120
+          num_steps: 24
+monte_carlo:
+  simulator: TokenMetaSimulator
+  iterations: 24
+  repetitions: 1
+  seed: 20260812
+artifacts:
+  format: csv
+uncertainty:
+  parameters:
+    - id: max_users
+      path: economy.agent_pools[0].users.parameters.max_users
+      value_type: integer
+      unit: users
+      rounding: nearest_integer
+      layer: parameter
+      cadence: per_path
+      distribution:
+        family: triangular
+        minimum: 12000
+        mode: 20000
+        maximum: 32000
+      bounds: {minimum: 12000, maximum: 32000}
+      provenance: "Derived from the reviewed public downside/baseline/upside presets."
+      rationale: "Brackets the adoption-scale assumption between the reviewed downside and upside presets, centered on the baseline."
+      calibration: illustrative
+      approval: approved
+      dependence: independent
+    - id: average_transaction_final
+      path: economy.agent_pools[0].transactions.parameters.average_transaction_final
+      value_type: number
+      unit: "$ per transaction"
+      layer: parameter
+      cadence: per_path
+      distribution:
+        family: triangular
+        minimum: 80
+        mode: 120
+        maximum: 180
+      bounds: {minimum: 80, maximum: 180}
+      provenance: "Derived from the reviewed public downside/baseline/upside presets."
+      rationale: "Brackets the ending average transaction value between the reviewed downside and upside presets, centered on the baseline."
+      calibration: illustrative
+      approval: approved
+      dependence: independent
+    - id: holding_time
+      path: economy.holding_time.parameters.holding_time
+      value_type: number
+      unit: illustrative time units
+      layer: parameter
+      cadence: per_path
+      distribution:
+        family: triangular
+        minimum: 0.75
+        mode: 1.5
+        maximum: 2.5
+      bounds: {minimum: 0.75, maximum: 2.5}
+      provenance: "Derived from the reviewed public downside/baseline/upside presets."
+      rationale: "Brackets the constant holding-time assumption between the reviewed downside and upside presets, centered on the baseline."
+      calibration: illustrative
+      approval: approved
+      dependence: independent
+  dependence_groups: []

@@ -66,6 +66,41 @@
       "confidence": "high",
       "evidence_refs": ["F-007"],
       "recommended_guard": "requires_red_team"
+    },
+    {
+      "id": "AP-007",
+      "label": "Per-instance lock guarding process-global mutable state",
+      "queries": [
+        "default_factory=threading\\.Lock",
+        "random\\.seed|np\\.random\\.seed"
+      ],
+      "scope": ["src/TokenLab/"],
+      "confidence": "high",
+      "evidence_refs": ["F-DG-001"],
+      "recommended_guard": "requires_red_team"
+    },
+    {
+      "id": "AP-008",
+      "label": "In-memory eviction presented as a persistent resource bound",
+      "queries": [
+        "while len\\(.*runs",
+        "runs\\.pop"
+      ],
+      "scope": ["src/TokenLab/"],
+      "confidence": "high",
+      "evidence_refs": ["F-DG-002"],
+      "recommended_guard": "requires_red_team"
+    },
+    {
+      "id": "AP-009",
+      "label": "Narrow HTTP exception boundary drops unexpected failures",
+      "queries": [
+        "except \\([^)]*ArtifactError"
+      ],
+      "scope": ["src/TokenLab/"],
+      "confidence": "medium",
+      "evidence_refs": ["F-DG-003"],
+      "recommended_guard": "requires_red_team"
     }
   ]
 }

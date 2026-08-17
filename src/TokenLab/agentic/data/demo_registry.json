@@ -1,0 +1,100 @@
+{
+  "registry_version": 1,
+  "gallery_id": "tokenlab-public-gallery-v1",
+  "title": "TokenLab scenario gallery",
+  "boundary": "Illustrative simulation only; not investment, launch, legal, financial, forecast, or decision-grade advice.",
+  "demos": [
+    {
+      "id": "growth-path",
+      "kind": "deterministic",
+      "role": "control",
+      "title": "Deterministic scenario explorer",
+      "summary": "Deterministic control: runs repeated identical deterministic paths of the reviewed public scenario. This is NOT Monte Carlo and carries no statistical uncertainty evidence; it serves as the zero-variance negative control for the stochastic flagship demo.",
+      "maturity": "illustrative",
+      "boundary": "This deterministic scenario explorer demonstrates model wiring and comparative UX only. Its repeated paths are identical by construction: zero dispersion is a property of the deterministic controllers, not statistical evidence. It is not Monte Carlo, is uncalibrated, and is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_demo.yaml",
+      "profile_resource": "public_demo_profile.json",
+      "controls": [
+        {
+          "id": "user_ceiling",
+          "label": "User ceiling",
+          "description": "Maximum modeled user cohort reached by the configured growth curve.",
+          "type": "integer",
+          "path": ["economy", "agent_pools", 0, "users", "parameters", "max_users"],
+          "minimum": 5000,
+          "maximum": 50000,
+          "step": 1000,
+          "unit": "modeled users"
+        },
+        {
+          "id": "transaction_value_end",
+          "label": "Ending transaction value",
+          "description": "Final average fiat-denominated transaction value assumed by the trend controller.",
+          "type": "number",
+          "path": ["economy", "agent_pools", 0, "transactions", "parameters", "average_transaction_final"],
+          "minimum": 40,
+          "maximum": 240,
+          "step": 10,
+          "unit": "$ per illustrative transaction"
+        },
+        {
+          "id": "holding_time",
+          "label": "Holding time",
+          "description": "Constant illustrative holding-time assumption used by the public scenario.",
+          "type": "number",
+          "path": ["economy", "holding_time", "parameters", "holding_time"],
+          "minimum": 0.5,
+          "maximum": 4.0,
+          "step": 0.25,
+          "unit": "illustrative time units"
+        }
+      ],
+      "presets": [
+        {
+          "id": "baseline",
+          "label": "Baseline",
+          "summary": "The reviewed public-demo assumptions.",
+          "values": {
+            "user_ceiling": 20000,
+            "transaction_value_end": 120,
+            "holding_time": 1.5
+          }
+        },
+        {
+          "id": "downside",
+          "label": "Downside",
+          "summary": "Lower adoption and transaction value with faster token turnover.",
+          "values": {
+            "user_ceiling": 12000,
+            "transaction_value_end": 80,
+            "holding_time": 0.75
+          }
+        },
+        {
+          "id": "upside",
+          "label": "Upside",
+          "summary": "Higher adoption and transaction value with longer holding time.",
+          "values": {
+            "user_ceiling": 32000,
+            "transaction_value_end": 180,
+            "holding_time": 2.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-growth-uncertainty-v2",
+      "kind": "stochastic",
+      "role": "flagship",
+      "title": "Stochastic growth — Monte Carlo uncertainty",
+      "summary": "Flagship stochastic demo: the reviewed public economy with three approved, illustrative, independent per-path priors executed by the real Monte Carlo runner with seeded reproducibility, outcome intervals, estimator confidence intervals, sensitivity, and convergence evidence.",
+      "maturity": "illustrative",
+      "boundary": "This Monte Carlo demo samples three illustrative, uncalibrated, explicitly independent priors derived from the reviewed public presets. Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes, not confidence intervals and not forecasts. It is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_growth_uncertainty_v2.yaml",
+      "profile_resource": "public_growth_uncertainty_v2_profile.json",
+      "default_run_tier": "fast",
+      "interactive_run_tiers": ["test", "fast", "standard"],
+      "cli_only_run_tiers": ["deep"]
+    }
+  ]
+}

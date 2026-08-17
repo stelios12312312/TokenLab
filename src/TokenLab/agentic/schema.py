@@ -12,12 +12,16 @@ import json
 import math
 from pathlib import Path
 import re
-from typing import Any, Dict, List, Mapping, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Union
 
 import yaml
 
+if TYPE_CHECKING:
+    from .uncertainty import UncertaintyBlock
+
 
 SCHEMA_VERSION = 1
+SUPPORTED_SCHEMA_VERSIONS = (1, 2)
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 _COMPONENT_NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,127}$")
 
@@ -106,15 +110,29 @@ class ScenarioConfig:
     economy: EconomySpec
     monte_carlo: MonteCarloSpec
     artifacts: ArtifactsSpec
+    uncertainty: Optional["UncertaintyBlock"] = None
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "schema_version": self.schema_version,
             "scenario_id": self.scenario_id,
             "economy": self.economy.to_dict(),
             "monte_carlo": self.monte_carlo.to_dict(),
             "artifacts": self.artifacts.to_dict(),
         }
+        if self.uncertainty is not None:
+            result["uncertainty"] = self.uncertainty.to_dict()
+        return result
+
+    @property
+    def is_stochastic(self) -> bool:
+        """True iff schema v2 with at least one non-fixed approved parameter."""
+        if self.uncertainty is None:
+            return False
+        return any(
+            spec.approval == "approved" and spec.distribution.family != "fixed"
+            for spec in self.uncertainty.parameters
+        )
 
     @property
     def config_hash(self) -> str:
@@ -292,19 +310,45 @@ def scenario_from_dict(value: Any) -> ScenarioConfig:
     _keys(
         data,
         "scenario",
-        allowed={"schema_version", "scenario_id", "economy", "monte_carlo", "artifacts"},
+        allowed={
+            "schema_version",
+            "scenario_id",
+            "economy",
+            "monte_carlo",
+            "artifacts",
+            "uncertainty",
+        },
         required={"schema_version", "scenario_id", "economy", "monte_carlo", "artifacts"},
     )
-    if data["schema_version"] != SCHEMA_VERSION:
+    version = data["schema_version"]
+    if version not in SUPPORTED_SCHEMA_VERSIONS:
         raise ScenarioError(
-            f"scenario.schema_version must be {SCHEMA_VERSION}; got {data['schema_version']!r}"
+            f"scenario.schema_version must be one of {SUPPORTED_SCHEMA_VERSIONS}; "
+            f"got {version!r}"
         )
+    economy = _economy(data["economy"])
+    uncertainty_block: Optional["UncertaintyBlock"] = None
+    if version == SCHEMA_VERSION:
+        if "uncertainty" in data:
+            raise ScenarioError(
+                "scenario.uncertainty requires schema_version 2"
+            )
+    else:
+        if "uncertainty" not in data:
+            raise ScenarioError(
+                "scenario.uncertainty is required when schema_version is 2"
+            )
+        # Imported lazily: uncertainty.py imports this module for ScenarioError.
+        from .uncertainty import UncertaintyBlock
+
+        uncertainty_block = UncertaintyBlock.from_dict(data["uncertainty"], economy)
     return ScenarioConfig(
-        schema_version=SCHEMA_VERSION,
+        schema_version=version,
         scenario_id=_safe_id(data["scenario_id"], "scenario.scenario_id"),
-        economy=_economy(data["economy"]),
+        economy=economy,
         monte_carlo=_monte_carlo(data["monte_carlo"]),
         artifacts=_artifacts(data["artifacts"]),
+        uncertainty=uncertainty_block,
     )
 
 

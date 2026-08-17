@@ -1,4 +1,40 @@
 {
   "version": 1,
-  "retros": []
+  "retros": [
+    {
+      "id": "R-2026-08-14-001",
+      "date": "2026-08-14",
+      "title": "Gallery guards were narrower than the protected runtime state",
+      "summary": "The first gallery implementation used per-application locking, metadata-only eviction, and a narrow exception map. Adversarial review found and remediated all three before handoff.",
+      "failure_modes": [
+        "MISSED_BLAST_RADIUS",
+        "SILENT_DEGRADATION",
+        "MISSED_TEST"
+      ],
+      "discovered_phase": "EXECUTE_RED_TEAM",
+      "affected_surfaces": [
+        "src/TokenLab/dashboard.py",
+        "tests/test_demo_gallery.py"
+      ],
+      "root_cause": "Guard ownership followed each HTTP application instance instead of the process-global RNG and durable-work lifecycle it protected.",
+      "promotion_decision": "registry_guard",
+      "promotions": {
+        "mistake_ids": ["M-001"],
+        "obligation_ids": [],
+        "invariant_ids": []
+      },
+      "action_evidence_refs": [
+        "tests/test_demo_gallery.py::test_gallery_lock_and_completed_run_limit_are_process_bounded",
+        "tests/test_demo_gallery.py::test_gallery_http_sanitizes_unexpected_backend_failures",
+        "reports/red_team_audit/anti_patterns.json#AP-007"
+      ],
+      "related_plan_ids": ["plan_2026-08-14_cb6508aba0376b20"],
+      "kb_refs": [
+        "plans/knowledge/mistakes.md#M-001",
+        "plans/knowledge/patterns.md#P-003"
+      ],
+      "case_file": "plans/knowledge/retros/cases/R-2026-08-14-001.md",
+      "status": "accepted"
+    }
+  ]
 }

@@ -268,3 +268,81 @@ def test_dashboard_entry_point_package_data_and_demo_docs_are_wired():
     assert '"TokenLab" = ["dashboard_static/*.html"]' in pyproject
     assert "tokenlab-dashboard outputs/demo/public-demo" in readme
     assert "tokenlab-dashboard outputs/demo/public-demo" in guide
+
+
+def test_legacy_viewer_contract(dashboard_bundle):
+    """The Phase 5 stochastic additions leave the v1 viewer contract intact."""
+    app = load_dashboard(dashboard_bundle)
+    payload = app.payload
+
+    assert set(payload) == {
+        "dashboard_version",
+        "state",
+        "profile",
+        "run",
+        "time_axis",
+        "metrics",
+        "unavailable_concepts",
+        "downloads",
+        "repeatability",
+        "variability",
+        "interpretation_boundary",
+        "warnings",
+    }
+    assert payload["dashboard_version"] == 1
+    assert payload["state"] == "success"
+    assert set(payload["run"]) == {
+        "run_id",
+        "scenario_id",
+        "config_hash",
+        "seed",
+        "created_at",
+        "iterations",
+        "repetitions",
+    }
+    assert payload["variability"]["status"] == "unavailable"
+    assert {item["id"] for item in payload["downloads"]} == {
+        "results",
+        "iteration_summary",
+    }
+    assert all(
+        item["url"] == f"/download/{item['id']}" for item in payload["downloads"]
+    )
+
+    server = create_server(dashboard_bundle, host="127.0.0.1", port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    base_url = f"http://127.0.0.1:{server.server_port}"
+    try:
+        status, served = _json_get(base_url, "/api/dashboard")
+        assert status == 200
+        assert served == payload
+
+        status, health = _json_get(base_url, "/api/health")
+        assert status == 200
+        assert health == {"status": "ok", "bundle_state": "success"}
+
+        # The gallery and stochastic job APIs stay absent from the viewer.
+        for route, method in (
+            ("/api/gallery", "GET"),
+            ("/api/runs", "POST"),
+            ("/api/stochastic/runs", "POST"),
+            ("/api/stochastic/runs/mc-0", "GET"),
+        ):
+            request = Request(
+                f"{base_url}{route}",
+                data=b"{}" if method == "POST" else None,
+                method=method,
+                headers={"Content-Type": "application/json"},
+            )
+            with pytest.raises(HTTPError) as error:
+                urlopen(request, timeout=5)
+            assert error.value.code in {404, 405}
+
+        with urlopen(f"{base_url}/download/results", timeout=5) as response:
+            assert response.status == 200
+            assert b"public-growth-path-v1" in response.read()
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)

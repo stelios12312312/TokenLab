@@ -1,5 +1,25 @@
 # Red Team Audit Anti-Patterns
 
+## Demo gallery additions — 2026-08-14
+
+### AP-007: Per-instance lock guarding process-global mutable state
+
+- **Signature**: a request/application object owns its own lock while the protected dependency seeds or mutates module/process-global state.
+- **Search**: `rg -n 'default_factory=threading\.Lock|random\.seed|np\.random\.seed' src/TokenLab -g '*.py'`
+- **Guard**: share one process-level lock or move the mutable dependency to an isolated process.
+
+### AP-008: In-memory eviction presented as a persistent resource bound
+
+- **Signature**: old metadata is popped from a map while the expensive or persistent resource is retained.
+- **Search**: `rg -n 'while len\(.*runs|runs\.pop' src tests -g '*.py'`
+- **Guard**: reject new work at a declared limit or pair eviction with an explicitly authorized lifecycle policy.
+
+### AP-009: Narrow HTTP exception boundary drops unexpected failures
+
+- **Signature**: a top-level request handler maps only today's known domain exceptions despite calling extensible backend code.
+- **Search**: `rg -n 'except \([^)]*ArtifactError|serve_forever' src/TokenLab -g '*.py'`
+- **Guard**: preserve precise mappings first, then use a final ordinary-exception sanitizer at the transport boundary.
+
 ## AP-001: Mismatched Default Configuration Values (RESOLVED)
 - **Pattern**: Configuration parameters defined in code diverge from the designed tokenomics narrative or specification values.
 - **Example**: `velocity_scale: float = 0.1` instead of `1.0`.

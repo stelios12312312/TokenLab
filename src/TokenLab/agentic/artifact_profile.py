@@ -50,6 +50,35 @@ def reproducible_table_hash(data: pd.DataFrame) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def reproducible_json_hash(payload: Any) -> str:
+    """Hash canonical JSON content while excluding unique bundle identity.
+
+    ``run_id`` keys are stripped recursively before hashing, matching the
+    table-hash exclusion discipline; serialization is canonical
+    (sorted keys, tight separators, no NaN).
+    """
+
+    def strip(node: Any) -> Any:
+        if isinstance(node, Mapping):
+            return {
+                key: strip(value)
+                for key, value in node.items()
+                if key != "run_id"
+            }
+        if isinstance(node, list):
+            return [strip(value) for value in node]
+        return node
+
+    canonical = json.dumps(
+        strip(payload),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
 def _require_text(value: Any, field: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise ArtifactProfileError(f"{field} must be a non-empty string")

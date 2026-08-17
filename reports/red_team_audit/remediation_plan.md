@@ -1,5 +1,14 @@
 # Red Team Audit Remediation Plan
 
+## Demo gallery remediation — 2026-08-14
+
+1. **F-DG-001 — process-wide serialization (HIGH, RESOLVED):** replace per-application locks with a shared RNG lock and prove cross-application busy rejection.
+2. **F-DG-002 — bounded completed runs (MEDIUM, RESOLVED):** reject work at the 100-run process cap with HTTP 429 rather than evicting only the in-memory evidence snapshot.
+3. **F-DG-003 — sanitized unexpected failures (MEDIUM, RESOLVED):** add a final HTTP exception boundary and a private-path negative test.
+4. **Residual visual proof (OPEN):** capture desktop and narrow-viewport observations when the browser controller is available; do not promote the story to fully covered before then.
+
+Estimated remaining product effort: one short visual QA pass. Planner ontology/migration-suite repair is separate maintenance scope.
+
 This plan outlines the priority order, dependency mapping, and effort estimation to resolve all identified findings.
 
 ## Remediation Steps

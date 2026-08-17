@@ -1,0 +1,75 @@
+{
+  "console": [
+    {
+      "type": "error",
+      "text": "Failed to load resource: the server responded with a status of 400 (Bad Request)",
+      "url": "http://127.0.0.1:50298/api/stochastic/runs"
+    }
+  ],
+  "responses": [
+    {
+      "url": "http://127.0.0.1:50298/",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/gallery",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs",
+      "status": 202
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-645355215e12",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-645355215e12",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-645355215e12",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-645355215e12/download/convergence",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs",
+      "status": 202
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-a0055802fdb2",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-a0055802fdb2",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-a0055802fdb2",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs",
+      "status": 400
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs",
+      "status": 202
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-f48361ac59c2",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-f48361ac59c2/cancel",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-f48361ac59c2",
+      "status": 200
+    }
+  ]
+}

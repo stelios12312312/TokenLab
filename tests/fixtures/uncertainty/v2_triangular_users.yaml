@@ -1,0 +1,84 @@
+# v2 test fixture: public-demo economy plus a frozen-shape uncertainty block.
+# Not the canonical public demo v2 file (that is Phase 5 scope).
+schema_version: 2
+scenario_id: uncertainty-fixture-v2
+economy:
+  type: TokenEconomy_Basic
+  parameters:
+    initial_price: 0.05
+    fiat: "$"
+    token: TLAB
+  holding_time:
+    type: HoldingTime_Constant
+    parameters:
+      holding_time: 1.5
+  supply:
+    type: SupplyController_Constant
+    parameters:
+      supply: 250000000
+  price:
+    type: PriceFunction_EOE
+    parameters: {}
+  supply_pools: []
+  agent_pools:
+    - id: illustrative-users
+      type: AgentPool_Basic
+      parameters:
+        currency: "$"
+        name: illustrative-users
+      users:
+        type: UserGrowth_Spaced
+        parameters:
+          initial_users: 2500
+          max_users: 20000
+          num_steps: 24
+      transactions:
+        type: TransactionManagement_Trend
+        parameters:
+          average_transaction_initial: 40
+          average_transaction_final: 120
+          num_steps: 24
+monte_carlo:
+  simulator: TokenMetaSimulator
+  iterations: 24
+  repetitions: 4
+  seed: 20260812
+artifacts:
+  format: csv
+uncertainty:
+  parameters:
+    - id: max_users
+      path: economy.agent_pools[0].users.parameters.max_users
+      value_type: integer
+      unit: users
+      rounding: nearest_integer
+      layer: parameter
+      cadence: per_path
+      distribution:
+        family: triangular
+        minimum: 12000
+        mode: 20000
+        maximum: 32000
+      bounds: {minimum: 12000, maximum: 32000}
+      provenance: "Derived from reviewed public downside/baseline/upside presets."
+      rationale: "Brackets adoption scale."
+      calibration: illustrative
+      approval: approved
+      dependence: independent
+    - id: initial_price
+      path: economy.parameters.initial_price
+      value_type: number
+      unit: usd
+      layer: parameter
+      cadence: per_path
+      distribution:
+        family: uniform
+        minimum: 0.03
+        maximum: 0.08
+      bounds: {minimum: 0.03, maximum: 0.08}
+      provenance: "Illustrative listing-price range agreed with the protocol team."
+      rationale: "Captures listing-price uncertainty."
+      calibration: illustrative
+      approval: approved
+      dependence: independent
+  dependence_groups: []

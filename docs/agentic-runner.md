@@ -59,11 +59,63 @@ diagnostic attachment, then prints at most six presentation lines. The completed
 bundle is validated before the command reports success. See
 [`public-demo.md`](public-demo.md) for the talk track.
 
+## Monte Carlo runner (schema v2)
+
+Schema v2 scenarios add an `uncertainty` block of approved, validated priors.
+`MonteCarloRunner` executes each Monte Carlo path with freshly sampled
+parameters, a rebuilt scenario graph, and per-context generators derived from
+`(master_seed, namespace, path_index)` — path prefixes are stable across
+budgets, and no global RNG state is touched:
+
+```bash
+python -m TokenLab.agentic.runner \
+  src/TokenLab/agentic/data/public_growth_uncertainty_v2.yaml \
+  --output-dir outputs/agentic --run-tier fast
+```
+
+`--run-tier` and `--paths` are mutually exclusive; explicit path counts are
+bounded and never silently reduced. Frozen tiers:
+
+| Tier | Paths | Bootstrap resamples | Measured wall time* |
+|---|---|---|---|
+| `test` | 32 | 200 | ≈0.1 s |
+| `fast` | 100 | 500 | ≈0.7–1.1 s |
+| `standard` | 500 | 2000 | ≈8 s |
+| `deep` | 2000 | 5000 | CLI/background-only |
+
+\* Canonical public v2 scenario on an Apple-silicon laptop (py3.13,
+numpy 2.3); standard/deep budgets are dominated by bootstrap resampling. The
+gallery job API serves only the measured-safe interactive tiers
+(`test`/`fast`/`standard`).
+
+A v2 run publishes a `manifest_version: 2` bundle with `results.csv` (one row
+per completed path and step), `parameter_samples.csv` (every draw with seed
+lineage), `iteration_summary.csv` (per-step cross-path quantiles), and four
+JSON documents: `terminal_summary` (estimates, modeled outcome intervals,
+estimator confidence intervals), `sensitivity` (Spearman rank records with
+bootstrap CIs; `insufficient_paths` below 100 completed paths instead of a
+fabricated rank), `convergence` (nested-checkpoint drift against
+profile-declared tolerances), and `path_failures` (exact
+requested/completed/failed denominators). Failed paths are recorded and block
+claim eligibility; a cancelled run publishes nothing.
+
+The installed stochastic demo packages the same path:
+
+```bash
+tokenlab-demo public-growth-uncertainty-v2 --run-tier fast --output-dir outputs/demo
+```
+
+Interval semantics are contract-enforced: cross-path P10–P90 spreads are
+labeled *modeled outcome intervals* and can never be labeled confidence
+intervals; confidence intervals name their estimator, method (percentile
+bootstrap), and level.
+
 ## Scenario contract
 
-Schema version 1 has five top-level keys:
+Schema version 1 has five top-level keys (schema version 2 adds the
+`uncertainty` block described in the Monte Carlo section above):
 
-- `schema_version`: currently `1`.
+- `schema_version`: currently `1` or `2`.
 - `scenario_id`: a safe identifier used in lineage.
 - `economy`: the existing economy type, its constructor parameters, holding-time,
   supply, and price controller specifications, plus supply and agent pools.

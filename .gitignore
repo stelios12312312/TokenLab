@@ -195,3 +195,6 @@ plans/.current_plan*
 plans/ACTIVE_PLAN.*
 plans/.thread_targets/
 plans/.audit-archive/
+
+# Regenerable browser-journey run bundles (evidence screenshots/logs are kept)
+scratch/browser_evidence/gallery-runs/

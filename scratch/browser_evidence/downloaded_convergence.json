@@ -1,0 +1,73 @@
+{
+  "checkpoints_requested": [
+    100,
+    250,
+    500,
+    1000,
+    2000
+  ],
+  "checkpoints_used": [
+    100
+  ],
+  "metrics": {
+    "cumulative_users": {
+      "checkpoints": [
+        {
+          "checkpoint": 100,
+          "mc_standard_error": 4711.339322165388,
+          "mean": 279425.52,
+          "n": 100,
+          "p10": 223117.2,
+          "p50": 275112.0,
+          "p90": 345085.2
+        }
+      ],
+      "status": "insufficient_checkpoints",
+      "tolerances": {
+        "absolute": 1000.0,
+        "relative_drift": 0.05
+      }
+    },
+    "terminal_fiat_transaction_volume": {
+      "checkpoints": [
+        {
+          "checkpoint": 100,
+          "mc_standard_error": 65326.84590299784,
+          "mean": 2647964.54,
+          "n": 100,
+          "p10": 1874580.5,
+          "p50": 2536719.0,
+          "p90": 3516837.4000000004
+        }
+      ],
+      "status": "insufficient_checkpoints",
+      "tolerances": {
+        "absolute": 1000.0,
+        "relative_drift": 0.05
+      }
+    },
+    "terminal_token_price": {
+      "checkpoints": [
+        {
+          "checkpoint": 100,
+          "mc_standard_error": 0.00038807798570518904,
+          "mean": 0.011929328697315127,
+          "n": 100,
+          "p10": 0.007591774766071382,
+          "p50": 0.011065736149403295,
+          "p90": 0.01767319605107843
+        }
+      ],
+      "status": "insufficient_checkpoints",
+      "tolerances": {
+        "absolute": 0.001,
+        "relative_drift": 0.05
+      }
+    }
+  },
+  "tolerance_defaults": {
+    "absolute": 1e-09,
+    "note": "drift = |final - reference| / max(|reference|, absolute); the declared per-metric absolute tolerance guards near-zero references (no division by a bare epsilon)",
+    "relative_drift": 0.05
+  }
+}

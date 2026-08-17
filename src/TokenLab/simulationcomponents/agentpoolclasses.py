@@ -404,6 +404,7 @@ class AgentPool_Staking(AgentPool_Basic):
         treasury: TreasuryBasic = None,
         fee: float = 0,
         fee_type: str = "perc",
+        rng=None,
     ) -> None:
         """
         Initializes the AgentPool_Staking class.
@@ -445,6 +446,13 @@ class AgentPool_Staking(AgentPool_Basic):
         # Initialize staking-specific attributes
         self.staking_controller = staking_controller
         self.staking_controller_params = staking_controller_params
+        self._rng = rng
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def reset(self) -> None:
         """
@@ -484,7 +492,7 @@ class AgentPool_Staking(AgentPool_Basic):
         # Ensure the transaction volume does not exceed the total token supply
         token_economy_supply = self.get_tokeneconomy().supply
         if self.transactions > token_economy_supply:
-            self.transactions = token_economy_supply * np.random.rand() - 1
+            self.transactions = token_economy_supply * self._draw_rng().random() - 1
 
         # Calculate staking amount per stakers, and then number of stakers
         staking_amount = self._calculate_staking_amount()
