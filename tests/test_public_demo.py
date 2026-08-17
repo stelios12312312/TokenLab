@@ -22,6 +22,8 @@ from TokenLab.agentic.assumptions import summarize_evidence
 from TokenLab.agentic.demo import (
     DEMO_SCENARIO_DEMAND_V2,
     DEMO_SCENARIO_V2,
+    DEMO_SCENARIO_VESTING_CONCENTRATED_V2,
+    DEMO_SCENARIO_VESTING_SMOOTHED_V2,
     DEMO_SCENARIOS,
     load_public_profile,
     public_scenario_path,
@@ -443,3 +445,96 @@ def test_demand_history_demo_runs_via_demo_module(tmp_path):
     results_csv = pd.read_csv(artifacts.bundle_dir / "results.csv")
     assert results_csv["path_index"].nunique() == 32
     assert len(results_csv) == 32 * 20
+
+
+def test_vesting_demos_run_via_demo_module(tmp_path):
+    assert DEMO_SCENARIO_VESTING_CONCENTRATED_V2 in DEMO_SCENARIOS
+    assert DEMO_SCENARIO_VESTING_SMOOTHED_V2 in DEMO_SCENARIOS
+
+    artifacts = run_public_demo_v2(
+        tmp_path / "runs",
+        run_id="vesting-concentrated-v2",
+        run_tier="test",
+        scenario=DEMO_SCENARIO_VESTING_CONCENTRATED_V2,
+    )
+    manifest = artifacts.manifest
+    assert manifest["scenario_id"] == DEMO_SCENARIO_VESTING_CONCENTRATED_V2
+    assert manifest["run_tier"] == "test"
+    assert (
+        manifest["requested_paths"],
+        manifest["completed_paths"],
+        manifest["failed_paths"],
+    ) == (32, 32, 0)
+    claim = manifest["claim_eligibility"]
+    assert claim["eligible"] is True
+    assert claim["reasons"] == []
+    assert all(
+        "insufficient_checkpoints" in limitation
+        for limitation in claim["limitations"]
+    )
+
+    # Exactly the four declared priors are sampled per path.
+    samples = artifacts.parameter_samples
+    expected_priors = {
+        "price_std_prior",
+        "price_anchoring",
+        "holding_time_dispersion",
+        "early_backers_cliff",
+    }
+    per_path = samples.groupby("path_index")["id"].agg(set)
+    assert len(per_path) == 32
+    assert all(ids == expected_priors for ids in per_path)
+    assert samples["family"].eq("triangular").all()
+    assert samples["calibration"].eq("illustrative").all()
+    assert samples["approval"].eq("approved").all()
+    assert samples["dependence"].eq("independent").all()
+    # Integer rounding on the Early Backers cliff draws, within the declared
+    # 6-24 month support.
+    cliff = samples.loc[samples["id"] == "early_backers_cliff", "value"]
+    assert all(float(value).is_integer() for value in cliff)
+    assert cliff.astype(float).between(6, 24).all()
+
+    # Nonzero dispersion in the price; the exogenous volume replay is fixed;
+    # and conservation holds on every path: terminal circulating supply is
+    # the full illustrative total supply regardless of the sampled cliff
+    # (latest possible final unlock across prior support is step 47).
+    terminal = (
+        artifacts.results.sort_values("iteration_time")
+        .groupby("path_index")
+        .tail(1)
+    )
+    assert float(np.std(terminal["VTLB_price"].to_numpy(dtype=float), ddof=1)) > 0
+    assert terminal["transactions_$"].nunique() == 1
+    assert np.allclose(
+        terminal["supply"].to_numpy(dtype=float), 1_000_000_000, rtol=0, atol=1e-4
+    )
+
+    results_csv = pd.read_csv(artifacts.bundle_dir / "results.csv")
+    assert results_csv["path_index"].nunique() == 32
+    assert len(results_csv) == 32 * 48
+
+    # The smoothed companion runs through the same path with the same seed
+    # and reconciles to the identical post-vesting supply.
+    smoothed = run_public_demo_v2(
+        tmp_path / "runs",
+        run_id="vesting-smoothed-v2",
+        run_tier="test",
+        scenario=DEMO_SCENARIO_VESTING_SMOOTHED_V2,
+    )
+    assert smoothed.manifest["scenario_id"] == DEMO_SCENARIO_VESTING_SMOOTHED_V2
+    assert (
+        smoothed.manifest["requested_paths"],
+        smoothed.manifest["completed_paths"],
+        smoothed.manifest["failed_paths"],
+    ) == (32, 32, 0)
+    smoothed_terminal = (
+        smoothed.results.sort_values("iteration_time")
+        .groupby("path_index")
+        .tail(1)
+    )
+    assert np.allclose(
+        smoothed_terminal["supply"].to_numpy(dtype=float),
+        1_000_000_000,
+        rtol=0,
+        atol=1e-4,
+    )

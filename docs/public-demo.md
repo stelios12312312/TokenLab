@@ -26,7 +26,7 @@ tokenlab-dashboard --gallery --output-dir outputs/demo-gallery
 ```
 
 Open the printed loopback URL (normally `http://127.0.0.1:8765`). The gallery
-offers four reviewed demos:
+offers seven reviewed demos:
 
 - **Stochastic growth — Monte Carlo uncertainty** (flagship). The reviewed
   public economy with three approved, illustrative, explicitly independent
@@ -46,6 +46,25 @@ offers four reviewed demos:
   token skeleton with a constant fiat transaction volume and deterministic
   controllers: the constant-volume companion and zero-variance negative
   control for the demand-history archetype. It is not Monte Carlo.
+- **Vesting unlocks, concentrated — Monte Carlo uncertainty** (historical
+  archetype). A synthetic, exactly reconciling five-pool allocation (TGE
+  float plus five named cliff-vesting pools summing to the illustrative
+  1,000,000,000 total supply; staggered zero-release cliffs, concentrated
+  1-3 period unlocks) executed by the real Monte Carlo runner with four
+  approved, illustrative, independent per-path priors (price noise scale,
+  price anchoring, holding-time dispersion, integer Early Backers cliff).
+  Modeled unlock pressure is supply expansion only, not sell-pressure or
+  liquidity modeling.
+- **Vesting unlocks, smoothed — Monte Carlo uncertainty** (historical
+  archetype). The same allocation totals, cliffs, demand series, priors, and
+  seed with every pool's unlock spread over 12-24 periods instead of 1-3, so
+  the comparison isolates unlock pacing; both variants reach the identical
+  post-vesting supply.
+- **No unlocks — deterministic control** (control). The same illustrative
+  token skeleton as the vesting demos with no supply pools — circulating
+  supply stays at the TGE float — constant fiat transaction volume, and
+  deterministic controllers: the no-unlock companion and zero-variance
+  negative control for the vesting archetypes. It is not Monte Carlo.
 
 For the deterministic explorer, select one of
 the baseline, downside, or upside presets, adjust a bounded control, and choose
@@ -98,6 +117,13 @@ The demand-history archetype is available the same way:
 
 ```bash
 tokenlab-demo public-demand-history-v2 --run-tier fast --output-dir outputs/demo
+```
+
+As are the two vesting/unlock archetypes:
+
+```bash
+tokenlab-demo public-vesting-concentrated-v2 --run-tier fast --output-dir outputs/demo
+tokenlab-demo public-vesting-smoothed-v2 --run-tier fast --output-dir outputs/demo
 ```
 
 It prints the same bounded summary plus requested/completed/failed paths and

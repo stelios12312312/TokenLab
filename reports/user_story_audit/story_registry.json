@@ -959,11 +959,27 @@
    "id": "US-PM-AUTO-H712BCED4E550A1F1",
    "title": "Create a sanitized vesting and unlock pressure demo",
    "priority": "MEDIUM",
-   "status": "NOT_IMPLEMENTED",
-   "code_refs": [],
-   "test_refs": [],
-   "validation_refs": [],
-   "doc_refs": [],
+   "status": "PARTIALLY_COVERED",
+   "code_refs": [
+    "src/TokenLab/agentic/data/synthetic_vesting.py",
+    "src/TokenLab/agentic/data/public_vesting_concentrated_v2.yaml",
+    "src/TokenLab/agentic/data/public_vesting_smoothed_v2.yaml",
+    "src/TokenLab/agentic/demo.py"
+   ],
+   "test_refs": [
+    "tests/test_vesting_conservation.py",
+    "tests/test_vesting_migration_parity.py",
+    "tests/test_vesting_sanitization.py"
+   ],
+   "validation_refs": [
+    "tests/test_vesting_conservation.py",
+    "tests/test_vesting_migration_parity.py",
+    "tests/test_vesting_sanitization.py",
+    "tests/test_demo_gallery.py"
+   ],
+   "doc_refs": [
+    "docs/public-demo.md"
+   ],
    "tags": [
     "program_manager",
     "auto_story",
@@ -982,7 +998,8 @@
     "need": "What happened: Friendocash and WOW demonstrate supply schedules, cliffs, vesting, and unlocks, but their scripts and inputs are client-shaped. The new schema already allowlists constant, from-data, and cliff-vesting supply controllers.\n\nTarget and outcome: create public-safe vesting-and-unlock-pressure scenarios with named allocation pools, declared cliffs and durations, baseline demand, and concentrated-versus-smoothed unlock comparisons.\n\nData lineage and coverage: all maximum supply, initial ",
     "outcome": "The requested Program Manager capability is represented as an implementation-ready backlog story."
    },
-   "acceptance_criteria": []
+   "acceptance_criteria": [],
+   "notes": " Vesting adapter executed under child plan plan_2026-08-17_f0b932c2102a09d3: synthetic reconciled allocation (TGE 150M + 5 pools = 1e9 exact), concentrated/smoothed/no-unlock scenarios, exact boundary proofs, parity fixture, replay hashes, sanitization audit 0 hits, browser smoke 12/13 (all required assertions pass). PARTIALLY_COVERED pending close gates."
   },
   {
    "id": "US-PM-AUTO-HD831D2BD43331EFE",
@@ -1092,7 +1109,7 @@
  ],
  "generated_at": "2026-05-18T13:00:00.000Z",
  "source": "story_registry_bootstrap.mjs",
- "updated_at": "2026-08-17T09:52:41.860405+00:00",
+ "updated_at": "2026-08-17T11:07:42.340761+00:00",
  "commit": "21ee728",
  "consolidations": []
 }

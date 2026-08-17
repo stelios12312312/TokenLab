@@ -173,6 +173,98 @@
           }
         }
       ]
+    },
+    {
+      "id": "public-vesting-concentrated-v2",
+      "kind": "stochastic",
+      "role": "historical-archetype",
+      "title": "Vesting unlocks, concentrated — Monte Carlo uncertainty",
+      "summary": "Vesting/unlock archetype: a synthetic, exactly reconciling five-pool allocation (TGE float plus five named cliff-vesting pools summing to the illustrative 1,000,000,000 total supply; staggered zero-release cliffs, concentrated 1-3 period unlocks) executed by the real Monte Carlo runner with four approved, illustrative, independent per-path priors (price noise scale, price anchoring, holding-time dispersion, integer Early Backers cliff), seeded reproducibility, outcome intervals, estimator confidence intervals, sensitivity, and convergence evidence.",
+      "maturity": "illustrative",
+      "boundary": "This Monte Carlo demo replays a synthetic, uncalibrated demand series over a synthetic, uncalibrated allocation and samples four illustrative, uncalibrated, explicitly independent priors bracketing library defaults and the declared schedule. Modeled unlock pressure is supply expansion only, not sell-pressure or liquidity modeling. Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes, not confidence intervals and not forecasts. It is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_vesting_concentrated_v2.yaml",
+      "profile_resource": "public_vesting_concentrated_v2_profile.json",
+      "default_run_tier": "fast",
+      "interactive_run_tiers": ["test", "fast", "standard"],
+      "cli_only_run_tiers": ["deep"]
+    },
+    {
+      "id": "public-vesting-smoothed-v2",
+      "kind": "stochastic",
+      "role": "historical-archetype",
+      "title": "Vesting unlocks, smoothed — Monte Carlo uncertainty",
+      "summary": "Smoothed companion to the concentrated vesting demo: identical synthetic allocation totals, cliffs, demand series, priors, and seed, but every pool's unlock is spread over 12-24 periods instead of 1-3, so the comparison isolates unlock pacing; both variants reach the identical post-vesting supply. Executed by the real Monte Carlo runner with seeded reproducibility, outcome intervals, estimator confidence intervals, sensitivity, and convergence evidence.",
+      "maturity": "illustrative",
+      "boundary": "This Monte Carlo demo replays a synthetic, uncalibrated demand series over a synthetic, uncalibrated allocation and samples four illustrative, uncalibrated, explicitly independent priors bracketing library defaults and the declared schedule. Modeled unlock pressure is supply expansion only, not sell-pressure or liquidity modeling. Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes, not confidence intervals and not forecasts. It is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_vesting_smoothed_v2.yaml",
+      "profile_resource": "public_vesting_smoothed_v2_profile.json",
+      "default_run_tier": "fast",
+      "interactive_run_tiers": ["test", "fast", "standard"],
+      "cli_only_run_tiers": ["deep"]
+    },
+    {
+      "id": "public-vesting-constant-v1",
+      "kind": "deterministic",
+      "role": "control",
+      "title": "No unlocks — deterministic control",
+      "summary": "Deterministic control: the same illustrative token skeleton as the vesting demos (VTLB, TGE float 150,000,000) with NO supply pools — circulating supply stays at the TGE float — constant fiat transaction volume, and deterministic controllers, running repeated identical deterministic paths. This is NOT Monte Carlo and carries no statistical uncertainty evidence; it is the no-unlock companion and zero-variance negative control for the vesting archetypes.",
+      "maturity": "illustrative",
+      "boundary": "This deterministic scenario explorer demonstrates model wiring and comparative UX only. Its repeated paths are identical by construction: zero dispersion is a property of the deterministic controllers, not statistical evidence. It is not Monte Carlo, is uncalibrated, and is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_vesting_constant_v1.yaml",
+      "profile_resource": "public_vesting_constant_v1_profile.json",
+      "controls": [
+        {
+          "id": "average_transaction_value",
+          "label": "Constant transaction volume",
+          "description": "Constant fiat-denominated transaction value per illustrative step assumed by the control.",
+          "type": "integer",
+          "path": ["economy", "agent_pools", 0, "transactions", "parameters", "average_transaction_value"],
+          "minimum": 200000,
+          "maximum": 1600000,
+          "step": 100000,
+          "unit": "illustrative $ per step"
+        },
+        {
+          "id": "holding_time",
+          "label": "Holding time",
+          "description": "Constant illustrative holding-time assumption used by the control.",
+          "type": "number",
+          "path": ["economy", "holding_time", "parameters", "holding_time"],
+          "minimum": 0.5,
+          "maximum": 4.0,
+          "step": 0.25,
+          "unit": "illustrative time units"
+        }
+      ],
+      "presets": [
+        {
+          "id": "baseline",
+          "label": "Baseline",
+          "summary": "The reviewed no-unlock control assumptions.",
+          "values": {
+            "average_transaction_value": 900000,
+            "holding_time": 1.0
+          }
+        },
+        {
+          "id": "downside",
+          "label": "Downside",
+          "summary": "Lower constant demand with faster token turnover.",
+          "values": {
+            "average_transaction_value": 500000,
+            "holding_time": 0.75
+          }
+        },
+        {
+          "id": "upside",
+          "label": "Upside",
+          "summary": "Higher constant demand with longer holding time.",
+          "values": {
+            "average_transaction_value": 1400000,
+            "holding_time": 1.5
+          }
+        }
+      ]
     }
   ]
 }

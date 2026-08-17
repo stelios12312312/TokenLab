@@ -35,16 +35,44 @@ _DEMAND_V2_SCENARIO_RESOURCE = _DATA_ROOT.joinpath("public_demand_history_v2.yam
 _DEMAND_V2_PROFILE_RESOURCE = _DATA_ROOT.joinpath(
     "public_demand_history_v2_profile.json"
 )
+_VESTING_CONCENTRATED_V2_SCENARIO_RESOURCE = _DATA_ROOT.joinpath(
+    "public_vesting_concentrated_v2.yaml"
+)
+_VESTING_CONCENTRATED_V2_PROFILE_RESOURCE = _DATA_ROOT.joinpath(
+    "public_vesting_concentrated_v2_profile.json"
+)
+_VESTING_SMOOTHED_V2_SCENARIO_RESOURCE = _DATA_ROOT.joinpath(
+    "public_vesting_smoothed_v2.yaml"
+)
+_VESTING_SMOOTHED_V2_PROFILE_RESOURCE = _DATA_ROOT.joinpath(
+    "public_vesting_smoothed_v2_profile.json"
+)
 
 DEMO_SCENARIO_V1 = "public-growth-path-v1"
 DEMO_SCENARIO_V2 = "public-growth-uncertainty-v2"
 DEMO_SCENARIO_DEMAND_V2 = "public-demand-history-v2"
-DEMO_SCENARIOS = (DEMO_SCENARIO_V1, DEMO_SCENARIO_V2, DEMO_SCENARIO_DEMAND_V2)
+DEMO_SCENARIO_VESTING_CONCENTRATED_V2 = "public-vesting-concentrated-v2"
+DEMO_SCENARIO_VESTING_SMOOTHED_V2 = "public-vesting-smoothed-v2"
+DEMO_SCENARIOS = (
+    DEMO_SCENARIO_V1,
+    DEMO_SCENARIO_V2,
+    DEMO_SCENARIO_DEMAND_V2,
+    DEMO_SCENARIO_VESTING_CONCENTRATED_V2,
+    DEMO_SCENARIO_VESTING_SMOOTHED_V2,
+)
 _V2_RESOURCES = {
     DEMO_SCENARIO_V2: (_V2_SCENARIO_RESOURCE, _V2_PROFILE_RESOURCE),
     DEMO_SCENARIO_DEMAND_V2: (
         _DEMAND_V2_SCENARIO_RESOURCE,
         _DEMAND_V2_PROFILE_RESOURCE,
+    ),
+    DEMO_SCENARIO_VESTING_CONCENTRATED_V2: (
+        _VESTING_CONCENTRATED_V2_SCENARIO_RESOURCE,
+        _VESTING_CONCENTRATED_V2_PROFILE_RESOURCE,
+    ),
+    DEMO_SCENARIO_VESTING_SMOOTHED_V2: (
+        _VESTING_SMOOTHED_V2_SCENARIO_RESOURCE,
+        _VESTING_SMOOTHED_V2_PROFILE_RESOURCE,
     ),
 }
 
@@ -109,9 +137,9 @@ def run_public_demo_v2(
     """Run a packaged stochastic demo through the real MonteCarloRunner.
 
     ``scenario`` selects one of the packaged v2 demo ids (the growth
-    flagship or the demand-history archetype). ``capture_stream`` optionally
-    receives the numerical stack's per-path console output so presentation
-    surfaces stay bounded.
+    flagship, the demand-history archetype, or the two vesting/unlock
+    archetypes). ``capture_stream`` optionally receives the numerical
+    stack's per-path console output so presentation surfaces stay bounded.
     """
 
     try:
@@ -151,7 +179,9 @@ def _parser() -> argparse.ArgumentParser:
         help=(
             "Packaged demo id: public-growth-path-v1 (deterministic control, "
             "default), public-growth-uncertainty-v2 (stochastic Monte Carlo), "
-            "or public-demand-history-v2 (stochastic demand-history archetype)"
+            "public-demand-history-v2 (stochastic demand-history archetype), "
+            "or public-vesting-concentrated-v2 / public-vesting-smoothed-v2 "
+            "(stochastic vesting/unlock archetypes)"
         ),
     )
     parser.add_argument(
