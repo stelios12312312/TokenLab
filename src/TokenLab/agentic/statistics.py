@@ -43,6 +43,19 @@ import scipy.stats
 OUTCOME_INTERVAL_LABEL = "modeled outcome interval"
 NON_CAUSAL_INTERPRETATION = "association is not causal"
 QUANTILE_METHOD = "linear"
+
+
+def _spearman_rho(x: np.ndarray, y: np.ndarray) -> float:
+    """Spearman rank correlation compatible with scipy 1.9 through 2.x.
+
+    scipy renamed ``SpearmanrResult.correlation`` to ``.statistic`` in 1.11;
+    the pinned supported dependency set (scipy 1.9.3) only has the former.
+    """
+    result = scipy.stats.spearmanr(x, y)
+    statistic = getattr(result, "statistic", None)
+    if statistic is None:
+        statistic = result.correlation
+    return float(statistic)
 DEFAULT_CI_LEVEL = 0.95
 
 # Frozen magnitude bands for |spearman rho|.
@@ -282,11 +295,11 @@ def spearman_sensitivity(
                 records.append(record)
                 continue
 
-            rho = float(scipy.stats.spearmanr(x, y).statistic)
+            rho = float(_spearman_rho(x, y))
             indices = rng.integers(0, x.size, size=(bootstrap_resamples, x.size))
             boot_rhos = np.array(
                 [
-                    scipy.stats.spearmanr(x[row], y[row]).statistic
+                    _spearman_rho(x[row], y[row])
                     for row in indices
                 ]
             )
