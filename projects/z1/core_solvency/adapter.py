@@ -38,6 +38,7 @@ from importlib import resources
 
 from TokenLab.agentic.artifact_profile import (
     file_sha256,
+    reproducible_csv_text_hash,
     reproducible_table_hash,
     validate_artifact_profile,
 )
@@ -307,7 +308,11 @@ def publish_bundle(
                 "rows": int(len(table)),
                 "columns": list(table.columns),
                 "sha256": file_sha256(path),
-                "reproducible_content_sha256": reproducible_table_hash(persisted),
+                "reproducible_content_sha256": (
+                    reproducible_csv_text_hash(path)
+                    if str(path).endswith(".csv")
+                    else reproducible_table_hash(persisted)
+                ),
                 "reproducibility_excludes": ["run_id"],
             }
 

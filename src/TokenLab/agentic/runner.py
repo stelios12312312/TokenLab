@@ -26,6 +26,7 @@ import scipy.stats
 
 from .artifact_profile import (
     file_sha256,
+    reproducible_csv_text_hash,
     reproducible_json_hash,
     reproducible_table_hash,
     validate_artifact_profile,
@@ -232,8 +233,10 @@ class HeadlessRunner:
                     "rows": int(len(table)),
                     "columns": list(table.columns),
                     "sha256": file_sha256(path),
-                    "reproducible_content_sha256": reproducible_table_hash(
-                        persisted_table
+                    "reproducible_content_sha256": (
+                        reproducible_csv_text_hash(path)
+                        if config.artifacts.format == "csv"
+                        else reproducible_table_hash(persisted_table)
                     ),
                     "reproducibility_excludes": ["run_id"],
                 }
@@ -1099,8 +1102,10 @@ class MonteCarloRunner:
                     "rows": int(len(table)),
                     "columns": list(table.columns),
                     "sha256": file_sha256(path),
-                    "reproducible_content_sha256": reproducible_table_hash(
-                        persisted_table
+                    "reproducible_content_sha256": (
+                        reproducible_csv_text_hash(path)
+                        if config.artifacts.format == "csv"
+                        else reproducible_table_hash(persisted_table)
                     ),
                     "reproducibility_excludes": ["run_id"],
                 }

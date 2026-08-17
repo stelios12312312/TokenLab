@@ -69,6 +69,31 @@ def _canonical_cell(value: Any) -> str:
     return str(value)
 
 
+def reproducible_csv_text_hash(path: str | Path) -> str:
+    """Hash persisted CSV text with the ``run_id`` column removed.
+
+    Unlike the frame-based hash, this never parses floats, so it is identical
+    on every supported stack: pandas' CSV float *parser* (not just its
+    writer) can differ by one ulp across pandas versions, which made
+    frame-based hashes of committed precomputed bundles stack-dependent.
+    Hashing the persisted representation directly removes that dependency.
+    """
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    if not lines:
+        raise ArtifactProfileError(f"cannot hash empty CSV: {path}")
+    header = lines[0].split(",")
+    if "run_id" in header:
+        drop = header.index("run_id")
+        lines = [
+            ",".join(
+                field for index, field in enumerate(line.split(",")) if index != drop
+            )
+            for line in lines
+        ]
+    payload = ("\n".join(lines) + "\n").encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def reproducible_table_hash(data: pd.DataFrame) -> str:
     """Hash canonical table content while excluding unique bundle identity."""
 
@@ -295,7 +320,12 @@ def validate_bundle(bundle_dir: str | Path) -> Dict[str, Any]:
         if list(metadata.get("columns", [])) != list(table.columns):
             raise ArtifactProfileError(f"column mismatch for output {name!r}")
         expected_content_hash = metadata.get("reproducible_content_sha256")
-        if expected_content_hash != reproducible_table_hash(table):
+        recomputed_hash = (
+            reproducible_csv_text_hash(path)
+            if metadata.get("format") == "csv"
+            else reproducible_table_hash(table)
+        )
+        if expected_content_hash != recomputed_hash:
             raise ArtifactProfileError(
                 f"reproducible content hash mismatch for output {name!r}"
             )

@@ -16,7 +16,7 @@
     }
   },
   "config_hash": "ff716126acee8e14992f7047bed61363405d7c7240f82f537537640f9689d243",
-  "created_at": "2026-08-17T19:19:44.853952+00:00",
+  "created_at": "2026-08-17T19:34:48.839407+00:00",
   "manifest_version": 1,
   "monte_carlo": {
     "iterations": 104,
@@ -129,7 +129,7 @@
       "reproducibility_excludes": [
         "run_id"
       ],
-      "reproducible_content_sha256": "730a0e905d1c76baf594cac36b89b0d81202e2f05864ff51752c8896f7131ddf",
+      "reproducible_content_sha256": "27100ca5dccc584cc8153e5fdd517c7ffa8c9f5369ec18bf7024840bb0a8132c",
       "rows": 105,
       "sha256": "b36247eaf43afc0ed79dce0f01a3fadf041d16630dd00497cb27c149eb56dabc"
     },
@@ -170,7 +170,7 @@
       "reproducibility_excludes": [
         "run_id"
       ],
-      "reproducible_content_sha256": "4b3e9f9ee9d2ec5cc584915562d744737aea784cb7cc4f54c05c26f6e7ab50a5",
+      "reproducible_content_sha256": "b42683cf067c566f102480321b6bdec2d637358a2fd40f90a3f825a5fa5f9929",
       "rows": 105,
       "sha256": "00342507af4f570be85f0b5344db2c63e78ec6108f46b5368207164bee25158f"
     }

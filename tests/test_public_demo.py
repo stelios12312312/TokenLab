@@ -61,7 +61,7 @@ REQUIRED_UNAVAILABLE = {
     "apy",
 }
 V1_RESULTS_CONTENT_HASH = (
-    "05d4c8a47452d92ece0dca0b9f92e4343934bcc538c582bc49fc4bbcb1522718"
+    "ac992a421182cd59f1ebfcb64cefb3e324992b55ed6a5f61e9ce1a01eecaaaca"
 )
 FROZEN_PRIORS = {
     "max_users": {
