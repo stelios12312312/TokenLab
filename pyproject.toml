@@ -68,7 +68,7 @@ include-package-data = false
 
 [tool.setuptools.package-data]
 "TokenLab" = ["dashboard_static/*.html"]
-"TokenLab.agentic" = ["data/*.json", "data/*.yaml"]
+"TokenLab.agentic" = ["data/*.json", "data/*.yaml", "data/z1_solvency_gallery/*/*"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

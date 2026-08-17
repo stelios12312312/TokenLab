@@ -1,0 +1,116 @@
+{
+  "adapter": "z1-core-solvency-adapter",
+  "generated_by": "projects.z1.core_solvency.adapter",
+  "grid": {
+    "cases": [],
+    "completed": 0,
+    "label": "not_run",
+    "total": 27
+  },
+  "index_version": 1,
+  "interpretation_boundary": "These bundles are directional structural-solvency scenario evidence over the disclosed tested region (baseline and stable presets, deterministic, repetitions=1). They are not forecasts, probability estimates, launch approval, or investment, legal, financial, or decision-grade advice; live launch, investment, or legal decisions require qualified review and evidence outside these artifacts.",
+  "profile_id": "z1-solvency-profile-v1",
+  "profile_resource": "z1_solvency_profile.json",
+  "repetitions": 1,
+  "scenarios": [
+    {
+      "bundle_path": "z1_solvency_gallery/z1-solvency-baseline-v1",
+      "classification": "stable",
+      "config_hash": "870c15db421a318ead7a02d6c9cf4bd2596f212c89978d7484a1c190ce8b70cb",
+      "content_hashes": {
+        "iteration_summary": "15e3585aeaaa0a2903700bf682519e02323e5e5f6e962bec51c6e826631cc9f5",
+        "results": "2bd1e57f565cb520cdb8b9c64f25a37466250e6a097ee7bf5d0d43dc4666c9dd"
+      },
+      "epochs": 104,
+      "metrics": {
+        "classification": "stable",
+        "final_reserve_ratio": 0.9963423457570149,
+        "final_treasury": 5103632.28482309,
+        "max_settlement_queue": 2.842170943040401e-14,
+        "throttle_epochs": 0,
+        "total_burns": 908.071205775199
+      },
+      "preset": "baseline",
+      "profile_id": "z1-solvency-profile-v1",
+      "scenario_id": "z1-solvency-baseline-v1",
+      "seed": 42,
+      "source_scenario": "baseline",
+      "status": "published"
+    },
+    {
+      "bundle_path": "z1_solvency_gallery/z1-solvency-stable-v1",
+      "classification": "stable",
+      "config_hash": "ff716126acee8e14992f7047bed61363405d7c7240f82f537537640f9689d243",
+      "content_hashes": {
+        "iteration_summary": "730a0e905d1c76baf594cac36b89b0d81202e2f05864ff51752c8896f7131ddf",
+        "results": "4b3e9f9ee9d2ec5cc584915562d744737aea784cb7cc4f54c05c26f6e7ab50a5"
+      },
+      "epochs": 104,
+      "metrics": {
+        "classification": "stable",
+        "final_reserve_ratio": 0.9956709436294373,
+        "final_treasury": 7705395.487914335,
+        "max_settlement_queue": 2.842170943040401e-14,
+        "throttle_epochs": 0,
+        "total_burns": 1079.097582866804
+      },
+      "preset": "stable",
+      "profile_id": "z1-solvency-profile-v1",
+      "scenario_id": "z1-solvency-stable-v1",
+      "seed": 42,
+      "source_scenario": "stable_case",
+      "status": "published"
+    },
+    {
+      "bundle_path": null,
+      "error_class": "AssertionError",
+      "preset": "collapse",
+      "reason": "L10 Violation: Weighted settle (0.900) > weighted spend (0.080)",
+      "source_scenario": "collapse_case",
+      "status": "blocked"
+    }
+  ],
+  "tested_region": {
+    "disclosure": "2/3 named scenarios published (baseline, stable); 1/3 blocked upstream with the failure recorded (collapse_case, L10 hard assertion in Z1's config validation); deterministic runs at repetitions=1 over 104 weekly epochs with seed 42; no Monte Carlo uncertainty is claimed.",
+    "epochs": 104,
+    "grid": {
+      "families": {
+        "pressure": [
+          "low",
+          "base",
+          "high"
+        ],
+        "shock": [
+          "low",
+          "base",
+          "high"
+        ],
+        "support": [
+          "low",
+          "base",
+          "high"
+        ]
+      },
+      "label": "cli_only_evidence",
+      "note": "The 27-case stress grid is CLI-only published evidence with exact completed/total counts; any subset carries the wiring_proof label. It is never a gallery comparison.",
+      "status": "not_run_in_gallery_bundles",
+      "total_cases": 27
+    },
+    "named_scenarios": {
+      "blocked": [
+        {
+          "published_as": "collapse",
+          "reason": "Blocked upstream: Z1's own config.validate() raises its L10 hard assertion (weighted settle propensity exceeds weighted utility spend rate) for the collapse configuration; pre-existing since the first Z1 commit. No bundle is fabricated for a scenario Z1 refuses to run.",
+          "scenario": "collapse_case"
+        }
+      ],
+      "completed": "2/3",
+      "published": [
+        "baseline",
+        "stable"
+      ]
+    },
+    "repetitions": 1,
+    "seed": 42
+  }
+}

@@ -265,6 +265,37 @@
           }
         }
       ]
+    },
+    {
+      "id": "z1-solvency-adapted-v1",
+      "kind": "adapted",
+      "role": "historical-archetype",
+      "title": "Core solvency archetypes — adapted scenario evidence",
+      "summary": "Adapted archetype: precomputed canonical bundles of the maintained Z1 core-solvency M1 scenarios executed unchanged at repetitions=1 (baseline and stable published), served read-only with hash-verified tables, neutral publish-time metric names, provenance, and a tested-region disclosure. The collapse preset is visibly blocked: Z1's own L10 hard validation rejects the collapse configuration upstream, and no bundle is fabricated for a scenario Z1 refuses to run. Diagnostic scenario evidence only; no Monte Carlo uncertainty is claimed.",
+      "maturity": "experimental",
+      "boundary": "This adapted demo serves precomputed, hash-verified bundles of deterministic solvency scenarios at repetitions=1. It is directional structural-solvency scenario evidence over the disclosed tested region (2/3 named scenarios published, 1/3 blocked upstream), not Monte Carlo, not a probability estimate, not a forecast, and not investment, launch, legal, financial, or decision-grade advice. The collapse preset is visibly blocked by Z1's own L10 hard validation until Z1 is fixed upstream.",
+      "scenario_resource": "z1_solvency_index.json",
+      "profile_resource": "z1_solvency_profile.json",
+      "presets": [
+        {
+          "id": "baseline",
+          "label": "Baseline",
+          "summary": "The reviewed baseline solvency scenario, published as a validated precomputed bundle.",
+          "values": {}
+        },
+        {
+          "id": "stable",
+          "label": "Stable",
+          "summary": "The reviewed stable-case solvency scenario, published as a validated precomputed bundle.",
+          "values": {}
+        },
+        {
+          "id": "collapse",
+          "label": "Collapse (blocked)",
+          "summary": "Blocked upstream: Z1's own config validation raises its L10 hard assertion for the collapse configuration, so no bundle exists; the failure is recorded as negative-control evidence.",
+          "values": {}
+        }
+      ]
     }
   ]
 }

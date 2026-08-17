@@ -51,7 +51,7 @@ _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 _SAFE_RESOURCE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.(?:json|ya?ml)$")
 _SAFE_PATH_KEY = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,63}$")
 _MATURITY_VALUES = frozenset({"illustrative", "experimental", "reviewed"})
-_DEMO_KINDS = frozenset({"deterministic", "stochastic"})
+_DEMO_KINDS = frozenset({"deterministic", "stochastic", "adapted"})
 # Interactive stochastic tiers are the measured-safe subset; deep stays
 # CLI/background-only and can never be served to the browser job API.
 INTERACTIVE_RUN_TIERS = ("test", "fast", "standard")
@@ -460,6 +460,8 @@ def _parse_demo(value: Any, field: str) -> DemoScenario:
         raise GalleryError(f"{field}.controls must be an array")
     if kind == "deterministic" and not raw_controls:
         raise GalleryError(f"{field}.controls must be a non-empty array")
+    if kind == "adapted" and raw_controls:
+        raise GalleryError(f"{field}.controls must be empty for adapted demos")
     controls = tuple(
         _parse_control(item, f"{field}.controls[{index}]")
         for index, item in enumerate(raw_controls)
@@ -472,7 +474,7 @@ def _parse_demo(value: Any, field: str) -> DemoScenario:
     raw_presets = data.get("presets", [])
     if not isinstance(raw_presets, list):
         raise GalleryError(f"{field}.presets must be an array")
-    if kind == "deterministic" and not raw_presets:
+    if kind in ("deterministic", "adapted") and not raw_presets:
         raise GalleryError(f"{field}.presets must be a non-empty array")
     presets = tuple(
         _parse_preset(item, f"{field}.presets[{index}]", controls_by_id)
@@ -669,6 +671,9 @@ class DemoGallery:
                 value, f"request.parameters.{control_id}"
             )
 
+        if demo.kind == "adapted":
+            return self._run_adapted(demo, preset)
+
         raw_scenario = _read_resource(demo.scenario_resource)
         if not isinstance(raw_scenario, dict):
             raise GalleryError("reviewed scenario resource must contain an object")
@@ -704,6 +709,45 @@ class DemoGallery:
             preset_id=preset.id,
             resolved_parameters=resolved,
             bundle_dir=artifacts.bundle_dir,
+            application=application,
+        )
+
+    def _run_adapted(self, demo: DemoScenario, preset: DemoPreset) -> GalleryRun:
+        """Project a precomputed adapted bundle read-only into the dashboard.
+
+        Uses only emitted metrics: the bundle's validated tables and attached
+        profile drive the payload; nothing is recomputed or executed here, and
+        a blocked preset fails visibly with its recorded upstream reason.
+        """
+        index = _read_resource(demo.scenario_resource)
+        entries = validate_adapted_index(index)
+        entry = entries.get(preset.id)
+        if entry is None:
+            raise GalleryError(
+                f"adapted demo {demo.id!r} has no index entry for preset {preset.id!r}"
+            )
+        if entry["status"] != "published":
+            raise GalleryError(
+                f"adapted preset {preset.id!r} is blocked and publishes no bundle: "
+                f"{entry.get('reason', 'no published bundle')}"
+            )
+        bundle_dir = Path(str(_DATA_ROOT.joinpath(entry["bundle_path"])))
+        if not bundle_dir.is_dir():
+            raise GalleryError(
+                "precomputed adapted bundle is missing; run the publishing adapter"
+            )
+        validation = validate_bundle(bundle_dir)
+        if validation.get("status") != "pass":
+            raise GalleryError("precomputed adapted bundle did not validate")
+
+        from ..dashboard import load_dashboard
+
+        application = load_dashboard(bundle_dir)
+        return GalleryRun(
+            demo_id=demo.id,
+            preset_id=preset.id,
+            resolved_parameters={},
+            bundle_dir=bundle_dir,
             application=application,
         )
 
@@ -795,6 +839,66 @@ def validate_v2_profile(profile: Mapping[str, Any], *, demo_id: str) -> Dict[str
         )
     _require_text(data["interpretation_boundary"], "profile.interpretation_boundary")
     return dict(data)
+
+
+def _safe_relative_bundle_path(value: Any, field: str) -> str:
+    text = _text(value, field, limit=256)
+    relative = Path(text)
+    if relative.is_absolute() or ".." in relative.parts or "\\" in text:
+        raise GalleryError(f"{field} must be a safe relative bundle path")
+    return text
+
+
+def validate_adapted_index(index: Any) -> Dict[str, Dict[str, Any]]:
+    """Structural check of an adapted demo's gallery-facing bundle index.
+
+    Returns the validated entries keyed by preset id. Published entries must
+    carry a safe relative bundle path plus the emitted-metric summary; blocked
+    entries must carry the recorded upstream reason.
+    """
+    data = _mapping(index, "adapted index")
+    if data.get("index_version") != 1:
+        raise GalleryError("adapted index.index_version must be 1")
+    scenarios = data.get("scenarios")
+    if not isinstance(scenarios, list) or not scenarios:
+        raise GalleryError("adapted index.scenarios must be a non-empty array")
+    entries: Dict[str, Dict[str, Any]] = {}
+    for position, raw in enumerate(scenarios):
+        field = f"adapted index.scenarios[{position}]"
+        entry = _mapping(raw, field)
+        preset = _safe_id(entry.get("preset"), f"{field}.preset")
+        if preset in entries:
+            raise GalleryError(f"{field}.preset duplicates {preset!r}")
+        status = entry.get("status")
+        if status == "published":
+            metrics = _mapping(entry.get("metrics"), f"{field}.metrics")
+            content_hashes = _mapping(
+                entry.get("content_hashes"), f"{field}.content_hashes"
+            )
+            entries[preset] = {
+                "preset": preset,
+                "status": "published",
+                "bundle_path": _safe_relative_bundle_path(
+                    entry.get("bundle_path"), f"{field}.bundle_path"
+                ),
+                "scenario_id": _safe_id(
+                    entry.get("scenario_id"), f"{field}.scenario_id"
+                ),
+                "classification": _safe_id(
+                    entry.get("classification"), f"{field}.classification"
+                ),
+                "metrics": dict(metrics),
+                "content_hashes": dict(content_hashes),
+            }
+        elif status == "blocked":
+            entries[preset] = {
+                "preset": preset,
+                "status": "blocked",
+                "reason": _text(entry.get("reason"), f"{field}.reason"),
+            }
+        else:
+            raise GalleryError(f"{field}.status must be 'published' or 'blocked'")
+    return entries
 
 
 class InvalidSpecError(GalleryError):
@@ -1315,5 +1419,6 @@ __all__ = [
     "load_demo_registry",
     "parse_demo_registry",
     "public_prior",
+    "validate_adapted_index",
     "validate_v2_profile",
 ]

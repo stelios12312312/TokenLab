@@ -70,7 +70,7 @@ def test_packaged_registry_declares_reviewed_presets_and_bounded_controls():
 
     assert registry.registry_version == 1
     assert registry.gallery_id == "tokenlab-public-gallery-v1"
-    assert len(registry.demos) == 7
+    assert len(registry.demos) == 8
     demo = registry.demos[0]
     assert demo.id == "growth-path"
     assert demo.kind == "deterministic"
@@ -174,6 +174,22 @@ def test_packaged_registry_declares_reviewed_presets_and_bounded_controls():
         control.minimum < control.maximum for control in vesting_control.controls
     )
     assert "not investment" in vesting_control.boundary.lower()
+
+    adapted = registry.demos[7]
+    assert adapted.id == "z1-solvency-adapted-v1"
+    assert adapted.kind == "adapted"
+    assert adapted.role == "historical-archetype"
+    assert adapted.maturity == "experimental"
+    assert adapted.controls == ()
+    assert {preset.id for preset in adapted.presets} == {
+        "baseline",
+        "stable",
+        "collapse",
+    }
+    assert all(preset.values == {} for preset in adapted.presets)
+    assert "not investment" in adapted.boundary.lower()
+    assert "scenario evidence" in adapted.summary.lower()
+    assert "blocked" in adapted.boundary.lower()
 
 
 def test_public_catalog_hides_package_resources_and_nested_paths():
@@ -574,7 +590,10 @@ def test_gallery_package_data_docs_and_story_traceability_are_wired():
     )
     story = next(item for item in stories["stories"] if item["id"] == STORY_ID)
 
-    assert '"TokenLab.agentic" = ["data/*.json", "data/*.yaml"]' in pyproject
+    assert (
+        '"TokenLab.agentic" = ["data/*.json", "data/*.yaml", '
+        '"data/z1_solvency_gallery/*/*"]' in pyproject
+    )
     assert '"TokenLab" = ["dashboard_static/*.html"]' in pyproject
     assert "tokenlab-dashboard --gallery --output-dir outputs/demo-gallery" in readme
     assert "tokenlab-dashboard --gallery --output-dir outputs/demo-gallery" in guide
@@ -639,6 +658,7 @@ def test_job_progress_cancel_and_incomplete_states(tmp_path):
             "public-vesting-concentrated-v2": "stochastic",
             "public-vesting-smoothed-v2": "stochastic",
             "public-vesting-constant-v1": "deterministic",
+            "z1-solvency-adapted-v1": "adapted",
         }
         status, control = _json_post(
             base_url,
@@ -1244,5 +1264,71 @@ def test_vesting_constant_control_is_deterministic_and_bounded(tmp_path):
                 "demo_id": "public-vesting-constant-v1",
                 "preset_id": "baseline",
                 "parameters": {"average_transaction_value": 100},
+            }
+        )
+
+
+def test_adapted_demo_projection_serves_precomputed_bundles_read_only(tmp_path):
+    """The adapted kind projects validated precomputed bundles, emitted metrics only."""
+    gallery = DemoGallery(tmp_path / "runs")
+
+    baseline = gallery.run_request(
+        {"demo_id": "z1-solvency-adapted-v1", "preset_id": "baseline", "parameters": {}}
+    )
+    stable = gallery.run_request(
+        {"demo_id": "z1-solvency-adapted-v1", "preset_id": "stable", "parameters": {}}
+    )
+
+    # Read-only: no live-run route writes anything to the gallery output dir.
+    assert not (tmp_path / "runs").exists()
+    assert baseline.resolved_parameters == {}
+    assert baseline.bundle_dir.is_dir()
+    assert validate_bundle(baseline.bundle_dir)["status"] == "pass"
+
+    payload = baseline.application.payload
+    assert payload["state"] == "success"
+    assert payload["run"]["scenario_id"] == "z1-solvency-baseline-v1"
+    assert payload["profile"]["id"] == "z1-solvency-profile-v1"
+    # Only emitted, profile-declared metrics reach the payload.
+    assert [metric["id"] for metric in payload["metrics"]] == [
+        "reserve_ratio",
+        "treasury",
+        "settlement_queue",
+        "throttle_active",
+        "cumulative_tokens_burned",
+    ]
+    assert {item["id"] for item in payload["downloads"]} == {
+        "results",
+        "iteration_summary",
+    }
+    assert "monte carlo" not in json.dumps(payload).lower()
+    assert "not forecasts" in payload["interpretation_boundary"]
+
+    # The comparison uses only emitted terminal values: actual ordering
+    # (D-005) is stable < baseline on the final reserve ratio.
+    baseline_results = pd.read_csv(baseline.bundle_dir / "results.csv")
+    stable_results = pd.read_csv(stable.bundle_dir / "results.csv")
+    assert (
+        stable_results["reserve_ratio"].iloc[-1]
+        < baseline_results["reserve_ratio"].iloc[-1]
+    )
+
+    # The collapse preset is visibly blocked with the upstream reason; the
+    # read-only projection never fabricates a bundle for it.
+    with pytest.raises(GalleryError) as blocked:
+        gallery.run_request(
+            {"demo_id": "z1-solvency-adapted-v1", "preset_id": "collapse", "parameters": {}}
+        )
+    assert "blocked" in str(blocked.value)
+    assert "L10" in str(blocked.value)
+    assert not (tmp_path / "runs").exists()
+
+    # Adapted demos reject parameters (no editable priors, no numeric controls).
+    with pytest.raises(GalleryError, match="unknown control"):
+        gallery.run_request(
+            {
+                "demo_id": "z1-solvency-adapted-v1",
+                "preset_id": "baseline",
+                "parameters": {"settlement_ratio": 2.0},
             }
         )

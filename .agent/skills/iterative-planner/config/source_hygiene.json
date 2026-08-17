@@ -41,7 +41,8 @@
   ],
   "skip_path_prefixes": [
     "plans/",
-    "apps/ive-visualizer/public/"
+    "apps/ive-visualizer/public/",
+    "outputs"
   ],
   "ignored_files": [
     "docs_final/2026-08-14/parameter_locks_report.html",

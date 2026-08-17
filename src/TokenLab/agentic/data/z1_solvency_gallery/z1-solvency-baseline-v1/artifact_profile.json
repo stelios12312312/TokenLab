@@ -1,0 +1,268 @@
+{
+  "interpretation_boundary": "These bundles are directional structural-solvency scenario evidence over the disclosed tested region (baseline and stable presets, deterministic, repetitions=1). They are not forecasts, probability estimates, launch approval, or investment, legal, financial, or decision-grade advice; live launch, investment, or legal decisions require qualified review and evidence outside these artifacts.",
+  "metrics": [
+    {
+      "aggregation": "single deterministic run value at each epoch",
+      "description": "Drawdown ratio of the audience reserve against its initial balance; terminal values below 0.3 classify the scenario as collapse.",
+      "id": "reserve_ratio",
+      "label": "Audience reserve ratio",
+      "source": {
+        "artifact": "results",
+        "column": "reserve_ratio"
+      },
+      "unit": "ratio (audience reserve / initial audience reserve)"
+    },
+    {
+      "aggregation": "single deterministic run value at each epoch",
+      "description": "Treasury balance after fees, top-ups, and ecosystem inflows at each epoch.",
+      "id": "treasury",
+      "label": "Treasury balance",
+      "source": {
+        "artifact": "results",
+        "column": "treasury"
+      },
+      "unit": "modeled token units"
+    },
+    {
+      "aggregation": "single deterministic run value at each epoch",
+      "description": "Outstanding requested settlement volume queued behind the per-epoch settlement capacity.",
+      "id": "settlement_queue",
+      "label": "Settlement queue",
+      "source": {
+        "artifact": "results",
+        "column": "settlement_queue"
+      },
+      "unit": "modeled token units"
+    },
+    {
+      "aggregation": "single deterministic run value at each epoch",
+      "description": "Throttle flag: 1 in epochs where the settlement throttle reduced outflows under reserve stress.",
+      "id": "throttle_active",
+      "label": "Settlement throttle state",
+      "source": {
+        "artifact": "results",
+        "column": "throttle_active"
+      },
+      "unit": "1 when throttled, else 0"
+    },
+    {
+      "aggregation": "single deterministic run value at each epoch",
+      "description": "Cumulative token burn from the utility-spend burn share; part of the per-epoch conservation identity.",
+      "id": "cumulative_tokens_burned",
+      "label": "Cumulative tokens burned",
+      "source": {
+        "artifact": "results",
+        "column": "cumulative_tokens_burned"
+      },
+      "unit": "modeled token units"
+    }
+  ],
+  "neutral_name_mapping": {
+    "audience_reserve": "audience_reserve",
+    "cumulative_tokens_burned": "cumulative_z1u_burned",
+    "ecosystem_inflow_epoch": "brand_inflow_epoch",
+    "epoch": "epoch",
+    "iteration_time": "iteration_time",
+    "provider_payments_epoch": "provider_payments_epoch",
+    "repetition_run": "repetition_run",
+    "reserve_floor_breach": "ar_floor_breach",
+    "reserve_ratio": "ar_ratio",
+    "settlement_executed_epoch": "settlement_executed_z1u_epoch",
+    "settlement_pressure_ratio": "settlement_pressure_ratio",
+    "settlement_queue": "settlement_queue_z1u",
+    "settlement_requested_epoch": "settlement_requested_z1u_epoch",
+    "throttle_active": "throttle_active",
+    "throttle_multiplier": "throttle_multiplier",
+    "tokens_burned_epoch": "z1u_burned_epoch",
+    "total_claims_available": "total_acr_available",
+    "total_claims_issued": "total_acr_issued",
+    "total_claims_queued": "total_acr_queued",
+    "total_claims_settled": "total_acr_settled",
+    "total_claims_vesting": "total_acr_vesting",
+    "treasury": "treasury",
+    "treasury_fees_epoch": "treasury_fees_epoch",
+    "treasury_runway_estimate": "treasury_runway_estimate",
+    "utility_spend_epoch": "utility_spend_epoch"
+  },
+  "profile_id": "z1-solvency-profile-v1",
+  "profile_version": 1,
+  "provenance": {
+    "calibrated": "none",
+    "detail": "Z1 M1 source anchors (cohort shares, verification rates, per-cohort issue rates) map to observed anchors; provisional defaults (economics, settlement, throttle parameters) map to assumed; deferred registry entries stay deferred. No parameter in this profile is calibrated to observed data.",
+    "vocabulary_mapping": {
+      "deferred": "deferred",
+      "provisional_default": "assumed",
+      "source_backed": "observed"
+    }
+  },
+  "repeatability": {
+    "explanation": "For these reviewed scenarios, matching config hash and seed produce matching canonical table-content hashes. Exact file hashes also include the unique run_id lineage field.",
+    "status": "scenario_specific_deterministic"
+  },
+  "scenario_id": "z1-solvency-baseline-v1",
+  "source_artifacts": {
+    "iteration_summary": {
+      "manifest_output": "iteration_summary",
+      "role": "per-epoch descriptive summary of the deterministic run"
+    },
+    "results": {
+      "manifest_output": "results",
+      "role": "one row per simulation epoch for the single deterministic run"
+    }
+  },
+  "terminal_metrics": [
+    {
+      "aggregation": "last",
+      "column": "reserve_ratio",
+      "description": "Reserve ratio at the final epoch; below 0.3 classifies collapse.",
+      "id": "final_reserve_ratio",
+      "label": "Final audience reserve ratio",
+      "unit": "ratio"
+    },
+    {
+      "aggregation": "last",
+      "column": "treasury",
+      "description": "Treasury balance at the final epoch.",
+      "id": "final_treasury",
+      "label": "Final treasury balance",
+      "unit": "modeled token units"
+    },
+    {
+      "aggregation": "max",
+      "column": "settlement_queue",
+      "description": "Largest queued settlement volume observed in any epoch.",
+      "id": "max_settlement_queue",
+      "label": "Maximum settlement queue",
+      "unit": "modeled token units"
+    },
+    {
+      "aggregation": "sum",
+      "column": "throttle_active",
+      "description": "Number of epochs with the settlement throttle active.",
+      "id": "throttle_epochs",
+      "label": "Throttle epochs",
+      "unit": "epoch count"
+    },
+    {
+      "aggregation": "last",
+      "column": "cumulative_tokens_burned",
+      "description": "Total cumulative burn at the final epoch.",
+      "id": "total_burns",
+      "label": "Total tokens burned",
+      "unit": "modeled token units"
+    },
+    {
+      "aggregation": "summary",
+      "column": null,
+      "description": "Terminal classification from the Z1 summarizer: collapse iff final reserve ratio < 0.3; stressed iff throttle active or queue above the stress threshold; else stable. Carried in the bundle diagnostics and gallery index, not a per-epoch column.",
+      "id": "classification",
+      "label": "Solvency classification",
+      "unit": "categorical (stable | stressed | collapse)"
+    }
+  ],
+  "tested_region": {
+    "disclosure": "2/3 named scenarios published (baseline, stable); 1/3 blocked upstream with the failure recorded (collapse_case, L10 hard assertion in Z1's config validation); deterministic runs at repetitions=1 over 104 weekly epochs with seed 42; no Monte Carlo uncertainty is claimed.",
+    "epochs": 104,
+    "grid": {
+      "families": {
+        "pressure": [
+          "low",
+          "base",
+          "high"
+        ],
+        "shock": [
+          "low",
+          "base",
+          "high"
+        ],
+        "support": [
+          "low",
+          "base",
+          "high"
+        ]
+      },
+      "label": "cli_only_evidence",
+      "note": "The 27-case stress grid is CLI-only published evidence with exact completed/total counts; any subset carries the wiring_proof label. It is never a gallery comparison.",
+      "status": "not_run_in_gallery_bundles",
+      "total_cases": 27
+    },
+    "named_scenarios": {
+      "blocked": [
+        {
+          "published_as": "collapse",
+          "reason": "Blocked upstream: Z1's own config.validate() raises its L10 hard assertion (weighted settle propensity exceeds weighted utility spend rate) for the collapse configuration; pre-existing since the first Z1 commit. No bundle is fabricated for a scenario Z1 refuses to run.",
+          "scenario": "collapse_case"
+        }
+      ],
+      "completed": "2/3",
+      "published": [
+        "baseline",
+        "stable"
+      ]
+    },
+    "repetitions": 1,
+    "seed": 42
+  },
+  "time_axis": {
+    "artifact": "results",
+    "column": "iteration_time",
+    "label": "Simulation epoch",
+    "unit": "epoch (one week)"
+  },
+  "tokenomics_coverage": {
+    "apy": {
+      "detail": "APY is not emitted and cannot be inferred from these tables.",
+      "status": "absent"
+    },
+    "emissions": {
+      "detail": "Claim-credit issuance, vesting, settlement, and token burn flows are emitted per epoch.",
+      "status": "modeled"
+    },
+    "fdv": {
+      "detail": "FDV is not emitted and cannot be inferred from these tables.",
+      "status": "absent"
+    },
+    "governance": {
+      "detail": "No governance process or authority is modeled.",
+      "status": "absent"
+    },
+    "liquidity": {
+      "detail": "No liquidity pool, depth, or market module is part of the M1 core-solvency model.",
+      "status": "absent"
+    },
+    "staking": {
+      "detail": "No staking pool, reward source, or staking yield is modeled at this milestone.",
+      "status": "absent"
+    },
+    "supply": {
+      "detail": "Audience reserve, treasury, cohort balances, and burns are conserved per epoch under the Z1 M1 supply identity; conservation is verified every epoch.",
+      "status": "modeled"
+    }
+  },
+  "unavailable_concepts": [
+    {
+      "id": "liquidity",
+      "reason": "The M1 core-solvency model emits no liquidity depth or pool state."
+    },
+    {
+      "id": "governance",
+      "reason": "The scenario models no governance process or authority."
+    },
+    {
+      "id": "staking",
+      "reason": "No staking pool, reward source, or staking yield is modeled at this milestone."
+    },
+    {
+      "id": "fdv",
+      "reason": "FDV is not emitted or declared by this artifact contract."
+    },
+    {
+      "id": "apy",
+      "reason": "APY is not emitted and cannot be inferred from these tables."
+    }
+  ],
+  "variability": {
+    "explanation": "Canonical bundles pin repetitions=1: a single deterministic path per scenario provides no statistical uncertainty evidence.",
+    "status": "unavailable"
+  }
+}

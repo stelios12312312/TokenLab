@@ -26,7 +26,7 @@ tokenlab-dashboard --gallery --output-dir outputs/demo-gallery
 ```
 
 Open the printed loopback URL (normally `http://127.0.0.1:8765`). The gallery
-offers seven reviewed demos:
+offers eight reviewed demos:
 
 - **Stochastic growth — Monte Carlo uncertainty** (flagship). The reviewed
   public economy with three approved, illustrative, explicitly independent
@@ -65,6 +65,19 @@ offers seven reviewed demos:
   supply stays at the TGE float — constant fiat transaction volume, and
   deterministic controllers: the no-unlock companion and zero-variance
   negative control for the vesting archetypes. It is not Monte Carlo.
+- **Core solvency archetypes — adapted scenario evidence** (historical
+  archetype). Precomputed canonical bundles of the maintained Z1 core-solvency
+  M1 scenarios, executed unchanged at repetitions=1 and served read-only with
+  hash-verified tables, neutral publish-time metric names, provenance, and a
+  tested-region disclosure. Baseline and stable are published; the collapse
+  preset is visibly blocked — Z1's own config validation raises its L10 hard
+  assertion for the collapse configuration upstream, and no bundle is
+  fabricated for a scenario Z1 refuses to run (the failure is recorded as
+  negative-control evidence). This is directional structural-solvency scenario
+  evidence over the disclosed tested region (2/3 named scenarios published,
+  1/3 blocked upstream): not Monte Carlo, not a probability estimate, not a
+  forecast, and not investment, launch, legal, financial, or decision-grade
+  advice.
 
 For the deterministic explorer, select one of
 the baseline, downside, or upside presets, adjust a bounded control, and choose
