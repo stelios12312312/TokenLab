@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping
 
 import pandas as pd
+import numpy as np
 
 
 PROFILE_VERSION = 1
@@ -42,11 +43,40 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _canonical_cell(value: Any) -> str:
+    """Stack-stable canonical rendering of one table cell.
+
+    pandas' ``to_csv`` float formatting varies across pandas versions, which
+    made persisted content hashes stack-dependent (a bundle published under
+    one pandas/pandas-reader stack failed validation under another). Python's
+    ``repr`` of a ``float``/``int`` is identical across the supported
+    dependency set, and correctly-rounded CSV float parsing yields the same
+    doubles on both stacks, so this canonical form is stable everywhere.
+    """
+    if value is None or (isinstance(value, float) and value != value):
+        return ""
+    try:
+        if bool(pd.isna(value)):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (bool, np.bool_)):
+        return str(bool(value))
+    if isinstance(value, (int, np.integer)):
+        return str(int(value))
+    if isinstance(value, (float, np.floating)):
+        return repr(float(value))
+    return str(value)
+
+
 def reproducible_table_hash(data: pd.DataFrame) -> str:
     """Hash canonical table content while excluding unique bundle identity."""
 
     canonical = data.drop(columns=["run_id"], errors="ignore")
-    payload = canonical.to_csv(index=False, lineterminator="\n").encode("utf-8")
+    lines = [",".join(str(column) for column in canonical.columns)]
+    for row in canonical.itertuples(index=False, name=None):
+        lines.append(",".join(_canonical_cell(value) for value in row))
+    payload = ("\n".join(lines) + "\n").encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
 
 

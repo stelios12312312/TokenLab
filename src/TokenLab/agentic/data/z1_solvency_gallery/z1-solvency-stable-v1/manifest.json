@@ -16,7 +16,7 @@
     }
   },
   "config_hash": "ff716126acee8e14992f7047bed61363405d7c7240f82f537537640f9689d243",
-  "created_at": "2026-08-17T12:21:38.298947+00:00",
+  "created_at": "2026-08-17T19:19:44.853952+00:00",
   "manifest_version": 1,
   "monte_carlo": {
     "iterations": 104,

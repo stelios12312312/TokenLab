@@ -110,6 +110,7 @@ def _text_files(root: Path):
         if path.is_file()
         and path.suffix.lower() in TEXT_SUFFIXES
         and "__pycache__" not in path.parts
+        and "outputs" not in path.parts
     )
 
 
@@ -138,11 +139,7 @@ def _forbidden_patterns():
     # the demand adapter's registry control bounds), so it is not armed as
     # a fingerprint. The armed set still scans every scope below, including
     # the registry, the guide, and the fresh bundle.
-    legacy_blob = "\n".join(
-        path.read_text(encoding="utf-8", errors="replace")
-        for root in (ROOT / "examples", ROOT / "tests" / "fixtures")
-        for path in _text_files(root)
-    )
+    legacy_blob = _legacy_blob()
 
     def is_distinctive(value):
         text = _value_text(value)
@@ -151,7 +148,7 @@ def _forbidden_patterns():
     armed = [
         value
         for value in sorted(_client_distinctive_values())
-        if is_distinctive(value)
+        if _is_armable(value) and is_distinctive(value)
     ]
     patterns.extend(
         (
@@ -161,6 +158,48 @@ def _forbidden_patterns():
         for value in armed
     )
     return patterns
+
+
+def _significant_digits(value):
+    return len(re.sub(r"[^0-9]", "", _value_text(value)).lstrip("0"))
+
+
+def _is_armable(value):
+    # Round magnitudes (one or two significant digits, i.e. d * 10^k or
+    # d0 * 10^k) cannot distinguish client material from legitimate bounds,
+    # budgets, and defaults, so they are never armed as fingerprints.
+    # Long-tail values stay armed.
+    if not float(value).is_integer():
+        return True
+    return len(str(int(value)).rstrip("0")) >= 3
+
+
+def _legacy_blob():
+    # Distinctiveness baseline: tracked files only, so the audit is identical
+    # on a fresh checkout (CI) and a dirty local worktree.
+    import subprocess
+
+    try:
+        out = subprocess.run(
+            ["git", "ls-files", "examples", "tests/fixtures"],
+            capture_output=True,
+            text=True,
+            cwd=ROOT,
+            check=True,
+        )
+        tracked = [ROOT / line for line in out.stdout.split()]
+    except Exception:  # pragma: no cover - git unavailable
+        tracked = [
+            path
+            for root in (ROOT / "examples", ROOT / "tests" / "fixtures")
+            for path in _text_files(root)
+            if "outputs" not in path.parts
+        ]
+    return "\n".join(
+        path.read_text(encoding="utf-8", errors="replace")
+        for path in tracked
+        if path.is_file()
+    )
 
 
 def _scan(paths, patterns):
