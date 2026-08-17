@@ -172,13 +172,16 @@ def _client_distinctive_values():
     values = set()
     csv_client = "friend" + "ocash"
     csv_path = ROOT / "projects" / csv_client / f"{csv_client}.csv"
-    with open(csv_path, newline="", encoding="utf-8") as handle:
-        for row in csv.reader(handle):
-            for cell in row:
-                try:
-                    values.add(float(cell.replace(",", "").strip()))
-                except (ValueError, AttributeError):
-                    continue
+    # Client CSVs are gitignored and absent from a fresh checkout (CI); the
+    # disjointness check then runs on the script-derived values only.
+    if csv_path.is_file():
+        with open(csv_path, newline="", encoding="utf-8") as handle:
+            for row in csv.reader(handle):
+                for cell in row:
+                    try:
+                        values.add(float(cell.replace(",", "").strip()))
+                    except (ValueError, AttributeError):
+                        continue
     script_client = "w" + "ow"
     script_path = (
         ROOT / "projects" / script_client / f"{script_client}_tokenomics.py"

@@ -88,6 +88,10 @@ def _client_values():
     values = set()
 
     def add_csv(path):
+        # Client CSVs are gitignored and absent from a fresh checkout (CI);
+        # skip them there and rely on the script-derived fingerprints.
+        if not Path(path).is_file():
+            return
         with open(path, newline="", encoding="utf-8", errors="replace") as handle:
             for row in csv.reader(handle):
                 for cell in row:

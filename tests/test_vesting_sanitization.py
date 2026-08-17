@@ -74,13 +74,17 @@ def _client_distinctive_values():
     values = set()
     csv_client = CLIENT_NAMES[0]
     csv_path = ROOT / "projects" / csv_client / f"{csv_client}.csv"
-    with open(csv_path, newline="", encoding="utf-8") as handle:
-        for row in csv.reader(handle):
-            for cell in row:
-                try:
-                    values.add(float(cell.replace(",", "").strip()))
-                except (ValueError, AttributeError):
-                    continue
+    # Client CSVs are gitignored and absent from a fresh checkout (CI); the
+    # audit then runs on the script-derived fingerprints only, which is the
+    # strongest evidence available in that environment.
+    if csv_path.is_file():
+        with open(csv_path, newline="", encoding="utf-8") as handle:
+            for row in csv.reader(handle):
+                for cell in row:
+                    try:
+                        values.add(float(cell.replace(",", "").strip()))
+                    except (ValueError, AttributeError):
+                        continue
     for client, filename in (
         (CLIENT_NAMES[0], f"{CLIENT_NAMES[0]}.py"),
         (CLIENT_NAMES[1], f"{CLIENT_NAMES[1]}_tokenomics.py"),

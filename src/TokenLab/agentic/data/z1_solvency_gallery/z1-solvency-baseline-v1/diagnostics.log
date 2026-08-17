@@ -1,0 +1,26 @@
+[z1 solvency adapter diagnostics]
+source_scenario: baseline
+published_as: baseline
+seed: 42
+epochs: 104
+repetitions: 1
+classification: stable
+terminal_metrics:
+  final_reserve_ratio: 0.9963423457570149
+  final_treasury: 5103632.28482309
+  max_settlement_queue: 2.842170943040401e-14
+  throttle_epochs: 0
+  total_burns: 908.071205775199
+  classification: stable
+
+[invariant verification]
+status: pass
+epochs_checked: 105
+errors: none
+
+[solvency locks]
+L1 (HARD) PASS: Solvency ratio = 0.116 (<0.8 → structurally stable)
+L2 (SOFT) PASS: settlement_ratio (0.10) ≤ 2 × fee_share (0.40)
+L3 (HARD) FAIL: Brand inflow = 0.50% of AR (<1% → collapse in all observed cases)
+L4 (SOFT) WARN: passive_viewers: settle (0.25) > 0.5 × spend (0.05) — net extractor
+L4 (SOFT) WARN: active_viewers: settle (0.30) > 0.5 × spend (0.20) — net extractor
