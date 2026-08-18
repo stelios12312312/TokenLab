@@ -67,6 +67,26 @@ _BOUNDS_EQUAL_SUPPORT_FAMILIES = frozenset(
     {"uniform", "truncated_normal", "truncated_lognormal", "beta"}
 )
 FAN_CHART_LABEL = "modeled outcomes: P10–P90"
+# Per-step band labels for the additive series projection: the stochastic
+# band is the persisted P10/P50/P90 quantile summary; the deterministic band
+# is the persisted min/mean/max summary and never implies Monte Carlo.
+V1_BAND_LABEL = "min–max band and mean across repeated deterministic paths"
+V1_SINGLE_RUN_BAND_LABEL = "single deterministic run; the band collapses onto the path"
+DESCRIPTIVE_SERIES_NOTE = "descriptive only, not a declared profile metric"
+ADAPTED_TOPOLOGY_LABEL = "declared schematic, not live wiring"
+# Lineage columns identify the run, not the system; they are never charted.
+_SERIES_LINEAGE_COLUMNS = frozenset(
+    {"run_id", "scenario_id", "config_hash", "seed", "path_index"}
+)
+_V1_NON_SERIES_COLUMNS = frozenset(
+    {"iteration_time", "repetition_run"} | _SERIES_LINEAGE_COLUMNS
+)
+_TOPOLOGY_NODE_TYPES = frozenset(
+    {"economy", "controller", "supply_pool", "agent_pool", "staking", "treasury"}
+)
+_TOPOLOGY_EDGE_KINDS = frozenset(
+    {"composition", "reference", "channel", "dependency"}
+)
 V2_DOWNLOAD_ROLES = {
     "results": "one row per completed Monte Carlo path and simulation step",
     "parameter_samples": "one row per path and uncertainty parameter draw",
@@ -161,6 +181,7 @@ class DemoScenario:
     default_run_tier: Optional[str] = None
     interactive_run_tiers: Tuple[str, ...] = ()
     cli_only_run_tiers: Tuple[str, ...] = ()
+    topology: Optional[Dict[str, Any]] = None
 
     def public_dict(self) -> Dict[str, Any]:
         result = {
@@ -174,6 +195,15 @@ class DemoScenario:
             "controls": [control.public_dict() for control in self.controls],
             "presets": [preset.public_dict() for preset in self.presets],
         }
+        if self.topology is not None:
+            # Adapted entries have no machine-readable scenario; their
+            # topology is a registry-declared schematic, labeled as such.
+            result["topology"] = {
+                "source": "registry",
+                "label": ADAPTED_TOPOLOGY_LABEL,
+                "nodes": [dict(node) for node in self.topology["nodes"]],
+                "edges": [dict(edge) for edge in self.topology["edges"]],
+            }
         if self.kind == "stochastic":
             result["run_tiers"] = {
                 tier: {
@@ -398,6 +428,72 @@ def _tier_list(value: Any, field: str, *, allow_cli_only: bool) -> Tuple[str, ..
     return tuple(tiers)
 
 
+def _parse_topology(value: Any, field: str) -> Dict[str, Any]:
+    """Validate a registry-declared topology schematic (adapted demos only).
+
+    The schematic is display-only: nodes carry typed neutral names and edges
+    reference declared node ids. It is never treated as live wiring; the
+    payload labels it as a declared schematic.
+    """
+    data = _mapping(value, field)
+    _exact_keys(data, field, allowed={"nodes", "edges"}, required={"nodes", "edges"})
+    raw_nodes = data["nodes"]
+    if not isinstance(raw_nodes, list) or not raw_nodes:
+        raise GalleryError(f"{field}.nodes must be a non-empty array")
+    nodes = []
+    node_ids = set()
+    for index, item in enumerate(raw_nodes):
+        node_field = f"{field}.nodes[{index}]"
+        entry = _mapping(item, node_field)
+        _exact_keys(
+            entry,
+            node_field,
+            allowed={"id", "type", "name", "detail"},
+            required={"id", "type", "name"},
+        )
+        node_id = _safe_id(entry["id"], f"{node_field}.id")
+        if node_id in node_ids:
+            raise GalleryError(f"{node_field}.id duplicates {node_id!r}")
+        node_ids.add(node_id)
+        node_type = _safe_id(entry["type"], f"{node_field}.type")
+        if node_type not in _TOPOLOGY_NODE_TYPES:
+            raise GalleryError(f"{node_field}.type is not supported")
+        node: Dict[str, Any] = {
+            "id": node_id,
+            "type": node_type,
+            "name": _text(entry["name"], f"{node_field}.name"),
+        }
+        if "detail" in entry:
+            node["detail"] = _text(entry["detail"], f"{node_field}.detail")
+        nodes.append(node)
+    raw_edges = data["edges"]
+    if not isinstance(raw_edges, list):
+        raise GalleryError(f"{field}.edges must be an array")
+    edges = []
+    for index, item in enumerate(raw_edges):
+        edge_field = f"{field}.edges[{index}]"
+        entry = _mapping(item, edge_field)
+        _exact_keys(
+            entry,
+            edge_field,
+            allowed={"from", "to", "kind", "label"},
+            required={"from", "to", "kind"},
+        )
+        source = _safe_id(entry["from"], f"{edge_field}.from")
+        target = _safe_id(entry["to"], f"{edge_field}.to")
+        unknown = sorted({source, target} - node_ids)
+        if unknown:
+            raise GalleryError(f"{edge_field} references unknown node {unknown[0]!r}")
+        kind = _safe_id(entry["kind"], f"{edge_field}.kind")
+        if kind not in _TOPOLOGY_EDGE_KINDS:
+            raise GalleryError(f"{edge_field}.kind is not supported")
+        edge: Dict[str, Any] = {"from": source, "to": target, "kind": kind}
+        if "label" in entry:
+            edge["label"] = _text(entry["label"], f"{edge_field}.label")
+        edges.append(edge)
+    return {"nodes": nodes, "edges": edges}
+
+
 def _parse_demo(value: Any, field: str) -> DemoScenario:
     data = _mapping(value, field)
     keys = {
@@ -415,6 +511,7 @@ def _parse_demo(value: Any, field: str) -> DemoScenario:
         "default_run_tier",
         "interactive_run_tiers",
         "cli_only_run_tiers",
+        "topology",
     }
     required = {
         "id",
@@ -498,6 +595,13 @@ def _parse_demo(value: Any, field: str) -> DemoScenario:
     )
     if len({preset.id for preset in presets}) != len(presets):
         raise GalleryError(f"{field}.presets ids must be unique")
+    topology: Optional[Dict[str, Any]] = None
+    if "topology" in data:
+        if kind != "adapted":
+            raise GalleryError(
+                f"{field}.topology is only allowed for adapted demos"
+            )
+        topology = _parse_topology(data["topology"], f"{field}.topology")
     return DemoScenario(
         id=_safe_id(data["id"], f"{field}.id"),
         title=_text(data["title"], f"{field}.title"),
@@ -517,6 +621,7 @@ def _parse_demo(value: Any, field: str) -> DemoScenario:
         default_run_tier=default_run_tier,
         interactive_run_tiers=interactive_run_tiers,
         cli_only_run_tiers=cli_only_run_tiers,
+        topology=topology,
     )
 
 
@@ -620,6 +725,11 @@ class DemoGallery:
     def catalog(self) -> Dict[str, Any]:
         catalog = self.registry.public_dict()
         for demo_view, demo in zip(catalog["demos"], self.registry.demos):
+            if demo.kind == "adapted":
+                # Adapted demos have no declarative scenario; the optional
+                # registry-declared schematic is already in the view.
+                continue
+            demo_view["topology"] = topology_for_scenario(self._demo_config(demo))
             if demo.kind != "stochastic":
                 continue
             config = self.stochastic_config(demo.id)
@@ -638,9 +748,8 @@ class DemoGallery:
             raise GalleryError(f"demo {demo_id!r} is not a stochastic demo")
         return demo
 
-    def stochastic_config(self, demo_id: str) -> ScenarioConfig:
-        """Parse and validate the packaged stochastic demo scenario."""
-        demo = self.stochastic_demo(demo_id)
+    def _demo_config(self, demo: DemoScenario) -> ScenarioConfig:
+        """Parse and validate a packaged demo scenario of any declarative kind."""
         raw = _read_resource(demo.scenario_resource)
         if not isinstance(raw, dict):
             raise GalleryError("reviewed scenario resource must contain an object")
@@ -648,6 +757,10 @@ class DemoGallery:
             return scenario_from_dict(deepcopy(raw))
         except ScenarioError as exc:
             raise GalleryError(f"reviewed scenario is invalid: {exc}") from exc
+
+    def stochastic_config(self, demo_id: str) -> ScenarioConfig:
+        """Parse and validate the packaged stochastic demo scenario."""
+        return self._demo_config(self.stochastic_demo(demo_id))
 
     def stochastic_profile(self, demo_id: str) -> Dict[str, Any]:
         """Load the packaged v2 profile and check its identity contract."""
@@ -720,6 +833,7 @@ class DemoGallery:
         from ..dashboard import load_dashboard
 
         application = load_dashboard(artifacts.bundle_dir)
+        application.payload["series"] = build_v1_series(artifacts.bundle_dir)
         return GalleryRun(
             demo_id=demo.id,
             preset_id=preset.id,
@@ -759,6 +873,7 @@ class DemoGallery:
         from ..dashboard import load_dashboard
 
         application = load_dashboard(bundle_dir)
+        application.payload["series"] = build_v1_series(bundle_dir)
         return GalleryRun(
             demo_id=demo.id,
             preset_id=preset.id,
@@ -1285,6 +1400,375 @@ def _terminal_values(results: Any, column: str) -> List[float]:
     return [float(value) for value in terminal[column]]
 
 
+def _finite_float(value: Any) -> Optional[float]:
+    """Project a persisted numeric value; missing or non-finite stays null."""
+    if isinstance(value, bool):
+        return None
+    try:
+        result = float(value)
+    except (TypeError, ValueError):
+        return None
+    return result if math.isfinite(result) else None
+
+
+def _terminal_series_values(results: Any, column: str) -> List[Optional[float]]:
+    """Final-step values per completed path; missing values stay null."""
+    return [
+        _finite_float(value)
+        for value in _terminal_values(results, column)
+    ]
+
+
+def build_v2_series(
+    iteration_summary: Any, results: Any, declared: Mapping[str, Any]
+) -> List[Dict[str, Any]]:
+    """Project every numeric non-lineage column of a validated v2 bundle.
+
+    Bands and terminal values are read from the persisted iteration_summary
+    and results tables; nothing is recomputed. Declared profile metrics keep
+    their declared labels/units and stay first; every other column carries
+    its raw name and is marked ``"declared": false`` so the UI can render
+    the descriptive-only note. No downsampling: every emitted column appears
+    with the full persisted step count.
+    """
+    columns = []
+    for name in iteration_summary.columns:
+        if not name.endswith("_p50"):
+            continue
+        base = name[: -len("_p50")]
+        if base in _SERIES_LINEAGE_COLUMNS:
+            continue
+        required = (f"{base}_p10", f"{base}_p90", f"{base}_mean", f"{base}_n")
+        if all(stat in iteration_summary.columns for stat in required):
+            columns.append(base)
+    declared_by_column = {metric["column"]: metric for metric in declared.values()}
+    ordered = [column for column in declared_by_column if column in columns]
+    ordered.extend(column for column in columns if column not in declared_by_column)
+    steps = [float(value) for value in iteration_summary["iteration_time"]]
+    last = iteration_summary.iloc[-1] if len(iteration_summary) else None
+    series = []
+    for column in ordered:
+        declaration = declared_by_column.get(column)
+        terminal_values: List[Optional[float]] = []
+        if column in results.columns:
+            terminal_values = _terminal_series_values(results, column)
+        terminal: Dict[str, Any] = {"n": len(terminal_values)}
+        if last is not None:
+            terminal = {
+                "p10": _finite_float(last[f"{column}_p10"]),
+                "p50": _finite_float(last[f"{column}_p50"]),
+                "p90": _finite_float(last[f"{column}_p90"]),
+                "mean": _finite_float(last[f"{column}_mean"]),
+                "n": int(last[f"{column}_n"]),
+            }
+        series.append(
+            {
+                "column": column,
+                "label": declaration["label"] if declaration else column,
+                "unit": declaration["unit"] if declaration else "",
+                "metric_id": declaration["id"] if declaration else None,
+                "declared": declaration is not None,
+                "band": {
+                    "label": FAN_CHART_LABEL,
+                    "x": steps,
+                    "low": [
+                        _finite_float(value)
+                        for value in iteration_summary[f"{column}_p10"]
+                    ],
+                    "mid": [
+                        _finite_float(value)
+                        for value in iteration_summary[f"{column}_p50"]
+                    ],
+                    "high": [
+                        _finite_float(value)
+                        for value in iteration_summary[f"{column}_p90"]
+                    ],
+                },
+                "terminal_values": terminal_values,
+                "terminal": terminal,
+            }
+        )
+    return series
+
+
+def _read_bundle_table(bundle_dir: Path, metadata: Any) -> Any:
+    """Read one manifest-declared bundle table; None when unavailable."""
+    if not isinstance(metadata, Mapping):
+        return None
+    path = bundle_dir / str(metadata.get("path", ""))
+    file_format = metadata.get("format")
+    import pandas as pd
+
+    try:
+        if file_format == "csv":
+            return pd.read_csv(path)
+        if file_format == "parquet":
+            return pd.read_parquet(path)
+    except (OSError, ValueError):
+        return None
+    return None
+
+
+def _v1_declared_columns(profile: Any) -> Dict[str, Mapping[str, Any]]:
+    """Map base column -> profile metric declaration for a v1 profile.
+
+    Declarations resolve either against the iteration_summary mean column
+    (``<column>_mean``) or directly against a results column (the adapted
+    profile style); both are profile-declared sources, never raw guesses.
+    """
+    declared: Dict[str, Mapping[str, Any]] = {}
+    if not isinstance(profile, Mapping):
+        return declared
+    for metric in profile.get("metrics", []):
+        if not isinstance(metric, Mapping):
+            continue
+        source = metric.get("source", {})
+        if not isinstance(source, Mapping):
+            continue
+        artifact, column = source.get("artifact"), source.get("column")
+        if not isinstance(column, str):
+            continue
+        if artifact == "iteration_summary" and column.endswith("_mean"):
+            base = column[: -len("_mean")]
+        elif artifact == "results":
+            base = column
+        else:
+            continue
+        declared.setdefault(base, metric)
+    return declared
+
+
+def build_v1_series(bundle_dir: Path) -> List[Dict[str, Any]]:
+    """Project every numeric non-lineage column of a validated v1 bundle.
+
+    Bands (persisted min/mean/max per step) and terminal values are read
+    from the persisted bundle tables only; the deterministic band never
+    implies Monte Carlo. Declared profile metrics keep their declared
+    labels/units; every other column carries its raw name and is marked
+    ``"declared": false``. No downsampling: every emitted column appears
+    with the full persisted step count.
+    """
+    bundle_dir = Path(bundle_dir)
+    try:
+        manifest = json.loads((bundle_dir / "manifest.json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    outputs = manifest.get("outputs", {}) if isinstance(manifest, Mapping) else {}
+    results = _read_bundle_table(bundle_dir, outputs.get("results"))
+    summary = _read_bundle_table(bundle_dir, outputs.get("iteration_summary"))
+    if results is None or summary is None or "iteration_time" not in summary.columns:
+        return []
+    try:
+        profile = json.loads(
+            (bundle_dir / "artifact_profile.json").read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        profile = {}
+    declared = _v1_declared_columns(profile)
+
+    columns = []
+    for name in summary.columns:
+        if not name.endswith("_mean"):
+            continue
+        base = name[: -len("_mean")]
+        if base in _V1_NON_SERIES_COLUMNS:
+            continue
+        required = (f"{base}_min", f"{base}_max")
+        if all(stat in summary.columns for stat in required):
+            columns.append(base)
+    ordered = [column for column in declared if column in columns]
+    ordered.extend(column for column in columns if column not in declared)
+    repetitions = (
+        int(results["repetition_run"].nunique())
+        if "repetition_run" in results.columns
+        else 1
+    )
+    band_label = V1_BAND_LABEL if repetitions > 1 else V1_SINGLE_RUN_BAND_LABEL
+    steps = [float(value) for value in summary["iteration_time"]]
+    last = summary.iloc[-1] if len(summary) else None
+    series = []
+    for column in ordered:
+        declaration = declared.get(column)
+        terminal_values: List[Optional[float]] = []
+        if (
+            column in results.columns
+            and "repetition_run" in results.columns
+            and "iteration_time" in results.columns
+        ):
+            terminal_rows = (
+                results.sort_values("iteration_time")
+                .groupby("repetition_run", sort=True)
+                .tail(1)
+                .sort_values("repetition_run")
+            )
+            terminal_values = [
+                _finite_float(value) for value in terminal_rows[column]
+            ]
+        elif column in results.columns and len(results):
+            terminal_values = [_finite_float(results[column].iloc[-1])]
+        terminal: Dict[str, Any] = {"n": len(terminal_values)}
+        if last is not None:
+            terminal = {
+                "mean": _finite_float(last[f"{column}_mean"]),
+                "min": _finite_float(last[f"{column}_min"]),
+                "max": _finite_float(last[f"{column}_max"]),
+                "n": len(terminal_values),
+            }
+        series.append(
+            {
+                "column": column,
+                "label": declaration["label"] if declaration else column,
+                "unit": declaration.get("unit", "") if declaration else "",
+                "metric_id": declaration.get("id") if declaration else None,
+                "declared": declaration is not None,
+                "band": {
+                    "label": band_label,
+                    "x": steps,
+                    "low": [
+                        _finite_float(value) for value in summary[f"{column}_min"]
+                    ],
+                    "mid": [
+                        _finite_float(value) for value in summary[f"{column}_mean"]
+                    ],
+                    "high": [
+                        _finite_float(value) for value in summary[f"{column}_max"]
+                    ],
+                },
+                "terminal_values": terminal_values,
+                "terminal": terminal,
+            }
+        )
+    try:
+        json.dumps(series, allow_nan=False)
+    except (TypeError, ValueError) as exc:
+        raise GalleryError("v1 series projection is not JSON-safe") from exc
+    return series
+
+
+def topology_for_scenario(config: ScenarioConfig) -> Dict[str, Any]:
+    """Project a validated scenario config into typed nodes and edges.
+
+    Composition edges mirror the declarative object graph (economy ->
+    controllers, supply pools, agent pools, and their child controllers);
+    reference edges mark declared treasury wiring; schema v3 adds dependent
+    links and directional channels with kind and percentage labels. Names
+    are the published neutral names of the validated scenario.
+    """
+    nodes: List[Dict[str, Any]] = []
+    edges: List[Dict[str, Any]] = []
+
+    def add_economy(node_id: str, spec: Any, name: str) -> None:
+        nodes.append(
+            {"id": node_id, "type": "economy", "name": name, "detail": spec.type}
+        )
+        for role in ("holding_time", "supply", "price"):
+            component = getattr(spec, role)
+            child = f"{node_id}:{role}"
+            nodes.append(
+                {
+                    "id": child,
+                    "type": "controller",
+                    "name": role.replace("_", " "),
+                    "detail": component.type,
+                }
+            )
+            edges.append({"from": node_id, "to": child, "kind": "composition"})
+        for index, pool in enumerate(spec.supply_pools):
+            child = f"{node_id}:supply_pool:{index}"
+            nodes.append(
+                {
+                    "id": child,
+                    "type": "supply_pool",
+                    "name": str(pool.parameters.get("name", pool.type)),
+                    "detail": pool.type,
+                }
+            )
+            edges.append({"from": node_id, "to": child, "kind": "composition"})
+        for pool in spec.agent_pools:
+            child = f"{node_id}:agent_pool:{pool.id}"
+            nodes.append(
+                {
+                    "id": child,
+                    "type": "agent_pool",
+                    "name": pool.id,
+                    "detail": pool.type,
+                }
+            )
+            edges.append({"from": node_id, "to": child, "kind": "composition"})
+            for role, component in (
+                ("users", pool.users),
+                ("transactions", pool.transactions),
+            ):
+                leaf = f"{child}:{role}"
+                nodes.append(
+                    {
+                        "id": leaf,
+                        "type": "controller",
+                        "name": role,
+                        "detail": component.type,
+                    }
+                )
+                edges.append({"from": child, "to": leaf, "kind": "composition"})
+            if pool.staking is not None:
+                leaf = f"{child}:staking"
+                nodes.append(
+                    {
+                        "id": leaf,
+                        "type": "staking",
+                        "name": pool.staking.type,
+                        "detail": "staking controller",
+                    }
+                )
+                edges.append({"from": child, "to": leaf, "kind": "composition"})
+            if pool.treasury is not None:
+                edges.append(
+                    {
+                        "from": child,
+                        "to": f"treasury:{pool.treasury}",
+                        "kind": "reference",
+                        "label": "treasury",
+                    }
+                )
+
+    for treasury in config.treasuries:
+        nodes.append(
+            {"id": f"treasury:{treasury.id}", "type": "treasury", "name": treasury.id}
+        )
+    if config.ecosystem is not None:
+        master = config.ecosystem.master
+        for spec in config.ecosystem.economies:
+            inner = (
+                spec.parameters.get("name")
+                or spec.parameters.get("token")
+                or spec.id
+            )
+            add_economy(f"economy:{spec.id}", spec, f"{spec.id} ({inner})")
+        for spec in config.ecosystem.economies:
+            if spec.id != master:
+                edges.append(
+                    {
+                        "from": f"economy:{master}",
+                        "to": f"economy:{spec.id}",
+                        "kind": "dependency",
+                        "label": "master/dependent",
+                    }
+                )
+        for channel in config.ecosystem.channels:
+            edges.append(
+                {
+                    "from": f"economy:{channel.from_id}",
+                    "to": f"economy:{channel.to_id}",
+                    "kind": "channel",
+                    "label": f"{channel.kind} · {channel.percentage * 100:g}%",
+                }
+            )
+    elif config.economy is not None:
+        spec = config.economy
+        name = spec.parameters.get("name") or spec.parameters.get("token") or "economy"
+        add_economy("economy", spec, str(name))
+    return {"source": "scenario", "label": None, "nodes": nodes, "edges": edges}
+
+
 def build_stochastic_result(
     artifacts: Any, config: ScenarioConfig, profile: Mapping[str, Any]
 ) -> Tuple[Dict[str, Any], Dict[str, Tuple[str, bytes]]]:
@@ -1404,6 +1888,7 @@ def build_stochastic_result(
         "path_failures": artifacts.path_failures,
         "tokenomics_coverage": profile["tokenomics_coverage"],
         "interpretation_boundary": profile["interpretation_boundary"],
+        "series": build_v2_series(iteration_summary, artifacts.results, declared),
         "downloads": download_views,
     }
     try:
@@ -1414,7 +1899,9 @@ def build_stochastic_result(
 
 
 __all__ = [
+    "ADAPTED_TOPOLOGY_LABEL",
     "CLI_ONLY_RUN_TIERS",
+    "DESCRIPTIVE_SERIES_NOTE",
     "DemoGallery",
     "DemoPreset",
     "DemoRegistry",
@@ -1431,10 +1918,15 @@ __all__ = [
     "StochasticJob",
     "StochasticJobManager",
     "TERMINAL_JOB_STATES",
+    "V1_BAND_LABEL",
+    "V1_SINGLE_RUN_BAND_LABEL",
     "build_stochastic_result",
+    "build_v1_series",
+    "build_v2_series",
     "load_demo_registry",
     "parse_demo_registry",
     "public_prior",
+    "topology_for_scenario",
     "validate_adapted_index",
     "validate_v2_profile",
 ]

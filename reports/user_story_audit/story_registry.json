@@ -841,7 +841,8 @@
     "tests/test_website_integration.py"
    ],
    "validation_refs": [
-    "tests/test_demo_gallery.py"
+    "tests/test_demo_gallery.py",
+    "tests/test_dashboard.py"
    ],
    "doc_refs": [
     "README.md",
@@ -896,7 +897,7 @@
    ],
    "needs_review": true,
    "implemented_at": "2026-08-14T06:35:00.000Z",
-   "notes": "GitHub issue #24 / Program ticket T-INTAKE-BDAE920E. Behavioral proof covers exact registry schemas, typed controls, injection/path rejection, real runner publication, localhost catalog/run/download routes, request byte caps, process-wide serialized execution, sanitized unexpected failures, a bounded per-process run count, offline assets, responsive state contracts, documentation, and the supported Python 3.10 full regression suite. PARTIALLY_COVERED is intentional until a human or enabled browser controller records rendered desktop and narrow-viewport evidence in the linked plan verification artifact.",
+   "notes": "GitHub issue #24 / Program ticket T-INTAKE-BDAE920E. Behavioral proof covers exact registry schemas, typed controls, injection/path rejection, real runner publication, localhost catalog/run/download routes, request byte caps, process-wide serialized execution, sanitized unexpected failures, a bounded per-process run count, offline assets, responsive state contracts, documentation, and the supported Python 3.10 full regression suite. PARTIALLY_COVERED is intentional until a human or enabled browser controller records rendered desktop and narrow-viewport evidence in the linked plan verification artifact. Visualization features (parameter explorer, topology graph) added under plan_2026-08-18_6e839135023dd5a8; browser journey 22/22 at two viewports.",
    "postconditions": [
     "success: gallery renders the real runner results with all panels and exact counts",
     "running: progress reflects server-owned job state with requested/completed/failed counts",
@@ -1147,7 +1148,7 @@
  ],
  "generated_at": "2026-05-18T13:00:00.000Z",
  "source": "story_registry_bootstrap.mjs",
- "updated_at": "2026-08-17T18:35:58.116452+00:00",
+ "updated_at": "2026-08-18T10:55:54.746211+00:00",
  "commit": "21ee728",
  "consolidations": []
 }

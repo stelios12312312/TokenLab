@@ -228,6 +228,10 @@
     .coverage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
     .claim-ok { color: var(--lime); }
     .claim-blocked { color: var(--red); }
+    .metric-note { margin: 6px 0 0; }
+    .topology-panel { grid-column: 1 / -1; overflow: hidden; }
+    .topology-wrap { min-height: 200px; padding: 14px 18px 20px; overflow-x: auto; }
+    .topology-node:focus-visible { outline: 3px solid var(--aqua); outline-offset: 2px; }
     @media (max-width: 1000px) {
       .ci-cards, .coverage-grid { grid-template-columns: 1fr; }
       .prior-grid { grid-template-columns: 1fr; }
@@ -332,8 +336,8 @@
 
         <section class="panel chart-panel" aria-labelledby="chart-title">
           <div class="chart-toolbar">
-            <div><h2 id="chart-title">Compare scenarios</h2><p>Profile-declared series only; no inferred metrics.</p></div>
-            <div class="metric-picker"><label class="field-label" for="metric-select">Comparison metric</label><select id="metric-select" disabled><option>Run a scenario first</option></select></div>
+            <div><h2 id="chart-title">Compare scenarios</h2><p>Declared profile metrics and every emitted numeric column; undeclared columns are descriptive only.</p></div>
+            <div class="metric-picker"><label class="field-label" for="metric-select">Comparison metric</label><select id="metric-select" disabled><option>Run a scenario first</option></select><p id="metric-select-note" class="tier-note metric-note" hidden></p></div>
           </div>
           <div id="chart-wrap" class="chart-wrap"><div class="chart-empty">Completed baseline, downside, and upside runs will appear here.</div></div>
           <div id="legend" class="legend"></div>
@@ -377,7 +381,7 @@
         <section class="panel chart-panel" aria-labelledby="fan-title">
           <div class="chart-toolbar">
             <div><h2 id="fan-title">Cross-path fan chart</h2><p>Band: modeled outcomes: P10–P90. Line: P50. This band is a modeled outcome interval, never a confidence interval.</p></div>
-            <div class="metric-picker"><label class="field-label" for="fan-metric-select">Fan metric</label><select id="fan-metric-select" disabled><option>Run first</option></select></div>
+            <div class="metric-picker"><label class="field-label" for="fan-metric-select">Fan metric</label><select id="fan-metric-select" disabled><option>Run first</option></select><p id="fan-metric-note" class="tier-note metric-note" hidden></p></div>
           </div>
           <div id="fan-chart-wrap" class="chart-wrap"><div class="chart-empty">Completed Monte Carlo runs will render the P10–P90 fan here.</div></div>
           <div id="fan-legend" class="legend"></div>
@@ -426,6 +430,13 @@
           </section>
         </div>
       </div>
+
+      <section class="panel chart-panel topology-panel" id="topology-panel" aria-labelledby="topology-title" hidden>
+        <div class="chart-toolbar">
+          <div><h2 id="topology-title">Scenario topology</h2><p id="topology-copy">Declarative component wiring of the selected demo.</p></div>
+        </div>
+        <div id="topology-wrap" class="detail-body topology-wrap"><div class="chart-empty">Loading topology…</div></div>
+      </section>
     </main>
 
     <footer>TokenLab gallery runs on loopback only. Outputs demonstrate software behavior and assumption propagation; live token decisions require qualified review and external evidence.</footer>
@@ -649,6 +660,7 @@
       $("chart-wrap").replaceChildren(chartEmpty); $("legend").replaceChildren();
       const metricOption = document.createElement("option"); metricOption.textContent = "Run a scenario first";
       $("metric-select").replaceChildren(metricOption); $("metric-select").disabled = true;
+      $("metric-select-note").hidden = true; $("metric-select-note").textContent = "";
       const provenance = document.createElement("div"); provenance.className = "fact";
       const term = document.createElement("dt"); term.textContent = "Status";
       const detail = document.createElement("dd"); detail.textContent = "Awaiting a run";
@@ -659,6 +671,10 @@
       $("unavailable-concepts").replaceChildren(noUnavailable);
     }
 
+    function seriesEntriesOf(payload) {
+      return payload && Array.isArray(payload.series) ? payload.series : [];
+    }
+
     function prepareMetricPicker(run) {
       const select = $("metric-select");
       const selected = select.value;
@@ -666,7 +682,17 @@
       run.dashboard.metrics.forEach((metric) => {
         const option = document.createElement("option"); option.value = metric.id; option.textContent = metric.label; select.append(option);
       });
-      if (run.dashboard.metrics.some((metric) => metric.id === selected)) select.value = selected;
+      const undeclared = seriesEntriesOf(run.dashboard).filter((entry) => !entry.declared);
+      if (undeclared.length) {
+        const group = document.createElement("optgroup");
+        group.label = "All emitted columns (descriptive only)";
+        undeclared.forEach((entry) => {
+          const option = document.createElement("option"); option.value = `column:${entry.column}`; option.textContent = entry.column; group.append(option);
+        });
+        select.append(group);
+      }
+      const values = Array.from(select.querySelectorAll("option")).map((option) => option.value);
+      if (values.includes(selected)) select.value = selected;
       select.disabled = false;
     }
 
@@ -675,16 +701,31 @@
       const legend = $("legend");
       wrap.replaceChildren(); legend.replaceChildren();
       const metricId = $("metric-select").value;
+      const isColumn = metricId.startsWith("column:");
+      const columnName = isColumn ? metricId.slice("column:".length) : null;
+      const note = $("metric-select-note");
+      note.hidden = !isColumn;
+      note.textContent = isColumn ? `${columnName}: descriptive only, not a declared profile metric. Raw column name; per-step mean across the repeated deterministic paths.` : "";
       const series = [];
       state.demo.presets.forEach((preset) => {
         const run = state.runs.get(preset.id);
-        const metric = run ? metricById(run, metricId) : null;
-        if (metric) series.push({ id: preset.id, label: preset.label, metric });
+        if (!run) return;
+        let points = null;
+        if (isColumn) {
+          const entry = seriesEntriesOf(run.dashboard).find((item) => item.column === columnName);
+          if (entry && entry.band && Array.isArray(entry.band.x) && Array.isArray(entry.band.mid)) {
+            points = entry.band.x.map((xValue, index) => ({ x: xValue, y: entry.band.mid[index] }));
+          }
+        } else {
+          const metric = metricById(run, metricId);
+          if (metric) points = metric.points;
+        }
+        if (points) series.push({ id: preset.id, label: preset.label, points });
       });
       if (!series.length) {
         const empty = document.createElement("div"); empty.className = "chart-empty"; empty.textContent = "Run at least one preset to compare scenarios."; wrap.append(empty); return;
       }
-      const validPoints = series.flatMap((item) => item.metric.points.filter((point) => typeof point.x === "number" && typeof point.y === "number"));
+      const validPoints = series.flatMap((item) => item.points.filter((point) => typeof point.x === "number" && typeof point.y === "number"));
       if (!validPoints.length) {
         const empty = document.createElement("div"); empty.className = "chart-empty"; empty.textContent = "This declared metric has no plottable values."; wrap.append(empty); setStatus("empty", "Empty metric"); return;
       }
@@ -704,7 +745,7 @@
         const label = document.createElementNS(svg.namespaceURI, "text"); label.setAttribute("x", pad.left - 10); label.setAttribute("y", yPos + 4); label.setAttribute("text-anchor", "end"); label.setAttribute("fill", "#aeb8c8"); label.setAttribute("font-size", "11"); label.textContent = formatValue(yMax - index * (yMax - yMin) / 4); svg.append(label);
       }
       series.forEach((item) => {
-        const points = item.metric.points.filter((point) => typeof point.x === "number" && typeof point.y === "number");
+        const points = item.points.filter((point) => typeof point.x === "number" && typeof point.y === "number");
         const polyline = document.createElementNS(svg.namespaceURI, "polyline");
         polyline.setAttribute("points", points.map((point) => `${x(point.x)},${y(point.y)}`).join(" "));
         polyline.setAttribute("fill", "none"); polyline.setAttribute("stroke", colors[item.id] || "#7aa8ff"); polyline.setAttribute("stroke-width", "3"); polyline.setAttribute("stroke-linejoin", "round"); polyline.setAttribute("stroke-linecap", "round"); svg.append(polyline);
@@ -899,12 +940,39 @@
       return (result.metrics || []).find((metric) => metric.id === metricId) || null;
     }
 
-    function drawFan(metric) {
+    function fanViewFromMetric(metric) {
+      if (!metric || !metric.fan) return null;
+      return {
+        label: metric.label, unit: metric.unit,
+        x: metric.fan.x, lo: metric.fan.p10, mid: metric.fan.p50, hi: metric.fan.p90,
+        bandLabel: metric.fan.label || "modeled outcomes: P10–P90",
+      };
+    }
+
+    function fanViewFromSeries(entry) {
+      if (!entry || !entry.band) return null;
+      return {
+        label: entry.label, unit: entry.unit,
+        x: entry.band.x, lo: entry.band.low, mid: entry.band.mid, hi: entry.band.high,
+        bandLabel: entry.band.label || "modeled outcomes: P10–P90",
+      };
+    }
+
+    function selectedMcEntry(result) {
+      const value = $("fan-metric-select").value || "";
+      if (value.startsWith("column:")) {
+        const entry = seriesEntriesOf(result).find((item) => item.column === value.slice("column:".length));
+        return entry ? { declared: false, entry } : null;
+      }
+      const metric = metricByIdMc(result, value);
+      return metric ? { declared: true, entry: metric } : null;
+    }
+
+    function drawFan(view) {
       const wrap = $("fan-chart-wrap");
       const legend = $("fan-legend");
       wrap.replaceChildren(); legend.replaceChildren();
-      const fan = metric && metric.fan;
-      if (!fan || !Array.isArray(fan.x) || !fan.x.length) {
+      if (!view || !Array.isArray(view.x) || !view.x.length) {
         const empty = document.createElement("div");
         empty.className = "chart-empty";
         empty.textContent = "This metric has no fan data.";
@@ -912,7 +980,7 @@
         return;
       }
       const width = 920, height = 360, pad = { left: 72, right: 24, top: 24, bottom: 46 };
-      const xs = fan.x, lo = fan.p10, mid = fan.p50, hi = fan.p90;
+      const xs = view.x, lo = view.lo, mid = view.mid, hi = view.hi;
       const xMin = Math.min(...xs), xMax = Math.max(...xs);
       const yMin = Math.min(...lo), yMax = Math.max(...hi);
       const yPad = Math.max((yMax - yMin) * .1, Math.abs(yMax) * .02, 1e-9);
@@ -922,7 +990,7 @@
       svg.id = "comparison-chart";
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       svg.setAttribute("role", "img");
-      svg.setAttribute("aria-label", `${metric.label} modeled outcome fan chart`);
+      svg.setAttribute("aria-label", `${view.label} modeled outcome fan chart`);
       for (let index = 0; index <= 4; index += 1) {
         const line = document.createElementNS(svg.namespaceURI, "line");
         const yPos = pad.top + index * (height - pad.top - pad.bottom) / 4;
@@ -950,7 +1018,7 @@
       median.setAttribute("stroke-width", "3"); median.setAttribute("stroke-linejoin", "round");
       svg.append(median);
       wrap.append(svg);
-      [["modeled outcomes: P10–P90", "rgba(95,225,210,.6)"], ["P50 modeled outcome", "#b8f56a"]].forEach(([text, color]) => {
+      [[view.bandLabel, "rgba(95,225,210,.6)"], ["P50 modeled outcome", "#b8f56a"]].forEach(([text, color]) => {
         const item = document.createElement("span");
         item.className = "legend-item";
         const swatch = document.createElement("i");
@@ -1013,7 +1081,7 @@
       wrap.append(svg);
     }
 
-    function renderPercentiles(result) {
+    function renderPercentiles(result, selection) {
       const container = $("percentile-table");
       container.replaceChildren();
       const table = document.createElement("table");
@@ -1040,6 +1108,21 @@
       });
       table.append(caption, head, body);
       container.append(table);
+      if (selection && !selection.declared) {
+        const entry = selection.entry;
+        const terminal = entry.terminal || {};
+        const row = document.createElement("tr");
+        [entry.column, terminal.p10, terminal.p50, terminal.p90, terminal.mean, terminal.n].forEach((value) => {
+          const cell = document.createElement("td");
+          cell.textContent = typeof value === "string" ? value : formatValue(value);
+          row.append(cell);
+        });
+        body.append(row);
+        const note = document.createElement("p");
+        note.className = "tier-note";
+        note.textContent = `${entry.column}: descriptive only, not a declared profile metric. Values are the persisted final-step cross-path summary; no estimator interval is published for undeclared columns.`;
+        container.append(note);
+      }
     }
 
     function renderCiCards(result) {
@@ -1202,20 +1285,32 @@
       renderFailures(result.path_failures);
       const picker = $("fan-metric-select");
       picker.replaceChildren();
+      const declaredGroup = document.createElement("optgroup");
+      declaredGroup.label = "Declared profile metrics";
       (result.metrics || []).forEach((metric) => {
         const option = document.createElement("option");
         option.value = metric.id; option.textContent = metric.label;
-        picker.append(option);
+        declaredGroup.append(option);
       });
+      picker.append(declaredGroup);
+      const undeclared = seriesEntriesOf(result).filter((entry) => !entry.declared);
+      if (undeclared.length) {
+        const group = document.createElement("optgroup");
+        group.label = "All emitted columns (descriptive only)";
+        undeclared.forEach((entry) => {
+          const option = document.createElement("option");
+          option.value = `column:${entry.column}`; option.textContent = entry.column;
+          group.append(option);
+        });
+        picker.append(group);
+      }
       picker.disabled = false;
-      if (!(result.metrics || []).some((metric) => metric.id === mc.metric)) {
-        mc.metric = (result.metrics || [])[0] ? result.metrics[0].id : null;
+      const values = Array.from(picker.querySelectorAll("option")).map((option) => option.value);
+      if (!values.includes(mc.metric)) {
+        mc.metric = (result.metrics || [])[0] ? result.metrics[0].id : (values[0] || null);
       }
       picker.value = mc.metric;
-      const selected = metricByIdMc(result, mc.metric);
-      drawFan(selected);
-      drawHistogram(selected);
-      renderPercentiles(result);
+      renderSelectedMc(result);
       renderCiCards(result);
       const insufficient = renderSensitivity(result);
       renderConvergence(result);
@@ -1309,13 +1404,148 @@
       }
     }
 
+    function renderSelectedMc(result) {
+      const selection = selectedMcEntry(result);
+      const note = $("fan-metric-note");
+      if (!selection) {
+        note.hidden = true; note.textContent = "";
+        drawFan(null);
+        drawHistogram(null);
+        renderPercentiles(result, null);
+        return;
+      }
+      if (selection.declared) {
+        note.hidden = true; note.textContent = "";
+        drawFan(fanViewFromMetric(selection.entry));
+        drawHistogram(selection.entry);
+      } else {
+        note.hidden = false;
+        note.textContent = `${selection.entry.column}: descriptive only, not a declared profile metric. Raw column name; no label or unit is invented, and no estimator interval is published for it.`;
+        drawFan(fanViewFromSeries(selection.entry));
+        drawHistogram(selection.entry);
+      }
+      renderPercentiles(result, selection);
+    }
+
     function redrawSelectedFan() {
       const job = mc.lastJob;
       if (!job || !job.result) return;
       mc.metric = $("fan-metric-select").value;
-      const selected = metricByIdMc(job.result, mc.metric);
-      drawFan(selected);
-      drawHistogram(selected);
+      renderSelectedMc(job.result);
+    }
+
+    function renderTopology() {
+      const panel = $("topology-panel");
+      const wrap = $("topology-wrap");
+      const copy = $("topology-copy");
+      panel.hidden = false;
+      wrap.replaceChildren();
+      const topo = state.demo && state.demo.topology;
+      if (!topo || !Array.isArray(topo.nodes) || !topo.nodes.length) {
+        copy.textContent = "No declarative topology is published for this demo.";
+        const empty = document.createElement("div");
+        empty.className = "chart-empty";
+        empty.textContent = "Topology unavailable for this demo.";
+        wrap.append(empty);
+        return;
+      }
+      copy.textContent = topo.label
+        ? `${topo.label}; names match the published neutral names.`
+        : "Derived from the validated declarative scenario; names match the published neutral names.";
+      const nodes = topo.nodes;
+      const edges = Array.isArray(topo.edges) ? topo.edges : [];
+      // Deterministic layered layout: economies on top; composition edges
+      // flow downward. Channel/reference/dependency edges never move layers.
+      const layer = new Map();
+      nodes.forEach((node) => { if (node.type === "economy") layer.set(node.id, 0); });
+      for (let pass = 0; pass < 8; pass += 1) {
+        let changed = false;
+        edges.forEach((edge) => {
+          if (edge.kind !== "composition") return;
+          const from = layer.get(edge.from);
+          if (from == null) return;
+          if ((layer.get(edge.to) ?? -1) < from + 1) { layer.set(edge.to, from + 1); changed = true; }
+        });
+        if (!changed) break;
+      }
+      const maxLayer = Math.max(0, ...layer.values());
+      nodes.forEach((node) => {
+        if (!layer.has(node.id)) layer.set(node.id, node.type === "treasury" ? maxLayer + 1 : 1);
+      });
+      const layers = new Map();
+      nodes.forEach((node) => {
+        const key = layer.get(node.id);
+        if (!layers.has(key)) layers.set(key, []);
+        layers.get(key).push(node);
+      });
+      const rowHeight = 110, nodeWidth = 168, nodeHeight = 46, gap = 26;
+      const maxCount = Math.max(...Array.from(layers.values()).map((list) => list.length));
+      const width = Math.max(920, maxCount * (nodeWidth + gap) + gap);
+      const height = (Math.max(...layer.values()) + 1) * rowHeight + 30;
+      const pos = new Map();
+      Array.from(layers.entries()).forEach(([key, list]) => {
+        const rowWidth = list.length * (nodeWidth + gap) - gap;
+        const startX = (width - rowWidth) / 2;
+        list.forEach((node, index) => {
+          pos.set(node.id, { x: startX + index * (nodeWidth + gap), y: 18 + key * rowHeight });
+        });
+      });
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", `${state.demo.title} component topology`);
+      const center = (id) => {
+        const point = pos.get(id);
+        return point ? { x: point.x + nodeWidth / 2, y: point.y + nodeHeight / 2 } : null;
+      };
+      edges.forEach((edge) => {
+        const a = center(edge.from), b = center(edge.to);
+        if (!a || !b) return;
+        const line = document.createElementNS(svg.namespaceURI, "line");
+        line.setAttribute("x1", a.x); line.setAttribute("y1", a.y);
+        line.setAttribute("x2", b.x); line.setAttribute("y2", b.y);
+        line.setAttribute("stroke", edge.kind === "channel" ? "#ffbd59" : edge.kind === "composition" ? "#2a354a" : "#5fe1d2");
+        line.setAttribute("stroke-width", edge.kind === "composition" ? "1.5" : "2");
+        if (edge.kind === "reference" || edge.kind === "dependency") line.setAttribute("stroke-dasharray", "5 4");
+        svg.append(line);
+        if (edge.label) {
+          const text = document.createElementNS(svg.namespaceURI, "text");
+          text.setAttribute("x", (a.x + b.x) / 2); text.setAttribute("y", (a.y + b.y) / 2 - 5);
+          text.setAttribute("text-anchor", "middle");
+          text.setAttribute("fill", edge.kind === "channel" ? "#ffbd59" : "#aeb8c8");
+          text.setAttribute("font-size", "10.5");
+          text.textContent = edge.label;
+          svg.append(text);
+        }
+      });
+      const typeColors = { economy: "#b8f56a", controller: "#7aa8ff", supply_pool: "#5fe1d2", agent_pool: "#5fe1d2", staking: "#ffbd59", treasury: "#ffbd59" };
+      nodes.forEach((node) => {
+        const point = pos.get(node.id);
+        if (!point) return;
+        const group = document.createElementNS(svg.namespaceURI, "g");
+        group.classList.add("topology-node");
+        group.setAttribute("tabindex", "0");
+        group.setAttribute("role", "button");
+        group.setAttribute("aria-label", `${String(node.type).replace("_", " ")}: ${node.name}${node.detail ? ` — ${node.detail}` : ""}`);
+        const rect = document.createElementNS(svg.namespaceURI, "rect");
+        rect.setAttribute("x", point.x); rect.setAttribute("y", point.y);
+        rect.setAttribute("width", nodeWidth); rect.setAttribute("height", nodeHeight);
+        rect.setAttribute("rx", "10");
+        rect.setAttribute("fill", "#0e1524");
+        rect.setAttribute("stroke", typeColors[node.type] || "#2a354a");
+        rect.setAttribute("stroke-width", "1.5");
+        const name = document.createElementNS(svg.namespaceURI, "text");
+        name.setAttribute("x", point.x + nodeWidth / 2); name.setAttribute("y", point.y + 19);
+        name.setAttribute("text-anchor", "middle"); name.setAttribute("fill", "#f4f1e8"); name.setAttribute("font-size", "11.5");
+        name.textContent = node.name;
+        const detail = document.createElementNS(svg.namespaceURI, "text");
+        detail.setAttribute("x", point.x + nodeWidth / 2); detail.setAttribute("y", point.y + 35);
+        detail.setAttribute("text-anchor", "middle"); detail.setAttribute("fill", "#aeb8c8"); detail.setAttribute("font-size", "9.5");
+        detail.textContent = node.detail || String(node.type).replace("_", " ");
+        group.append(rect, name, detail);
+        svg.append(group);
+      });
+      wrap.append(svg);
     }
 
     async function loadGallery() {
@@ -1338,6 +1568,7 @@
             resetWorkspaceForDemo();
             renderDemo();
           }
+          renderTopology();
         });
         if (isStochasticDemo()) {
           enterStochasticMode();
@@ -1345,6 +1576,7 @@
           renderDemo();
           $("run-button").disabled = false;
         }
+        renderTopology();
         setStatus("success", "Gallery ready");
       } catch (error) {
         setStatus("invalid", "Gallery unavailable"); showMessage(error.message || "Gallery could not load", true);

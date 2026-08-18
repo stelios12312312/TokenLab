@@ -276,6 +276,57 @@
       "boundary": "This adapted demo serves precomputed, hash-verified bundles of deterministic solvency scenarios at repetitions=1. It is directional structural-solvency scenario evidence over the disclosed tested region (2/3 named scenarios published, 1/3 blocked upstream), not Monte Carlo, not a probability estimate, not a forecast, and not investment, launch, legal, financial, or decision-grade advice. The collapse preset is visibly blocked by Z1's own L10 hard validation until Z1 is fixed upstream.",
       "scenario_resource": "z1_solvency_index.json",
       "profile_resource": "z1_solvency_profile.json",
+      "topology": {
+        "nodes": [
+          {
+            "id": "economy",
+            "type": "economy",
+            "name": "core solvency economy",
+            "detail": "adapted deterministic scenario"
+          },
+          {
+            "id": "claims",
+            "type": "controller",
+            "name": "claims issuance and vesting"
+          },
+          {
+            "id": "reserve",
+            "type": "controller",
+            "name": "audience reserve"
+          },
+          {
+            "id": "settlement",
+            "type": "controller",
+            "name": "settlement queue and throttle"
+          },
+          {
+            "id": "treasury",
+            "type": "treasury",
+            "name": "treasury"
+          },
+          {
+            "id": "burns",
+            "type": "controller",
+            "name": "utility spend token burns"
+          },
+          {
+            "id": "inflow",
+            "type": "controller",
+            "name": "ecosystem inflows"
+          }
+        ],
+        "edges": [
+          {"from": "economy", "to": "claims", "kind": "composition"},
+          {"from": "economy", "to": "reserve", "kind": "composition"},
+          {"from": "economy", "to": "settlement", "kind": "composition"},
+          {"from": "economy", "to": "treasury", "kind": "composition"},
+          {"from": "economy", "to": "burns", "kind": "composition"},
+          {"from": "economy", "to": "inflow", "kind": "composition"},
+          {"from": "claims", "to": "settlement", "kind": "dependency", "label": "settlement requests"},
+          {"from": "settlement", "to": "treasury", "kind": "dependency", "label": "fees"},
+          {"from": "inflow", "to": "treasury", "kind": "dependency", "label": "top-ups"}
+        ]
+      },
       "presets": [
         {
           "id": "baseline",

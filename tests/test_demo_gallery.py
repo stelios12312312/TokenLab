@@ -18,6 +18,9 @@ import yaml
 from TokenLab.agentic.artifact_profile import validate_bundle
 from TokenLab.agentic.factory import ScenarioFactory
 from TokenLab.agentic.gallery import (
+    ADAPTED_TOPOLOGY_LABEL,
+    V1_BAND_LABEL,
+    V1_SINGLE_RUN_BAND_LABEL,
     DemoGallery,
     GalleryError,
     InvalidSpecError,
@@ -295,6 +298,12 @@ def test_public_catalog_hides_package_resources_and_nested_paths():
                 {"user_ceiling": True}
             ),
             "integer",
+        ),
+        (
+            lambda data: data["demos"][0].update(
+                {"topology": {"nodes": [], "edges": []}}
+            ),
+            "topology is only allowed for adapted demos",
         ),
     ],
 )
@@ -1701,3 +1710,293 @@ def test_multitoken_disconnected_control_is_deterministic_and_bounded(tmp_path):
                 "parameters": {"master_demand_final": 100},
             }
         )
+
+
+_SERIES_LINEAGE = {"run_id", "scenario_id", "config_hash", "seed", "path_index"}
+
+
+def test_series_projection_exposes_all_numeric_columns(tmp_path):
+    """Every numeric non-lineage column is projected with honest declared flags."""
+    gallery = DemoGallery(tmp_path / "mc-jobs")
+    manager = StochasticJobManager(gallery)
+    job = manager.start({"demo_id": "public-growth-uncertainty-v2", "run_tier": "test"})
+    job_id = job["job_id"]
+    deadline = time.time() + 180
+    final = manager.status(job_id)
+    while time.time() < deadline:
+        final = manager.status(job_id)
+        if final["state"] in _TERMINAL_JOB_STATES:
+            break
+        time.sleep(0.05)
+    assert final["state"] == "success"
+
+    result = final["result"]
+    bundle_dir = tmp_path / "mc-jobs" / result["run"]["run_id"]
+    results = pd.read_csv(bundle_dir / "results.csv")
+    summary = pd.read_csv(bundle_dir / "iteration_summary.csv")
+    expected = {
+        column
+        for column in results.select_dtypes(include=[np.number]).columns
+        if column not in _SERIES_LINEAGE | {"iteration_time", "repetition_run"}
+    }
+    series = result["series"]
+    assert {entry["column"] for entry in series} == expected
+    by_column = {entry["column"]: entry for entry in series}
+
+    declared_columns = {"TLAB_price", "transactions_$", "num_users"}
+    for column, entry in by_column.items():
+        if column in declared_columns:
+            assert entry["declared"] is True
+            assert entry["metric_id"] is not None
+            assert entry["label"] != column
+            assert entry["unit"]
+        else:
+            assert entry["declared"] is False
+            assert entry["metric_id"] is None
+            assert entry["label"] == column
+            assert entry["unit"] == ""
+        # No downsampling: the full persisted step count and every path.
+        band = entry["band"]
+        assert band["label"] == "modeled outcomes: P10–P90"
+        assert len(band["x"]) == len(summary) == 24
+        assert len(band["low"]) == len(band["mid"]) == len(band["high"]) == 24
+        assert len(entry["terminal_values"]) == 32
+        # Terminal stats are the persisted final-step summary, not a recompute.
+        assert entry["terminal"]["p50"] == pytest.approx(
+            float(summary[f"{column}_p50"].iloc[-1])
+        )
+        assert entry["terminal"]["n"] == 32
+    # Declared metrics stay first, in profile order.
+    assert [entry["column"] for entry in series[:3]] == [
+        "TLAB_price",
+        "transactions_$",
+        "num_users",
+    ]
+
+    # Deterministic v1 control: the band is the persisted min/mean/max
+    # summary and never claims Monte Carlo percentiles.
+    v1_gallery = DemoGallery(tmp_path / "runs")
+    baseline = v1_gallery.run_request(
+        {"demo_id": "growth-path", "preset_id": "baseline", "parameters": {}}
+    )
+    v1_results = pd.read_csv(baseline.bundle_dir / "results.csv")
+    v1_expected = {
+        column
+        for column in v1_results.select_dtypes(include=[np.number]).columns
+        if column not in _SERIES_LINEAGE | {"iteration_time", "repetition_run"}
+    }
+    v1_series = baseline.application.payload["series"]
+    assert {entry["column"] for entry in v1_series} == v1_expected
+    v1_declared = {
+        "TLAB_price",
+        "transactions_$",
+        "num_transactions",
+        "num_users",
+        "holding_time",
+        "supply",
+    }
+    for entry in v1_series:
+        assert entry["declared"] is (entry["column"] in v1_declared)
+        if not entry["declared"]:
+            assert entry["label"] == entry["column"]
+            assert entry["unit"] == ""
+        assert entry["band"]["label"] == V1_BAND_LABEL
+        assert len(entry["band"]["x"]) == 24
+        assert len(entry["terminal_values"]) == 4
+
+    # Adapted read-only projection: undeclared emitted columns stay
+    # descriptive-only with their raw published (neutral) names.
+    adapted = v1_gallery.run_request(
+        {"demo_id": "z1-solvency-adapted-v1", "preset_id": "baseline", "parameters": {}}
+    )
+    adapted_summary = pd.read_csv(adapted.bundle_dir / "iteration_summary.csv")
+    adapted_series = adapted.application.payload["series"]
+    adapted_by_column = {entry["column"]: entry for entry in adapted_series}
+    assert {
+        column for column, entry in adapted_by_column.items() if entry["declared"]
+    } == {
+        "reserve_ratio",
+        "treasury",
+        "settlement_queue",
+        "throttle_active",
+        "cumulative_tokens_burned",
+    }
+    undeclared = adapted_by_column["audience_reserve"]
+    assert undeclared["declared"] is False
+    assert undeclared["metric_id"] is None
+    assert undeclared["label"] == "audience_reserve"
+    assert undeclared["unit"] == ""
+    assert undeclared["band"]["label"] == V1_SINGLE_RUN_BAND_LABEL
+    assert len(undeclared["band"]["x"]) == len(adapted_summary)
+    assert len(undeclared["terminal_values"]) == 1
+
+    # Lineage columns are never charted on any path.
+    for payload_series in (series, v1_series, adapted_series):
+        assert _SERIES_LINEAGE.isdisjoint(
+            entry["column"] for entry in payload_series
+        )
+
+
+def test_topology_projection_matches_scenario_structure(tmp_path):
+    """Topology derives from the validated scenario structure of each kind."""
+    gallery = DemoGallery(tmp_path / "unused")
+    catalog = gallery.catalog()
+    views = {demo["id"]: demo for demo in catalog["demos"]}
+
+    for demo_id, view in views.items():
+        topology = view.get("topology")
+        assert topology is not None, demo_id
+        node_ids = [node["id"] for node in topology["nodes"]]
+        assert len(node_ids) == len(set(node_ids)), demo_id
+        for edge in topology["edges"]:
+            assert edge["from"] in node_ids, (demo_id, edge)
+            assert edge["to"] in node_ids, (demo_id, edge)
+            assert edge["kind"] in {"composition", "reference", "channel", "dependency"}
+
+    # Single-economy stochastic (schema v2): economy -> controllers -> pool.
+    topology = views["public-growth-uncertainty-v2"]["topology"]
+    assert topology["source"] == "scenario"
+    assert topology["label"] is None
+    nodes = {node["id"]: node for node in topology["nodes"]}
+    assert nodes["economy"]["type"] == "economy"
+    assert nodes["economy"]["name"] == "TLAB"
+    assert nodes["economy:holding_time"]["type"] == "controller"
+    assert nodes["economy:supply"]["type"] == "controller"
+    assert nodes["economy:price"]["type"] == "controller"
+    pool = nodes["economy:agent_pool:illustrative-users"]
+    assert pool["type"] == "agent_pool"
+    assert nodes["economy:agent_pool:illustrative-users:users"]["type"] == "controller"
+    assert nodes["economy:agent_pool:illustrative-users:transactions"]["type"] == "controller"
+    compositions = {
+        (edge["from"], edge["to"])
+        for edge in topology["edges"]
+        if edge["kind"] == "composition"
+    }
+    assert ("economy", "economy:holding_time") in compositions
+    assert ("economy", "economy:agent_pool:illustrative-users") in compositions
+    assert (
+        "economy:agent_pool:illustrative-users",
+        "economy:agent_pool:illustrative-users:transactions",
+    ) in compositions
+    assert not {
+        edge["kind"] for edge in topology["edges"]
+    } - {"composition"}
+
+    # Vesting (schema v2): the five named supply pools appear as typed nodes
+    # with their published neutral names.
+    vesting = views["public-vesting-concentrated-v2"]["topology"]
+    pool_names = {
+        node["name"] for node in vesting["nodes"] if node["type"] == "supply_pool"
+    }
+    assert pool_names == {
+        "Ecosystem Incentives",
+        "Core Contributors",
+        "Early Backers",
+        "Community Reserve",
+        "Liquidity Bootstrap",
+    }
+
+    # Staking (schema v3): the staking controller hangs off its agent pool.
+    staking = views["public-staking-rewards-v3"]["topology"]
+    staking_nodes = {
+        node["id"]: node for node in staking["nodes"] if node["type"] == "staking"
+    }
+    assert set(staking_nodes) == {"economy:agent_pool:staking-demand:staking"}
+    assert staking_nodes["economy:agent_pool:staking-demand:staking"]["name"] == (
+        "SupplyStakerLockup"
+    )
+
+    # Ecosystem (schema v3): both economies, the dependent link, and the
+    # channel edge with its kind and percentage label.
+    ecosystem = views["public-multitoken-dependency-v3"]["topology"]
+    eco_nodes = {node["id"]: node for node in ecosystem["nodes"]}
+    assert eco_nodes["economy:master"]["type"] == "economy"
+    assert eco_nodes["economy:master"]["name"] == "master (MTLB)"
+    assert eco_nodes["economy:dependent"]["type"] == "economy"
+    assert eco_nodes["economy:dependent"]["name"] == "dependent (MTDB)"
+    channels = [
+        edge for edge in ecosystem["edges"] if edge["kind"] == "channel"
+    ]
+    assert len(channels) == 1
+    assert (channels[0]["from"], channels[0]["to"]) == (
+        "economy:master",
+        "economy:dependent",
+    )
+    assert channels[0]["label"] == "token · 0.4%"
+    assert any(
+        edge["kind"] == "dependency"
+        and edge["from"] == "economy:master"
+        and edge["to"] == "economy:dependent"
+        for edge in ecosystem["edges"]
+    )
+
+    # Deterministic v1 control: the same declarative shape, no channels.
+    control = views["growth-path"]["topology"]
+    assert control["source"] == "scenario"
+    assert {node["id"] for node in control["nodes"]} == {
+        "economy",
+        "economy:holding_time",
+        "economy:supply",
+        "economy:price",
+        "economy:agent_pool:illustrative-users",
+        "economy:agent_pool:illustrative-users:users",
+        "economy:agent_pool:illustrative-users:transactions",
+    }
+    assert not [
+        edge for edge in control["edges"] if edge["kind"] == "channel"
+    ]
+
+    # The disconnected v3 control declares no channel edges at all.
+    disconnected = views["public-multitoken-disconnected-v3"]["topology"]
+    assert not [
+        edge for edge in disconnected["edges"] if edge["kind"] == "channel"
+    ]
+    assert any(
+        edge["kind"] == "dependency" for edge in disconnected["edges"]
+    )
+
+
+def test_adapted_topology_is_declared_schematic(tmp_path):
+    """The adapted entry's topology is a labeled schematic with neutral names."""
+    gallery = DemoGallery(tmp_path / "unused")
+    catalog = gallery.catalog()
+    views = {demo["id"]: demo for demo in catalog["demos"]}
+    topology = views["z1-solvency-adapted-v1"]["topology"]
+
+    assert topology["source"] == "registry"
+    assert topology["label"] == ADAPTED_TOPOLOGY_LABEL
+    assert topology["label"] == "declared schematic, not live wiring"
+    assert topology["nodes"]
+    assert topology["edges"]
+    node_ids = {node["id"] for node in topology["nodes"]}
+    for edge in topology["edges"]:
+        assert edge["from"] in node_ids
+        assert edge["to"] in node_ids
+    types = {node["type"] for node in topology["nodes"]}
+    assert types <= {
+        "economy",
+        "controller",
+        "supply_pool",
+        "agent_pool",
+        "staking",
+        "treasury",
+    }
+
+    # Only published neutral names: lowercase descriptive vocabulary, no
+    # client identifiers or internal codename fragments (assembled here the
+    # same way the sanitization audit derives them).
+    serialized = json.dumps(topology).lower()
+    forbidden = ("z" + "ee", "z1" + "u", "a" + "cr", "$")
+    assert not any(fragment in serialized for fragment in forbidden)
+    for node in topology["nodes"]:
+        assert re.fullmatch(r"[a-z0-9][a-z0-9 /+.-]*", node["name"])
+        assert re.fullmatch(r"[a-z0-9][a-z0-9 /+.-]*", node.get("detail", node["name"]))
+
+    # The packaged registry validates the schematic on load and keeps it out
+    # of the other kinds.
+    registry = load_demo_registry()
+    adapted = next(demo for demo in registry.demos if demo.kind == "adapted")
+    assert adapted.topology is not None
+    assert all(
+        demo.topology is None for demo in registry.demos if demo.kind != "adapted"
+    )

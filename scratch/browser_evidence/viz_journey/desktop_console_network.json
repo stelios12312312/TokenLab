@@ -1,0 +1,29 @@
+{
+ "console": [],
+ "network": [
+  {
+   "url": "http://127.0.0.1:8791/",
+   "status": 200
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/gallery",
+   "status": 200
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/stochastic/runs",
+   "status": 202
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/stochastic/runs/mc-d444754fadfb",
+   "status": 200
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/stochastic/runs/mc-d444754fadfb",
+   "status": 200
+  },
+  {
+   "url": "http://127.0.0.1:8791/api/stochastic/runs/mc-d444754fadfb",
+   "status": 200
+  }
+ ]
+}

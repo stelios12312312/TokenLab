@@ -115,8 +115,10 @@ offers twelve reviewed demos:
 For the deterministic explorer, select one of
 the baseline, downside, or upside presets, adjust a bounded control, and choose
 **Run simulation**. Completed presets appear together in **Compare scenarios**.
-Every chart is built from profile-declared metrics returned by the real
-`HeadlessRunner`; every source-table link downloads an immutable validated
+Declared charts are built from profile-declared metrics returned by the real
+`HeadlessRunner`; the same selector also exposes every other emitted numeric
+column with its raw name and an explicit "descriptive only, not a declared
+profile metric" note. Every source-table link downloads an immutable validated
 snapshot.
 
 For the stochastic flagship, inspect the assumptions table (each prior shows
@@ -152,6 +154,36 @@ Interval semantics are enforced by the artifact contract: the P10–P90 fan and
 outcome percentiles are a *modeled outcome interval* — the cross-path spread
 of simulated outcomes under the declared priors — never a confidence interval.
 Confidence intervals appear only on named estimators with method and level.
+
+## Parameter explorer and scenario topology
+
+Two projections expose data and structure the bundles already publish. Both
+are read from validated artifacts only — nothing is recomputed in the browser,
+and no column is hidden.
+
+- **Parameter explorer.** The fan/comparison metric selector lists the
+  declared profile metrics first and then every other emitted numeric column
+  (users, transaction counts, holding time, supply, per-pool and
+  ecosystem-suffixed columns) under "All emitted columns (descriptive only)".
+  Declared selections keep their declared labels, units, and — for stochastic
+  runs — estimator CI cards. Undeclared selections keep their raw column
+  names, are marked "descriptive only, not a declared profile metric", and
+  never receive invented labels, units, or estimator intervals. The per-step
+  band comes from the persisted `iteration_summary` (P10/P50/P90 for
+  stochastic runs; the min/mean/max summary for deterministic runs, whose
+  zero-variance band never implies Monte Carlo), and the terminal histogram
+  uses the persisted final-step values with no hidden downsampling. Constant
+  series render honestly flat. Lineage columns (run id, scenario id, config
+  hash, seed, path index) are never charted.
+- **Scenario topology.** A focusable SVG graph renders each demo's
+  declarative object graph as typed nodes (economy, controllers, supply
+  pools, agent pools, staking, treasuries, ecosystem economies) with
+  composition, reference, dependency, and channel edges. Schema v3 channels
+  carry their kind and percentage labels. The graph derives only from the
+  validated scenario document; node and edge names are the published neutral
+  names. The adapted core-solvency entry has no machine-readable scenario, so
+  its graph is a registry-declared schematic explicitly labeled "declared
+  schematic, not live wiring".
 
 The stochastic demo is also available as one command:
 
@@ -263,10 +295,12 @@ declared metric to a real table column.
 
 Use the metric selector under **Compare scenarios** and point out that each
 line represents a completed reviewed preset. The latest-run cards and
-provenance come from the validated manifest; each chart label, unit,
+provenance come from the validated manifest; each declared chart label, unit,
 description, source table, source column, and point comes from the versioned
-profile. The page is not a generic CSV explorer, so undeclared columns never
-become accidental KPIs.
+profile. Undeclared emitted columns are selectable too, but they always carry
+their raw column names and the explicit "descriptive only, not a declared
+profile metric" note — no label or unit is ever invented for them, so they
+never become accidental KPIs.
 
 Show the explicit “Not available in this scenario” section. Emissions,
 vesting/unlocks, liquidity, treasury, governance, staking yield, FDV, and APY
