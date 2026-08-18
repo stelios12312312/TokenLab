@@ -80,6 +80,7 @@ class HoldingTime_Stochastic(HoldingTimeController):
             "s": 1,
         },
         minimum: float = 0.1,
+        rng=None,
     ):
         """
 
@@ -92,6 +93,10 @@ class HoldingTime_Stochastic(HoldingTimeController):
             The parameters of the distribution. The default is {'loc':0,'scale':1}.
         minimum : float, optional
             The minimum possible holding time. If the sampled holding time is <1, then it reverts to minimum. The default is 0.1.
+        rng : numpy.random.Generator, optional
+            When provided, all randomness for this instance is drawn from it. When None,
+            a private generator seeded from OS entropy is created (no wall-clock, no
+            global state).
 
         Returns
         -------
@@ -103,7 +108,14 @@ class HoldingTime_Stochastic(HoldingTimeController):
         self.distribution = distribution
         self.dist_params = holding_time_params
         self.minimum = minimum
+        self._rng = rng
         self.execute()
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def execute(self) -> float:
         """
@@ -115,8 +127,6 @@ class HoldingTime_Stochastic(HoldingTimeController):
             The holding time.
 
         """
-        seed = int(int(time.time()) * np.random.rand())
-
         if type(self.dist_params) == type([]):
             # if the end of the iteration has been reached simply use the last one
             try:
@@ -127,7 +137,7 @@ class HoldingTime_Stochastic(HoldingTimeController):
             parameters = self.dist_params
 
         self.holding_time = self.distribution.rvs(
-            size=1, **parameters, random_state=seed
+            size=1, **parameters, random_state=self._draw_rng()
         )[0]
         if self.holding_time < self.minimum:
             self.holding_time = self.minimum
@@ -307,7 +317,11 @@ class PriceFunction_BondingCurve(PriceFunctionController):
         self._bonding_function = function
         self._max_supply = max_supply
 
-    def execute(self) -> float:
+    def execute(self, use_previous_supply: bool = True) -> float:
+        # ``use_previous_supply`` is accepted for interface parity with the
+        # other price controllers (TokenEconomy.execute passes it when
+        # dynamic_price is False); the bonding curve is always a function of
+        # the current supply, so the flag does not alter the computation.
         tokeneconomy = self.dependencies[TokenEconomy]
         current_supply = tokeneconomy.supply
         transaction_volume = tokeneconomy.transactions_volume_in_tokens
@@ -360,7 +374,11 @@ class PriceFunction_IssuanceCurve(PriceFunctionController):
         self._tokens_ever_issued = 0
         self._max_supply = max_supply
 
-    def execute(self) -> float:
+    def execute(self, use_previous_supply: bool = True) -> float:
+        # ``use_previous_supply`` is accepted for interface parity with the
+        # other price controllers (TokenEconomy.execute passes it when
+        # dynamic_price is False); the issuance curve always prices over all
+        # tokens ever issued, so the flag does not alter the computation.
         tokeneconomy = self.dependencies[TokenEconomy]
         supply_of_tokens = tokeneconomy.transactions_volume_in_tokens
 
@@ -389,6 +407,8 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         std_prior: float = 0.1,
         anchoring: float = 0.3,
         proportionate_noise=True,
+        *,
+        rng=None,
     ):
         """
 
@@ -404,6 +424,11 @@ class PriceFunction_LinearRegression(PriceFunctionController):
             equal to std_prior*previous_price. Hence the variance increases as the price increases.
             This relationship has been confirmed through empirical data, but the exact prior requires
             further validation.
+        rng : numpy.random.Generator, optional
+            When provided, the t-distribution noise draws of this instance come
+            from it. When None, a private generator seeded from OS entropy is
+            created lazily (no wall-clock, no global state); legacy callers
+            keep nondeterministic behavior.
 
         Returns
         -------
@@ -417,6 +442,13 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         self.std_prior = std_prior
         self.anchoring = anchoring
         self.proportionate_noise = proportionate_noise
+        self._rng = rng
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def execute(self, use_previous_supply: bool = True) -> float:
         tokeneconomy = self.dependencies[TokenEconomy]
@@ -452,10 +484,14 @@ class PriceFunction_LinearRegression(PriceFunctionController):
         if self.proportionate_noise:
             sample = (
                 log_price_new
-                + scipy.stats.t(13000).rvs(1) * self.std_prior * previous_price
+                + scipy.stats.t(13000).rvs(1, random_state=self._draw_rng())
+                * self.std_prior
+                * previous_price
             )
         else:
-            sample = log_price_new + scipy.stats.t(13000).rvs(1) * self.std_prior
+            sample = log_price_new + scipy.stats.t(13000).rvs(
+                1, random_state=self._draw_rng()
+            ) * self.std_prior
 
         price_new = (1 - self.anchoring) * np.exp(
             sample[0]

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, Mapping
 
 import pandas as pd
+import numpy as np
 
 
 PROFILE_VERSION = 1
@@ -42,12 +43,95 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _canonical_cell(value: Any) -> str:
+    """Stack-stable canonical rendering of one table cell.
+
+    pandas' ``to_csv`` float formatting varies across pandas versions, which
+    made persisted content hashes stack-dependent (a bundle published under
+    one pandas/pandas-reader stack failed validation under another). Python's
+    ``repr`` of a ``float``/``int`` is identical across the supported
+    dependency set, and correctly-rounded CSV float parsing yields the same
+    doubles on both stacks, so this canonical form is stable everywhere.
+    """
+    if value is None or (isinstance(value, float) and value != value):
+        return ""
+    try:
+        if bool(pd.isna(value)):
+            return ""
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (bool, np.bool_)):
+        return str(bool(value))
+    if isinstance(value, (int, np.integer)):
+        return str(int(value))
+    if isinstance(value, (float, np.floating)):
+        return repr(float(value))
+    return str(value)
+
+
+def reproducible_csv_text_hash(path: str | Path) -> str:
+    """Hash persisted CSV text with the ``run_id`` column removed.
+
+    Unlike the frame-based hash, this never parses floats, so it is identical
+    on every supported stack: pandas' CSV float *parser* (not just its
+    writer) can differ by one ulp across pandas versions, which made
+    frame-based hashes of committed precomputed bundles stack-dependent.
+    Hashing the persisted representation directly removes that dependency.
+    """
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    if not lines:
+        raise ArtifactProfileError(f"cannot hash empty CSV: {path}")
+    header = lines[0].split(",")
+    if "run_id" in header:
+        drop = header.index("run_id")
+        lines = [
+            ",".join(
+                field for index, field in enumerate(line.split(",")) if index != drop
+            )
+            for line in lines
+        ]
+    payload = ("\n".join(lines) + "\n").encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
 def reproducible_table_hash(data: pd.DataFrame) -> str:
     """Hash canonical table content while excluding unique bundle identity."""
 
     canonical = data.drop(columns=["run_id"], errors="ignore")
-    payload = canonical.to_csv(index=False, lineterminator="\n").encode("utf-8")
+    lines = [",".join(str(column) for column in canonical.columns)]
+    for row in canonical.itertuples(index=False, name=None):
+        lines.append(",".join(_canonical_cell(value) for value in row))
+    payload = ("\n".join(lines) + "\n").encode("utf-8")
     return hashlib.sha256(payload).hexdigest()
+
+
+def reproducible_json_hash(payload: Any) -> str:
+    """Hash canonical JSON content while excluding unique bundle identity.
+
+    ``run_id`` keys are stripped recursively before hashing, matching the
+    table-hash exclusion discipline; serialization is canonical
+    (sorted keys, tight separators, no NaN).
+    """
+
+    def strip(node: Any) -> Any:
+        if isinstance(node, Mapping):
+            return {
+                key: strip(value)
+                for key, value in node.items()
+                if key != "run_id"
+            }
+        if isinstance(node, list):
+            return [strip(value) for value in node]
+        return node
+
+    canonical = json.dumps(
+        strip(payload),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
 
 
 def _require_text(value: Any, field: str) -> str:
@@ -236,7 +320,12 @@ def validate_bundle(bundle_dir: str | Path) -> Dict[str, Any]:
         if list(metadata.get("columns", [])) != list(table.columns):
             raise ArtifactProfileError(f"column mismatch for output {name!r}")
         expected_content_hash = metadata.get("reproducible_content_sha256")
-        if expected_content_hash != reproducible_table_hash(table):
+        recomputed_hash = (
+            reproducible_csv_text_hash(path)
+            if metadata.get("format") == "csv"
+            else reproducible_table_hash(table)
+        )
+        if expected_content_hash != recomputed_hash:
             raise ArtifactProfileError(
                 f"reproducible content hash mismatch for output {name!r}"
             )

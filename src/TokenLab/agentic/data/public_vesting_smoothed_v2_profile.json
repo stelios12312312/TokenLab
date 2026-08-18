@@ -1,0 +1,105 @@
+{
+  "profile_version": 2,
+  "profile_id": "tokenlab-public-vesting-smoothed-v2",
+  "scenario_id": "public-vesting-smoothed-v2",
+  "units": {
+    "VTLB_price": "$ per VTLB",
+    "transactions_$": "illustrative $ per step",
+    "holding_time": "illustrative time units",
+    "supply": "VTLB"
+  },
+  "terminal_metrics": [
+    {
+      "id": "terminal_token_price",
+      "column": "VTLB_price",
+      "label": "Terminal modeled token price",
+      "unit": "$ per VTLB",
+      "kind": "continuous",
+      "absolute_tolerance": 0.001,
+      "description": "Final-step price emitted by the configured PriceFunction_LinearRegression component across Monte Carlo paths; a modeled outcome, not a market forecast."
+    },
+    {
+      "id": "terminal_circulating_supply",
+      "column": "supply",
+      "label": "Terminal circulating supply",
+      "unit": "VTLB",
+      "kind": "continuous",
+      "absolute_tolerance": 100,
+      "description": "Final-step circulating supply: the 150,000,000 VTLB TGE float plus all vested unlocks. The terminal released-since-TGE amount equals this value minus the 150,000,000 TGE float, and at the post-vesting boundary every pool's cumulative released amount reconciles exactly to its declared allocation, so circulating supply equals the full 1,000,000,000 illustrative total supply on every path regardless of the sampled Early Backers cliff (the latest possible final unlock across prior support is step 47) — identical to the concentrated variant's post-vesting supply."
+    },
+    {
+      "id": "terminal_fiat_transaction_volume",
+      "column": "transactions_$",
+      "label": "Terminal fiat transaction volume",
+      "unit": "illustrative $ per step",
+      "kind": "continuous",
+      "absolute_tolerance": 1000,
+      "description": "Final-step fiat-denominated transaction value replayed from the documented synthetic vesting-demo demand series (seed 20260819); it is identical across paths because the exogenous series is not an uncertain parameter."
+    },
+    {
+      "id": "terminal_holding_time",
+      "column": "holding_time",
+      "label": "Terminal holding time",
+      "unit": "illustrative time units",
+      "kind": "continuous",
+      "absolute_tolerance": 0.05,
+      "description": "Final-step holding time drawn by the configured HoldingTime_Stochastic component (lognorm) across Monte Carlo paths."
+    }
+  ],
+  "convergence": {
+    "relative_drift": 0.05,
+    "absolute_tolerance": {
+      "VTLB_price": 0.001,
+      "supply": 100,
+      "transactions_$": 1000,
+      "holding_time": 0.05
+    }
+  },
+  "tokenomics_coverage": {
+    "supply": {
+      "status": "modeled",
+      "detail": "Supply expands from the 150,000,000 VTLB TGE float to the full 1,000,000,000 illustrative total supply through five synthetic CliffVesting pools; the schedule is deterministic, exactly reconciling, and uncalibrated, and no mint or burn is modeled."
+    },
+    "emissions": {
+      "status": "absent",
+      "detail": "The scenario models no emissions schedule; supply expansion comes solely from the declared vesting unlocks of the fixed total supply."
+    },
+    "vesting_unlocks": {
+      "status": "modeled",
+      "detail": "modeled (synthetic illustrative schedule): five named CliffVesting pools (Ecosystem Incentives 250,000,000; Core Contributors 200,000,000; Early Backers 150,000,000; Community Reserve 150,000,000; Liquidity Bootstrap 100,000,000) with staggered zero-release cliffs of 6/12/18 months and smoothed 12-24 period linear unlocks, generated from documented constants in TokenLab.agentic.data.synthetic_vesting; illustrative, uncalibrated, and disjoint from any client allocation table. Each cliff is a zero-release delay, not a lump-sum unlock. Pool totals, cliffs, demand series, and seed are identical to the concentrated variant so the comparison isolates unlock pacing."
+    },
+    "liquidity": {
+      "status": "absent",
+      "detail": "The scenario models no liquidity depth or pool state."
+    },
+    "treasury": {
+      "status": "absent",
+      "detail": "No treasury component or treasury authority is configured."
+    },
+    "governance": {
+      "status": "absent",
+      "detail": "The scenario models no governance process or authority."
+    },
+    "staking_reward_source": {
+      "status": "absent",
+      "detail": "No staking pool, reward source, or staking yield is modeled."
+    },
+    "fdv": {
+      "status": "absent",
+      "detail": "FDV is not emitted or declared by this scenario's artifact contract."
+    },
+    "apy": {
+      "status": "absent",
+      "detail": "APY is not emitted and cannot be inferred from the published tables."
+    },
+    "demand_series": {
+      "status": "synthetic_illustrative",
+      "detail": "The replayed fiat volume series is generated from a documented logistic formula with recorded seed 20260819 (48 periods, illustrative $ per step); it is not observed data and carries no client or market lineage."
+    },
+    "priors": {
+      "status": "illustrative_uncalibrated",
+      "detail": "All four uncertain parameters are illustrative, uncalibrated, and declared independent; the price and holding-time triangular ranges bracket the library defaults of PriceFunction_LinearRegression and HoldingTime_Stochastic, and the integer Early Backers cliff prior (triangular 6/12/24 months, nearest-integer rounding) brackets the declared synthetic schedule. None is fitted to data."
+    }
+  },
+  "interpretation_boundary": "Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes under illustrative, uncalibrated, independent priors and a synthetic demand series; they are not confidence intervals, not forecasts, and not investment, launch, legal, financial, or decision-grade advice. Modeled unlock pressure is supply expansion only, not sell-pressure or liquidity modeling: no holder behavior, order flow, or market depth is simulated. Estimator confidence intervals name their estimator, method, and level separately. Live token decisions require qualified review and evidence outside this demo."
+}

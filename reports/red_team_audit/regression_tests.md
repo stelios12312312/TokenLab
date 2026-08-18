@@ -1,5 +1,16 @@
 # Red Team Audit Regression Tests
 
+## Demo gallery — 2026-08-14
+
+- `test_gallery_lock_and_completed_run_limit_are_process_bounded` prevents per-server locks from racing the process-global RNG and prevents unlimited submissions within one server process.
+- `test_gallery_http_sanitizes_unexpected_backend_failures` proves unexpected ordinary exceptions become a path-free HTTP 422 response.
+- `test_gallery_busy_state_rejects_overlapping_run_without_output` proves overlap rejection creates no output directory.
+- `test_gallery_http_catalog_run_download_and_negative_paths` proves the real HTTP-to-runner-to-bundle-to-download path plus byte, type, path, and non-finite input rejection.
+
+Command: `/tmp/tokenlab-gallery-py310.OD2grB/venv/bin/pytest -q tests/test_demo_gallery.py`
+
+Latest focused result at audit time: `25 passed`.
+
 This document defines regression tests that prevent the recurrence of identified findings.
 
 ## RT-001: Verification of Spec-Aligned Defaults (F-001, F-002, F-003) (RESOLVED)

@@ -1,0 +1,24 @@
+[z1 solvency adapter diagnostics]
+source_scenario: stable_case
+published_as: stable
+seed: 42
+epochs: 104
+repetitions: 1
+classification: stable
+terminal_metrics:
+  final_reserve_ratio: 0.9956709436294373
+  final_treasury: 7705395.487914335
+  max_settlement_queue: 2.842170943040401e-14
+  throttle_epochs: 0
+  total_burns: 1079.097582866804
+  classification: stable
+
+[invariant verification]
+status: pass
+epochs_checked: 105
+errors: none
+
+[solvency locks]
+L1 (HARD) PASS: Solvency ratio = 0.027 (<0.8 → structurally stable)
+L2 (SOFT) PASS: settlement_ratio (0.30) ≤ 2 × fee_share (0.50)
+L3 (HARD) PASS: Brand inflow = 1.00% of AR (≥1%)

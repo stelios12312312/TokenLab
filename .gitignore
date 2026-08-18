@@ -195,3 +195,9 @@ plans/.current_plan*
 plans/ACTIVE_PLAN.*
 plans/.thread_targets/
 plans/.audit-archive/
+
+# Regenerable browser-journey run bundles (evidence screenshots/logs are kept)
+scratch/browser_evidence/gallery-runs/
+
+# Committed precomputed Z1 gallery bundles are deliberate package data
+!src/TokenLab/agentic/data/z1_solvency_gallery/

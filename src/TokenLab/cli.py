@@ -293,12 +293,164 @@ def run_project(
         sys.exit(1)
 
 
+# ---------------------------------------------------------------------------
+# Assumption-aware agent operations (deterministic JSON subcommands).
+# These dispatch before the legacy project runner parser; the legacy
+# commands above are untouched.
+# ---------------------------------------------------------------------------
+
+AGENTIC_SUBCOMMANDS = (
+    "inspect-assumptions",
+    "validate-uncertainty",
+    "propose-run",
+    "run-simulation",
+    "summarize-evidence",
+)
+
+
+def _agentic_parser():
+    parser = argparse.ArgumentParser(
+        prog="tokenlab",
+        description=(
+            "Assumption-aware agent operations; each prints one JSON result "
+            "envelope and exits non-zero on refused/error."
+        ),
+    )
+    subparsers = parser.add_subparsers(dest="operation", required=True)
+
+    def add_scenario_args(sub):
+        sub.add_argument(
+            "scenario",
+            help="Path to an allowlisted .yaml/.yml/.json scenario",
+        )
+        sub.add_argument(
+            "--allowed-root",
+            action="append",
+            default=[],
+            help="Additional allowlisted scenario root (repeatable)",
+        )
+
+    add_scenario_args(
+        subparsers.add_parser(
+            "inspect-assumptions",
+            help="Classify governed inputs and ledger tokenomics coverage",
+        )
+    )
+    add_scenario_args(
+        subparsers.add_parser(
+            "validate-uncertainty",
+            help="Validate the v2 uncertainty block with structured questions",
+        )
+    )
+    propose = subparsers.add_parser(
+        "propose-run", help="Propose (never execute) a run tier for a purpose"
+    )
+    add_scenario_args(propose)
+    propose.add_argument(
+        "--purpose",
+        required=True,
+        help="Run purpose, e.g. exploration, analysis, decision, smoke",
+    )
+    run = subparsers.add_parser(
+        "run-simulation", help="Gated execution into an atomic run bundle"
+    )
+    add_scenario_args(run)
+    run.add_argument(
+        "--run-tier",
+        choices=["test", "fast", "standard", "deep"],
+        help="Schema v2 Monte Carlo tier (mutually exclusive with --paths)",
+    )
+    run.add_argument(
+        "--paths",
+        type=int,
+        help="Schema v2 explicit path count (mutually exclusive with --run-tier)",
+    )
+    run.add_argument("--seed", type=int, help="Explicit master seed (0..2^32-1)")
+    run.add_argument(
+        "--output-dir",
+        default="outputs/agentic",
+        help="Directory that will contain the run bundle",
+    )
+    run.add_argument("--run-id", help="Safe, unique bundle name")
+    run.add_argument(
+        "--allowed-output-root",
+        action="append",
+        default=[],
+        help="Additional allowlisted output root (repeatable)",
+    )
+    summarize = subparsers.add_parser(
+        "summarize-evidence",
+        help="Summarize a published bundle with citations for every number",
+    )
+    summarize.add_argument("bundle", help="Path to a published run bundle directory")
+    return parser
+
+
+def _agentic_main(argv):
+    import contextlib
+    import json
+
+    from TokenLab.agentic import assumptions as agent_assumptions
+
+    args = _agentic_parser().parse_args(argv)
+    try:
+        # Simulation components may print warnings; keep stdout pure JSON.
+        with contextlib.redirect_stdout(sys.stderr):
+            if args.operation == "inspect-assumptions":
+                result = agent_assumptions.inspect_assumptions(
+                    args.scenario, allowed_roots=args.allowed_root
+                )
+            elif args.operation == "validate-uncertainty":
+                result = agent_assumptions.validate_uncertainty(
+                    args.scenario, allowed_roots=args.allowed_root
+                )
+            elif args.operation == "propose-run":
+                result = agent_assumptions.propose_run(
+                    args.scenario, args.purpose, allowed_roots=args.allowed_root
+                )
+            elif args.operation == "run-simulation":
+                result = agent_assumptions.run_simulation(
+                    args.scenario,
+                    run_tier=args.run_tier,
+                    paths=args.paths,
+                    seed=args.seed,
+                    output_dir=args.output_dir,
+                    run_id=args.run_id,
+                    allowed_roots=args.allowed_root,
+                    allowed_output_roots=args.allowed_output_root,
+                )
+            else:
+                result = agent_assumptions.summarize_evidence(args.bundle)
+    except Exception as exc:
+        print(
+            json.dumps(
+                {
+                    "operation": args.operation,
+                    "status": "error",
+                    "reasons": [str(exc)],
+                },
+                sort_keys=True,
+            ),
+            file=sys.stderr,
+        )
+        return 1
+    print(json.dumps(result, indent=2, sort_keys=True))
+    if result.get("status") == "ok":
+        return 0
+    return 2 if result.get("status") == "refused" else 1
+
+
 def main(
     argv=None,
     projects_dir=None,
     source_dir=None,
     command_prefix="tokenlab",
 ):
+    if argv is None:
+        argv = sys.argv[1:]
+    if argv and argv[0] in AGENTIC_SUBCOMMANDS:
+        return _agentic_main(argv)
+
     parser = argparse.ArgumentParser(
         description="TokenLab Unified Simulation Runner CLI",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -365,6 +517,7 @@ def main(
 
 
 __all__ = [
+    "AGENTIC_SUBCOMMANDS",
     "BANNER",
     "COLOR_BLUE",
     "COLOR_BOLD",

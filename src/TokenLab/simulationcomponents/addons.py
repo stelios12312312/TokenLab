@@ -46,17 +46,28 @@ class AddOn_RandomNoise(AddOn_Noise):
         noise_dist: scipy.stats = scipy.stats.norm,
         dist_params: Dict = {"loc": 0, "scale": 1},
         add_value: bool = True,
+        rng=None,
     ) -> None:
         """
         Parameters
         ----------
         noise_dist: A scipy.stats distribution (by default normal)
         dist_params: The distribution parameters in the format {'loc':float,'scale':float}
+        rng: Optional numpy.random.Generator. When provided, all randomness for this
+            instance is drawn from it. When None, a private generator seeded from OS
+            entropy is created lazily on first use (no wall-clock, no global state).
         """
 
         self.noise_dist = noise_dist
         self.dist_params = dist_params
         self.add_value = add_value
+        self._rng = rng
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     # need to use **kwargs for compatibility with other classes that take input
     # like AddOn_RandomNoiseProportional
@@ -77,8 +88,9 @@ class AddOn_RandomNoise(AddOn_Noise):
 
         value = kwargs.get("value", 0)
 
-        seed = int(int(time.time()) * np.random.rand())
-        noise = self.noise_dist.rvs(size=1, **self.dist_params, random_state=seed)[0]
+        noise = self.noise_dist.rvs(
+            size=1, **self.dist_params, random_state=self._draw_rng()
+        )[0]
         if self.add_value:
             final = value + noise
 
@@ -98,6 +110,7 @@ class AddOn_RandomNoiseProportional(AddOn_Noise):
         mean_param=0,
         std_param=5,
         add_value: bool = True,
+        rng=None,
     ) -> None:
         """
 
@@ -110,20 +123,30 @@ class AddOn_RandomNoiseProportional(AddOn_Noise):
         std_param: The effective std of the distribution becomes value/std_param, where
         value is externally provided in the apply function.
 
+        rng: Optional numpy.random.Generator. When provided, all randomness for this
+            instance is drawn from it. When None, a private generator seeded from OS
+            entropy is created lazily on first use (no wall-clock, no global state).
+
         """
 
         self.noise_dist = noise_dist
         self.mean_param = mean_param
         self.std_param = std_param
         self.add_value = add_value
+        self._rng = rng
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def apply(self, value) -> float:
-        seed = int(int(time.time()) * np.random.rand())
         noise = self.noise_dist.rvs(
             size=1,
             loc=self.mean_param + value,
             scale=value / self.std_param,
-            random_state=seed,
+            random_state=self._draw_rng(),
         )[0]
 
         if self.add_value:
@@ -146,15 +169,26 @@ class AddOn_RandomReduction(AddOn_Noise):
     def __init__(
         self,
         reduction_dist: scipy.stats.rv_continuous = scipy.stats.uniform(loc=0, scale=1),
+        rng=None,
     ) -> None:
         """
         Parameters
         ----------
         reduction_dist: A scipy.stats distribution for the reduction percentage
                         (by default uniform distribution between 0 and 1).
+        rng: Optional numpy.random.Generator. When provided, all randomness for this
+            instance is drawn from it. When None, a private generator seeded from OS
+            entropy is created lazily on first use (no wall-clock, no global state).
         """
         super().__init__()
         self.reduction_dist = reduction_dist
+        self._rng = rng
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def apply(self, value) -> float:
         """
@@ -170,8 +204,7 @@ class AddOn_RandomReduction(AddOn_Noise):
             The value after applying the random reduction.
         """
         # Generate a random reduction percentage
-        seed = int(time.time() * np.random.rand())
-        reduction_percentage = self.reduction_dist.rvs(random_state=seed)
+        reduction_percentage = self.reduction_dist.rvs(random_state=self._draw_rng())
 
         # Calculate the reduced value
         reduced_value = value * (1 - reduction_percentage)

@@ -1,0 +1,29 @@
+{
+  "console": [],
+  "responses": [
+    {
+      "url": "http://127.0.0.1:50298/",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/gallery",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs",
+      "status": 202
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-052c18375c57",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-052c18375c57",
+      "status": 200
+    },
+    {
+      "url": "http://127.0.0.1:50298/api/stochastic/runs/mc-052c18375c57",
+      "status": 200
+    }
+  ]
+}

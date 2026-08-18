@@ -46,7 +46,51 @@ python -m pip install .
 
 ### Public demo — the best place to start
 
-Run the reviewed, self-contained scenario from an installed package:
+Start the interactive reviewed-scenario gallery from an installed package:
+
+```bash
+tokenlab-dashboard --gallery --output-dir outputs/demo-gallery
+```
+
+Open the printed loopback URL. The flagship **Stochastic growth — Monte Carlo
+uncertainty** demo runs the real Monte Carlo runner server-side: edit any of
+the three reviewed priors (min/mode/max) or the master seed, pick an
+interactive run tier, and watch requested/completed/failed counts live. The
+result view shows the cross-path fan chart ("modeled outcomes: P10–P90"), the
+terminal outcome histogram, estimator confidence intervals, Spearman
+sensitivity, convergence status, the tokenomics coverage ledger, and
+downloadable evidence (results, parameter samples, manifest, and more).
+
+The **Deterministic scenario explorer** is the honest negative control: it
+runs repeated identical deterministic paths, is *not* Monte Carlo, and its
+zero dispersion is a property of the deterministic controllers, not
+statistical evidence. Choose the baseline, downside, or upside preset, adjust
+the three bounded controls, and select **Run simulation**. The page calls
+the real headless runner, compares profile-declared series, shows provenance,
+and exposes only validated source-table downloads. Scenario files, model class
+names, output locations, and arbitrary configuration keys are never accepted
+from the browser.
+
+The stochastic demo is also one command away:
+
+```bash
+tokenlab-demo public-growth-uncertainty-v2 --run-tier fast --output-dir outputs/demo
+```
+
+Run tiers are frozen: `test` (32 paths / 200 bootstrap resamples), `fast`
+(100/500, default; about a second wall time on a recent laptop), `standard`
+(500/2000), and `deep` (2000/5000, CLI/background-only — never servable to the
+browser). The requested path count is never silently reduced; failed paths are
+counted, published, and block claim eligibility. Modeled outcome intervals
+(P10–P90) are cross-path spreads of simulated outcomes under illustrative,
+uncalibrated, independent priors — they are not confidence intervals and not
+forecasts. Estimator intervals are labeled separately with estimator, method
+(percentile bootstrap), and level. Supply is fixed at 250,000,000 TLAB;
+emissions, vesting/unlocks, liquidity, treasury, governance, staking reward
+source, FDV, and APY are explicitly absent from this scenario.
+
+The original one-command evidence flow and read-only bundle viewer remain
+available:
 
 ```bash
 tokenlab-demo --output-dir outputs/demo --run-id public-demo
@@ -59,15 +103,18 @@ bundle containing `manifest.json`, raw and summary CSV tables, the full captured
 six metrics that are actually present and explicitly marks emissions, unlocks,
 liquidity, treasury, governance, staking yield, FDV, and APY unavailable.
 
-The second command serves a dependency-free, read-only dashboard at
+The gallery and the second command serve dependency-free local dashboards at
 `http://127.0.0.1:8765`. It charts only profile-declared metrics, keeps absent
 concepts visible, provides the exact source-table downloads, and shows run
-provenance. The server accepts loopback hosts only, has no upload or mutation
-routes, makes no remote request, and stops with `Ctrl-C`.
+provenance. Gallery mutation is limited to a small typed/ranged JSON request;
+the legacy viewer remains strictly read-only. Both accept loopback hosts only,
+make no remote request, and stop with `Ctrl-C`.
 
-The scenario is deterministic and illustrative: repeated paths do not represent
-statistical uncertainty, and the output is not investment, launch, legal,
-financial, forecast, or decision-grade advice. See the
+The deterministic explorer's scenario is deterministic and illustrative:
+repeated paths do not represent statistical uncertainty. The stochastic
+flagship's priors are illustrative and uncalibrated: its intervals describe
+modeled outcomes under those priors, not market confidence. Neither output is
+investment, launch, legal, financial, forecast, or decision-grade advice. See the
 [three-minute presenter guide](docs/public-demo.md) for the recommended talk
 track and reproducibility check.
 

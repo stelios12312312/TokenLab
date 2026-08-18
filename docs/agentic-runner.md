@@ -59,11 +59,65 @@ diagnostic attachment, then prints at most six presentation lines. The completed
 bundle is validated before the command reports success. See
 [`public-demo.md`](public-demo.md) for the talk track.
 
+## Monte Carlo runner (schema v2 and v3)
+
+Schema v2 scenarios add an `uncertainty` block of approved, validated priors;
+schema v3 scenarios (below) use the same block with ecosystem paths.
+`MonteCarloRunner` executes each Monte Carlo path with freshly sampled
+parameters, a rebuilt scenario graph, and per-context generators derived from
+`(master_seed, namespace, path_index)` — path prefixes are stable across
+budgets, and no global RNG state is touched:
+
+```bash
+python -m TokenLab.agentic.runner \
+  src/TokenLab/agentic/data/public_growth_uncertainty_v2.yaml \
+  --output-dir outputs/agentic --run-tier fast
+```
+
+`--run-tier` and `--paths` are mutually exclusive; explicit path counts are
+bounded and never silently reduced. Frozen tiers:
+
+| Tier | Paths | Bootstrap resamples | Measured wall time* |
+|---|---|---|---|
+| `test` | 32 | 200 | ≈0.1 s |
+| `fast` | 100 | 500 | ≈0.7–1.1 s |
+| `standard` | 500 | 2000 | ≈8 s |
+| `deep` | 2000 | 5000 | CLI/background-only |
+
+\* Canonical public v2 scenario on an Apple-silicon laptop (py3.13,
+numpy 2.3); standard/deep budgets are dominated by bootstrap resampling. The
+gallery job API serves only the measured-safe interactive tiers
+(`test`/`fast`/`standard`).
+
+A v2 run publishes a `manifest_version: 2` bundle with `results.csv` (one row
+per completed path and step), `parameter_samples.csv` (every draw with seed
+lineage), `iteration_summary.csv` (per-step cross-path quantiles), and four
+JSON documents: `terminal_summary` (estimates, modeled outcome intervals,
+estimator confidence intervals), `sensitivity` (Spearman rank records with
+bootstrap CIs; `insufficient_paths` below 100 completed paths instead of a
+fabricated rank), `convergence` (nested-checkpoint drift against
+profile-declared tolerances), and `path_failures` (exact
+requested/completed/failed denominators). Failed paths are recorded and block
+claim eligibility; a cancelled run publishes nothing.
+
+The installed stochastic demo packages the same path:
+
+```bash
+tokenlab-demo public-growth-uncertainty-v2 --run-tier fast --output-dir outputs/demo
+```
+
+Interval semantics are contract-enforced: cross-path P10–P90 spreads are
+labeled *modeled outcome intervals* and can never be labeled confidence
+intervals; confidence intervals name their estimator, method (percentile
+bootstrap), and level.
+
 ## Scenario contract
 
-Schema version 1 has five top-level keys:
+Schema version 1 has five top-level keys (schema version 2 adds the
+`uncertainty` block described in the Monte Carlo section above; schema
+version 3 adds the optional typed-reference blocks described below):
 
-- `schema_version`: currently `1`.
+- `schema_version`: currently `1`, `2`, or `3`.
 - `scenario_id`: a safe identifier used in lineage.
 - `economy`: the existing economy type, its constructor parameters, holding-time,
   supply, and price controller specifications, plus supply and agent pools.
@@ -77,6 +131,49 @@ and a transaction controller. Unknown keys, versions, component names, duplicate
 pool ids, unsafe identifiers, and non-data YAML fail before simulation starts.
 YAML is parsed with `yaml.safe_load`; scenario values never select a Python import.
 
+### Schema v3: typed references (additive)
+
+Schema v3 is purely additive — v1 and v2 documents parse and behave
+byte-identically — and a v3 document declares `economy` XOR `ecosystem`,
+never both. The new optional blocks are:
+
+- `agent_pools[].staking: {type, parameters}` — a staking controller from
+  the finite staking allowlist (`SupplyStakerLockup`, `SupplyStakerMonthly`)
+  for `AgentPool_Staking` pools. `reward_as_perc` is required and must be
+  pinned explicitly (the library default is multiplicative and is never
+  inherited silently). `staking_amount` and `rewards` accept a finite
+  number or a distribution spec `{dist: "uniform", low, high}` — the only
+  allowlisted distribution — resolved to seeded draws at build time.
+- `treasuries: [{id, parameters}]` plus `agent_pools[].treasury: <id>` — a
+  finite treasury table (`TreasuryBasic`); a pool's treasury reference must
+  name a declared id, so a staking reward source is always explicit.
+  Rewards without a declared treasury are minted dilution; rewards with one
+  are treasury-drawn, and the conservation tests pin both accountings.
+- `ecosystem: {master, economies: [{id, <economy fields>}], channels:
+  [{from, to, kind, percentage}]}` — a multi-economy document orchestrated
+  by `TokenEcosystem`. `master` must name a declared economy and must be
+  declared first; economy ids must be unique; channels are directional
+  between declared economies, `kind` is validated at schema time (`fiat` or
+  `token`), and cycles are schema errors rather than runtime surprises. A
+  `TransactionManagement_Channeled` controller is never constructed from
+  raw parameters: it is wired from a declared channel by reference.
+- Named curve specs `{name, params}` for the bonding/issuance price
+  functions (`PriceFunction_BondingCurve`, `PriceFunction_IssuanceCurve`)
+  against the finite curve allowlist: `log_power` (`multiplier`,
+  `growth`, `base`: price(x) = multiplier · (1 + growth) ^
+  log_base(max(x, 1))) and `quadratic` (`base`, `coefficient`, `exponent`:
+  price(x) = base + coefficient · x ^ exponent).
+
+Resolution is two-pass and fail-closed: names are parsed, references are
+resolved against the declared ids, and only then is any object constructed.
+Missing reward source/treasury references, unknown economy or channel
+references, duplicate ids, channel cycles, master-not-in-set, invalid
+channel kinds, non-allowlisted curve/distribution/component names, and any
+callable- or import-shaped value are named errors that carry the allowed
+list. Uncertainty priors extend to `ecosystem.economies[i].…` and
+`ecosystem.channels[i].percentage` paths for v3 documents only; v1/v2 path
+resolution is unchanged.
+
 The checked-in
 [`notebook_01_simple_fiat.yaml`](../examples/scenarios/notebook_01_simple_fiat.yaml)
 is the complete reference. It corresponds to the first hand-written simulation
@@ -88,21 +185,31 @@ price 0.1.
 
 The default registry exposes existing classes in these categories:
 
-- Economy: `TokenEconomy_Basic`.
+- Economy: `TokenEconomy_Basic` and `TokenEconomy_Dependent` (the dependent
+  form builds only inside a schema v3 ecosystem with a declared master).
+- Ecosystem: `TokenEcosystem` (schema v3 ecosystem documents).
 - Simulator: `TokenMetaSimulator`.
 - Holding time: `HoldingTime_Constant`, `HoldingTime_Stochastic`, and
   `HoldingTime_Adaptive`.
-- Price: `PriceFunction_EOE` and `PriceFunction_LinearRegression`.
+- Price: `PriceFunction_EOE`, `PriceFunction_LinearRegression`,
+  `PriceFunction_BondingCurve`, and `PriceFunction_IssuanceCurve` (the
+  curve forms take allowlisted named curve specs, never callables).
 - Supply: constant, from-data, cliff-vesting, bonding, adaptive-stochastic, burn,
   investor-dumper-spaced, and speculator controllers.
+- Staking: `SupplyStakerLockup` and `SupplyStakerMonthly` (schema v3
+  staking blocks only).
 - Transactions: constant, from-data, assumptions, trend, market-cap stochastic,
-  simple trend, and stochastic controllers.
+  simple trend, and stochastic controllers; `TransactionManagement_Channeled`
+  is wired from declared ecosystem channels, never built from raw parameters.
+- Treasuries: `TreasuryBasic` (schema v3 declared treasuries).
 - User growth: constant, from-data, spaced, and stochastic controllers.
-- Agent pools: `AgentPool_Basic` and `AgentPool_BuyBack`.
+- Agent pools: `AgentPool_Basic`, `AgentPool_BuyBack`, and
+  `AgentPool_Staking` (requires a schema v3 staking block).
 
-Some existing advanced classes require callable objects, another economy, a
-treasury, a staking pool, or other runtime objects. They are intentionally not
-data-configurable by default. Applications may create a `ComponentRegistry`,
+Classes that still require arbitrary callables, import strings, or runtime
+object injection remain intentionally not data-configurable: schema v3
+admits only the finite allowlists above. Applications may create a
+`ComponentRegistry`,
 register a reviewed class under the correct category, and pass it to
 `ScenarioFactory`; duplicate names require an explicit `replace=True`. This
 programmatic extension path does not make arbitrary scenario imports possible.

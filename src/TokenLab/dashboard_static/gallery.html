@@ -1,0 +1,1362 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TokenLab — Scenario Gallery</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --ink: #090d16;
+      --panel: #111827;
+      --panel-2: #172033;
+      --line: #2a354a;
+      --text: #f4f1e8;
+      --muted: #aeb8c8;
+      --lime: #b8f56a;
+      --aqua: #5fe1d2;
+      --gold: #ffbd59;
+      --red: #ff7a80;
+      --blue: #7aa8ff;
+      --radius: 18px;
+      --shadow: 0 20px 55px rgba(0, 0, 0, .28);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+        "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    html { background: var(--ink); }
+    body {
+      min-height: 100vh;
+      margin: 0;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 15% -10%, rgba(95, 225, 210, .13), transparent 34rem),
+        radial-gradient(circle at 95% 10%, rgba(184, 245, 106, .11), transparent 30rem),
+        var(--ink);
+    }
+    button, input, select { font: inherit; }
+    button, select, input { color: inherit; }
+    button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible {
+      outline: 3px solid var(--aqua);
+      outline-offset: 3px;
+    }
+    .shell { width: min(1440px, 100%); margin: 0 auto; padding: 0 28px 42px; }
+    header {
+      min-height: 88px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 24px;
+      border-bottom: 1px solid rgba(174, 184, 200, .18);
+    }
+    .brand { display: flex; align-items: center; gap: 14px; }
+    .mark {
+      width: 42px; height: 42px; display: grid; place-items: center;
+      border: 1px solid rgba(184, 245, 106, .55); border-radius: 13px;
+      background: linear-gradient(145deg, rgba(184,245,106,.16), rgba(95,225,210,.08));
+      color: var(--lime); font-weight: 900; letter-spacing: -.08em;
+    }
+    .brand strong { display: block; font-size: 1.05rem; letter-spacing: -.02em; }
+    .brand span { display: block; margin-top: 2px; color: var(--muted); font-size: .78rem; }
+    .status-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      min-height: 34px; padding: 7px 12px; border: 1px solid var(--line);
+      border-radius: 999px; color: var(--muted); background: rgba(17,24,39,.75);
+      font-size: .78rem; font-weight: 760; text-transform: uppercase; letter-spacing: .09em;
+    }
+    .status-pill::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+    .status-pill[data-state="running"]::before { background: var(--aqua); animation: pulse 1s infinite; }
+    .status-pill[data-state="success"]::before { background: var(--lime); }
+    .status-pill[data-state="empty"]::before,
+    .status-pill[data-state="partial"]::before { background: var(--gold); }
+    .status-pill[data-state="invalid"]::before { background: var(--red); }
+    @keyframes pulse { 50% { opacity: .28; transform: scale(.75); } }
+    .hero {
+      display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, 430px);
+      gap: 38px; align-items: end; padding: 58px 0 34px;
+    }
+    .eyebrow { color: var(--lime); font-size: .76rem; font-weight: 850; letter-spacing: .14em; text-transform: uppercase; }
+    h1 { max-width: 760px; margin: 13px 0 16px; font-size: clamp(2.45rem, 5.4vw, 5.4rem); line-height: .94; letter-spacing: -.065em; }
+    .hero p { max-width: 700px; margin: 0; color: var(--muted); font-size: 1.03rem; line-height: 1.65; }
+    .boundary {
+      padding: 18px 20px; border: 1px solid rgba(255, 189, 89, .36);
+      border-radius: var(--radius); color: #f7d7a6; background: rgba(255, 189, 89, .07);
+      font-size: .86rem; line-height: 1.55;
+    }
+    main { display: grid; grid-template-columns: 360px minmax(0, 1fr); gap: 18px; align-items: start; }
+    .panel { border: 1px solid var(--line); border-radius: var(--radius); background: rgba(17, 24, 39, .88); box-shadow: var(--shadow); }
+    .setup { position: sticky; top: 18px; overflow: hidden; }
+    .panel-head { padding: 21px 22px 18px; border-bottom: 1px solid var(--line); }
+    .panel-head h2, .panel-head h3 { margin: 0; font-size: 1rem; letter-spacing: -.02em; }
+    .panel-head p { margin: 7px 0 0; color: var(--muted); font-size: .8rem; line-height: 1.45; }
+    .setup-body { padding: 20px 22px 22px; }
+    .field-label { display: block; margin-bottom: 8px; color: var(--muted); font-size: .72rem; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
+    select, input[type="number"] {
+      width: 100%; min-height: 43px; border: 1px solid var(--line); border-radius: 10px;
+      background: #0e1524; padding: 9px 11px;
+    }
+    .demo-meta { margin: 14px 0 22px; }
+    .demo-meta h3 { margin: 0 0 6px; font-size: 1.28rem; }
+    .demo-meta p { margin: 0; color: var(--muted); font-size: .84rem; line-height: 1.52; }
+    .maturity { display: inline-block; margin-top: 11px; padding: 5px 8px; border-radius: 7px; color: var(--aqua); background: rgba(95,225,210,.09); font-size: .7rem; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; }
+    .preset-list { display: grid; gap: 8px; margin-bottom: 24px; }
+    .preset-card {
+      width: 100%; text-align: left; border: 1px solid var(--line); border-radius: 12px;
+      padding: 13px 14px; color: var(--text); background: #0e1524; cursor: pointer;
+      transition: border-color .18s, background .18s, transform .18s;
+    }
+    .preset-card:hover { transform: translateY(-1px); border-color: #546078; }
+    .preset-card[aria-pressed="true"] { border-color: var(--lime); background: rgba(184,245,106,.08); }
+    .preset-card strong { display: block; font-size: .88rem; }
+    .preset-card span { display: block; margin-top: 4px; color: var(--muted); font-size: .74rem; line-height: 1.38; }
+    .controls { display: grid; gap: 19px; }
+    .control-head { display: flex; justify-content: space-between; gap: 10px; align-items: baseline; }
+    .control-head label { font-size: .82rem; font-weight: 760; }
+    .control-head output { color: var(--lime); font-size: .76rem; font-variant-numeric: tabular-nums; }
+    .control-copy { margin: 5px 0 10px; color: var(--muted); font-size: .7rem; line-height: 1.4; }
+    .control-inputs { display: grid; grid-template-columns: minmax(0, 1fr) 92px; gap: 10px; align-items: center; }
+    input[type="range"] { width: 100%; accent-color: var(--lime); }
+    .run-button {
+      width: 100%; min-height: 50px; margin-top: 24px; border: 0; border-radius: 12px;
+      color: #10150c; background: var(--lime); font-weight: 900; cursor: pointer;
+      box-shadow: 0 12px 28px rgba(184,245,106,.16);
+    }
+    .run-button:hover { filter: brightness(1.04); }
+    .run-button:disabled { opacity: .55; cursor: wait; }
+    .workspace { display: grid; gap: 18px; min-width: 0; }
+    .overview { padding: 24px; }
+    .overview-top { display: flex; justify-content: space-between; gap: 18px; align-items: start; }
+    .overview h2 { margin: 0; font-size: 1.55rem; letter-spacing: -.035em; }
+    .overview p { margin: 8px 0 0; color: var(--muted); font-size: .86rem; line-height: 1.5; }
+    .run-id { max-width: 260px; color: var(--muted); font: 700 .68rem ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; text-align: right; }
+    .metric-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 22px; }
+    .metric-card { min-height: 112px; padding: 16px; border: 1px solid var(--line); border-radius: 13px; background: #0e1524; }
+    .metric-card span { color: var(--muted); font-size: .7rem; line-height: 1.3; }
+    .metric-card strong { display: block; margin-top: 12px; font-size: clamp(1.25rem, 2.8vw, 2.1rem); letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+    .metric-card small { display: block; margin-top: 5px; color: var(--muted); font-size: .65rem; }
+    .chart-panel { overflow: hidden; }
+    .chart-toolbar { display: flex; justify-content: space-between; gap: 14px; align-items: end; padding: 20px 22px 0; }
+    .chart-toolbar h2 { margin: 0; font-size: 1rem; }
+    .chart-toolbar p { margin: 5px 0 0; color: var(--muted); font-size: .73rem; }
+    .metric-picker { width: min(300px, 48%); }
+    .chart-wrap { min-height: 390px; padding: 14px 14px 18px; }
+    #comparison-chart { width: 100%; min-height: 350px; display: block; }
+    .chart-empty { min-height: 350px; display: grid; place-items: center; color: var(--muted); text-align: center; padding: 30px; }
+    .chart-wrap svg, .detail-body svg { width: 100%; height: auto; display: block; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; padding: 0 24px 22px; }
+    .legend-item { display: inline-flex; align-items: center; gap: 7px; color: var(--muted); font-size: .72rem; }
+    .legend-item i { width: 20px; height: 3px; border-radius: 2px; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    .detail-panel { padding-bottom: 20px; min-width: 0; }
+    .detail-body { padding: 18px 22px 0; overflow-x: auto; }
+    .facts { display: grid; gap: 11px; margin: 0; }
+    .fact { display: grid; grid-template-columns: 105px minmax(0,1fr); gap: 12px; border-bottom: 1px solid rgba(42,53,74,.72); padding-bottom: 10px; }
+    .fact dt { color: var(--muted); font-size: .7rem; }
+    .fact dd { margin: 0; font: 700 .72rem ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
+    .downloads { display: grid; gap: 8px; }
+    .unavailable { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+    .unavailable-item { padding: 12px 13px; border: 1px solid var(--line); border-radius: 10px; background: #0e1524; }
+    .unavailable-item strong { display: block; color: var(--gold); font-size: .73rem; text-transform: uppercase; letter-spacing: .06em; }
+    .unavailable-item span { display: block; margin-top: 5px; color: var(--muted); font-size: .7rem; line-height: 1.4; }
+    .download {
+      display: flex; justify-content: space-between; gap: 12px; align-items: center;
+      min-height: 45px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px;
+      color: var(--text); text-decoration: none; background: #0e1524; font-size: .75rem;
+    }
+    .download span:last-child { color: var(--aqua); }
+    .message {
+      display: none; margin-bottom: 18px; padding: 13px 15px; border: 1px solid var(--line);
+      border-radius: 12px; color: var(--muted); background: rgba(17,24,39,.9); font-size: .8rem; line-height: 1.45;
+    }
+    .message.visible { display: block; }
+    .message.invalid { border-color: rgba(255,122,128,.5); color: #ffc2c5; }
+    footer { padding: 34px 0 0; color: var(--muted); font-size: .72rem; line-height: 1.55; }
+    .muted { color: var(--muted); }
+    template { display: none; }
+    .status-pill[data-state="insufficient"]::before,
+    .status-pill[data-state="incomplete"]::before,
+    .status-pill[data-state="cancelled"]::before { background: var(--gold); }
+    .status-pill[data-state="invalid-spec"]::before,
+    .status-pill[data-state="backend-error"]::before { background: var(--red); }
+    .cancel-button {
+      width: 100%; min-height: 44px; margin-top: 10px; border: 1px solid var(--red);
+      border-radius: 12px; color: var(--red); background: transparent; font-weight: 800;
+      cursor: pointer;
+    }
+    .cancel-button:hover { background: rgba(255,122,128,.08); }
+    .tier-note { margin: 6px 0 16px; color: var(--muted); font-size: .7rem; line-height: 1.4; }
+    .prior {
+      margin: 0 0 14px; padding: 12px 13px; border: 1px solid var(--line);
+      border-radius: 12px; background: #0e1524;
+    }
+    .prior legend { padding: 0 6px; color: var(--aqua); font-size: .74rem; font-weight: 800; }
+    .prior-family { margin: 0 0 10px; color: var(--muted); font-size: .68rem; }
+    .prior-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .prior-grid label, .prior-approval label {
+      display: block; margin-bottom: 4px; color: var(--muted); font-size: .64rem;
+      font-weight: 800; text-transform: uppercase; letter-spacing: .08em;
+    }
+    .prior-grid input { width: 100%; min-height: 36px; border: 1px solid var(--line); border-radius: 8px; background: #0b1120; padding: 6px 8px; }
+    .prior-approval { margin-top: 10px; }
+    .prior-approval select { min-height: 36px; }
+    .prior-meta { margin: 10px 0 0; color: var(--muted); font-size: .66rem; line-height: 1.45; }
+    .progress-track {
+      height: 14px; border: 1px solid var(--line); border-radius: 999px;
+      background: #0b1120; overflow: hidden;
+    }
+    .progress-fill { height: 100%; width: 0; background: linear-gradient(90deg, var(--aqua), var(--lime)); transition: width .25s; }
+    .progress-counts { display: flex; flex-wrap: wrap; gap: 8px 22px; margin-top: 10px; color: var(--muted); font-size: .76rem; }
+    .progress-counts strong { color: var(--text); font-variant-numeric: tabular-nums; }
+    .mc-panels { display: grid; gap: 18px; }
+    .mc-table { width: 100%; border-collapse: collapse; font-size: .74rem; }
+    .mc-table caption { padding: 0 0 10px; color: var(--muted); font-size: .7rem; text-align: left; }
+    .mc-table th, .mc-table td { padding: 8px 10px; border-bottom: 1px solid rgba(42,53,74,.72); text-align: right; font-variant-numeric: tabular-nums; }
+    .mc-table th:first-child, .mc-table td:first-child { text-align: left; }
+    .mc-table th { color: var(--muted); font-size: .66rem; text-transform: uppercase; letter-spacing: .07em; }
+    .ci-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+    .ci-card { padding: 14px 15px; border: 1px solid var(--line); border-radius: 12px; background: #0e1524; }
+    .ci-card span { color: var(--muted); font-size: .68rem; line-height: 1.35; }
+    .ci-card strong { display: block; margin-top: 8px; font-size: 1.15rem; font-variant-numeric: tabular-nums; }
+    .ci-card small { display: block; margin-top: 5px; color: var(--muted); font-size: .64rem; }
+    .state-note {
+      padding: 13px 15px; border: 1px solid var(--line); border-radius: 12px;
+      color: var(--muted); background: #0e1524; font-size: .78rem; line-height: 1.5;
+    }
+    .state-note.warn { border-color: rgba(255,189,89,.5); color: #f7d7a6; }
+    .state-note.error { border-color: rgba(255,122,128,.5); color: #ffc2c5; }
+    .coverage-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+    .claim-ok { color: var(--lime); }
+    .claim-blocked { color: var(--red); }
+    @media (max-width: 1000px) {
+      .ci-cards, .coverage-grid { grid-template-columns: 1fr; }
+      .prior-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 1000px) {
+      .hero { grid-template-columns: 1fr; }
+      main { grid-template-columns: 310px minmax(0, 1fr); }
+      .metric-cards { grid-template-columns: 1fr; }
+      .detail-grid { grid-template-columns: 1fr; }
+      .unavailable { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 720px) {
+      .shell { padding: 0 17px 28px; }
+      header { min-height: 76px; }
+      .brand span { display: none; }
+      .hero { padding: 38px 0 26px; gap: 22px; }
+      h1 { font-size: clamp(2.55rem, 14vw, 4.4rem); }
+      main { grid-template-columns: 1fr; }
+      .setup { position: static; }
+      .overview-top, .chart-toolbar { align-items: stretch; flex-direction: column; }
+      .run-id { max-width: none; text-align: left; }
+      .metric-picker { width: 100%; }
+      .chart-wrap { min-height: 310px; padding-inline: 5px; }
+      #comparison-chart, .chart-empty { min-height: 290px; }
+    }
+    @media (max-width: 420px) {
+      .shell { padding-inline: 12px; }
+      .status-pill { padding-inline: 9px; font-size: .67rem; }
+      .mark { width: 38px; height: 38px; }
+      h1 { font-size: 2.65rem; }
+      .panel-head, .setup-body, .overview, .detail-body { padding-inline: 16px; }
+      .control-inputs { grid-template-columns: minmax(0, 1fr) 82px; }
+      .metric-cards { grid-template-columns: 1fr; }
+      .fact { grid-template-columns: 1fr; gap: 4px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <header>
+      <div class="brand"><div class="mark" aria-hidden="true">TL</div><div><strong>TokenLab</strong><span>Reviewed scenario workspace</span></div></div>
+      <div id="status-pill" class="status-pill" data-state="loading" aria-live="polite">Loading gallery</div>
+    </header>
+
+    <section class="hero" aria-labelledby="page-title">
+      <div>
+        <div class="eyebrow">Interactive model laboratory</div>
+        <h1 id="page-title">Change assumptions.<br>See the system move.</h1>
+        <p>Select a reviewed scenario, tune only its declared controls, and execute the real TokenLab simulation. Each result remains attached to a validated, downloadable evidence bundle.</p>
+      </div>
+      <div id="gallery-boundary" class="boundary">Illustrative simulation only; not investment, launch, legal, financial, forecast, or decision-grade advice.</div>
+    </section>
+
+    <div id="message" class="message" aria-live="polite"></div>
+
+    <main>
+      <section class="panel setup" aria-labelledby="setup-title">
+        <div class="panel-head"><h2 id="setup-title">Scenario setup</h2><p>Package-owned inputs only. No files, code, or custom model classes.</p></div>
+        <div class="setup-body">
+          <label class="field-label" for="demo-select">Reviewed demo</label>
+          <select id="demo-select" disabled><option>Loading…</option></select>
+          <div id="demo-meta" class="demo-meta"></div>
+
+          <div id="v1-setup-fields">
+            <span class="field-label">Assumption preset</span>
+            <div id="preset-list" class="preset-list"></div>
+
+            <span class="field-label">Bounded controls</span>
+            <div id="controls" class="controls"></div>
+            <button id="run-button" class="run-button" type="button" disabled>Run simulation</button>
+          </div>
+
+          <div id="stochastic-setup" hidden>
+            <label class="field-label" for="tier-select">Run tier</label>
+            <select id="tier-select"></select>
+            <p class="tier-note">Interactive tiers are measured-safe on this machine. The deep tier is CLI/background-only and can never be started from the browser.</p>
+
+            <label class="field-label" for="seed-input">Master seed</label>
+            <input id="seed-input" type="number" min="0" max="4294967295" step="1">
+
+            <span class="field-label">Uncertainty assumptions</span>
+            <div id="assumptions"></div>
+
+            <button id="mc-run-button" class="run-button" type="button">Run Monte Carlo</button>
+            <button id="mc-cancel-button" class="cancel-button" type="button" hidden>Cancel run</button>
+          </div>
+        </div>
+      </section>
+
+      <div class="workspace" id="v1-workspace">
+        <section class="panel overview" aria-labelledby="overview-title">
+          <div class="overview-top">
+            <div><h2 id="overview-title">Latest validated run</h2><p id="overview-copy">Choose a preset and run the model to populate this evidence view.</p></div>
+            <div id="run-id" class="run-id">No completed run</div>
+          </div>
+          <div id="metric-cards" class="metric-cards">
+            <div class="metric-card"><span>Run status</span><strong>Ready</strong><small>Awaiting reviewed inputs</small></div>
+            <div class="metric-card"><span>Scenarios compared</span><strong>0</strong><small>Up to three presets</small></div>
+            <div class="metric-card"><span>Evidence bundle</span><strong>—</strong><small>Created after validation</small></div>
+          </div>
+        </section>
+
+        <section class="panel chart-panel" aria-labelledby="chart-title">
+          <div class="chart-toolbar">
+            <div><h2 id="chart-title">Compare scenarios</h2><p>Profile-declared series only; no inferred metrics.</p></div>
+            <div class="metric-picker"><label class="field-label" for="metric-select">Comparison metric</label><select id="metric-select" disabled><option>Run a scenario first</option></select></div>
+          </div>
+          <div id="chart-wrap" class="chart-wrap"><div class="chart-empty">Completed baseline, downside, and upside runs will appear here.</div></div>
+          <div id="legend" class="legend"></div>
+        </section>
+
+        <div class="detail-grid">
+          <section class="panel detail-panel" aria-labelledby="provenance-title">
+            <div class="panel-head"><h3 id="provenance-title">Provenance</h3><p>Identity and reproducibility evidence from the latest validated bundle.</p></div>
+            <div class="detail-body"><dl id="provenance" class="facts"><div class="fact"><dt>Status</dt><dd>Awaiting a run</dd></div></dl></div>
+          </section>
+          <section class="panel detail-panel" aria-labelledby="downloads-title">
+            <div class="panel-head"><h3 id="downloads-title">Source downloads</h3><p>Immutable in-memory snapshots from validated, allowlisted artifacts.</p></div>
+            <div id="downloads" class="detail-body downloads"><span class="muted">No downloads yet.</span></div>
+          </section>
+        </div>
+        <section class="panel detail-panel" aria-labelledby="unavailable-title">
+          <div class="panel-head"><h3 id="unavailable-title">Not modeled in this scenario</h3><p>Missing concepts stay explicit; the gallery never invents absent tokenomics metrics.</p></div>
+          <div id="unavailable-concepts" class="detail-body unavailable"><span class="muted">Run a scenario to inspect its declared absences.</span></div>
+        </section>
+      </div>
+
+      <div class="workspace" id="stochastic-workspace" hidden>
+        <section class="panel overview" aria-labelledby="mc-overview-title">
+          <div class="overview-top">
+            <div><h2 id="mc-overview-title">Monte Carlo run</h2><p id="mc-overview-copy">Inspect the priors, choose a tier, and run the real Monte Carlo runner.</p></div>
+            <div id="mc-run-id" class="run-id">No completed run</div>
+          </div>
+          <div class="detail-body">
+            <div class="progress-track" role="progressbar" aria-label="Monte Carlo path progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="mc-progress-bar"><div class="progress-fill" id="mc-progress-fill"></div></div>
+            <div class="progress-counts" aria-live="polite">
+              <span>Requested <strong id="mc-count-requested">0</strong></span>
+              <span>Completed <strong id="mc-count-completed">0</strong></span>
+              <span>Failed <strong id="mc-count-failed">0</strong></span>
+            </div>
+            <p id="mc-claim" class="tier-note"></p>
+            <div id="mc-state-note" class="state-note" hidden></div>
+            <div id="mc-failures" class="detail-body" hidden></div>
+          </div>
+        </section>
+
+        <section class="panel chart-panel" aria-labelledby="fan-title">
+          <div class="chart-toolbar">
+            <div><h2 id="fan-title">Cross-path fan chart</h2><p>Band: modeled outcomes: P10–P90. Line: P50. This band is a modeled outcome interval, never a confidence interval.</p></div>
+            <div class="metric-picker"><label class="field-label" for="fan-metric-select">Fan metric</label><select id="fan-metric-select" disabled><option>Run first</option></select></div>
+          </div>
+          <div id="fan-chart-wrap" class="chart-wrap"><div class="chart-empty">Completed Monte Carlo runs will render the P10–P90 fan here.</div></div>
+          <div id="fan-legend" class="legend"></div>
+        </section>
+
+        <div class="detail-grid">
+          <section class="panel detail-panel" aria-labelledby="histogram-title">
+            <div class="panel-head"><h3 id="histogram-title">Terminal outcome histogram</h3><p>Raw final-step values across completed paths; no hidden downsampling.</p></div>
+            <div id="histogram-wrap" class="detail-body"><div class="chart-empty">Awaiting a completed run.</div></div>
+          </section>
+          <section class="panel detail-panel" aria-labelledby="percentile-title">
+            <div class="panel-head"><h3 id="percentile-title">Outcome percentiles</h3><p>Cross-path modeled outcome percentiles of terminal values.</p></div>
+            <div id="percentile-table" class="detail-body"><span class="muted">Awaiting a completed run.</span></div>
+          </section>
+        </div>
+
+        <section class="panel detail-panel" aria-labelledby="ci-title">
+          <div class="panel-head"><h3 id="ci-title">Estimator confidence intervals</h3><p>Bootstrap intervals on named estimators — distinct from the modeled outcome interval above.</p></div>
+          <div id="ci-cards" class="detail-body ci-cards"><span class="muted">Awaiting a completed run.</span></div>
+        </section>
+
+        <section class="panel detail-panel" aria-labelledby="sensitivity-title">
+          <div class="panel-head"><h3 id="sensitivity-title">Sensitivity (Spearman rank)</h3><p>Rank association between each sampled prior and each terminal metric. Association is not causal.</p></div>
+          <div id="sensitivity-table" class="detail-body"><span class="muted">Awaiting a completed run.</span></div>
+        </section>
+
+        <div class="detail-grid">
+          <section class="panel detail-panel" aria-labelledby="convergence-title">
+            <div class="panel-head"><h3 id="convergence-title">Convergence</h3><p>Nested-checkpoint drift against the profile-declared tolerances.</p></div>
+            <div id="convergence-panel" class="detail-body"><span class="muted">Awaiting a completed run.</span></div>
+          </section>
+          <section class="panel detail-panel" aria-labelledby="coverage-title">
+            <div class="panel-head"><h3 id="coverage-title">Tokenomics coverage ledger</h3><p>What this scenario fixes, and what it does not model at all.</p></div>
+            <div id="coverage-ledger" class="detail-body coverage-grid"><span class="muted">Awaiting a completed run.</span></div>
+          </section>
+        </div>
+
+        <div class="detail-grid">
+          <section class="panel detail-panel" aria-labelledby="mc-provenance-title">
+            <div class="panel-head"><h3 id="mc-provenance-title">Reproducibility</h3><p>Seed lineage, sampler and RNG versions, and content hashes.</p></div>
+            <div class="detail-body"><dl id="mc-provenance" class="facts"><div class="fact"><dt>Status</dt><dd>Awaiting a run</dd></div></dl></div>
+          </section>
+          <section class="panel detail-panel" aria-labelledby="mc-downloads-title">
+            <div class="panel-head"><h3 id="mc-downloads-title">Evidence downloads</h3><p>Immutable in-memory snapshots of the published bundle.</p></div>
+            <div id="mc-downloads" class="detail-body downloads"><span class="muted">No downloads yet.</span></div>
+          </section>
+        </div>
+      </div>
+    </main>
+
+    <footer>TokenLab gallery runs on loopback only. Outputs demonstrate software behavior and assumption propagation; live token decisions require qualified review and external evidence.</footer>
+  </div>
+
+  <template id="control-template">
+    <div class="control">
+      <div class="control-head"><label></label><output></output></div>
+      <p class="control-copy"></p>
+      <div class="control-inputs"><input type="range"><input type="number"></div>
+    </div>
+  </template>
+
+  <script>
+    "use strict";
+    const state = { catalog: null, demo: null, preset: null, runs: new Map(), running: false };
+    const colors = { baseline: "#b8f56a", downside: "#ffbd59", upside: "#5fe1d2" };
+    const $ = (id) => document.getElementById(id);
+
+    function setStatus(next, message) {
+      const pill = $("status-pill");
+      pill.dataset.state = next;
+      pill.textContent = message || next;
+    }
+
+    function showMessage(message, invalid = false) {
+      const box = $("message");
+      box.textContent = message || "";
+      box.className = message ? `message visible${invalid ? " invalid" : ""}` : "message";
+    }
+
+    function formatValue(value) {
+      if (typeof value !== "number" || !Number.isFinite(value)) return "—";
+      const absolute = Math.abs(value);
+      if (absolute >= 1000000) return new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 2 }).format(value);
+      return new Intl.NumberFormat(undefined, { maximumFractionDigits: 3 }).format(value);
+    }
+
+    function currentPreset() {
+      return state.demo.presets.find((item) => item.id === state.preset);
+    }
+
+    function selectPreset(presetId) {
+      state.preset = presetId;
+      document.querySelectorAll(".preset-card").forEach((button) => {
+        button.setAttribute("aria-pressed", String(button.dataset.preset === presetId));
+      });
+      renderControls();
+    }
+
+    function renderDemoMeta() {
+      const meta = $("demo-meta");
+      meta.replaceChildren();
+      const title = document.createElement("h3");
+      title.textContent = state.demo.title;
+      const summary = document.createElement("p");
+      summary.textContent = state.demo.summary;
+      const maturity = document.createElement("span");
+      maturity.className = "maturity";
+      maturity.textContent = state.demo.maturity;
+      const boundary = document.createElement("p");
+      boundary.textContent = `Boundary: ${state.demo.boundary}`;
+      meta.append(title, summary, maturity, boundary);
+    }
+
+    function renderDemo() {
+      renderDemoMeta();
+
+      const list = $("preset-list");
+      list.replaceChildren();
+      state.demo.presets.forEach((preset) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "preset-card";
+        button.dataset.preset = preset.id;
+        button.setAttribute("aria-pressed", String(preset.id === state.preset));
+        const name = document.createElement("strong");
+        name.textContent = preset.label;
+        const copy = document.createElement("span");
+        copy.textContent = preset.summary;
+        button.append(name, copy);
+        button.addEventListener("click", () => selectPreset(preset.id));
+        list.append(button);
+      });
+      renderControls();
+    }
+
+    function renderControls() {
+      const container = $("controls");
+      container.replaceChildren();
+      const preset = currentPreset();
+      state.demo.controls.forEach((control) => {
+        const fragment = $("control-template").content.cloneNode(true);
+        const wrapper = fragment.querySelector(".control");
+        const label = fragment.querySelector("label");
+        const output = fragment.querySelector("output");
+        const copy = fragment.querySelector("p");
+        const range = fragment.querySelector('input[type="range"]');
+        const number = fragment.querySelector('input[type="number"]');
+        const inputId = `control-${control.id}`;
+        label.textContent = control.label;
+        label.htmlFor = inputId;
+        copy.textContent = control.description;
+        copy.id = `${inputId}-description`;
+        range.id = inputId;
+        [range, number].forEach((input) => {
+          input.min = String(control.minimum);
+          input.max = String(control.maximum);
+          input.step = String(control.step);
+          input.value = String(preset.values[control.id]);
+          input.dataset.control = control.id;
+        });
+        number.setAttribute("aria-label", `${control.label} exact value`);
+        range.setAttribute("aria-describedby", copy.id);
+        number.setAttribute("aria-describedby", copy.id);
+        const updateOutput = (value) => { output.textContent = `${formatValue(Number(value))} ${control.unit}`; };
+        updateOutput(range.value);
+        range.addEventListener("input", () => { number.value = range.value; updateOutput(range.value); });
+        number.addEventListener("input", () => { range.value = number.value; updateOutput(number.value); });
+        wrapper.dataset.control = control.id;
+        container.append(fragment);
+      });
+    }
+
+    function parametersFromForm() {
+      const result = {};
+      state.demo.controls.forEach((control) => {
+        const input = document.querySelector(`.control[data-control="${control.id}"] input[type="number"]`);
+        result[control.id] = control.type === "integer" ? Number.parseInt(input.value, 10) : Number.parseFloat(input.value);
+      });
+      return result;
+    }
+
+    function metricById(run, metricId) {
+      return run.dashboard.metrics.find((metric) => metric.id === metricId);
+    }
+
+    function renderOverview(run) {
+      $("overview-copy").textContent = `${state.demo.title} · ${currentPreset().label} · ${run.dashboard.run.iterations} steps × ${run.dashboard.run.repetitions} paths`;
+      $("run-id").textContent = run.run_id;
+      const metrics = run.dashboard.metrics.slice(0, 3);
+      const cards = $("metric-cards");
+      cards.replaceChildren();
+      metrics.forEach((metric) => {
+        const card = document.createElement("div");
+        card.className = "metric-card";
+        const label = document.createElement("span");
+        label.textContent = metric.label;
+        const value = document.createElement("strong");
+        const valid = metric.points.filter((point) => typeof point.y === "number");
+        value.textContent = valid.length ? formatValue(valid[valid.length - 1].y) : "—";
+        const unit = document.createElement("small");
+        unit.textContent = metric.unit;
+        card.append(label, value, unit);
+        cards.append(card);
+      });
+      renderProvenance(run);
+      renderDownloads(run);
+      renderUnavailable(run);
+    }
+
+    function renderProvenance(run) {
+      const values = [
+        ["Scenario", run.dashboard.run.scenario_id],
+        ["Config hash", run.dashboard.run.config_hash],
+        ["Seed", String(run.dashboard.run.seed)],
+        ["Created", run.dashboard.run.created_at],
+      ];
+      const list = $("provenance");
+      list.replaceChildren();
+      values.forEach(([key, value]) => {
+        const row = document.createElement("div"); row.className = "fact";
+        const term = document.createElement("dt"); term.textContent = key;
+        const detail = document.createElement("dd"); detail.textContent = value || "Unavailable";
+        row.append(term, detail); list.append(row);
+      });
+    }
+
+    function renderDownloads(run) {
+      const container = $("downloads");
+      container.replaceChildren();
+      run.dashboard.downloads.forEach((item) => {
+        const link = document.createElement("a");
+        link.className = "download"; link.href = item.url;
+        const label = document.createElement("span"); label.textContent = item.filename;
+        const action = document.createElement("span"); action.textContent = "Download ↓";
+        link.append(label, action); container.append(link);
+      });
+    }
+
+    function renderUnavailable(run) {
+      const container = $("unavailable-concepts");
+      container.replaceChildren();
+      run.dashboard.unavailable_concepts.forEach((concept) => {
+        const item = document.createElement("div"); item.className = "unavailable-item";
+        const name = document.createElement("strong"); name.textContent = concept.id.replaceAll("_", " ");
+        const reason = document.createElement("span"); reason.textContent = concept.reason;
+        item.append(name, reason); container.append(item);
+      });
+    }
+
+    function resetWorkspaceForDemo() {
+      state.runs.clear();
+      $("overview-copy").textContent = "Choose a preset and run the model to populate this evidence view.";
+      $("run-id").textContent = "No completed run";
+      const starterMetrics = [
+        ["Run status", "Ready", "Awaiting reviewed inputs"],
+        ["Scenarios compared", "0", "Up to three presets"],
+        ["Evidence bundle", "—", "Created after validation"],
+      ];
+      const metricCards = starterMetrics.map(([label, value, note]) => {
+        const card = document.createElement("div"); card.className = "metric-card";
+        const name = document.createElement("span"); name.textContent = label;
+        const figure = document.createElement("strong"); figure.textContent = value;
+        const detail = document.createElement("small"); detail.textContent = note;
+        card.append(name, figure, detail);
+        return card;
+      });
+      $("metric-cards").replaceChildren(...metricCards);
+      const chartEmpty = document.createElement("div"); chartEmpty.className = "chart-empty"; chartEmpty.textContent = "Completed baseline, downside, and upside runs will appear here.";
+      $("chart-wrap").replaceChildren(chartEmpty); $("legend").replaceChildren();
+      const metricOption = document.createElement("option"); metricOption.textContent = "Run a scenario first";
+      $("metric-select").replaceChildren(metricOption); $("metric-select").disabled = true;
+      const provenance = document.createElement("div"); provenance.className = "fact";
+      const term = document.createElement("dt"); term.textContent = "Status";
+      const detail = document.createElement("dd"); detail.textContent = "Awaiting a run";
+      provenance.append(term, detail); $("provenance").replaceChildren(provenance);
+      const noDownloads = document.createElement("span"); noDownloads.className = "muted"; noDownloads.textContent = "No downloads yet.";
+      $("downloads").replaceChildren(noDownloads);
+      const noUnavailable = document.createElement("span"); noUnavailable.className = "muted"; noUnavailable.textContent = "Run a scenario to inspect its declared absences.";
+      $("unavailable-concepts").replaceChildren(noUnavailable);
+    }
+
+    function prepareMetricPicker(run) {
+      const select = $("metric-select");
+      const selected = select.value;
+      select.replaceChildren();
+      run.dashboard.metrics.forEach((metric) => {
+        const option = document.createElement("option"); option.value = metric.id; option.textContent = metric.label; select.append(option);
+      });
+      if (run.dashboard.metrics.some((metric) => metric.id === selected)) select.value = selected;
+      select.disabled = false;
+    }
+
+    function drawComparison() {
+      const wrap = $("chart-wrap");
+      const legend = $("legend");
+      wrap.replaceChildren(); legend.replaceChildren();
+      const metricId = $("metric-select").value;
+      const series = [];
+      state.demo.presets.forEach((preset) => {
+        const run = state.runs.get(preset.id);
+        const metric = run ? metricById(run, metricId) : null;
+        if (metric) series.push({ id: preset.id, label: preset.label, metric });
+      });
+      if (!series.length) {
+        const empty = document.createElement("div"); empty.className = "chart-empty"; empty.textContent = "Run at least one preset to compare scenarios."; wrap.append(empty); return;
+      }
+      const validPoints = series.flatMap((item) => item.metric.points.filter((point) => typeof point.x === "number" && typeof point.y === "number"));
+      if (!validPoints.length) {
+        const empty = document.createElement("div"); empty.className = "chart-empty"; empty.textContent = "This declared metric has no plottable values."; wrap.append(empty); setStatus("empty", "Empty metric"); return;
+      }
+      const width = 920, height = 350, pad = { left: 68, right: 24, top: 24, bottom: 46 };
+      const xs = validPoints.map((point) => point.x), ys = validPoints.map((point) => point.y);
+      const xMin = Math.min(...xs), xMax = Math.max(...xs), yMinRaw = Math.min(...ys), yMaxRaw = Math.max(...ys);
+      const yPad = Math.max((yMaxRaw - yMinRaw) * .1, Math.abs(yMaxRaw) * .03, .001);
+      const yMin = yMinRaw - yPad, yMax = yMaxRaw + yPad;
+      const x = (value) => pad.left + ((value - xMin) / Math.max(xMax - xMin, 1)) * (width - pad.left - pad.right);
+      const y = (value) => pad.top + (1 - (value - yMin) / Math.max(yMax - yMin, 1)) * (height - pad.top - pad.bottom);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.id = "comparison-chart"; svg.setAttribute("viewBox", `0 0 ${width} ${height}`); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", "Scenario comparison line chart");
+      for (let index = 0; index <= 4; index += 1) {
+        const line = document.createElementNS(svg.namespaceURI, "line");
+        const yPos = pad.top + index * (height - pad.top - pad.bottom) / 4;
+        line.setAttribute("x1", pad.left); line.setAttribute("x2", width - pad.right); line.setAttribute("y1", yPos); line.setAttribute("y2", yPos); line.setAttribute("stroke", "#2a354a"); svg.append(line);
+        const label = document.createElementNS(svg.namespaceURI, "text"); label.setAttribute("x", pad.left - 10); label.setAttribute("y", yPos + 4); label.setAttribute("text-anchor", "end"); label.setAttribute("fill", "#aeb8c8"); label.setAttribute("font-size", "11"); label.textContent = formatValue(yMax - index * (yMax - yMin) / 4); svg.append(label);
+      }
+      series.forEach((item) => {
+        const points = item.metric.points.filter((point) => typeof point.x === "number" && typeof point.y === "number");
+        const polyline = document.createElementNS(svg.namespaceURI, "polyline");
+        polyline.setAttribute("points", points.map((point) => `${x(point.x)},${y(point.y)}`).join(" "));
+        polyline.setAttribute("fill", "none"); polyline.setAttribute("stroke", colors[item.id] || "#7aa8ff"); polyline.setAttribute("stroke-width", "3"); polyline.setAttribute("stroke-linejoin", "round"); polyline.setAttribute("stroke-linecap", "round"); svg.append(polyline);
+        const legendItem = document.createElement("span"); legendItem.className = "legend-item";
+        const swatch = document.createElement("i"); swatch.style.background = colors[item.id] || "#7aa8ff";
+        const name = document.createElement("span"); name.textContent = item.label;
+        legendItem.append(swatch, name); legend.append(legendItem);
+      });
+      wrap.append(svg);
+    }
+
+    async function runSimulation() {
+      if (state.running) return;
+      state.running = true; $("run-button").disabled = true; showMessage(""); setStatus("running", "Running simulation");
+      try {
+        const response = await fetch("/api/runs", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ demo_id: state.demo.id, preset_id: state.preset, parameters: parametersFromForm() })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "Simulation failed");
+        state.runs.set(state.preset, result);
+        renderOverview(result); prepareMetricPicker(result); drawComparison();
+        const resultState = ["success", "empty", "partial"].includes(result.dashboard.state) ? result.dashboard.state : "invalid";
+        setStatus(resultState, resultState === "success" ? "Validated run" : `${resultState} result`);
+        showMessage(`${currentPreset().label} completed and validated. ${state.runs.size} preset${state.runs.size === 1 ? "" : "s"} available for comparison.`);
+      } catch (error) {
+        setStatus("invalid", "Run failed"); showMessage(error.message || "Simulation failed", true);
+      } finally {
+        state.running = false; $("run-button").disabled = false;
+      }
+    }
+
+    // --- Stochastic (schema v2) Monte Carlo demo ---------------------------
+    const mc = { jobId: null, polling: false, metric: null };
+
+    function isStochasticDemo() {
+      return state.demo && state.demo.kind === "stochastic";
+    }
+
+    function setMcNote(text, tone) {
+      const note = $("mc-state-note");
+      if (!text) { note.hidden = true; note.textContent = ""; return; }
+      note.hidden = false;
+      note.className = `state-note${tone ? ` ${tone}` : ""}`;
+      note.textContent = text;
+    }
+
+    function setProgressCounts(requested, completed, failed) {
+      $("mc-count-requested").textContent = String(requested ?? 0);
+      $("mc-count-completed").textContent = String(completed ?? 0);
+      $("mc-count-failed").textContent = String(failed ?? 0);
+      const track = $("mc-progress-bar");
+      const total = Math.max(Number(requested) || 0, 1);
+      const pct = Math.min(100, Math.round(100 * ((Number(completed) || 0) + (Number(failed) || 0)) / total));
+      $("mc-progress-fill").style.width = `${pct}%`;
+      track.setAttribute("aria-valuenow", String(pct));
+    }
+
+    function renderAssumptions() {
+      const container = $("assumptions");
+      container.replaceChildren();
+      (state.demo.uncertainty_parameters || []).forEach((prior) => {
+        const block = document.createElement("fieldset");
+        block.className = "prior";
+        block.dataset.prior = prior.id;
+        const legend = document.createElement("legend");
+        legend.textContent = `${prior.id} (${prior.unit})`;
+        const family = document.createElement("p");
+        family.className = "prior-family";
+        family.textContent = `${prior.distribution.family} prior · ${String(prior.cadence).replace("_", " ")} · layer: ${prior.layer}${prior.rounding ? ` · rounding: ${prior.rounding}` : ""}`;
+        const grid = document.createElement("div");
+        grid.className = "prior-grid";
+        ["minimum", "mode", "maximum"].forEach((key) => {
+          const cell = document.createElement("div");
+          const label = document.createElement("label");
+          const input = document.createElement("input");
+          input.type = "number"; input.step = "any";
+          input.id = `prior-${prior.id}-${key}`;
+          input.value = String(prior.distribution[key]);
+          input.dataset.field = key;
+          label.htmlFor = input.id; label.textContent = key;
+          cell.append(label, input); grid.append(cell);
+        });
+        const approvalRow = document.createElement("div");
+        approvalRow.className = "prior-approval";
+        const approvalLabel = document.createElement("label");
+        const approval = document.createElement("select");
+        approval.dataset.field = "approval";
+        approval.id = `prior-${prior.id}-approval`;
+        ["approved", "draft"].forEach((value) => {
+          const option = document.createElement("option");
+          option.value = value; option.textContent = value;
+          approval.append(option);
+        });
+        approval.value = prior.approval;
+        approvalLabel.htmlFor = approval.id;
+        approvalLabel.textContent = "approval (draft cannot execute)";
+        approvalRow.append(approvalLabel, approval);
+        const meta = document.createElement("p");
+        meta.className = "prior-meta";
+        const dependence = typeof prior.dependence === "string" ? prior.dependence : "dependence group";
+        meta.textContent = `Provenance: ${prior.provenance} Rationale: ${prior.rationale} Calibration: ${prior.calibration} (uncalibrated). Dependence: ${dependence}.`;
+        block.append(legend, family, grid, approvalRow, meta);
+        container.append(block);
+      });
+      $("seed-input").value = String(state.demo.seed ?? "");
+      const tierSelect = $("tier-select");
+      tierSelect.replaceChildren();
+      Object.entries(state.demo.run_tiers || {}).forEach(([tier, info]) => {
+        const option = document.createElement("option");
+        option.value = tier;
+        option.textContent = info.interactive
+          ? `${tier} — ${info.paths} paths, ${info.bootstrap_resamples} bootstrap resamples`
+          : `${tier} — CLI/background-only (${info.paths} paths)`;
+        option.disabled = !info.interactive;
+        tierSelect.append(option);
+      });
+      tierSelect.value = state.demo.default_run_tier;
+    }
+
+    function enterStochasticMode() {
+      $("v1-setup-fields").hidden = true;
+      $("stochastic-setup").hidden = false;
+      $("v1-workspace").hidden = true;
+      $("stochastic-workspace").hidden = false;
+      renderDemoMeta();
+      renderAssumptions();
+      setProgressCounts(0, 0, 0);
+      $("mc-claim").textContent = "";
+      $("mc-run-id").textContent = "No completed run";
+      $("mc-overview-copy").textContent = "Inspect the priors, choose a tier, and run the real Monte Carlo runner.";
+      setMcNote("Empty: no Monte Carlo run yet for this demo.", null);
+      $("mc-failures").hidden = true;
+      setStatus("empty", "Ready to run");
+    }
+
+    function leaveStochasticMode() {
+      $("v1-setup-fields").hidden = false;
+      $("stochastic-setup").hidden = true;
+      $("v1-workspace").hidden = false;
+      $("stochastic-workspace").hidden = true;
+      setMcNote("", null);
+    }
+
+    function collectPriors() {
+      const priors = {};
+      document.querySelectorAll("#assumptions .prior").forEach((block) => {
+        const edits = {};
+        block.querySelectorAll("input[data-field]").forEach((input) => {
+          edits[input.dataset.field] = Number.parseFloat(input.value);
+        });
+        const approval = block.querySelector('select[data-field="approval"]');
+        if (approval) edits.approval = approval.value;
+        priors[block.dataset.prior] = edits;
+      });
+      return priors;
+    }
+
+    function renderInvalidSpec(payload) {
+      setStatus("invalid-spec", "Invalid spec");
+      const validation = payload.validation || {};
+      const problems = [...(validation.errors || []), ...(validation.warnings || [])];
+      const lines = problems.map((item) => `${item.id || "uncertainty"}: ${item.reason}`);
+      setMcNote(`Invalid spec — the edited assumptions failed validation and cannot execute. ${lines.join(" ")}`, "error");
+    }
+
+    function renderCancelled(job) {
+      setStatus("cancelled", "Run cancelled");
+      setMcNote(`Cancelled by request after ${job.completed} completed and ${job.failed} failed of ${job.requested} requested paths. No bundle was published; counts above are the exact settled paths at cancellation.`, "warn");
+      $("mc-claim").textContent = "Claim eligibility: none — a cancelled run publishes no evidence.";
+    }
+
+    function renderFailures(failures) {
+      const container = $("mc-failures");
+      container.replaceChildren();
+      if (!failures || !failures.failed) { container.hidden = true; return; }
+      container.hidden = false;
+      const note = document.createElement("div");
+      note.className = "state-note warn";
+      note.textContent = `Incomplete: ${failures.failed} of ${failures.requested} requested paths failed. Failure denominator is exact; failed paths remain inspectable and the run cannot satisfy claim eligibility.`;
+      container.append(note);
+      (failures.failures || []).forEach((failure) => {
+        const row = document.createElement("p");
+        row.className = "tier-note";
+        row.textContent = `path ${failure.path_index} · stage ${failure.stage} · ${failure.error_class}: ${failure.message}`;
+        container.append(row);
+      });
+    }
+
+    function metricByIdMc(result, metricId) {
+      return (result.metrics || []).find((metric) => metric.id === metricId) || null;
+    }
+
+    function drawFan(metric) {
+      const wrap = $("fan-chart-wrap");
+      const legend = $("fan-legend");
+      wrap.replaceChildren(); legend.replaceChildren();
+      const fan = metric && metric.fan;
+      if (!fan || !Array.isArray(fan.x) || !fan.x.length) {
+        const empty = document.createElement("div");
+        empty.className = "chart-empty";
+        empty.textContent = "This metric has no fan data.";
+        wrap.append(empty);
+        return;
+      }
+      const width = 920, height = 360, pad = { left: 72, right: 24, top: 24, bottom: 46 };
+      const xs = fan.x, lo = fan.p10, mid = fan.p50, hi = fan.p90;
+      const xMin = Math.min(...xs), xMax = Math.max(...xs);
+      const yMin = Math.min(...lo), yMax = Math.max(...hi);
+      const yPad = Math.max((yMax - yMin) * .1, Math.abs(yMax) * .02, 1e-9);
+      const x = (value) => pad.left + ((value - xMin) / Math.max(xMax - xMin, 1)) * (width - pad.left - pad.right);
+      const y = (value) => pad.top + (1 - (value - yMin + yPad) / (yMax - yMin + 2 * yPad)) * (height - pad.top - pad.bottom);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.id = "comparison-chart";
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", `${metric.label} modeled outcome fan chart`);
+      for (let index = 0; index <= 4; index += 1) {
+        const line = document.createElementNS(svg.namespaceURI, "line");
+        const yPos = pad.top + index * (height - pad.top - pad.bottom) / 4;
+        line.setAttribute("x1", pad.left); line.setAttribute("x2", width - pad.right);
+        line.setAttribute("y1", yPos); line.setAttribute("y2", yPos);
+        line.setAttribute("stroke", "#2a354a"); svg.append(line);
+        const label = document.createElementNS(svg.namespaceURI, "text");
+        label.setAttribute("x", pad.left - 10); label.setAttribute("y", yPos + 4);
+        label.setAttribute("text-anchor", "end"); label.setAttribute("fill", "#aeb8c8");
+        label.setAttribute("font-size", "11");
+        label.textContent = formatValue(yMax + yPad - index * (yMax - yMin + 2 * yPad) / 4);
+        svg.append(label);
+      }
+      const bandPoints = xs.map((value, index) => `${x(value)},${y(hi[index])}`)
+        .concat(xs.slice().reverse().map((value, index) => `${x(value)},${y(lo[xs.length - 1 - index])}`))
+        .join(" ");
+      const band = document.createElementNS(svg.namespaceURI, "polygon");
+      band.setAttribute("points", bandPoints);
+      band.setAttribute("fill", "rgba(95,225,210,.18)");
+      band.setAttribute("stroke", "rgba(95,225,210,.5)");
+      svg.append(band);
+      const median = document.createElementNS(svg.namespaceURI, "polyline");
+      median.setAttribute("points", xs.map((value, index) => `${x(value)},${y(mid[index])}`).join(" "));
+      median.setAttribute("fill", "none"); median.setAttribute("stroke", "#b8f56a");
+      median.setAttribute("stroke-width", "3"); median.setAttribute("stroke-linejoin", "round");
+      svg.append(median);
+      wrap.append(svg);
+      [["modeled outcomes: P10–P90", "rgba(95,225,210,.6)"], ["P50 modeled outcome", "#b8f56a"]].forEach(([text, color]) => {
+        const item = document.createElement("span");
+        item.className = "legend-item";
+        const swatch = document.createElement("i");
+        swatch.style.background = color;
+        const name = document.createElement("span");
+        name.textContent = text;
+        item.append(swatch, name); legend.append(item);
+      });
+    }
+
+    function drawHistogram(metric) {
+      const wrap = $("histogram-wrap");
+      wrap.replaceChildren();
+      const values = (metric && Array.isArray(metric.terminal_values)) ? metric.terminal_values.filter((v) => typeof v === "number" && Number.isFinite(v)) : [];
+      if (!values.length) {
+        const empty = document.createElement("div");
+        empty.className = "chart-empty";
+        empty.textContent = "No terminal values to plot.";
+        wrap.append(empty);
+        return;
+      }
+      const bins = 20;
+      const min = Math.min(...values), max = Math.max(...values);
+      const span = Math.max(max - min, 1e-12);
+      const counts = new Array(bins).fill(0);
+      values.forEach((value) => {
+        const index = Math.min(bins - 1, Math.floor((value - min) / span * bins));
+        counts[index] += 1;
+      });
+      const peak = Math.max(...counts);
+      const width = 920, height = 300, pad = { left: 56, right: 16, top: 20, bottom: 44 };
+      const barWidth = (width - pad.left - pad.right) / bins;
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", `${metric.label} terminal value histogram across ${values.length} completed paths`);
+      counts.forEach((count, index) => {
+        const barHeight = (count / peak) * (height - pad.top - pad.bottom);
+        const rect = document.createElementNS(svg.namespaceURI, "rect");
+        rect.setAttribute("x", pad.left + index * barWidth + 1);
+        rect.setAttribute("y", height - pad.bottom - barHeight);
+        rect.setAttribute("width", Math.max(barWidth - 2, 1));
+        rect.setAttribute("height", Math.max(barHeight, 0));
+        rect.setAttribute("fill", "#5fe1d2");
+        svg.append(rect);
+      });
+      [[pad.left, min], [width - pad.right, max]].forEach(([xPos, value]) => {
+        const label = document.createElementNS(svg.namespaceURI, "text");
+        label.setAttribute("x", xPos); label.setAttribute("y", height - pad.bottom + 18);
+        label.setAttribute("fill", "#aeb8c8"); label.setAttribute("font-size", "11");
+        label.setAttribute("text-anchor", xPos === pad.left ? "start" : "end");
+        label.textContent = formatValue(value);
+        svg.append(label);
+      });
+      const caption = document.createElementNS(svg.namespaceURI, "text");
+      caption.setAttribute("x", pad.left); caption.setAttribute("y", height - 6);
+      caption.setAttribute("fill", "#aeb8c8"); caption.setAttribute("font-size", "11");
+      caption.textContent = `${values.length} completed paths · ${metric.unit}`;
+      svg.append(caption);
+      wrap.append(svg);
+    }
+
+    function renderPercentiles(result) {
+      const container = $("percentile-table");
+      container.replaceChildren();
+      const table = document.createElement("table");
+      table.className = "mc-table";
+      const caption = document.createElement("caption");
+      caption.textContent = `Interval semantics: ${result.outcome_interval_label || "modeled outcome interval"} — cross-path spread of modeled terminal outcomes, not a confidence interval.`;
+      const head = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      ["Metric", "P10", "P50", "P90", "Mean", "n"].forEach((text) => {
+        const cell = document.createElement("th"); cell.textContent = text; headRow.append(cell);
+      });
+      head.append(headRow);
+      const body = document.createElement("tbody");
+      (result.metrics || []).forEach((metric) => {
+        const row = document.createElement("tr");
+        const interval = metric.outcome_interval || {};
+        const estimates = metric.estimates || {};
+        [metric.label, interval.p10, estimates.median, interval.p90, estimates.mean, metric.n].forEach((value) => {
+          const cell = document.createElement("td");
+          cell.textContent = typeof value === "string" ? value : formatValue(value);
+          row.append(cell);
+        });
+        body.append(row);
+      });
+      table.append(caption, head, body);
+      container.append(table);
+    }
+
+    function renderCiCards(result) {
+      const container = $("ci-cards");
+      container.replaceChildren();
+      (result.metrics || []).forEach((metric) => {
+        const interval = (metric.confidence_intervals || []).find((item) => item.estimator === "median");
+        const card = document.createElement("div");
+        card.className = "ci-card";
+        const title = document.createElement("span");
+        title.textContent = interval ? `${metric.label}: ${interval.label}` : `${metric.label}: unavailable`;
+        const value = document.createElement("strong");
+        value.textContent = interval ? `${formatValue(interval.estimate)} ${metric.unit}` : "—";
+        const detail = document.createElement("small");
+        detail.textContent = interval
+          ? `median estimate ${formatValue(interval.estimate)}; interval [${formatValue(interval.ci_low)}, ${formatValue(interval.ci_high)}]; n=${interval.n}, ${interval.resamples} resamples`
+          : "No estimator interval was published for this metric.";
+        card.append(title, value, detail);
+        container.append(card);
+      });
+    }
+
+    function renderSensitivity(result) {
+      const container = $("sensitivity-table");
+      container.replaceChildren();
+      const sensitivity = result.sensitivity || {};
+      const records = sensitivity.results || [];
+      if (!records.length) {
+        const note = document.createElement("div");
+        note.className = "state-note";
+        note.textContent = "No sensitivity records were published.";
+        container.append(note);
+        return;
+      }
+      const allInsufficient = records.every((record) => record.status === "insufficient_paths");
+      if (allInsufficient) {
+        const note = document.createElement("div");
+        note.className = "state-note warn";
+        note.textContent = `Insufficient: sensitivity needs at least ${sensitivity.min_paths} completed paths; this run completed ${sensitivity.completed_paths}. No rank is fabricated for small samples.`;
+        container.append(note);
+      }
+      const table = document.createElement("table");
+      table.className = "mc-table";
+      const caption = document.createElement("caption");
+      caption.textContent = `Method: ${sensitivity.method || "spearman_rank"} — ${sensitivity.interpretation || "association is not causal"}.`;
+      const head = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      ["Parameter", "Metric", "ρ", "Direction", "Magnitude", "95% CI", "n", "Status"].forEach((text) => {
+        const cell = document.createElement("th"); cell.textContent = text; headRow.append(cell);
+      });
+      head.append(headRow);
+      const body = document.createElement("tbody");
+      records.forEach((record) => {
+        const row = document.createElement("tr");
+        const ci = record.status === "ok"
+          ? `[${formatValue(record.ci_low)}, ${formatValue(record.ci_high)}]`
+          : "—";
+        [record.parameter, record.metric, record.status === "ok" ? formatValue(record.rho) : "—",
+          record.direction || "—", record.magnitude || "—", ci, record.n, record.status].forEach((value) => {
+          const cell = document.createElement("td");
+          cell.textContent = value == null ? "—" : String(value);
+          row.append(cell);
+        });
+        body.append(row);
+      });
+      table.append(caption, head, body);
+      container.append(table);
+      return allInsufficient;
+    }
+
+    function renderConvergence(result) {
+      const container = $("convergence-panel");
+      container.replaceChildren();
+      const convergence = result.convergence || {};
+      const used = (convergence.checkpoints_used || []).join(", ") || "none";
+      (result.metrics || []).forEach((metric) => {
+        const entry = metric.convergence || {};
+        const row = document.createElement("p");
+        row.className = "tier-note";
+        const tolerances = entry.tolerances || {};
+        row.textContent = `${metric.label}: ${entry.status || "unavailable"} — checkpoints used [${used}]; tolerances relative drift ${tolerances.relative_drift ?? "—"}, absolute ${tolerances.absolute ?? "—"}.`;
+        container.append(row);
+      });
+    }
+
+    function renderCoverage(result) {
+      const container = $("coverage-ledger");
+      container.replaceChildren();
+      Object.entries(result.tokenomics_coverage || {}).forEach(([concept, record]) => {
+        const item = document.createElement("div");
+        item.className = "unavailable-item";
+        const name = document.createElement("strong");
+        name.textContent = `${concept.replaceAll("_", " ")} — ${record.status}`;
+        const detail = document.createElement("span");
+        detail.textContent = record.detail;
+        item.append(name, detail);
+        container.append(item);
+      });
+    }
+
+    function renderMcProvenance(result) {
+      const run = result.run || {};
+      const lineage = result.seed_lineage || {};
+      const values = [
+        ["Run id", run.run_id],
+        ["Scenario", run.scenario_id],
+        ["Config hash", run.config_hash],
+        ["Spec hash", run.uncertainty_spec_hash],
+        ["Master seed", String(run.seed)],
+        ["Sampler", run.sampler_version],
+        ["RNG", run.rng_algorithm],
+        ["Run tier", `${run.run_tier} (${run.requested_paths} paths, ${run.bootstrap_resamples} resamples)`],
+        ["Code", run.code ? `${run.code.package} ${run.code.version}` : null],
+        ["Spawn rule", lineage.path_spawn],
+      ];
+      const list = $("mc-provenance");
+      list.replaceChildren();
+      values.forEach(([key, value]) => {
+        const row = document.createElement("div"); row.className = "fact";
+        const term = document.createElement("dt"); term.textContent = key;
+        const detail = document.createElement("dd"); detail.textContent = value || "Unavailable";
+        row.append(term, detail); list.append(row);
+      });
+    }
+
+    function renderMcDownloads(result, jobId) {
+      const container = $("mc-downloads");
+      container.replaceChildren();
+      (result.downloads || []).forEach((item) => {
+        const link = document.createElement("a");
+        link.className = "download";
+        link.href = `/api/stochastic/runs/${jobId}/download/${item.id}`;
+        const label = document.createElement("span");
+        label.textContent = `${item.filename} — ${item.label}`;
+        const action = document.createElement("span");
+        action.textContent = "Download ↓";
+        link.append(label, action);
+        container.append(link);
+      });
+    }
+
+    function renderMcResult(job) {
+      mc.lastJob = job;
+      const result = job.result || {};
+      setProgressCounts(job.requested, job.completed, job.failed);
+      $("mc-run-id").textContent = (result.run || {}).run_id || job.job_id;
+      const claim = result.claim_eligibility || {};
+      const claimNode = $("mc-claim");
+      claimNode.textContent = claim.eligible
+        ? "Claim eligibility: eligible — requested, completed, and failed counts reconcile with zero failures."
+        : `Claim eligibility: ineligible — ${(claim.reasons || []).join("; ")}`;
+      claimNode.className = `tier-note ${claim.eligible ? "claim-ok" : "claim-blocked"}`;
+      $("mc-overview-copy").textContent = `${state.demo.title} · tier ${job.run_tier} · seed ${job.seed} · ${(result.run || {}).iterations} steps`;
+      if (job.state === "incomplete") {
+        setStatus("incomplete", "Incomplete run");
+        setMcNote("Incomplete: failed paths are counted and published; this run cannot support headline claims.", "warn");
+      } else {
+        setMcNote("", null);
+      }
+      renderFailures(result.path_failures);
+      const picker = $("fan-metric-select");
+      picker.replaceChildren();
+      (result.metrics || []).forEach((metric) => {
+        const option = document.createElement("option");
+        option.value = metric.id; option.textContent = metric.label;
+        picker.append(option);
+      });
+      picker.disabled = false;
+      if (!(result.metrics || []).some((metric) => metric.id === mc.metric)) {
+        mc.metric = (result.metrics || [])[0] ? result.metrics[0].id : null;
+      }
+      picker.value = mc.metric;
+      const selected = metricByIdMc(result, mc.metric);
+      drawFan(selected);
+      drawHistogram(selected);
+      renderPercentiles(result);
+      renderCiCards(result);
+      const insufficient = renderSensitivity(result);
+      renderConvergence(result);
+      renderCoverage(result);
+      renderMcProvenance(result);
+      renderMcDownloads(result, job.job_id);
+      if (job.state === "success") {
+        if (insufficient) setStatus("insufficient", "Insufficient paths");
+        else setStatus("success", "Validated Monte Carlo run");
+      }
+      if (result.interpretation_boundary) showMessage(result.interpretation_boundary);
+    }
+
+    async function pollMonteCarlo() {
+      mc.polling = true;
+      try {
+        while (true) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          const response = await fetch(`/api/stochastic/runs/${mc.jobId}`, { headers: { "Accept": "application/json" } });
+          if (!response.ok) throw new Error("Job status is unavailable");
+          const job = await response.json();
+          if (job.state === "running" || job.state === "queued") {
+            setProgressCounts(job.requested, job.completed, job.failed);
+            continue;
+          }
+          if (job.state === "cancelled") { renderCancelled(job); return; }
+          if (job.state === "backend-error") {
+            setStatus("backend-error", "Backend error");
+            setMcNote(`Backend error: ${job.error || "the run could not be completed"}. No bundle was published.`, "error");
+            return;
+          }
+          renderMcResult(job);
+          return;
+        }
+      } catch (error) {
+        setStatus("backend-error", "Backend error");
+        setMcNote(error.message || "The run could not be polled.", "error");
+      } finally {
+        mc.polling = false;
+        $("mc-run-button").disabled = false;
+        $("mc-cancel-button").hidden = true;
+      }
+    }
+
+    async function runMonteCarlo() {
+      if (mc.polling) return;
+      $("mc-run-button").disabled = true;
+      $("mc-cancel-button").hidden = false;
+      setMcNote("", null);
+      $("mc-failures").hidden = true;
+      setStatus("running", "Running Monte Carlo");
+      try {
+        const seed = Number.parseInt($("seed-input").value, 10);
+        const response = await fetch("/api/stochastic/runs", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            demo_id: state.demo.id,
+            run_tier: $("tier-select").value,
+            seed: Number.isInteger(seed) ? seed : state.demo.seed,
+            priors: collectPriors(),
+          }),
+        });
+        const payload = await response.json();
+        if (!response.ok) {
+          if (payload.state === "invalid-spec") { renderInvalidSpec(payload); return; }
+          throw new Error(payload.error || "Monte Carlo run failed to start");
+        }
+        mc.jobId = payload.job_id;
+        setProgressCounts(payload.requested, 0, 0);
+        await pollMonteCarlo();
+      } catch (error) {
+        setStatus("backend-error", "Backend error");
+        setMcNote(error.message || "Monte Carlo run failed", "error");
+      } finally {
+        $("mc-run-button").disabled = false;
+        $("mc-cancel-button").hidden = true;
+      }
+    }
+
+    async function cancelMonteCarlo() {
+      if (!mc.jobId) return;
+      try {
+        await fetch(`/api/stochastic/runs/${mc.jobId}/cancel`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+        });
+      } catch (error) {
+        setMcNote(error.message || "Cancel request failed", "error");
+      }
+    }
+
+    function redrawSelectedFan() {
+      const job = mc.lastJob;
+      if (!job || !job.result) return;
+      mc.metric = $("fan-metric-select").value;
+      const selected = metricByIdMc(job.result, mc.metric);
+      drawFan(selected);
+      drawHistogram(selected);
+    }
+
+    async function loadGallery() {
+      setStatus("loading", "Loading gallery");
+      try {
+        const response = await fetch("/api/gallery", { headers: { "Accept": "application/json" } });
+        if (!response.ok) throw new Error("Gallery catalog is unavailable");
+        state.catalog = await response.json(); state.demo = state.catalog.demos[0]; state.preset = state.demo.presets[0] ? state.demo.presets[0].id : null;
+        $("gallery-boundary").textContent = state.catalog.boundary;
+        const select = $("demo-select"); select.replaceChildren();
+        state.catalog.demos.forEach((demo) => { const option = document.createElement("option"); option.value = demo.id; option.textContent = demo.title; select.append(option); });
+        select.disabled = state.catalog.demos.length < 2;
+        select.addEventListener("change", () => {
+          state.demo = state.catalog.demos.find((demo) => demo.id === select.value);
+          state.preset = state.demo.presets[0] ? state.demo.presets[0].id : null;
+          if (isStochasticDemo()) {
+            enterStochasticMode();
+          } else {
+            leaveStochasticMode();
+            resetWorkspaceForDemo();
+            renderDemo();
+          }
+        });
+        if (isStochasticDemo()) {
+          enterStochasticMode();
+        } else {
+          renderDemo();
+          $("run-button").disabled = false;
+        }
+        setStatus("success", "Gallery ready");
+      } catch (error) {
+        setStatus("invalid", "Gallery unavailable"); showMessage(error.message || "Gallery could not load", true);
+      }
+    }
+
+    $("run-button").addEventListener("click", runSimulation);
+    $("metric-select").addEventListener("change", drawComparison);
+    $("mc-run-button").addEventListener("click", runMonteCarlo);
+    $("mc-cancel-button").addEventListener("click", cancelMonteCarlo);
+    $("fan-metric-select").addEventListener("change", redrawSelectedFan);
+    loadGallery();
+  </script>
+</body>
+</html>

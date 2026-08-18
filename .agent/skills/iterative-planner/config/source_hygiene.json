@@ -41,9 +41,14 @@
   ],
   "skip_path_prefixes": [
     "plans/",
-    "apps/ive-visualizer/public/"
+    "apps/ive-visualizer/public/",
+    "outputs"
   ],
-  "ignored_files": [],
+  "ignored_files": [
+    "docs_final/2026-08-14/parameter_locks_report.html",
+    "docs_final/2026-08-16/parameter_locks_report.html",
+    "docs_final/2026-08-17/parameter_locks_report.html"
+  ],
   "ignored_globs": [
     "apps/ive-visualizer/src/data/packInspector.generated.js",
     "docs/ive-redesign/examples/**",

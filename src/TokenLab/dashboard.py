@@ -2,11 +2,14 @@
 
 # @planner:story = US-002
 # @planner:proves = crit:CRIT-001,crit:CRIT-002,crit:CRIT-003,crit:CRIT-004
+# @planner:story = US-PM-AUTO-HCE13E9273E2C5559
+# @planner:proves = crit:CRIT-002,crit:CRIT-003,crit:CRIT-004,crit:CRIT-005
 
 from __future__ import annotations
 
 import argparse
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import resources
@@ -19,6 +22,7 @@ import re
 import socket
 import sys
 import tempfile
+import threading
 from typing import Any, Dict, Mapping, Sequence, Tuple
 from urllib.parse import quote, unquote, urlsplit
 
@@ -27,9 +31,15 @@ DASHBOARD_VERSION = 1
 MAX_MANIFEST_BYTES = 256 * 1024
 MAX_DECLARED_FILE_BYTES = 5 * 1024 * 1024
 MAX_BUNDLE_BYTES = 20 * 1024 * 1024
+MAX_GALLERY_REQUEST_BYTES = 32 * 1024
+MAX_GALLERY_RUNS = 100
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _HTML_RESOURCE = resources.files("TokenLab").joinpath("dashboard_static/index.html")
+_GALLERY_HTML_RESOURCE = resources.files("TokenLab").joinpath(
+    "dashboard_static/gallery.html"
+)
 _SAFE_FILENAME = re.compile(r"[^A-Za-z0-9._-]+")
+_GALLERY_RUN_LOCK = threading.Lock()
 
 
 class DashboardError(ValueError):
@@ -42,6 +52,56 @@ class DashboardApplication:
 
     payload: Dict[str, Any]
     downloads: Dict[str, Tuple[str, bytes]]
+
+
+class GalleryBusyError(RuntimeError):
+    """Raised when a second run arrives while the process-global RNG is in use."""
+
+
+class GalleryCapacityError(RuntimeError):
+    """Raised when a gallery process reaches its bounded completed-run limit."""
+
+
+@dataclass
+class GalleryApplication:
+    """Validated registry runner plus completed immutable download snapshots."""
+
+    gallery: Any
+    catalog: Dict[str, Any]
+    runs: Dict[str, DashboardApplication] = field(default_factory=dict)
+    run_lock: threading.Lock = field(default_factory=lambda: _GALLERY_RUN_LOCK)
+    jobs: Any = None
+
+    def execute(self, request: Any) -> Dict[str, Any]:
+        if not self.run_lock.acquire(blocking=False):
+            raise GalleryBusyError("another simulation is already running")
+        try:
+            if len(self.runs) >= MAX_GALLERY_RUNS:
+                raise GalleryCapacityError(
+                    "gallery run limit reached; restart with a fresh output directory"
+                )
+            completed = self.gallery.run_request(request)
+            dashboard = deepcopy(completed.application.payload)
+            run_id = dashboard.get("run", {}).get("run_id")
+            if not isinstance(run_id, str) or not run_id:
+                raise DashboardError("completed gallery run has no safe run id")
+            for item in dashboard.get("downloads", []):
+                artifact_id = item.get("id")
+                item["url"] = (
+                    f"/api/runs/{quote(run_id, safe='')}/download/"
+                    f"{quote(str(artifact_id), safe='')}"
+                )
+            self.runs[run_id] = completed.application
+            return {
+                "status": "success",
+                "demo_id": completed.demo_id,
+                "preset_id": completed.preset_id,
+                "run_id": run_id,
+                "resolved_parameters": dict(completed.resolved_parameters),
+                "dashboard": dashboard,
+            }
+        finally:
+            self.run_lock.release()
 
 
 def validate_host(host: str) -> str:
@@ -395,6 +455,15 @@ def dashboard_html() -> bytes:
         raise DashboardError("packaged dashboard asset is missing") from exc
 
 
+def gallery_html() -> bytes:
+    """Load the self-contained interactive gallery asset from package data."""
+
+    try:
+        return _GALLERY_HTML_RESOURCE.read_bytes()
+    except (FileNotFoundError, OSError) as exc:
+        raise DashboardError("packaged gallery asset is missing") from exc
+
+
 def _safe_download_name(filename: str) -> str:
     basename = Path(filename).name
     return _SAFE_FILENAME.sub("-", basename).strip(".-") or "artifact"
@@ -537,6 +606,407 @@ def _make_handler(application: DashboardApplication, html: bytes):
     return DashboardHandler
 
 
+def _make_gallery_handler(application: GalleryApplication, html: bytes):
+    from .agentic.artifact_profile import ArtifactProfileError
+    from .agentic.gallery import GalleryError
+    from .agentic.runner import ArtifactError
+
+    class GalleryHandler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+        server_version = "TokenLabGallery/1"
+
+        def log_message(self, format, *args):
+            return
+
+        def _host_is_allowed(self) -> bool:
+            host_header = self.headers.get("Host", "")
+            try:
+                hostname = urlsplit(f"//{host_header}").hostname
+            except ValueError:
+                return False
+            return hostname in LOOPBACK_HOSTS
+
+        def _send_bytes(
+            self,
+            status: int,
+            body: bytes,
+            content_type: str,
+            *,
+            head_only: bool,
+            extra_headers: Mapping[str, str] | None = None,
+        ) -> None:
+            self.send_response(status)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("X-Frame-Options", "DENY")
+            self.send_header("Referrer-Policy", "no-referrer")
+            self.send_header(
+                "Content-Security-Policy",
+                "default-src 'none'; script-src 'unsafe-inline'; "
+                "style-src 'unsafe-inline'; connect-src 'self'; "
+                "img-src 'self' data:; base-uri 'none'; frame-ancestors 'none'",
+            )
+            for name, value in (extra_headers or {}).items():
+                self.send_header(name, value)
+            self.end_headers()
+            if not head_only:
+                self.wfile.write(body)
+
+        def _send_json(self, status: int, value: Any, *, head_only: bool = False):
+            body = json.dumps(
+                value, allow_nan=False, separators=(",", ":")
+            ).encode("utf-8")
+            self._send_bytes(
+                status,
+                body,
+                "application/json; charset=utf-8",
+                head_only=head_only,
+            )
+
+        def _allowed_host_or_error(self, *, head_only: bool = False) -> bool:
+            if self._host_is_allowed():
+                return True
+            self._send_json(
+                400,
+                {"status": "error", "state": "invalid", "error": "invalid Host header"},
+                head_only=head_only,
+            )
+            return False
+
+        def _download(self, path: str, *, head_only: bool) -> bool:
+            match = re.fullmatch(
+                r"/api/runs/([A-Za-z0-9][A-Za-z0-9._-]{0,127})/download/"
+                r"([A-Za-z0-9][A-Za-z0-9._-]{0,127})",
+                path,
+            )
+            if match is None:
+                return False
+            run_id, artifact_id = match.groups()
+            run = application.runs.get(run_id)
+            artifact = run.downloads.get(artifact_id) if run is not None else None
+            if artifact is None:
+                return False
+            filename, body = artifact
+            media_type = (
+                "text/csv; charset=utf-8"
+                if Path(filename).suffix.lower() == ".csv"
+                else "application/octet-stream"
+            )
+            self._send_bytes(
+                200,
+                body,
+                media_type,
+                head_only=head_only,
+                extra_headers={
+                    "Content-Disposition": (
+                        f'attachment; filename="{_safe_download_name(filename)}"'
+                    )
+                },
+            )
+            return True
+
+        def _read_route(self, *, head_only: bool) -> None:
+            if not self._allowed_host_or_error(head_only=head_only):
+                return
+            path = unquote(urlsplit(self.path).path)
+            if path == "/":
+                self._send_bytes(
+                    200, html, "text/html; charset=utf-8", head_only=head_only
+                )
+                return
+            if path == "/api/gallery":
+                self._send_json(200, application.catalog, head_only=head_only)
+                return
+            if path == "/api/health":
+                self._send_json(
+                    200, {"status": "ok", "mode": "gallery"}, head_only=head_only
+                )
+                return
+            status_match = re.fullmatch(
+                r"/api/stochastic/runs/([A-Za-z0-9][A-Za-z0-9._-]{0,63})", path
+            )
+            if status_match is not None:
+                job = (
+                    application.jobs.status(status_match.group(1))
+                    if application.jobs is not None
+                    else None
+                )
+                if job is None:
+                    self._send_json(
+                        404,
+                        {
+                            "status": "error",
+                            "state": "invalid",
+                            "error": "not found",
+                        },
+                        head_only=head_only,
+                    )
+                    return
+                self._send_json(200, job, head_only=head_only)
+                return
+            download_match = re.fullmatch(
+                r"/api/stochastic/runs/([A-Za-z0-9][A-Za-z0-9._-]{0,63})"
+                r"/download/([A-Za-z0-9][A-Za-z0-9._-]{0,127})",
+                path,
+            )
+            if download_match is not None:
+                artifact = (
+                    application.jobs.download(*download_match.groups())
+                    if application.jobs is not None
+                    else None
+                )
+                if artifact is not None:
+                    filename, body = artifact
+                    media_type = (
+                        "text/csv; charset=utf-8"
+                        if Path(filename).suffix.lower() == ".csv"
+                        else "application/octet-stream"
+                    )
+                    self._send_bytes(
+                        200,
+                        body,
+                        media_type,
+                        head_only=head_only,
+                        extra_headers={
+                            "Content-Disposition": (
+                                "attachment; "
+                                f'filename="{_safe_download_name(filename)}"'
+                            )
+                        },
+                    )
+                    return
+                self._send_json(
+                    404,
+                    {"status": "error", "state": "invalid", "error": "not found"},
+                    head_only=head_only,
+                )
+                return
+            if self._download(path, head_only=head_only):
+                return
+            self._send_json(
+                404,
+                {"status": "error", "state": "invalid", "error": "not found"},
+                head_only=head_only,
+            )
+
+        def do_GET(self):
+            self._read_route(head_only=False)
+
+        def do_HEAD(self):
+            self._read_route(head_only=True)
+
+        def _read_json_body(self):
+            """Read a bounded JSON body; sends the error and returns None on failure."""
+            content_type = self.headers.get("Content-Type", "").split(";", 1)[0].strip()
+            if content_type != "application/json":
+                self._send_json(
+                    415,
+                    {
+                        "status": "error",
+                        "state": "invalid",
+                        "error": "Content-Type must be application/json",
+                    },
+                )
+                return None
+            try:
+                length = int(self.headers.get("Content-Length", ""))
+            except ValueError:
+                length = -1
+            if length < 0:
+                self._send_json(
+                    411,
+                    {
+                        "status": "error",
+                        "state": "invalid",
+                        "error": "valid Content-Length is required",
+                    },
+                )
+                return None
+            if length > MAX_GALLERY_REQUEST_BYTES:
+                self._send_json(
+                    413,
+                    {
+                        "status": "error",
+                        "state": "invalid",
+                        "error": "request exceeds the gallery byte limit",
+                    },
+                )
+                return None
+            body = self.rfile.read(length)
+            try:
+                return json.loads(body.decode("utf-8"))
+            except (UnicodeDecodeError, json.JSONDecodeError):
+                self._send_json(
+                    400,
+                    {
+                        "status": "error",
+                        "state": "invalid",
+                        "error": "request must contain valid JSON",
+                    },
+                )
+                return None
+
+        def _post_stochastic_run(self) -> None:
+            from .agentic.gallery import (
+                InvalidSpecError,
+                StochasticBusyError,
+                StochasticCapacityError,
+            )
+
+            if application.jobs is None:
+                self._send_json(
+                    404,
+                    {"status": "error", "state": "invalid", "error": "not found"},
+                )
+                return
+            request = self._read_json_body()
+            if request is None:
+                return
+            try:
+                job = application.jobs.start(request)
+            except InvalidSpecError as exc:
+                self._send_json(
+                    400,
+                    {
+                        "status": "error",
+                        "state": "invalid-spec",
+                        "error": str(exc),
+                        "validation": exc.validation,
+                    },
+                )
+                return
+            except GalleryError as exc:
+                self._send_json(
+                    400,
+                    {"status": "error", "state": "invalid", "error": str(exc)},
+                )
+                return
+            except StochasticBusyError as exc:
+                self._send_json(
+                    409,
+                    {"status": "error", "state": "running", "error": str(exc)},
+                )
+                return
+            except StochasticCapacityError as exc:
+                self._send_json(
+                    429,
+                    {"status": "error", "state": "invalid", "error": str(exc)},
+                )
+                return
+            except Exception:
+                self._send_json(
+                    422,
+                    {
+                        "status": "error",
+                        "state": "backend-error",
+                        "error": "simulation could not be completed or validated",
+                    },
+                )
+                return
+            self._send_json(202, job)
+
+        def _cancel_stochastic_run(self, job_id: str) -> None:
+            try:
+                length = int(self.headers.get("Content-Length", "0") or "0")
+            except ValueError:
+                length = 0
+            if 0 < length <= MAX_GALLERY_REQUEST_BYTES:
+                self.rfile.read(length)
+            job = (
+                application.jobs.cancel(job_id)
+                if application.jobs is not None
+                else None
+            )
+            if job is None:
+                self._send_json(
+                    404,
+                    {"status": "error", "state": "invalid", "error": "not found"},
+                )
+                return
+            self._send_json(200, job)
+
+        def do_POST(self):
+            if not self._allowed_host_or_error():
+                return
+            path = unquote(urlsplit(self.path).path)
+            if path == "/api/stochastic/runs":
+                self._post_stochastic_run()
+                return
+            cancel_match = re.fullmatch(
+                r"/api/stochastic/runs/([A-Za-z0-9][A-Za-z0-9._-]{0,63})/cancel",
+                path,
+            )
+            if cancel_match is not None:
+                self._cancel_stochastic_run(cancel_match.group(1))
+                return
+            if path != "/api/runs":
+                self._send_json(
+                    404,
+                    {"status": "error", "state": "invalid", "error": "not found"},
+                )
+                return
+            request = self._read_json_body()
+            if request is None:
+                return
+            try:
+                result = application.execute(request)
+            except GalleryBusyError as exc:
+                self._send_json(
+                    409,
+                    {"status": "error", "state": "running", "error": str(exc)},
+                )
+                return
+            except GalleryCapacityError as exc:
+                self._send_json(
+                    429,
+                    {"status": "error", "state": "invalid", "error": str(exc)},
+                )
+                return
+            except GalleryError as exc:
+                self._send_json(
+                    400,
+                    {"status": "error", "state": "invalid", "error": str(exc)},
+                )
+                return
+            except (ArtifactError, ArtifactProfileError, DashboardError, OSError):
+                self._send_json(
+                    422,
+                    {
+                        "status": "error",
+                        "state": "invalid",
+                        "error": "simulation could not be completed or validated",
+                    },
+                )
+                return
+            except Exception:
+                self._send_json(
+                    422,
+                    {
+                        "status": "error",
+                        "state": "invalid",
+                        "error": "simulation could not be completed or validated",
+                    },
+                )
+                return
+            self._send_json(201, result)
+
+        def _reject_mutation(self):
+            self._send_json(
+                405,
+                {"status": "error", "state": "invalid", "error": "method not allowed"},
+            )
+
+        do_PUT = _reject_mutation
+        do_PATCH = _reject_mutation
+        do_DELETE = _reject_mutation
+        do_OPTIONS = _reject_mutation
+        do_TRACE = _reject_mutation
+
+    return GalleryHandler
+
+
 def create_server(
     bundle_dir: str | Path,
     *,
@@ -559,6 +1029,42 @@ def create_server(
         server_class = IPv6DashboardServer
     server = server_class((host, port), handler)
     server.daemon_threads = True
+    return server
+
+
+def create_gallery_server(
+    output_dir: str | Path = "outputs/demo-gallery",
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8765,
+    application: GalleryApplication | None = None,
+) -> ThreadingHTTPServer:
+    """Create, but do not start, the bounded interactive gallery server."""
+
+    validate_host(host)
+    if isinstance(port, bool) or not isinstance(port, int) or not 0 <= port <= 65535:
+        raise DashboardError("dashboard port must be an integer from 0 to 65535")
+    if application is None:
+        from .agentic.gallery import DemoGallery
+
+        gallery = DemoGallery(output_dir)
+        application = GalleryApplication(gallery=gallery, catalog=gallery.catalog())
+    if application.jobs is None:
+        from .agentic.gallery import StochasticJobManager
+
+        application.jobs = StochasticJobManager(
+            application.gallery, run_lock=application.run_lock
+        )
+    handler = _make_gallery_handler(application, gallery_html())
+    server_class = ThreadingHTTPServer
+    if host == "::1":
+        class IPv6GalleryServer(ThreadingHTTPServer):
+            address_family = socket.AF_INET6
+
+        server_class = IPv6GalleryServer
+    server = server_class((host, port), handler)
+    server.daemon_threads = True
+    server.gallery_application = application
     return server
 
 
@@ -597,9 +1103,25 @@ def _port(value: str) -> int:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Inspect one validated TokenLab artifact bundle locally."
+        description=(
+            "Explore reviewed TokenLab scenarios or inspect one validated "
+            "artifact bundle locally."
+        )
     )
-    parser.add_argument("bundle", help="Path to a completed public-demo bundle")
+    parser.add_argument(
+        "bundle",
+        nargs="?",
+        help="Path to a completed public-demo bundle (legacy read-only mode)",
+    )
+    parser.add_argument(
+        "--gallery",
+        action="store_true",
+        help="Run the interactive reviewed-scenario gallery",
+    )
+    parser.add_argument(
+        "--output-dir",
+        help="Gallery-only directory for non-overwriting run bundles",
+    )
     parser.add_argument("--host", default="127.0.0.1", help="Loopback host")
     parser.add_argument("--port", default=8765, type=_port, help="Local port")
     return parser
@@ -609,13 +1131,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     try:
         validate_host(args.host)
-        application = _load_application_quietly(args.bundle)
-        server = create_server(
-            args.bundle,
-            host=args.host,
-            port=args.port,
-            application=application,
-        )
+        if args.gallery:
+            if args.bundle is not None:
+                raise DashboardError("bundle path cannot be combined with --gallery")
+            output_dir = args.output_dir or "outputs/demo-gallery"
+            server = create_gallery_server(
+                output_dir,
+                host=args.host,
+                port=args.port,
+            )
+            application = None
+        else:
+            if args.bundle is None:
+                raise DashboardError("bundle path is required unless --gallery is used")
+            if args.output_dir is not None:
+                raise DashboardError("--output-dir is valid only with --gallery")
+            application = _load_application_quietly(args.bundle)
+            server = create_server(
+                args.bundle,
+                host=args.host,
+                port=args.port,
+                application=application,
+            )
     except (DashboardError, OSError) as exc:
         print(f"TokenLab dashboard: FAIL — {exc}", file=sys.stderr)
         return 1
@@ -623,8 +1160,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     display_host = f"[{args.host}]" if ":" in args.host else args.host
     print("TokenLab dashboard: READY")
     print(f"URL: http://{display_host}:{server.server_port}")
-    print(f"Bundle state: {application.payload['state']}")
-    print("Boundary: local read-only artifact view; press Ctrl-C to stop.")
+    if args.gallery:
+        print(f"Runs: {args.output_dir or 'outputs/demo-gallery'}")
+        print(
+            "Boundary: local illustrative scenario explorer; not investment, "
+            "launch, legal, financial, forecast, or decision-grade advice."
+        )
+    else:
+        print(f"Bundle state: {application.payload['state']}")
+        print("Boundary: local read-only artifact view; press Ctrl-C to stop.")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

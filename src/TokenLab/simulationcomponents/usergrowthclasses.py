@@ -236,6 +236,7 @@ class UserGrowth_Stochastic(UserGrowth):
         add_to_userbase: bool = False,
         num_initial_users: int = 0,
         noise_addons: List[AddOn] = [],
+        rng=None,
     ):
         """
 
@@ -255,6 +256,11 @@ class UserGrowth_Stochastic(UserGrowth):
 
         num_initial_users : int, optional
         The number of initial users. Default is 0
+
+        rng : numpy.random.Generator, optional
+        When provided, all randomness for this instance is drawn from it. When None,
+        a private generator seeded from OS entropy is created lazily on first use
+        (no wall-clock, no global state).
         """
 
         super(UserGrowth_Stochastic, self).__init__()
@@ -264,10 +270,16 @@ class UserGrowth_Stochastic(UserGrowth):
         self.num_users = num_initial_users
         self.add_to_userbase = add_to_userbase
         self._noise_component = noise_addons
+        self._rng = rng
         return None
 
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
+
     def execute(self):
-        seed = int(int(time.time()) * np.random.rand())
         if type(self.user_growth_dist_parameters) == list:
             try:
                 params = self.user_growth_dist_parameters[self.iteration]
@@ -280,9 +292,9 @@ class UserGrowth_Stochastic(UserGrowth):
             params = self.user_growth_dist_parameters
 
         self._active_params = params
-        value = self.user_growth_distribution.rvs(size=1, random_state=seed, **params)[
-            0
-        ]
+        value = self.user_growth_distribution.rvs(
+            size=1, random_state=self._draw_rng(), **params
+        )[0]
 
         if self.add_to_userbase:
             self.num_users += value

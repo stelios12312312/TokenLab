@@ -4,7 +4,20 @@ Proven implementation patterns. Record what worked so future plans can reuse it.
 
 Format: `P-NNN: Short title (date)` — What worked, why it worked, when to apply it.
 
-<!-- Next pattern: P-003 -->
+<!-- Next pattern: P-004 -->
+
+## P-003: Scope guards to the mutable resource, not the request wrapper (2026-08-14)
+
+- **Trigger**: Several servers, sessions, or adapters can call code that mutates
+  module-level or process-global state.
+- **Pattern**: Put the synchronization primitive at the same scope as the
+  mutable resource, then test contention across two independent wrapper
+  instances. Put admission limits before expensive work and keep the transport
+  boundary's final error response generic and path-free.
+- **Why**: Per-instance tests can all pass while sibling instances race the real
+  shared resource. Cross-instance negative controls expose that false green.
+- **Apply when**: Wrapping simulation engines, random seeds, global caches, file
+  publication, or any backend with process-wide lifecycle.
 
 ## P-001: Reproducibility hashes should use persisted representations (2026-08-12)
 

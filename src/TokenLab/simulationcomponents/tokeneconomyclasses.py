@@ -75,10 +75,11 @@ class TokenEconomy_Basic(TokenEconomy):
         name: str = None,
         safeguard_current_supply_level: bool = True,
         ignore_supply_controller: bool = False,
-        treasuries: List[TreasuryBasic] = [],
+        treasuries: List[TreasuryBasic] = None,
         max_supply: float = np.inf,
         dynamic_price: bool = False,
         multiple: float = 1,
+        rng=None,
     ) -> None:
         """
 
@@ -121,6 +122,11 @@ class TokenEconomy_Basic(TokenEconomy):
         dynamic_price: If True, then the agent pools are randomised, and a new price is computed after every agent pool acts.
 
         multiple: price multiple to use, default is 1 (i.e. no multiple)
+
+        rng: Optional numpy.random.Generator. When provided, the agent-pool execution
+        order shuffle in execute() is drawn from it instead of the process-global
+        `random` module. When None, execute() keeps using the legacy global
+        random.shuffle (which the seeded golden-parity runs depend on).
 
         Returns
         -------
@@ -186,7 +192,10 @@ class TokenEconomy_Basic(TokenEconomy):
 
         self.ignore_supply_controller = ignore_supply_controller
 
-        self.treasuries = treasuries
+        # Fresh list per economy: a mutable default would be shared across
+        # every TokenEconomy instance in the process, leaking one economy's
+        # treasury (and its emitted treasury columns) into unrelated builds.
+        self.treasuries = list(treasuries) if treasuries is not None else []
 
         self.dynamic_price = dynamic_price
 
@@ -196,6 +205,8 @@ class TokenEconomy_Basic(TokenEconomy):
         self.max_supply = max_supply
 
         self.multiple = multiple
+
+        self._rng = rng
 
         if (burn_coefficient > 1 or burn_coefficient <= 0) and self.burn_token == True:
             raise Exception("burn_coefficient needs to be in (0,1]")
@@ -421,7 +432,14 @@ class TokenEconomy_Basic(TokenEconomy):
 
         # Execute agent pools
         pools = self._agent_pools + self._temp_agent_pools
-        random.shuffle(pools)
+        if self._rng is not None:
+            # Injected deterministic stream: shuffle without touching the
+            # process-global `random` state.
+            self._rng.shuffle(pools)
+        else:
+            # Legacy path: the global shuffle is load-bearing for the seeded
+            # golden-parity runs, so it must keep consuming global state.
+            random.shuffle(pools)
         for agent in pools:
             new_pools = agent.execute()
             if agent.currency == self.token:
@@ -608,19 +626,40 @@ class TokenMetaSimulator:
 
     """
 
-    def __init__(self, token_economy: TokenEconomy) -> None:
+    def __init__(self, token_economy: TokenEconomy, rng=None) -> None:
         self.token_economy = copy.deepcopy(token_economy)
         self.data = []
         self.repetitions = None
+        self._rng = rng
 
         self.unit_of_time = token_economy.unit_of_time
 
-    def execute(self, iterations: int = 36, repetitions: int = 30) -> pd.DataFrame:
+    def execute(
+        self, iterations: int = 36, repetitions: int = 30, rng=None
+    ) -> pd.DataFrame:
+        if rng is None:
+            rng = self._rng
         repetition_reports = []
         for i in tqdm(range(repetitions)):
-            scipy.stats.rv_continuous.random_state = int(
-                time.time() + int(np.random.rand())
-            )
+            if rng is None:
+                # Legacy path (kept byte-identical): existing seeded workflows and
+                # golden fixtures depend on this exact per-repetition consumption of
+                # one global np.random draw plus the scipy global random_state set.
+                # The value itself is time-derived and inert on deterministic paths.
+                scipy.stats.rv_continuous.random_state = int(
+                    time.time() + int(np.random.rand())
+                )
+            # When rng is supplied, the legacy time-derived reseeding above is
+            # skipped entirely: no wall-clock reads, no global np.random
+            # consumption, and no scipy global mutation. Component-level
+            # randomness for this call is expected to come from generators
+            # injected into the economy/components at build time.
+            #
+            # Note: the economy is deepcopied per repetition, so any injected
+            # generators inside it are copied with their current state. Each
+            # repetition is therefore deterministic given the parent state, but
+            # repetitions of one execute() call replay identical component
+            # streams; drive independent paths with fresh builds instead.
             token_economy_copy = copy.deepcopy(self.token_economy)
             token_economy_copy.reset()
             it_current_data = []
@@ -784,6 +823,8 @@ class TokenEconomy_Dependent(TokenEconomy_Basic):
         supply_is_added: bool = True,
         name: str = None,
         ignore_supply_controller: bool = False,
+        safeguard_current_supply_level: bool = True,
+        rng=None,
     ) -> None:
 
         if name == None:
@@ -798,10 +839,14 @@ class TokenEconomy_Dependent(TokenEconomy_Basic):
             price_function=price_function,
             price_function_parameters=price_function_parameters,
             unit_of_time=unit_of_time,
+            agent_pools=agent_pools,
             burn_token=burn_token,
             supply_is_added=supply_is_added,
             name=name,
             ignore_supply_controller=ignore_supply_controller,
+            safeguard_current_supply_level=safeguard_current_supply_level,
+            supply_pools=supply_pools,
+            rng=rng,
         )
 
         self._token_economy = dependent_token_economy
@@ -823,12 +868,14 @@ class TokenEcosystem(TokenEconomy):
         randomize_order: bool = False,
         unit_of_time="month",
         master: str = None,
+        rng=None,
     ):
 
         self.token_economies = token_economies
         self._randomize = randomize_order
         self.unit_of_time = unit_of_time
         self.master = master
+        self._rng = rng
 
         for tokenec in self.token_economies:
             if tokenec.name == None:
@@ -838,7 +885,13 @@ class TokenEcosystem(TokenEconomy):
 
     def execute(self):
         if self._randomize:
-            random.shuffle(self.token_economies)
+            if self._rng is not None:
+                # Injected deterministic stream: shuffle without touching the
+                # process-global `random` state.
+                self._rng.shuffle(self.token_economies)
+            else:
+                # Legacy path: keep consuming the global `random` state.
+                random.shuffle(self.token_economies)
 
         for tokenec in self.token_economies:
             tokenec.execute()
@@ -856,7 +909,7 @@ class TokenEcosystem(TokenEconomy):
             datum["name"] = tokenec.name
             cols = datum.columns
             cols = [col + "_" + tokenec.name for col in cols]
-            datum.set_axis(cols, axis=1, inplace=True)
+            datum = datum.set_axis(cols, axis=1)
             data.append(datum)
         data = pd.concat(data, axis=1)
 

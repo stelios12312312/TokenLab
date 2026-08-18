@@ -1,0 +1,132 @@
+{
+  "profile_version": 1,
+  "profile_id": "tokenlab-public-vesting-constant-v1",
+  "scenario_id": "public-vesting-constant-v1",
+  "source_artifacts": {
+    "results": {
+      "manifest_output": "results",
+      "role": "one row per deterministic path and simulation step"
+    },
+    "iteration_summary": {
+      "manifest_output": "iteration_summary",
+      "role": "per-step descriptive summary across repeated deterministic paths"
+    }
+  },
+  "time_axis": {
+    "artifact": "iteration_summary",
+    "column": "iteration_time",
+    "label": "Simulation step",
+    "unit": "illustrative step"
+  },
+  "metrics": [
+    {
+      "id": "token_price",
+      "label": "Illustrative token price",
+      "unit": "$ per VTLB",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Price emitted by the configured PriceFunction_EOE component; not a market forecast.",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "VTLB_price_mean"
+      }
+    },
+    {
+      "id": "fiat_transaction_volume",
+      "label": "Fiat transaction volume",
+      "unit": "illustrative $ per step",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Configured constant fiat-denominated transaction value for the placeholder single-user pool; the bounded constant-volume companion to the replayed demand series of the vesting demos.",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "transactions_$_mean"
+      }
+    },
+    {
+      "id": "transaction_count",
+      "label": "Transaction-controller count",
+      "unit": "controller-reported count per illustrative step",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Count emitted by the selected aggregate transaction controller; it is not an individual ledger transaction count.",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "num_transactions_mean"
+      }
+    },
+    {
+      "id": "user_count",
+      "label": "Cumulative user participation",
+      "unit": "modeled user-step participations",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Cumulative sum of the configured per-step cohort counts reported by TokenEconomy; it is not a distinct or active-user count.",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "num_users_mean"
+      }
+    },
+    {
+      "id": "holding_time",
+      "label": "Holding time",
+      "unit": "illustrative time units",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Configured constant holding-time assumption used by this control scenario.",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "holding_time_mean"
+      }
+    },
+    {
+      "id": "token_supply",
+      "label": "Token supply",
+      "unit": "VTLB",
+      "aggregation": "mean across repeated deterministic paths at each step",
+      "description": "Circulating supply held at the 150,000,000 VTLB TGE float (illustrative, uncalibrated); this no-unlock control configures no supply pools, so it does not model emissions or unlocks.",
+      "source": {
+        "artifact": "iteration_summary",
+        "column": "supply_mean"
+      }
+    }
+  ],
+  "unavailable_concepts": [
+    {
+      "id": "emissions",
+      "reason": "The selected constant-supply scenario emits no emissions schedule."
+    },
+    {
+      "id": "vesting_unlocks",
+      "reason": "No vesting or unlock controller is configured in this no-unlock control; the stochastic vesting demos model unlocks separately."
+    },
+    {
+      "id": "liquidity",
+      "reason": "The emitted tables contain no liquidity depth or pool state."
+    },
+    {
+      "id": "treasury",
+      "reason": "No treasury component or treasury authority is configured."
+    },
+    {
+      "id": "governance",
+      "reason": "The scenario models no governance process or authority."
+    },
+    {
+      "id": "staking_yield",
+      "reason": "No staking pool, reward source, or staking yield is modeled."
+    },
+    {
+      "id": "fdv",
+      "reason": "FDV is not emitted or declared by the selected artifact contract."
+    },
+    {
+      "id": "apy",
+      "reason": "APY is not emitted and cannot be inferred from these tables."
+    }
+  ],
+  "repeatability": {
+    "status": "scenario_specific_deterministic",
+    "explanation": "For this reviewed scenario, matching config hash and seed produce matching canonical table-content hashes. Exact file hashes also include the unique run_id lineage field."
+  },
+  "variability": {
+    "status": "unavailable",
+    "explanation": "All selected controllers are deterministic, so repeated paths are identical and do not provide statistical uncertainty evidence."
+  },
+  "interpretation_boundary": "This is an illustrative, uncalibrated scenario. It is not investment, launch, legal, financial, forecast, or decision-grade advice; live decisions require qualified review and external evidence."
+}

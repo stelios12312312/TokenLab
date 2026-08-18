@@ -1,787 +1,1153 @@
 {
-  "version": 1,
-  "updated": "2026-08-12T10:55:00.000Z",
-  "stories": [
+ "version": 1,
+ "updated": "2026-08-14T07:10:00.000Z",
+ "stories": [
+  {
+   "id": "US-Z1-M3-01",
+   "title": "Genesis unlock with 7 buckets",
+   "description": "Genesis token supply is defined with a max supply and a total supply. The circulating supply is monitored by the mint authority. The emission schedule defines the inflation, issuance, and release schedule. Vesting schedules are tracked with a 1-year cliff lockup and team, investor, advisor, community, and ecosystem buckets for unlock cadence. Staking incentives objective utility behavioral goals are funded via a yield source (subsidy / transaction fees / revenue) with sybil abuse controls to prevent gaming wash trading. Reflexivity death spiral risk and sell pressure are evaluated. AMM liquidity pool depth, treasury runway reserves, voting multisig admin key governance authority, and timelock emergency guardian quorum risk controls are established. Disclaimer: not financial advice and not legal advice. This depends on assumptions evaluated via sensitivity stress tests, scenario analysis, and downside risk models. A qualified legal review by counsel has validated securities compliance across regulatory owner jurisdictions.",
+   "status": "FULLY_COVERED",
+   "priority": "high",
+   "source": "dialogue",
+   "annotation_refs": [],
+   "capability_refs": [],
+   "code_refs": [
+    "projects/z1/m3_full_economy/economy.py",
+    "projects/z1/m3_full_economy/ledger.py"
+   ],
+   "test_refs": [
+    "projects/z1/m3_full_economy/proof_verification.py"
+   ],
+   "validation_refs": [
+    "projects/z1/m3_full_economy/proof_verification.py"
+   ],
+   "notes": "P0 Structural change"
+  },
+  {
+   "id": "US-Z1-M3-02",
+   "title": "Provider recirculation rate",
+   "status": "FULLY_COVERED",
+   "priority": "high",
+   "source": "dialogue",
+   "annotation_refs": [],
+   "capability_refs": [],
+   "code_refs": [
+    "projects/z1/m3_full_economy/economy.py",
+    "projects/z1/m3_full_economy/ledger.py"
+   ],
+   "test_refs": [
+    "projects/z1/m3_full_economy/proof_verification.py"
+   ],
+   "validation_refs": [
+    "projects/z1/m3_full_economy/proof_verification.py"
+   ],
+   "notes": "P0 Structural change"
+  },
+  {
+   "id": "US-Z1-M3-03",
+   "title": "Full composite SR formula",
+   "status": "FULLY_COVERED",
+   "priority": "high",
+   "source": "dialogue",
+   "annotation_refs": [],
+   "capability_refs": [],
+   "code_refs": [
+    "projects/z1/m3_full_economy/economy.py",
+    "projects/z1/m3_full_economy/ledger.py"
+   ],
+   "test_refs": [
+    "projects/z1/m3_full_economy/proof_verification.py"
+   ],
+   "validation_refs": [
+    "projects/z1/m3_full_economy/proof_verification.py"
+   ],
+   "notes": "P0 Structural change"
+  },
+  {
+   "id": "US-Z1-M3-04",
+   "title": "Epoch pipeline reordering (AR top-up before settlement)",
+   "status": "FULLY_COVERED",
+   "priority": "high",
+   "source": "dialogue",
+   "annotation_refs": [],
+   "capability_refs": [],
+   "code_refs": [
+    "projects/z1/m3_full_economy/economy.py",
+    "projects/z1/m3_full_economy/ledger.py"
+   ],
+   "test_refs": [
+    "projects/z1/m3_full_economy/proof_verification.py"
+   ],
+   "validation_refs": [
+    "projects/z1/m3_full_economy/proof_verification.py"
+   ],
+   "notes": "P0 Structural change"
+  },
+  {
+   "id": "US-Z1-M3-05",
+   "title": "Discrete VRP + CIP pools with waterfall priority",
+   "status": "FULLY_COVERED",
+   "priority": "medium",
+   "source": "dialogue",
+   "annotation_refs": [],
+   "capability_refs": [],
+   "code_refs": [
+    "projects/z1/m3_full_economy/economy.py",
+    "projects/z1/m3_full_economy/ledger.py"
+   ],
+   "test_refs": [
+    "scripts/z1_m3/proof_verification_issue5.py"
+   ],
+   "validation_refs": [
+    "scripts/z1_m3/proof_verification_issue5.py"
+   ],
+   "notes": "P1 Fidelity change"
+  },
+  {
+   "id": "US-Z1-M3-06",
+   "title": "Governance staking as Z1U sink",
+   "status": "FULLY_COVERED",
+   "priority": "medium",
+   "source": "dialogue",
+   "annotation_refs": [],
+   "capability_refs": [],
+   "code_refs": [
+    "projects/z1/m3_full_economy/economy.py",
+    "projects/z1/m3_full_economy/ledger.py"
+   ],
+   "test_refs": [
+    "scripts/z1_m3/proof_verification_issue5.py"
+   ],
+   "validation_refs": [
+    "scripts/z1_m3/proof_verification_issue5.py"
+   ],
+   "notes": "P1 Fidelity change"
+  },
+  {
+   "id": "US-Z1-M3-07",
+   "title": "Creator cohort with CIP distribution and recirculation",
+   "status": "FULLY_COVERED",
+   "priority": "medium",
+   "source": "dialogue",
+   "annotation_refs": [],
+   "capability_refs": [],
+   "code_refs": [
+    "projects/z1/m3_full_economy/config.py",
+    "projects/z1/m3_full_economy/ledger.py",
+    "projects/z1/m3_full_economy/economy.py"
+   ],
+   "test_refs": [
+    "scripts/z1_m3/proof_verification_issue6.py"
+   ],
+   "validation_refs": [
+    "scripts/z1_m3/proof_verification_issue6.py"
+   ],
+   "notes": "P1 Fidelity change"
+  },
+  {
+   "id": "US-Z1-M3-08",
+   "title": "Validator cohort with VRP rewards",
+   "status": "FULLY_COVERED",
+   "priority": "medium",
+   "source": "dialogue",
+   "annotation_refs": [],
+   "capability_refs": [],
+   "code_refs": [
+    "projects/z1/m3_full_economy/config.py",
+    "projects/z1/m3_full_economy/ledger.py",
+    "projects/z1/m3_full_economy/economy.py"
+   ],
+   "test_refs": [
+    "scripts/z1_m3/proof_verification_issue6.py"
+   ],
+   "validation_refs": [
+    "scripts/z1_m3/proof_verification_issue6.py"
+   ],
+   "notes": "P1 Fidelity change"
+  },
+  {
+   "id": "US-Z1-M3-09",
+   "title": "4-stage PCS with epoch budget",
+   "status": "FULLY_COVERED",
+   "priority": "medium",
+   "source": "dialogue",
+   "annotation_refs": [],
+   "capability_refs": [],
+   "code_refs": [
+    "projects/z1/m3_full_economy/economy.py",
+    "projects/z1/m3_full_economy/config.py"
+   ],
+   "test_refs": [
+    "scripts/z1_m3/proof_verification_issue9.py"
+   ],
+   "validation_refs": [
+    "scripts/z1_m3/proof_verification_issue9.py"
+   ],
+   "notes": "P1 Fidelity change"
+  },
+  {
+   "id": "US-PM-AUTO-H2A2D347E9E110A84",
+   "title": "Scenario schema and headless runner",
+   "description": "A TokenLab simulation operator or future agent can define an existing-class simulation in versioned YAML or JSON, execute it headlessly, and receive a manifest plus lineage-bearing output tables without changing existing simulation behavior.",
+   "status": "FULLY_COVERED",
+   "priority": "medium",
+   "source": "program_manager_intake",
+   "annotation_refs": [
+    "src/TokenLab/agentic/schema.py",
+    "src/TokenLab/agentic/factory.py",
+    "src/TokenLab/agentic/runner.py",
+    "tests/test_agentic_runner.py"
+   ],
+   "capability_refs": [],
+   "code_refs": [
+    "src/TokenLab/agentic/schema.py",
+    "src/TokenLab/agentic/factory.py",
+    "src/TokenLab/agentic/runner.py",
+    "examples/scenarios/notebook_01_simple_fiat.yaml",
+    "src/TokenLab/agentic/rng.py",
+    "src/TokenLab/agentic/statistics.py",
+    "src/TokenLab/agentic/uncertainty.py",
+    "src/TokenLab/agentic/assumptions.py"
+   ],
+   "test_refs": [
+    "tests/test_agentic_runner.py",
+    "tests/test_rng_reproducibility.py",
+    "tests/test_uncertainty_schema.py",
+    "tests/test_monte_carlo_runner.py",
+    "tests/test_statistical_artifacts.py",
+    "tests/test_agentic_assumptions.py",
+    "tests/test_public_demo.py"
+   ],
+   "validation_refs": [
+    "tests/test_agentic_runner.py",
+    "tests/test_z1_shared_core_parity.py",
+    "tests/test_v2_remediation_regressions.py",
+    "tests/test_rng_reproducibility.py",
+    "tests/test_monte_carlo_runner.py",
+    "tests/test_statistical_artifacts.py"
+   ],
+   "doc_refs": [
+    "docs/agentic-runner.md"
+   ],
+   "acceptance_criteria": [
+    "A strict YAML/JSON scenario covers economy, controllers, agent pools, Monte Carlo settings, seed, and artifact format.",
+    "The factory constructs existing TokenLab classes and edits no existing simulation class.",
+    "The headless runner emits an atomic manifest and lineage-bearing CSV or Parquet tables.",
+    "The reference scenario matches the deterministic hand-written notebook 01 simulation on the fixed seed.",
+    "Existing regression, Z1 parity, fresh-clone, annotation, and Program checks pass."
+   ],
+   "notes": "T-INTAKE-277FB9E6; additive existing-class orchestration verified on Python 3.10 with fixed-reference parity, full regression, Z1 golden parity, installed-wheel smoke, atomic artifact review, and no legacy simulation source diff.",
+   "postconditions": [
+    "success: all requested paths complete with zero failures and the bundle publishes atomically with claim eligibility evaluated",
+    "incomplete: failed paths are recorded with exact requested/completed/failed denominators and claims are blocked",
+    "invalid: malformed or unapproved specifications are refused before execution with structured errors",
+    "cancelled: a cancelled run publishes nothing and reports exact settled counts"
+   ],
+   "conflicts": [
     {
-      "id": "US-Z1-M3-01",
-      "title": "Genesis unlock with 7 buckets",
-      "description": "Genesis token supply is defined with a max supply and a total supply. The circulating supply is monitored by the mint authority. The emission schedule defines the inflation, issuance, and release schedule. Vesting schedules are tracked with a 1-year cliff lockup and team, investor, advisor, community, and ecosystem buckets for unlock cadence. Staking incentives objective utility behavioral goals are funded via a yield source (subsidy / transaction fees / revenue) with sybil abuse controls to prevent gaming wash trading. Reflexivity death spiral risk and sell pressure are evaluated. AMM liquidity pool depth, treasury runway reserves, voting multisig admin key governance authority, and timelock emergency guardian quorum risk controls are established. Disclaimer: not financial advice and not legal advice. This depends on assumptions evaluated via sensitivity stress tests, scenario analysis, and downside risk models. A qualified legal review by counsel has validated securities compliance across regulatory owner jurisdictions.",
-      "status": "FULLY_COVERED",
-      "priority": "high",
-      "source": "dialogue",
-      "annotation_refs": [],
-      "capability_refs": [],
-      "code_refs": [
-        "projects/z1/m3_full_economy/economy.py",
-        "projects/z1/m3_full_economy/ledger.py"
-      ],
-      "test_refs": [
-        "projects/z1/m3_full_economy/proof_verification.py"
-      ],
-      "validation_refs": [
-        "projects/z1/m3_full_economy/proof_verification.py"
-      ],
-      "notes": "P0 Structural change"
-    },
-    {
-      "id": "US-Z1-M3-02",
-      "title": "Provider recirculation rate",
-      "status": "FULLY_COVERED",
-      "priority": "high",
-      "source": "dialogue",
-      "annotation_refs": [],
-      "capability_refs": [],
-      "code_refs": [
-        "projects/z1/m3_full_economy/economy.py",
-        "projects/z1/m3_full_economy/ledger.py"
-      ],
-      "test_refs": [
-        "projects/z1/m3_full_economy/proof_verification.py"
-      ],
-      "validation_refs": [
-        "projects/z1/m3_full_economy/proof_verification.py"
-      ],
-      "notes": "P0 Structural change"
-    },
-    {
-      "id": "US-Z1-M3-03",
-      "title": "Full composite SR formula",
-      "status": "FULLY_COVERED",
-      "priority": "high",
-      "source": "dialogue",
-      "annotation_refs": [],
-      "capability_refs": [],
-      "code_refs": [
-        "projects/z1/m3_full_economy/economy.py",
-        "projects/z1/m3_full_economy/ledger.py"
-      ],
-      "test_refs": [
-        "projects/z1/m3_full_economy/proof_verification.py"
-      ],
-      "validation_refs": [
-        "projects/z1/m3_full_economy/proof_verification.py"
-      ],
-      "notes": "P0 Structural change"
-    },
-    {
-      "id": "US-Z1-M3-04",
-      "title": "Epoch pipeline reordering (AR top-up before settlement)",
-      "status": "FULLY_COVERED",
-      "priority": "high",
-      "source": "dialogue",
-      "annotation_refs": [],
-      "capability_refs": [],
-      "code_refs": [
-        "projects/z1/m3_full_economy/economy.py",
-        "projects/z1/m3_full_economy/ledger.py"
-      ],
-      "test_refs": [
-        "projects/z1/m3_full_economy/proof_verification.py"
-      ],
-      "validation_refs": [
-        "projects/z1/m3_full_economy/proof_verification.py"
-      ],
-      "notes": "P0 Structural change"
-    },
-    {
-      "id": "US-Z1-M3-05",
-      "title": "Discrete VRP + CIP pools with waterfall priority",
-      "status": "FULLY_COVERED",
-      "priority": "medium",
-      "source": "dialogue",
-      "annotation_refs": [],
-      "capability_refs": [],
-      "code_refs": [
-        "projects/z1/m3_full_economy/economy.py",
-        "projects/z1/m3_full_economy/ledger.py"
-      ],
-      "test_refs": [
-        "scripts/z1_m3/proof_verification_issue5.py"
-      ],
-      "validation_refs": [
-        "scripts/z1_m3/proof_verification_issue5.py"
-      ],
-      "notes": "P1 Fidelity change"
-    },
-    {
-      "id": "US-Z1-M3-06",
-      "title": "Governance staking as Z1U sink",
-      "status": "FULLY_COVERED",
-      "priority": "medium",
-      "source": "dialogue",
-      "annotation_refs": [],
-      "capability_refs": [],
-      "code_refs": [
-        "projects/z1/m3_full_economy/economy.py",
-        "projects/z1/m3_full_economy/ledger.py"
-      ],
-      "test_refs": [
-        "scripts/z1_m3/proof_verification_issue5.py"
-      ],
-      "validation_refs": [
-        "scripts/z1_m3/proof_verification_issue5.py"
-      ],
-      "notes": "P1 Fidelity change"
-    },
-    {
-      "id": "US-Z1-M3-07",
-      "title": "Creator cohort with CIP distribution and recirculation",
-      "status": "FULLY_COVERED",
-      "priority": "medium",
-      "source": "dialogue",
-      "annotation_refs": [],
-      "capability_refs": [],
-      "code_refs": [
-        "projects/z1/m3_full_economy/config.py",
-        "projects/z1/m3_full_economy/ledger.py",
-        "projects/z1/m3_full_economy/economy.py"
-      ],
-      "test_refs": [
-        "scripts/z1_m3/proof_verification_issue6.py"
-      ],
-      "validation_refs": [
-        "scripts/z1_m3/proof_verification_issue6.py"
-      ],
-      "notes": "P1 Fidelity change"
-    },
-    {
-      "id": "US-Z1-M3-08",
-      "title": "Validator cohort with VRP rewards",
-      "status": "FULLY_COVERED",
-      "priority": "medium",
-      "source": "dialogue",
-      "annotation_refs": [],
-      "capability_refs": [],
-      "code_refs": [
-        "projects/z1/m3_full_economy/config.py",
-        "projects/z1/m3_full_economy/ledger.py",
-        "projects/z1/m3_full_economy/economy.py"
-      ],
-      "test_refs": [
-        "scripts/z1_m3/proof_verification_issue6.py"
-      ],
-      "validation_refs": [
-        "scripts/z1_m3/proof_verification_issue6.py"
-      ],
-      "notes": "P1 Fidelity change"
-    },
-    {
-      "id": "US-Z1-M3-09",
-      "title": "4-stage PCS with epoch budget",
-      "status": "FULLY_COVERED",
-      "priority": "medium",
-      "source": "dialogue",
-      "annotation_refs": [],
-      "capability_refs": [],
-      "code_refs": [
-        "projects/z1/m3_full_economy/economy.py",
-        "projects/z1/m3_full_economy/config.py"
-      ],
-      "test_refs": [
-        "scripts/z1_m3/proof_verification_issue9.py"
-      ],
-      "validation_refs": [
-        "scripts/z1_m3/proof_verification_issue9.py"
-      ],
-      "notes": "P1 Fidelity change"
-    },
-    {
-      "id": "US-PM-AUTO-H2A2D347E9E110A84",
-      "title": "Scenario schema and headless runner",
-      "description": "A TokenLab simulation operator or future agent can define an existing-class simulation in versioned YAML or JSON, execute it headlessly, and receive a manifest plus lineage-bearing output tables without changing existing simulation behavior.",
-      "status": "FULLY_COVERED",
-      "priority": "medium",
-      "source": "program_manager_intake",
-      "annotation_refs": [
-        "src/TokenLab/agentic/schema.py",
-        "src/TokenLab/agentic/factory.py",
-        "src/TokenLab/agentic/runner.py",
-        "tests/test_agentic_runner.py"
-      ],
-      "capability_refs": [],
-      "code_refs": [
-        "src/TokenLab/agentic/schema.py",
-        "src/TokenLab/agentic/factory.py",
-        "src/TokenLab/agentic/runner.py",
-        "examples/scenarios/notebook_01_simple_fiat.yaml"
-      ],
-      "test_refs": [
-        "tests/test_agentic_runner.py"
-      ],
-      "validation_refs": [
-        "tests/test_agentic_runner.py",
-        "tests/test_z1_shared_core_parity.py",
-        "tests/test_v2_remediation_regressions.py"
-      ],
-      "doc_refs": [
-        "docs/agentic-runner.md"
-      ],
-      "acceptance_criteria": [
-        "A strict YAML/JSON scenario covers economy, controllers, agent pools, Monte Carlo settings, seed, and artifact format.",
-        "The factory constructs existing TokenLab classes and edits no existing simulation class.",
-        "The headless runner emits an atomic manifest and lineage-bearing CSV or Parquet tables.",
-        "The reference scenario matches the deterministic hand-written notebook 01 simulation on the fixed seed.",
-        "Existing regression, Z1 parity, fresh-clone, annotation, and Program checks pass."
-      ],
-      "notes": "T-INTAKE-277FB9E6; additive existing-class orchestration verified on Python 3.10 with fixed-reference parity, full regression, Z1 golden parity, installed-wheel smoke, atomic artifact review, and no legacy simulation source diff."
-    },
-    {
-      "id": "US-001",
-      "title": "Generated artifacts stay out of Git tracking",
-      "priority": "MEDIUM",
-      "status": "FULLY_COVERED",
-      "description": "As a TokenLab maintainer, I can regenerate simulation and report artifacts without dirtying Git, while development-only Z1 helpers remain in maintained script and test locations.",
-      "code_refs": [
-        ".gitignore",
-        "scripts/z1_m3/sandbox.py",
-        "scripts/z1_m3/run_smoke.py",
-        "scripts/z1_m3/proof_verification_issue5.py",
-        "scripts/z1_m3/proof_verification_issue6.py",
-        "scripts/z1_m3/proof_verification_issue9.py"
-      ],
-      "test_refs": [
-        "tests/test_z1_m3_monte_carlo.py"
-      ],
-      "doc_refs": [
-        "plans/plan_2026-08-03_3b1371470a0a554f/verification.md"
-      ],
-      "validation_refs": [
-        "plans/plan_2026-08-03_3b1371470a0a554f/verification.md"
-      ],
-      "acceptance_criteria": [
-        {
-          "id": "AC-US-001-001",
-          "description": "Regenerating TokenLab and Z1 reports does not add generated outputs to Git status."
-        },
-        {
-          "id": "AC-US-001-002",
-          "description": "Reusable Z1 helpers live under scripts/z1_m3 or tests, and all live imports reference their maintained locations."
-        },
-        {
-          "id": "AC-US-001-003",
-          "description": "The supported Python 3.10 regression suite and the clean regeneration checks pass after artifact cleanup."
-        }
-      ],
-      "tags": [
-        "maintenance",
-        "repository-hygiene",
-        "traceability"
-      ],
-      "needs_review": false,
-      "created_at": "2026-08-12T07:50:55.137Z",
-      "merged_from": [],
-      "conflicts": []
-    },
-    {
-      "id": "US-PM-AUTO-H75B537078B2E4FEA",
-      "title": "Clean and govern the public GitHub repository",
-      "priority": "MEDIUM",
-      "status": "NOT_IMPLEMENTED",
-      "code_refs": [],
-      "test_refs": [],
-      "validation_refs": [],
-      "doc_refs": [],
-      "tags": [
-        "program_manager",
-        "auto_story",
-        "draft",
-        "fallback"
-      ],
-      "generated_from": {
-        "source": "program_manager_intake",
-        "source_hash": "75b537078b2e4fea",
-        "generated_at": "2026-08-12T08:01:28.372Z",
-        "review_status": "draft_review_needed",
-        "source_title": "Clean and govern the public GitHub repository"
-      },
-      "narrative": {
-        "user": "program operator",
-        "need": "Clean the public TokenLab GitHub surface without removing product history: ignore new dated generated report bundles and OS metadata, remove tracked OS junk, improve README positioning for the declarative runner, set accurate repository topics and description, document the Python 3.10 support path, and configure or explicitly disposition stale GitBook status. Preserve historical client deliverables unless a separate disclosure review authorizes removal. Acceptance requires a clean clone, no gene",
-        "outcome": "The requested Program Manager capability is represented as an implementation-ready backlog story."
-      },
-      "acceptance_criteria": []
-    },
-    {
-      "id": "US-PM-AUTO-HFC7DB1681D268A66",
-      "title": "Create a polished reproducible TokenLab demo",
-      "priority": "MEDIUM",
-      "status": "FULLY_COVERED",
-      "description": "As a prospective public evaluator or TokenLab maintainer, I need one installed command that runs a reviewed illustrative scenario with bounded terminal output and publishes a validated, reproducible, dashboard-ready evidence bundle without inventing absent tokenomics metrics.",
-      "code_refs": [
-        "src/TokenLab/demo_cli.py",
-        "src/TokenLab/agentic/demo.py",
-        "src/TokenLab/agentic/artifact_profile.py",
-        "src/TokenLab/agentic/runner.py",
-        "src/TokenLab/agentic/data/public_demo.yaml",
-        "src/TokenLab/agentic/data/public_demo_profile.json",
-        "pyproject.toml"
-      ],
-      "test_refs": [
-        "tests/test_public_demo.py",
-        "tests/test_agentic_runner.py"
-      ],
-      "validation_refs": [
-        "plans/plan_2026-08-12_e8bdd109f801da98/verification.md"
-      ],
-      "doc_refs": [
-        "README.md",
-        "docs/public-demo.md",
-        "docs/agentic-runner.md"
-      ],
-      "tags": [
-        "program_manager",
-        "auto_story",
-        "demo",
-        "tokenomics",
-        "artifacts",
-        "traceability"
-      ],
-      "generated_from": {
-        "source": "program_manager_intake",
-        "source_hash": "fc7db1681d268a66",
-        "generated_at": "2026-08-12T08:01:50.821Z",
-        "review_status": "implemented_and_verified",
-        "source_title": "Create a polished reproducible TokenLab demo"
-      },
-      "narrative": {
-        "user": "prospective public evaluator and TokenLab maintainer",
-        "need": "Run a polished, repeatable TokenLab demo around the shipped declarative runner using one installed command, bounded terminal output, preserved diagnostics, a reviewed public-safe scenario, and a versioned dashboard artifact profile that declares only emitted metrics.",
-        "outcome": "The evaluator receives an atomically published and validated evidence bundle with deterministic lineage and reproducible content hashes, while deterministic repetition and absent tokenomics domains are labeled honestly and the result remains explicitly non-advisory."
-      },
-      "acceptance_criteria": [
-        {
-          "id": "AC-T-INTAKE-F1441552",
-          "description": "One documented installed command runs the reviewed public scenario with at most 10 presentation lines, preserves complete diagnostics, validates manifest/results/summary/profile artifacts, reproduces canonical table-content hashes across unique bundles, and states the illustrative non-advisory boundary."
-        }
-      ],
-      "needs_review": false
-    },
-    {
-      "id": "US-002",
-      "title": "Inspect simulation artifacts in a simple dashboard",
-      "priority": "MEDIUM",
-      "status": "FULLY_COVERED",
-      "description": "A prospective TokenLab user can run one loopback-only, read-only command against a validated public-demo bundle and inspect only profile-declared metric trajectories, provenance, source downloads, explicit unavailable concepts, and honest loading, empty, partial, invalid, and success states without a database or remote service.",
-      "annotation_refs": [
-        "src/TokenLab/dashboard.py",
-        "tests/test_dashboard.py"
-      ],
-      "code_refs": [
-        "src/TokenLab/dashboard.py",
-        "src/TokenLab/dashboard_static/index.html",
-        "pyproject.toml"
-      ],
-      "test_refs": [
-        "tests/test_dashboard.py"
-      ],
-      "doc_refs": [
-        "README.md",
-        "docs/public-demo.md"
-      ],
-      "validation_refs": [
-        "tests/test_dashboard.py"
-      ],
-      "acceptance_criteria": [
-        {
-          "id": "AC-US-002-001",
-          "description": "A user can open a local read-only dashboard and load the versioned public demo artifact bundle without configuring a database or external service."
-        },
-        {
-          "id": "AC-US-002-002",
-          "description": "The dashboard displays only metrics declared by the artifact profile and clearly labels unavailable tokenomics fields instead of inferring them."
-        },
-        {
-          "id": "AC-US-002-003",
-          "description": "The dashboard provides loading, empty, partial-data, invalid-artifact, and successful states on desktop and mobile-sized viewports."
-        },
-        {
-          "id": "AC-US-002-004",
-          "description": "Artifact paths and uploaded content are size-limited, parsed without code execution, and never sent to a remote service."
-        }
-      ],
-      "tags": [
-        "dashboard",
-        "ux",
-        "accessibility",
-        "tokenomics",
-        "artifacts",
-        "traceability"
-      ],
-      "needs_review": false,
-      "created_at": "2026-08-12T08:02:24.891Z",
-      "implemented_at": "2026-08-12T10:55:00.000Z",
-      "notes": "GitHub issue #20 / Program ticket T-INTAKE-77CDE27F. Focused Python 3.10 acceptance suite exercises exact profile projection, five UI states, real localhost HTTP, pre-parse byte/path bounds, method/download allowlists, package wiring, and offline asset constraints. The static accessibility audit covers semantic landmarks, keyboard-visible focus, screen-reader labels/live status, and WCAG AA text contrast (minimum audited text/background ratio 6.18:1); rendered screenshots remain explicitly unavailable in this Codex runtime.",
-      "merged_from": [],
-      "conflicts": []
-    },
-    {
-      "id": "US-003",
-      "title": "Maintain a clean and truthful public repository",
-      "priority": "MEDIUM",
-      "status": "FULLY_COVERED",
-      "description": "",
-      "code_refs": [
-        ".gitignore",
-        "Makefile"
-      ],
-      "test_refs": [
-        "tests/test_repository_hygiene.py",
-        "tests/test_agentic_runner.py"
-      ],
-      "doc_refs": [
-        "README.md",
-        "docs/repository-governance.md"
-      ],
-      "validation_refs": [
-        ".github/workflows/test-suite.yml",
-        ".github/workflows/z1-shared-core-contract.yml"
-      ],
-      "acceptance_criteria": [
-        {
-          "id": "AC-US-003-001",
-          "description": "A fresh checkout contains no tracked .DS_Store files, ignores newly generated dated docs_final bundles, and preserves all previously tracked historical deliverables."
-        },
-        {
-          "id": "AC-US-003-002",
-          "description": "The README documents Python 3.10 and foregrounds the declarative YAML/JSON runner with an executable command."
-        },
-        {
-          "id": "AC-US-003-003",
-          "description": "The public repository description and topics accurately describe TokenLab's current simulation and tokenomics scope."
-        },
-        {
-          "id": "AC-US-003-004",
-          "description": "The supported Python test suite and GitHub Actions pass, and the stale GitBook status is explicitly dispositioned without deleting an integration without fresh approval."
-        }
-      ],
-      "tags": [
-        "repository-hygiene",
-        "github",
-        "documentation",
-        "traceability",
-        "auto_committee",
-        "fail_on",
-        "role_options",
-        "roles"
-      ],
-      "needs_review": false,
-      "created_at": "2026-08-12T08:12:24.743Z",
-      "merged_from": [],
-      "conflicts": []
-    },
-    {
-      "id": "US-004",
-      "title": "Inventory legacy source surfaces without overstating coverage",
-      "priority": "LOW",
-      "status": "PARTIALLY_COVERED",
-      "description": "As a TokenLab maintainer, I need every legacy source surface assigned to an explicit inventory baseline so repository-wide traceability failures are visible and future ownership decisions remain deliberate. Inventory membership proves ownership only; it does not claim behavioral, scientific, security, legal, financial, or product validation.",
-      "code_refs": [
-        "scripts/generate_empirical_validation.py",
-        "scripts/generate_validation_matrix.py",
-        "scripts/generate_z1_lifecycle_model_validation.py",
-        "scripts/run_empirical_calibrated_simulation.py"
-      ],
-      "test_refs": [
-        "tests/test_empirical_validation_readiness.py",
-        "tests/test_empirical_calibrated_simulation.py",
-        "tests/test_v2_remediation_regressions.py",
-        "tests/test_z1_report_data_layers.py"
-      ],
-      "doc_refs": [
-        "docs_final/2026-06-19/parameter_locks_report.html",
-        "docs_final/2026-06-23/parameter_locks_report.html",
-        "docs_final/2026-06-30/parameter_locks_report.html",
-        "docs_final/2026-07-03/parameter_locks_report.html",
-        "docs_final/2026-07-06/parameter_locks_report.html",
-        "docs_final/2026-07-10/parameter_locks_report.html",
-        "docs_final/2026-07-11/parameter_locks_report.html",
-        "docs_final/2026-07-12/parameter_locks_report.html",
-        "docs_final/2026-07-13/parameter_locks_report.html",
-        "docs_final/2026-07-29/parameter_locks_report.html",
-        "docs_final/2026-08-03/parameter_locks_report.html",
-        "docs_final/2026-08-04/parameter_locks_report.html",
-        "docs_final/2026-08-12/parameter_locks_report.html",
-        "docs/index.html",
-        "docs/TokenLab/analytics/analyticsfunctions.html",
-        "docs/TokenLab/analytics/index.html",
-        "docs/TokenLab/index.html",
-        "docs/TokenLab/simulationcomponents/addons.html",
-        "docs/TokenLab/simulationcomponents/agentpoolclasses.html",
-        "docs/TokenLab/simulationcomponents/baseclasses.html",
-        "docs/TokenLab/simulationcomponents/index.html",
-        "docs/TokenLab/simulationcomponents/pricingclasses.html",
-        "docs/TokenLab/simulationcomponents/supplyclasses.html",
-        "docs/TokenLab/simulationcomponents/tokeneconomyclasses.html",
-        "docs/TokenLab/simulationcomponents/transactionclasses.html",
-        "docs/TokenLab/simulationcomponents/usergrowthclasses.html",
-        "docs/TokenLab/utils/helpers.html",
-        "docs/TokenLab/utils/index.html",
-        "examples/outputs/z1_core_solvency/20260423_103232/M1_report.html",
-        "examples/outputs/z1_core_solvency/20260423_104231/M1_report.html",
-        "outputs/z1_core_solvency/20260423_111013/M1_report.html",
-        "outputs/z1_core_solvency/20260423_111508/M1_report.html",
-        "outputs/z1_core_solvency/20260423_125607/M1_report.html",
-        "outputs/z1_core_solvency/20260427_100843/M1_report.html",
-        "outputs/z1_core_solvency/20260429_221531/M1_report.html",
-        "outputs/z1_core_solvency/20260429_225044/M1_report.html",
-        "outputs/z1_core_solvency/20260430_221630/M1_report.html",
-        "outputs/z1_core_solvency/20260430_221649/M1_report.html",
-        "outputs/z1_core_solvency/20260430_221725/M1_report.html",
-        "outputs/z1_core_solvency/20260430_221737/M1_report.html",
-        "outputs/z1_core_solvency/20260501_102540/M1_report.html",
-        "outputs/z1_core_solvency/20260501_114600/M1_report.html",
-        "outputs/z1_core_solvency/20260501_114639/M1_report.html",
-        "outputs/z1_core_solvency/20260501_114646/M1_report.html",
-        "outputs/z1_core_solvency/20260501_115552/M2_report.html",
-        "outputs/z1_core_solvency/20260501_115556/M2_report.html",
-        "outputs/z1_core_solvency/20260501_115632/M2_report.html",
-        "outputs/z1_core_solvency/20260501_223841/M2_report.html",
-        "outputs/z1_core_solvency/20260501_224630/M2_report.html",
-        "outputs/z1_core_solvency/20260507_140936/M2_report.html",
-        "outputs/z1_core_solvency/20260507_153129/M2_report.html",
-        "outputs/z1_core_solvency/20260507_184737/M2_report.html",
-        "outputs/z1_core_solvency/20260508_110818/M2_report.html",
-        "outputs/z1_core_solvency/20260508_111348/M2_report.html",
-        "outputs/z1_core_solvency/20260508_111519/M2_report.html",
-        "outputs/z1_core_solvency/20260508_111901/M2_report.html",
-        "outputs/z1_core_solvency/20260508_163636/M2_report.html",
-        "outputs/z1_core_solvency/20260508_164059/M2_report.html",
-        "outputs/z1_core_solvency/20260508_170319/M2_report.html",
-        "outputs/z1_core_solvency/20260508_170615/M2_report.html",
-        "outputs/z1_core_solvency/20260508_171204/M2_report.html",
-        "outputs/z1_core_solvency/20260508_171751/M2_report.html",
-        "outputs/z1_core_solvency/20260510_124241/M2_report.html",
-        "outputs/z1_core_solvency/20260510_132926/M2_report.html",
-        "outputs/z1_core_solvency/20260510_133633/M2_report.html",
-        "outputs/z1_core_solvency/20260511_095421/M2_report.html",
-        "outputs/z1_m3_sims/compare/parameter_locks_report.html",
-        "outputs/z1_m3_sims/report.html",
-        ".agent/scripts/migrate-all-projects.sh",
-        ".agent/scripts/sync-instructions.sh",
-        "examples/__init__.py",
-        "notebooks/test_tra.py",
-        "projects/andromeda/andr.py",
-        "projects/apiz/apiz.py",
-        "projects/canvas/tokenlab_canvas.py",
-        "projects/cdx/cdx.py",
-        "projects/community_gaming/communitygaming.py",
-        "projects/demos/chatgpt.py",
-        "projects/demos/plots.py",
-        "projects/evai/evai.py",
-        "projects/fido/fido.py",
-        "projects/footboard/footboard_tokenomics_2.py",
-        "projects/footboard/footboard_tokenomics.py",
-        "projects/forecast/rand.py",
-        "projects/friendocash/friendocash.py",
-        "projects/hacken/hacken_sim.py",
-        "projects/hemergy/hemergy.py",
-        "projects/kix/kix.py",
-        "projects/phron/phron.py",
-        "projects/pollen/pollen.py",
-        "projects/spaace/spaace.py",
-        "projects/telos/telos.py",
-        "projects/upcade/upcade.py",
-        "projects/valiants/valiants.py",
-        "projects/wow/wow_tokenomics.py",
-        "projects/z1/__init__.py",
-        "projects/z1/core_solvency/__init__.py",
-        "projects/z1/core_solvency/boundary_hunt.py",
-        "projects/z1/core_solvency/config.py",
-        "projects/z1/core_solvency/economy.py",
-        "projects/z1/core_solvency/find_stable_params.py",
-        "projects/z1/core_solvency/generate_claimant_table.py",
-        "projects/z1/core_solvency/html_report.py",
-        "projects/z1/core_solvency/invariants.py",
-        "projects/z1/core_solvency/ledger.py",
-        "projects/z1/core_solvency/metrics.py",
-        "projects/z1/core_solvency/plots.py",
-        "projects/z1/core_solvency/pools.py",
-        "projects/z1/core_solvency/report.py",
-        "projects/z1/core_solvency/run.py",
-        "projects/z1/core_solvency/scenarios.py",
-        "projects/z1/core_solvency/sensitivity.py",
-        "projects/z1/core_solvency/state.py",
-        "projects/z1/core_solvency/test_m1_configs.py",
-        "projects/z1/core_solvency/z1_simulation_kb/generate_kb.py",
-        "projects/z1/core_solvency/z1_simulation_kb/kb_anchors.py",
-        "projects/z1/core_solvency/z1_simulation_kb/kb_docs.py",
-        "projects/z1/core_solvency/z1_simulation_kb/kb_grids.py",
-        "projects/z1/core_solvency/z1_simulation_kb/kb_matrices.py",
-        "projects/z1/core_solvency/z1_simulation_kb/kb_provisionals.py",
-        "projects/z1/empirical_calibrated_simulation/__init__.py",
-        "projects/z1/empirical_calibrated_simulation/model.py",
-        "projects/z1/empirical_validation/__init__.py",
-        "projects/z1/empirical_validation/readiness.py",
-        "projects/z1/lifecycle_complete/__init__.py",
-        "projects/z1/lifecycle_complete/engine.py",
-        "projects/z1/lifecycle_complete/ledger.py",
-        "projects/z1/lifecycle_complete/models.py",
-        "projects/z1/m2_market_dynamics/__init__.py",
-        "projects/z1/m2_market_dynamics/amm.py",
-        "projects/z1/m2_market_dynamics/audit_sweep.py",
-        "projects/z1/m2_market_dynamics/boundary_hunt.py",
-        "projects/z1/m2_market_dynamics/campaigns.py",
-        "projects/z1/m2_market_dynamics/config.py",
-        "projects/z1/m2_market_dynamics/economy.py",
-        "projects/z1/m2_market_dynamics/find_stable_params.py",
-        "projects/z1/m2_market_dynamics/generate_claimant_table.py",
-        "projects/z1/m2_market_dynamics/generate_pptx.py",
-        "projects/z1/m2_market_dynamics/html_report.py",
-        "projects/z1/m2_market_dynamics/invariants.py",
-        "projects/z1/m2_market_dynamics/ledger.py",
-        "projects/z1/m2_market_dynamics/metrics.py",
-        "projects/z1/m2_market_dynamics/plots.py",
-        "projects/z1/m2_market_dynamics/pools.py",
-        "projects/z1/m2_market_dynamics/report.py",
-        "projects/z1/m2_market_dynamics/run_hardened_m1.py",
-        "projects/z1/m2_market_dynamics/run.py",
-        "projects/z1/m2_market_dynamics/scenarios.py",
-        "projects/z1/m2_market_dynamics/sensitivity.py",
-        "projects/z1/m2_market_dynamics/state.py",
-        "projects/z1/m2_market_dynamics/test_m1_configs.py",
-        "projects/z1/m2_market_dynamics/z1_simulation_kb/generate_kb.py",
-        "projects/z1/m2_market_dynamics/z1_simulation_kb/kb_anchors.py",
-        "projects/z1/m2_market_dynamics/z1_simulation_kb/kb_docs.py",
-        "projects/z1/m2_market_dynamics/z1_simulation_kb/kb_grids.py",
-        "projects/z1/m2_market_dynamics/z1_simulation_kb/kb_matrices.py",
-        "projects/z1/m2_market_dynamics/z1_simulation_kb/kb_provisionals.py",
-        "projects/z1/m3_full_economy/__init__.py",
-        "projects/z1/m3_full_economy/amm.py",
-        "projects/z1/m3_full_economy/campaigns.py",
-        "projects/z1/m3_full_economy/compare_m2_m3.py",
-        "projects/z1/m3_full_economy/generate_m3_pptx.py",
-        "projects/z1/m3_full_economy/generate_parameter_locks_report.py",
-        "projects/z1/m3_full_economy/invariants.py",
-        "projects/z1/m3_full_economy/metrics.py",
-        "projects/z1/m3_full_economy/monte_carlo.py",
-        "projects/z1/m3_full_economy/param_sweep.py",
-        "projects/z1/m3_full_economy/parameter_locks_data.py",
-        "projects/z1/m3_full_economy/pools.py",
-        "projects/z1/m3_full_economy/spec_parity_checker.py",
-        "projects/z1/m3_full_economy/state.py",
-        "projects/z1/m3_full_economy/stochastic_priors.py",
-        "projects/z1/m3_full_economy/stochastic_runner.py",
-        "projects/z1/reporting/__init__.py",
-        "projects/z1/reporting/full_token_lifecycle_data.py",
-        "projects/z1/reporting/lifecycle_validation_data.py",
-        "projects/z1/shared_core/__init__.py",
-        "projects/z1/shared_core/analysis_tools.py",
-        "projects/z1/shared_core/config.py",
-        "projects/z1/shared_core/economy.py",
-        "projects/z1/shared_core/invariants.py",
-        "projects/z1/shared_core/ledger.py",
-        "projects/z1/shared_core/metrics.py",
-        "projects/z1/shared_core/policies.py",
-        "projects/z1/stochastic_stress_testing/__init__.py",
-        "projects/z1/stochastic_stress_testing/data.py",
-        "projects/z1/stochastic_stress_testing/engine.py",
-        "projects/z1/stochastic_stress_testing/model.py",
-        "projects/z1/stochastic_stress_testing/tables.py",
-        "projects/z1/v2_growth/growth_model.py",
-        "projects/z1/v4_decision_grade/__init__.py",
-        "projects/z1/v4_decision_grade/accounting.py",
-        "projects/z1/v4_decision_grade/calibration.py",
-        "projects/z1/v4_decision_grade/convergence.py",
-        "projects/z1/v4_decision_grade/engine.py",
-        "projects/z1/v4_decision_grade/identifiability.py",
-        "projects/z1/v4_decision_grade/lifecycle_adapter.py",
-        "projects/z1/v4_decision_grade/provenance.py",
-        "projects/z1/v4_decision_grade/scenarios.py",
-        "projects/z1/v4_decision_grade/sensitivity.py",
-        "projects/z1/v4_decision_grade/settlement.py",
-        "projects/z1/v4_decision_grade/stochastic.py",
-        "projects/z1/z1_m1_workflow.py",
-        "run_sim.py",
-        "scratch_plot.py",
-        "scripts/append_appendix.py",
-        "scripts/append_stelios_answers.py",
-        "scripts/approve_tamper.mjs",
-        "scripts/build_growth_schedules.py",
-        "scripts/build_parameter_registry.py",
-        "scripts/build_v4_investor_workbook.mjs",
-        "scripts/calibrate_scenarios.py",
-        "scripts/cfo_projection.py",
-        "scripts/check_nominal_cap.py",
-        "scripts/extract_pdf_text.py",
-        "scripts/find_metrics.py",
-        "scripts/generate_excel.py",
-        "scripts/generate_ledger_risk_reports.py",
-        "scripts/generate_lifecycle_complete_artifacts.py",
-        "scripts/generate_notebooks.py",
-        "scripts/generate_plots_and_cld.py",
-        "scripts/generate_plots.py",
-        "scripts/generate_registry.py",
-        "scripts/generate_reports.py",
-        "scripts/generate_stochastic_priors.py",
-        "scripts/generate_z1_full_token_lifecycle_report.py",
-        "scripts/growth_model.py",
-        "scripts/inspect_docx.py",
-        "scripts/ledger_anchors.py",
-        "scripts/parse_pdf.py",
-        "scripts/run_scenarios.py",
-        "scripts/run_sensitivity.py",
-        "scripts/run_v2_all.py",
-        "scripts/run_v4_decision_grade.py",
-        "scripts/run_z1_stochastic_stress_testing.py",
-        "scripts/sign_plan.mjs",
-        "scripts/test_buyback_options.py",
-        "scripts/test_realistic_sim.py",
-        "scripts/test_tokenomics_parse.mjs",
-        "scripts/v2_paths.py",
-        "scripts/z1_m3/__init__.py",
-        "setup.py",
-        "src/TokenLab/__init__.py",
-        "src/TokenLab/agentic/__init__.py",
-        "src/TokenLab/analytics/__init__.py",
-        "src/TokenLab/analytics/analyticsfunctions.py",
-        "src/TokenLab/cli.py",
-        "src/TokenLab/simulationcomponents/__init__.py",
-        "src/TokenLab/simulationcomponents/addons.py",
-        "src/TokenLab/simulationcomponents/agentpoolclasses.py",
-        "src/TokenLab/simulationcomponents/baseclasses.py",
-        "src/TokenLab/simulationcomponents/pricingclasses.py",
-        "src/TokenLab/simulationcomponents/stakingclasses.py",
-        "src/TokenLab/simulationcomponents/supplyclasses.py",
-        "src/TokenLab/simulationcomponents/tokeneconomyclasses.py",
-        "src/TokenLab/simulationcomponents/transactionclasses.py",
-        "src/TokenLab/simulationcomponents/treasuryclasses.py",
-        "src/TokenLab/simulationcomponents/usergrowthclasses.py",
-        "src/TokenLab/utils/__init__.py",
-        "src/TokenLab/utils/auditing.py",
-        "src/TokenLab/utils/docx_verifier.py",
-        "src/TokenLab/utils/helpers.py",
-        "src/TokenLab/utils/reporting.py",
-        "src/TokenLab/utils/simtools.py",
-        "src/TokenLab/utils/verifier.py"
-      ],
-      "validation_refs": [
-        "plans/plan_2026-08-12_de38f4a52e6128de/verification.md"
-      ],
-      "acceptance_criteria": [
-        {
-          "id": "AC-US-004-001",
-          "description": "Every source surface present at the cleanup baseline is explicitly mapped to this inventory or a more specific story."
-        },
-        {
-          "id": "AC-US-004-002",
-          "description": "A newly added source file remains unmapped until a maintainer gives it an explicit story, capability, or governed ignore decision."
-        }
-      ],
-      "tags": [
-        "legacy-inventory",
-        "repository-hygiene",
-        "ownership-baseline"
-      ],
-      "needs_review": false,
-      "created_at": "2026-08-12T09:19:21.000Z",
-      "merged_from": [],
-      "conflicts": [],
-      "notes": "Baseline mapping for invariant I-035 only. PARTIALLY_COVERED is intentional: these paths are inventoried but are not collectively asserted to be tested, current, public-safe, or decision-grade. The current registry schema has no neutral inventory_refs field, so the baseline is stored in doc_refs as documentation-only ownership metadata."
+     "story_id": "US-PM-AUTO-H5C4D76290B437A5B",
+     "reason": "agent-proposed runs and direct runner runs are mutually exclusive authorities for the same bundle identity; the runner validator stays authoritative"
     }
-  ],
-  "generated_at": "2026-05-18T13:00:00.000Z",
-  "source": "story_registry_bootstrap.mjs",
-  "updated_at": "2026-08-12T09:21:45.000Z",
-  "commit": "85e02f1",
-  "consolidations": []
+   ]
+  },
+  {
+   "id": "US-001",
+   "title": "Generated artifacts stay out of Git tracking",
+   "priority": "MEDIUM",
+   "status": "FULLY_COVERED",
+   "description": "As a TokenLab maintainer, I can regenerate simulation and report artifacts without dirtying Git, while development-only Z1 helpers remain in maintained script and test locations.",
+   "code_refs": [
+    ".gitignore",
+    "scripts/z1_m3/sandbox.py",
+    "scripts/z1_m3/run_smoke.py",
+    "scripts/z1_m3/proof_verification_issue5.py",
+    "scripts/z1_m3/proof_verification_issue6.py",
+    "scripts/z1_m3/proof_verification_issue9.py"
+   ],
+   "test_refs": [
+    "tests/test_z1_m3_monte_carlo.py"
+   ],
+   "doc_refs": [
+    "plans/plan_2026-08-03_3b1371470a0a554f/verification.md"
+   ],
+   "validation_refs": [
+    "plans/plan_2026-08-03_3b1371470a0a554f/verification.md"
+   ],
+   "acceptance_criteria": [
+    {
+     "id": "AC-US-001-001",
+     "description": "Regenerating TokenLab and Z1 reports does not add generated outputs to Git status."
+    },
+    {
+     "id": "AC-US-001-002",
+     "description": "Reusable Z1 helpers live under scripts/z1_m3 or tests, and all live imports reference their maintained locations."
+    },
+    {
+     "id": "AC-US-001-003",
+     "description": "The supported Python 3.10 regression suite and the clean regeneration checks pass after artifact cleanup."
+    }
+   ],
+   "tags": [
+    "maintenance",
+    "repository-hygiene",
+    "traceability"
+   ],
+   "needs_review": false,
+   "created_at": "2026-08-12T07:50:55.137Z",
+   "merged_from": [],
+   "conflicts": []
+  },
+  {
+   "id": "US-PM-AUTO-H75B537078B2E4FEA",
+   "title": "Clean and govern the public GitHub repository",
+   "priority": "MEDIUM",
+   "status": "NOT_IMPLEMENTED",
+   "code_refs": [],
+   "test_refs": [],
+   "validation_refs": [],
+   "doc_refs": [],
+   "tags": [
+    "program_manager",
+    "auto_story",
+    "draft",
+    "fallback"
+   ],
+   "generated_from": {
+    "source": "program_manager_intake",
+    "source_hash": "75b537078b2e4fea",
+    "generated_at": "2026-08-12T08:01:28.372Z",
+    "review_status": "draft_review_needed",
+    "source_title": "Clean and govern the public GitHub repository"
+   },
+   "narrative": {
+    "user": "program operator",
+    "need": "Clean the public TokenLab GitHub surface without removing product history: ignore new dated generated report bundles and OS metadata, remove tracked OS junk, improve README positioning for the declarative runner, set accurate repository topics and description, document the Python 3.10 support path, and configure or explicitly disposition stale GitBook status. Preserve historical client deliverables unless a separate disclosure review authorizes removal. Acceptance requires a clean clone, no gene",
+    "outcome": "The requested Program Manager capability is represented as an implementation-ready backlog story."
+   },
+   "acceptance_criteria": []
+  },
+  {
+   "id": "US-PM-AUTO-HFC7DB1681D268A66",
+   "title": "Create a polished reproducible TokenLab demo",
+   "priority": "MEDIUM",
+   "status": "FULLY_COVERED",
+   "description": "As a prospective public evaluator or TokenLab maintainer, I need one installed command that runs a reviewed illustrative scenario with bounded terminal output and publishes a validated, reproducible, dashboard-ready evidence bundle without inventing absent tokenomics metrics.",
+   "code_refs": [
+    "src/TokenLab/demo_cli.py",
+    "src/TokenLab/agentic/demo.py",
+    "src/TokenLab/agentic/artifact_profile.py",
+    "src/TokenLab/agentic/runner.py",
+    "src/TokenLab/agentic/data/public_demo.yaml",
+    "src/TokenLab/agentic/data/public_demo_profile.json",
+    "pyproject.toml"
+   ],
+   "test_refs": [
+    "tests/test_public_demo.py",
+    "tests/test_agentic_runner.py"
+   ],
+   "validation_refs": [
+    "plans/plan_2026-08-12_e8bdd109f801da98/verification.md"
+   ],
+   "doc_refs": [
+    "README.md",
+    "docs/public-demo.md",
+    "docs/agentic-runner.md"
+   ],
+   "tags": [
+    "program_manager",
+    "auto_story",
+    "demo",
+    "tokenomics",
+    "artifacts",
+    "traceability"
+   ],
+   "generated_from": {
+    "source": "program_manager_intake",
+    "source_hash": "fc7db1681d268a66",
+    "generated_at": "2026-08-12T08:01:50.821Z",
+    "review_status": "implemented_and_verified",
+    "source_title": "Create a polished reproducible TokenLab demo"
+   },
+   "narrative": {
+    "user": "prospective public evaluator and TokenLab maintainer",
+    "need": "Run a polished, repeatable TokenLab demo around the shipped declarative runner using one installed command, bounded terminal output, preserved diagnostics, a reviewed public-safe scenario, and a versioned dashboard artifact profile that declares only emitted metrics.",
+    "outcome": "The evaluator receives an atomically published and validated evidence bundle with deterministic lineage and reproducible content hashes, while deterministic repetition and absent tokenomics domains are labeled honestly and the result remains explicitly non-advisory."
+   },
+   "acceptance_criteria": [
+    {
+     "id": "AC-T-INTAKE-F1441552",
+     "description": "One documented installed command runs the reviewed public scenario with at most 10 presentation lines, preserves complete diagnostics, validates manifest/results/summary/profile artifacts, reproduces canonical table-content hashes across unique bundles, and states the illustrative non-advisory boundary."
+    }
+   ],
+   "needs_review": false,
+   "postconditions": [
+    "success: the stochastic demo completes the requested tier with nonzero dispersion and honest labels",
+    "incomplete: partial runs remain inspectable with exact failure denominators and blocked claims",
+    "invalid: invalid or draft specifications render the invalid-spec state and cannot execute"
+   ],
+   "conflicts": [
+    {
+     "story_id": "US-PM-AUTO-HCE13E9273E2C5559",
+     "reason": "gallery success and error states are mutually exclusive per job; a job cannot display success and incomplete/cancelled simultaneously"
+    }
+   ]
+  },
+  {
+   "id": "US-002",
+   "title": "Inspect simulation artifacts in a simple dashboard",
+   "priority": "MEDIUM",
+   "status": "FULLY_COVERED",
+   "description": "A prospective TokenLab user can run one loopback-only, read-only command against a validated public-demo bundle and inspect only profile-declared metric trajectories, provenance, source downloads, explicit unavailable concepts, and honest loading, empty, partial, invalid, and success states without a database or remote service.",
+   "annotation_refs": [
+    "src/TokenLab/dashboard.py",
+    "tests/test_dashboard.py"
+   ],
+   "code_refs": [
+    "src/TokenLab/dashboard.py",
+    "src/TokenLab/dashboard_static/index.html",
+    "pyproject.toml"
+   ],
+   "test_refs": [
+    "tests/test_dashboard.py"
+   ],
+   "doc_refs": [
+    "README.md",
+    "docs/public-demo.md"
+   ],
+   "validation_refs": [
+    "tests/test_dashboard.py"
+   ],
+   "acceptance_criteria": [
+    {
+     "id": "AC-US-002-001",
+     "description": "A user can open a local read-only dashboard and load the versioned public demo artifact bundle without configuring a database or external service."
+    },
+    {
+     "id": "AC-US-002-002",
+     "description": "The dashboard displays only metrics declared by the artifact profile and clearly labels unavailable tokenomics fields instead of inferring them."
+    },
+    {
+     "id": "AC-US-002-003",
+     "description": "The dashboard provides loading, empty, partial-data, invalid-artifact, and successful states on desktop and mobile-sized viewports."
+    },
+    {
+     "id": "AC-US-002-004",
+     "description": "Artifact paths and uploaded content are size-limited, parsed without code execution, and never sent to a remote service."
+    }
+   ],
+   "tags": [
+    "dashboard",
+    "ux",
+    "accessibility",
+    "tokenomics",
+    "artifacts",
+    "traceability"
+   ],
+   "needs_review": false,
+   "created_at": "2026-08-12T08:02:24.891Z",
+   "implemented_at": "2026-08-12T10:55:00.000Z",
+   "notes": "GitHub issue #20 / Program ticket T-INTAKE-77CDE27F. Focused Python 3.10 acceptance suite exercises exact profile projection, five UI states, real localhost HTTP, pre-parse byte/path bounds, method/download allowlists, package wiring, and offline asset constraints. The static accessibility audit covers semantic landmarks, keyboard-visible focus, screen-reader labels/live status, and WCAG AA text contrast (minimum audited text/background ratio 6.18:1); rendered screenshots remain explicitly unavailable in this Codex runtime.",
+   "merged_from": [],
+   "conflicts": []
+  },
+  {
+   "id": "US-003",
+   "title": "Maintain a clean and truthful public repository",
+   "priority": "MEDIUM",
+   "status": "FULLY_COVERED",
+   "description": "",
+   "code_refs": [
+    ".gitignore",
+    "Makefile"
+   ],
+   "test_refs": [
+    "tests/test_repository_hygiene.py",
+    "tests/test_agentic_runner.py"
+   ],
+   "doc_refs": [
+    "README.md",
+    "docs/repository-governance.md"
+   ],
+   "validation_refs": [
+    ".github/workflows/test-suite.yml",
+    ".github/workflows/z1-shared-core-contract.yml"
+   ],
+   "acceptance_criteria": [
+    {
+     "id": "AC-US-003-001",
+     "description": "A fresh checkout contains no tracked .DS_Store files, ignores newly generated dated docs_final bundles, and preserves all previously tracked historical deliverables."
+    },
+    {
+     "id": "AC-US-003-002",
+     "description": "The README documents Python 3.10 and foregrounds the declarative YAML/JSON runner with an executable command."
+    },
+    {
+     "id": "AC-US-003-003",
+     "description": "The public repository description and topics accurately describe TokenLab's current simulation and tokenomics scope."
+    },
+    {
+     "id": "AC-US-003-004",
+     "description": "The supported Python test suite and GitHub Actions pass, and the stale GitBook status is explicitly dispositioned without deleting an integration without fresh approval."
+    }
+   ],
+   "tags": [
+    "repository-hygiene",
+    "github",
+    "documentation",
+    "traceability",
+    "auto_committee",
+    "fail_on",
+    "role_options",
+    "roles"
+   ],
+   "needs_review": false,
+   "created_at": "2026-08-12T08:12:24.743Z",
+   "merged_from": [],
+   "conflicts": []
+  },
+  {
+   "id": "US-004",
+   "title": "Inventory legacy source surfaces without overstating coverage",
+   "priority": "LOW",
+   "status": "PARTIALLY_COVERED",
+   "description": "As a TokenLab maintainer, I need every legacy source surface assigned to an explicit inventory baseline so repository-wide traceability failures are visible and future ownership decisions remain deliberate. Inventory membership proves ownership only; it does not claim behavioral, scientific, security, legal, financial, or product validation.",
+   "code_refs": [
+    "scripts/generate_empirical_validation.py",
+    "scripts/generate_validation_matrix.py",
+    "scripts/generate_z1_lifecycle_model_validation.py",
+    "scripts/run_empirical_calibrated_simulation.py"
+   ],
+   "test_refs": [
+    "tests/test_empirical_validation_readiness.py",
+    "tests/test_empirical_calibrated_simulation.py",
+    "tests/test_v2_remediation_regressions.py",
+    "tests/test_z1_report_data_layers.py"
+   ],
+   "doc_refs": [
+    "docs_final/2026-06-19/parameter_locks_report.html",
+    "docs_final/2026-06-23/parameter_locks_report.html",
+    "docs_final/2026-06-30/parameter_locks_report.html",
+    "docs_final/2026-07-03/parameter_locks_report.html",
+    "docs_final/2026-07-06/parameter_locks_report.html",
+    "docs_final/2026-07-10/parameter_locks_report.html",
+    "docs_final/2026-07-11/parameter_locks_report.html",
+    "docs_final/2026-07-12/parameter_locks_report.html",
+    "docs_final/2026-07-13/parameter_locks_report.html",
+    "docs_final/2026-07-29/parameter_locks_report.html",
+    "docs_final/2026-08-03/parameter_locks_report.html",
+    "docs_final/2026-08-04/parameter_locks_report.html",
+    "docs_final/2026-08-12/parameter_locks_report.html",
+    "docs/index.html",
+    "docs/TokenLab/analytics/analyticsfunctions.html",
+    "docs/TokenLab/analytics/index.html",
+    "docs/TokenLab/index.html",
+    "docs/TokenLab/simulationcomponents/addons.html",
+    "docs/TokenLab/simulationcomponents/agentpoolclasses.html",
+    "docs/TokenLab/simulationcomponents/baseclasses.html",
+    "docs/TokenLab/simulationcomponents/index.html",
+    "docs/TokenLab/simulationcomponents/pricingclasses.html",
+    "docs/TokenLab/simulationcomponents/supplyclasses.html",
+    "docs/TokenLab/simulationcomponents/tokeneconomyclasses.html",
+    "docs/TokenLab/simulationcomponents/transactionclasses.html",
+    "docs/TokenLab/simulationcomponents/usergrowthclasses.html",
+    "docs/TokenLab/utils/helpers.html",
+    "docs/TokenLab/utils/index.html",
+    "examples/outputs/z1_core_solvency/20260423_103232/M1_report.html",
+    "examples/outputs/z1_core_solvency/20260423_104231/M1_report.html",
+    "outputs/z1_core_solvency/20260423_111013/M1_report.html",
+    "outputs/z1_core_solvency/20260423_111508/M1_report.html",
+    "outputs/z1_core_solvency/20260423_125607/M1_report.html",
+    "outputs/z1_core_solvency/20260427_100843/M1_report.html",
+    "outputs/z1_core_solvency/20260429_221531/M1_report.html",
+    "outputs/z1_core_solvency/20260429_225044/M1_report.html",
+    "outputs/z1_core_solvency/20260430_221630/M1_report.html",
+    "outputs/z1_core_solvency/20260430_221649/M1_report.html",
+    "outputs/z1_core_solvency/20260430_221725/M1_report.html",
+    "outputs/z1_core_solvency/20260430_221737/M1_report.html",
+    "outputs/z1_core_solvency/20260501_102540/M1_report.html",
+    "outputs/z1_core_solvency/20260501_114600/M1_report.html",
+    "outputs/z1_core_solvency/20260501_114639/M1_report.html",
+    "outputs/z1_core_solvency/20260501_114646/M1_report.html",
+    "outputs/z1_core_solvency/20260501_115552/M2_report.html",
+    "outputs/z1_core_solvency/20260501_115556/M2_report.html",
+    "outputs/z1_core_solvency/20260501_115632/M2_report.html",
+    "outputs/z1_core_solvency/20260501_223841/M2_report.html",
+    "outputs/z1_core_solvency/20260501_224630/M2_report.html",
+    "outputs/z1_core_solvency/20260507_140936/M2_report.html",
+    "outputs/z1_core_solvency/20260507_153129/M2_report.html",
+    "outputs/z1_core_solvency/20260507_184737/M2_report.html",
+    "outputs/z1_core_solvency/20260508_110818/M2_report.html",
+    "outputs/z1_core_solvency/20260508_111348/M2_report.html",
+    "outputs/z1_core_solvency/20260508_111519/M2_report.html",
+    "outputs/z1_core_solvency/20260508_111901/M2_report.html",
+    "outputs/z1_core_solvency/20260508_163636/M2_report.html",
+    "outputs/z1_core_solvency/20260508_164059/M2_report.html",
+    "outputs/z1_core_solvency/20260508_170319/M2_report.html",
+    "outputs/z1_core_solvency/20260508_170615/M2_report.html",
+    "outputs/z1_core_solvency/20260508_171204/M2_report.html",
+    "outputs/z1_core_solvency/20260508_171751/M2_report.html",
+    "outputs/z1_core_solvency/20260510_124241/M2_report.html",
+    "outputs/z1_core_solvency/20260510_132926/M2_report.html",
+    "outputs/z1_core_solvency/20260510_133633/M2_report.html",
+    "outputs/z1_core_solvency/20260511_095421/M2_report.html",
+    "outputs/z1_m3_sims/compare/parameter_locks_report.html",
+    "outputs/z1_m3_sims/report.html",
+    ".agent/scripts/migrate-all-projects.sh",
+    ".agent/scripts/sync-instructions.sh",
+    "examples/__init__.py",
+    "notebooks/test_tra.py",
+    "projects/andromeda/andr.py",
+    "projects/apiz/apiz.py",
+    "projects/canvas/tokenlab_canvas.py",
+    "projects/cdx/cdx.py",
+    "projects/community_gaming/communitygaming.py",
+    "projects/demos/chatgpt.py",
+    "projects/demos/plots.py",
+    "projects/evai/evai.py",
+    "projects/fido/fido.py",
+    "projects/footboard/footboard_tokenomics_2.py",
+    "projects/footboard/footboard_tokenomics.py",
+    "projects/forecast/rand.py",
+    "projects/friendocash/friendocash.py",
+    "projects/hacken/hacken_sim.py",
+    "projects/hemergy/hemergy.py",
+    "projects/kix/kix.py",
+    "projects/phron/phron.py",
+    "projects/pollen/pollen.py",
+    "projects/spaace/spaace.py",
+    "projects/telos/telos.py",
+    "projects/upcade/upcade.py",
+    "projects/valiants/valiants.py",
+    "projects/wow/wow_tokenomics.py",
+    "projects/z1/__init__.py",
+    "projects/z1/core_solvency/__init__.py",
+    "projects/z1/core_solvency/boundary_hunt.py",
+    "projects/z1/core_solvency/config.py",
+    "projects/z1/core_solvency/economy.py",
+    "projects/z1/core_solvency/find_stable_params.py",
+    "projects/z1/core_solvency/generate_claimant_table.py",
+    "projects/z1/core_solvency/html_report.py",
+    "projects/z1/core_solvency/invariants.py",
+    "projects/z1/core_solvency/ledger.py",
+    "projects/z1/core_solvency/metrics.py",
+    "projects/z1/core_solvency/plots.py",
+    "projects/z1/core_solvency/pools.py",
+    "projects/z1/core_solvency/report.py",
+    "projects/z1/core_solvency/run.py",
+    "projects/z1/core_solvency/scenarios.py",
+    "projects/z1/core_solvency/sensitivity.py",
+    "projects/z1/core_solvency/state.py",
+    "projects/z1/core_solvency/test_m1_configs.py",
+    "projects/z1/core_solvency/z1_simulation_kb/generate_kb.py",
+    "projects/z1/core_solvency/z1_simulation_kb/kb_anchors.py",
+    "projects/z1/core_solvency/z1_simulation_kb/kb_docs.py",
+    "projects/z1/core_solvency/z1_simulation_kb/kb_grids.py",
+    "projects/z1/core_solvency/z1_simulation_kb/kb_matrices.py",
+    "projects/z1/core_solvency/z1_simulation_kb/kb_provisionals.py",
+    "projects/z1/empirical_calibrated_simulation/__init__.py",
+    "projects/z1/empirical_calibrated_simulation/model.py",
+    "projects/z1/empirical_validation/__init__.py",
+    "projects/z1/empirical_validation/readiness.py",
+    "projects/z1/lifecycle_complete/__init__.py",
+    "projects/z1/lifecycle_complete/engine.py",
+    "projects/z1/lifecycle_complete/ledger.py",
+    "projects/z1/lifecycle_complete/models.py",
+    "projects/z1/m2_market_dynamics/__init__.py",
+    "projects/z1/m2_market_dynamics/amm.py",
+    "projects/z1/m2_market_dynamics/audit_sweep.py",
+    "projects/z1/m2_market_dynamics/boundary_hunt.py",
+    "projects/z1/m2_market_dynamics/campaigns.py",
+    "projects/z1/m2_market_dynamics/config.py",
+    "projects/z1/m2_market_dynamics/economy.py",
+    "projects/z1/m2_market_dynamics/find_stable_params.py",
+    "projects/z1/m2_market_dynamics/generate_claimant_table.py",
+    "projects/z1/m2_market_dynamics/generate_pptx.py",
+    "projects/z1/m2_market_dynamics/html_report.py",
+    "projects/z1/m2_market_dynamics/invariants.py",
+    "projects/z1/m2_market_dynamics/ledger.py",
+    "projects/z1/m2_market_dynamics/metrics.py",
+    "projects/z1/m2_market_dynamics/plots.py",
+    "projects/z1/m2_market_dynamics/pools.py",
+    "projects/z1/m2_market_dynamics/report.py",
+    "projects/z1/m2_market_dynamics/run_hardened_m1.py",
+    "projects/z1/m2_market_dynamics/run.py",
+    "projects/z1/m2_market_dynamics/scenarios.py",
+    "projects/z1/m2_market_dynamics/sensitivity.py",
+    "projects/z1/m2_market_dynamics/state.py",
+    "projects/z1/m2_market_dynamics/test_m1_configs.py",
+    "projects/z1/m2_market_dynamics/z1_simulation_kb/generate_kb.py",
+    "projects/z1/m2_market_dynamics/z1_simulation_kb/kb_anchors.py",
+    "projects/z1/m2_market_dynamics/z1_simulation_kb/kb_docs.py",
+    "projects/z1/m2_market_dynamics/z1_simulation_kb/kb_grids.py",
+    "projects/z1/m2_market_dynamics/z1_simulation_kb/kb_matrices.py",
+    "projects/z1/m2_market_dynamics/z1_simulation_kb/kb_provisionals.py",
+    "projects/z1/m3_full_economy/__init__.py",
+    "projects/z1/m3_full_economy/amm.py",
+    "projects/z1/m3_full_economy/campaigns.py",
+    "projects/z1/m3_full_economy/compare_m2_m3.py",
+    "projects/z1/m3_full_economy/generate_m3_pptx.py",
+    "projects/z1/m3_full_economy/generate_parameter_locks_report.py",
+    "projects/z1/m3_full_economy/invariants.py",
+    "projects/z1/m3_full_economy/metrics.py",
+    "projects/z1/m3_full_economy/monte_carlo.py",
+    "projects/z1/m3_full_economy/param_sweep.py",
+    "projects/z1/m3_full_economy/parameter_locks_data.py",
+    "projects/z1/m3_full_economy/pools.py",
+    "projects/z1/m3_full_economy/spec_parity_checker.py",
+    "projects/z1/m3_full_economy/state.py",
+    "projects/z1/m3_full_economy/stochastic_priors.py",
+    "projects/z1/m3_full_economy/stochastic_runner.py",
+    "projects/z1/reporting/__init__.py",
+    "projects/z1/reporting/full_token_lifecycle_data.py",
+    "projects/z1/reporting/lifecycle_validation_data.py",
+    "projects/z1/shared_core/__init__.py",
+    "projects/z1/shared_core/analysis_tools.py",
+    "projects/z1/shared_core/config.py",
+    "projects/z1/shared_core/economy.py",
+    "projects/z1/shared_core/invariants.py",
+    "projects/z1/shared_core/ledger.py",
+    "projects/z1/shared_core/metrics.py",
+    "projects/z1/shared_core/policies.py",
+    "projects/z1/stochastic_stress_testing/__init__.py",
+    "projects/z1/stochastic_stress_testing/data.py",
+    "projects/z1/stochastic_stress_testing/engine.py",
+    "projects/z1/stochastic_stress_testing/model.py",
+    "projects/z1/stochastic_stress_testing/tables.py",
+    "projects/z1/v2_growth/growth_model.py",
+    "projects/z1/v4_decision_grade/__init__.py",
+    "projects/z1/v4_decision_grade/accounting.py",
+    "projects/z1/v4_decision_grade/calibration.py",
+    "projects/z1/v4_decision_grade/convergence.py",
+    "projects/z1/v4_decision_grade/engine.py",
+    "projects/z1/v4_decision_grade/identifiability.py",
+    "projects/z1/v4_decision_grade/lifecycle_adapter.py",
+    "projects/z1/v4_decision_grade/provenance.py",
+    "projects/z1/v4_decision_grade/scenarios.py",
+    "projects/z1/v4_decision_grade/sensitivity.py",
+    "projects/z1/v4_decision_grade/settlement.py",
+    "projects/z1/v4_decision_grade/stochastic.py",
+    "projects/z1/z1_m1_workflow.py",
+    "run_sim.py",
+    "scratch_plot.py",
+    "scripts/append_appendix.py",
+    "scripts/append_stelios_answers.py",
+    "scripts/approve_tamper.mjs",
+    "scripts/build_growth_schedules.py",
+    "scripts/build_parameter_registry.py",
+    "scripts/build_v4_investor_workbook.mjs",
+    "scripts/calibrate_scenarios.py",
+    "scripts/cfo_projection.py",
+    "scripts/check_nominal_cap.py",
+    "scripts/extract_pdf_text.py",
+    "scripts/find_metrics.py",
+    "scripts/generate_excel.py",
+    "scripts/generate_ledger_risk_reports.py",
+    "scripts/generate_lifecycle_complete_artifacts.py",
+    "scripts/generate_notebooks.py",
+    "scripts/generate_plots_and_cld.py",
+    "scripts/generate_plots.py",
+    "scripts/generate_registry.py",
+    "scripts/generate_reports.py",
+    "scripts/generate_stochastic_priors.py",
+    "scripts/generate_z1_full_token_lifecycle_report.py",
+    "scripts/growth_model.py",
+    "scripts/inspect_docx.py",
+    "scripts/ledger_anchors.py",
+    "scripts/parse_pdf.py",
+    "scripts/run_scenarios.py",
+    "scripts/run_sensitivity.py",
+    "scripts/run_v2_all.py",
+    "scripts/run_v4_decision_grade.py",
+    "scripts/run_z1_stochastic_stress_testing.py",
+    "scripts/sign_plan.mjs",
+    "scripts/test_buyback_options.py",
+    "scripts/test_realistic_sim.py",
+    "scripts/test_tokenomics_parse.mjs",
+    "scripts/v2_paths.py",
+    "scripts/z1_m3/__init__.py",
+    "setup.py",
+    "src/TokenLab/__init__.py",
+    "src/TokenLab/agentic/__init__.py",
+    "src/TokenLab/analytics/__init__.py",
+    "src/TokenLab/analytics/analyticsfunctions.py",
+    "src/TokenLab/cli.py",
+    "src/TokenLab/simulationcomponents/__init__.py",
+    "src/TokenLab/simulationcomponents/addons.py",
+    "src/TokenLab/simulationcomponents/agentpoolclasses.py",
+    "src/TokenLab/simulationcomponents/baseclasses.py",
+    "src/TokenLab/simulationcomponents/pricingclasses.py",
+    "src/TokenLab/simulationcomponents/stakingclasses.py",
+    "src/TokenLab/simulationcomponents/supplyclasses.py",
+    "src/TokenLab/simulationcomponents/tokeneconomyclasses.py",
+    "src/TokenLab/simulationcomponents/transactionclasses.py",
+    "src/TokenLab/simulationcomponents/treasuryclasses.py",
+    "src/TokenLab/simulationcomponents/usergrowthclasses.py",
+    "src/TokenLab/utils/__init__.py",
+    "src/TokenLab/utils/auditing.py",
+    "src/TokenLab/utils/docx_verifier.py",
+    "src/TokenLab/utils/helpers.py",
+    "src/TokenLab/utils/reporting.py",
+    "src/TokenLab/utils/simtools.py",
+    "src/TokenLab/utils/verifier.py"
+   ],
+   "validation_refs": [
+    "plans/plan_2026-08-12_de38f4a52e6128de/verification.md"
+   ],
+   "acceptance_criteria": [
+    {
+     "id": "AC-US-004-001",
+     "description": "Every source surface present at the cleanup baseline is explicitly mapped to this inventory or a more specific story."
+    },
+    {
+     "id": "AC-US-004-002",
+     "description": "A newly added source file remains unmapped until a maintainer gives it an explicit story, capability, or governed ignore decision."
+    }
+   ],
+   "tags": [
+    "legacy-inventory",
+    "repository-hygiene",
+    "ownership-baseline"
+   ],
+   "needs_review": false,
+   "created_at": "2026-08-12T09:19:21.000Z",
+   "merged_from": [],
+   "conflicts": [],
+   "notes": "Baseline mapping for invariant I-035 only. PARTIALLY_COVERED is intentional: these paths are inventoried but are not collectively asserted to be tested, current, public-safe, or decision-grade. The current registry schema has no neutral inventory_refs field, so the baseline is stored in doc_refs as documentation-only ownership metadata."
+  },
+  {
+   "id": "US-PM-AUTO-HCE13E9273E2C5559",
+   "title": "Add multi-scenario demo gallery and simulation controls",
+   "priority": "MEDIUM",
+   "status": "PARTIALLY_COVERED",
+   "description": "A TokenLab presenter can open one loopback-only gallery, select a reviewed baseline, downside, or upside scenario, adjust only registry-declared typed controls, run the real headless simulator, compare profile-declared results, and download validated evidence without editing Python or exposing arbitrary files and classes.",
+   "annotation_refs": [
+    "src/TokenLab/agentic/gallery.py",
+    "src/TokenLab/dashboard.py",
+    "tests/test_demo_gallery.py"
+   ],
+   "capability_refs": [],
+   "code_refs": [
+    "src/TokenLab/agentic/gallery.py",
+    "src/TokenLab/agentic/data/demo_registry.json",
+    "src/TokenLab/dashboard.py",
+    "src/TokenLab/dashboard_static/gallery.html",
+    "scripts/generate_website_integration.py"
+   ],
+   "test_refs": [
+    "tests/test_demo_gallery.py",
+    "tests/test_dashboard.py",
+    "tests/test_public_demo.py",
+    "tests/test_agentic_runner.py",
+    "tests/test_website_integration.py"
+   ],
+   "validation_refs": [
+    "tests/test_demo_gallery.py"
+   ],
+   "doc_refs": [
+    "README.md",
+    "docs/public-demo.md"
+   ],
+   "tags": [
+    "program_manager",
+    "auto_story",
+    "demo",
+    "gallery",
+    "ux",
+    "tokenomics",
+    "traceability"
+   ],
+   "generated_from": {
+    "source": "program_manager_intake",
+    "source_hash": "ce13e9273e2c5559",
+    "generated_at": "2026-08-13T13:21:43.814Z",
+    "review_status": "implemented_and_verified",
+    "source_title": "Add multi-scenario demo gallery and simulation controls"
+   },
+   "narrative": {
+    "user": "TokenLab presenter, consultant, or evaluator",
+    "need": "Select a reviewed demo, adjust a few bounded assumptions, execute the real TokenLab simulation, compare declared outcomes, and inspect or download the validated evidence without editing Python or notebooks.",
+    "outcome": "The presenter receives a functional local gallery with exact registry validation, honest runtime states, profile-declared comparison, immutable downloads, and an explicit illustrative non-advisory boundary while the legacy evidence viewer remains compatible."
+   },
+   "acceptance_criteria": [
+    {
+     "id": "AC-US-PM-GALLERY-001",
+     "description": "A versioned package registry declares reviewed demos, baseline/downside/upside presets, maturity, safety boundaries, and exact typed/ranged numeric controls."
+    },
+    {
+     "id": "AC-US-PM-GALLERY-002",
+     "description": "The run API rejects unknown keys, paths, classes, code-shaped values, non-finite numbers, wrong types, and out-of-range values without publishing a bundle."
+    },
+    {
+     "id": "AC-US-PM-GALLERY-003",
+     "description": "A valid request reaches HeadlessRunner, publishes a unique validated bundle, returns profile-declared metrics and provenance, and exposes only allowlisted download snapshots."
+    },
+    {
+     "id": "AC-US-PM-GALLERY-004",
+     "description": "The offline browser UI supports selection, bounded controls, loading/running/success/empty/partial/invalid states, scenario comparison, provenance, downloads, keyboard focus, and responsive layouts."
+    },
+    {
+     "id": "AC-US-PM-GALLERY-005",
+     "description": "The existing read-only dashboard, public demo command, runner behavior, package resources, and route protections remain compatible."
+    },
+    {
+     "id": "AC-US-PM-GALLERY-006",
+     "description": "README and presenter guidance make gallery mode the primary interactive demo while preserving the legacy evidence-viewer workflow and non-advisory interpretation boundary."
+    }
+   ],
+   "needs_review": true,
+   "implemented_at": "2026-08-14T06:35:00.000Z",
+   "notes": "GitHub issue #24 / Program ticket T-INTAKE-BDAE920E. Behavioral proof covers exact registry schemas, typed controls, injection/path rejection, real runner publication, localhost catalog/run/download routes, request byte caps, process-wide serialized execution, sanitized unexpected failures, a bounded per-process run count, offline assets, responsive state contracts, documentation, and the supported Python 3.10 full regression suite. PARTIALLY_COVERED is intentional until a human or enabled browser controller records rendered desktop and narrow-viewport evidence in the linked plan verification artifact.",
+   "postconditions": [
+    "success: gallery renders the real runner results with all panels and exact counts",
+    "running: progress reflects server-owned job state with requested/completed/failed counts",
+    "cancelled: cancellation leaves truthful settled counts and no published bundle",
+    "invalid: invalid specs return the invalid-spec state without execution"
+   ],
+   "conflicts": [
+    {
+     "story_id": "US-PM-AUTO-HFC7DB1681D268A66",
+     "reason": "deterministic control and stochastic flagship are distinct demo kinds and cannot share claim eligibility semantics"
+    }
+   ]
+  },
+  {
+   "id": "US-PM-AUTO-H29A44FC56887127A",
+   "title": "Migrate a historical demand model into a sanitized demo",
+   "priority": "MEDIUM",
+   "status": "PARTIALLY_COVERED",
+   "code_refs": [
+    "src/TokenLab/agentic/data/synthetic_demand.py",
+    "src/TokenLab/agentic/data/public_demand_history_v2.yaml",
+    "src/TokenLab/agentic/factory.py",
+    "src/TokenLab/simulationcomponents/pricingclasses.py",
+    "src/TokenLab/agentic/demo.py",
+    "src/TokenLab/agentic/data/__init__.py"
+   ],
+   "test_refs": [
+    "tests/test_demand_migration_parity.py",
+    "tests/test_demand_sanitization.py"
+   ],
+   "validation_refs": [
+    "tests/test_demand_migration_parity.py",
+    "tests/test_demand_sanitization.py",
+    "tests/test_demo_gallery.py",
+    "tests/test_public_demo.py"
+   ],
+   "doc_refs": [
+    "docs/public-demo.md"
+   ],
+   "tags": [
+    "program_manager",
+    "auto_story",
+    "draft",
+    "fallback"
+   ],
+   "generated_from": {
+    "source": "program_manager_intake",
+    "source_hash": "29a44fc56887127a",
+    "generated_at": "2026-08-13T13:21:43.814Z",
+    "review_status": "draft_review_needed",
+    "source_title": "Migrate a historical demand model into a sanitized demo"
+   },
+   "narrative": {
+    "user": "program operator",
+    "need": "What happened: several historical TokenLab projects use the classic constant-user or historical-volume shape and still run, but they are hand-written Python scripts with client identifiers. A representative Henergy-style graph has already been constructed successfully through the new declarative factory.\n\nTarget and outcome: create a package-owned, sanitized demand-and-price demo derived from the historical-volume archetype. It runs from declarative YAML or JSON, emits a validated artifact profi",
+    "outcome": "The requested Program Manager capability is represented as an implementation-ready backlog story."
+   },
+   "acceptance_criteria": [],
+   "notes": " Demand adapter executed under child plan plan_2026-08-17_294429c6635af13c: sanitized schema-v2 demo public-demand-history-v2 with documented synthetic series, legacy-vs-declarative parity fixture, replay hashes, sanitization audit, gallery registration, browser smoke 12/13 (non-required convenience assertion only). PARTIALLY_COVERED pending planner close gates."
+  },
+  {
+   "id": "US-PM-AUTO-H712BCED4E550A1F1",
+   "title": "Create a sanitized vesting and unlock pressure demo",
+   "priority": "MEDIUM",
+   "status": "PARTIALLY_COVERED",
+   "code_refs": [
+    "src/TokenLab/agentic/data/synthetic_vesting.py",
+    "src/TokenLab/agentic/data/public_vesting_concentrated_v2.yaml",
+    "src/TokenLab/agentic/data/public_vesting_smoothed_v2.yaml",
+    "src/TokenLab/agentic/demo.py"
+   ],
+   "test_refs": [
+    "tests/test_vesting_conservation.py",
+    "tests/test_vesting_migration_parity.py",
+    "tests/test_vesting_sanitization.py"
+   ],
+   "validation_refs": [
+    "tests/test_vesting_conservation.py",
+    "tests/test_vesting_migration_parity.py",
+    "tests/test_vesting_sanitization.py",
+    "tests/test_demo_gallery.py"
+   ],
+   "doc_refs": [
+    "docs/public-demo.md"
+   ],
+   "tags": [
+    "program_manager",
+    "auto_story",
+    "draft",
+    "fallback"
+   ],
+   "generated_from": {
+    "source": "program_manager_intake",
+    "source_hash": "712bced4e550a1f1",
+    "generated_at": "2026-08-13T13:21:43.814Z",
+    "review_status": "draft_review_needed",
+    "source_title": "Create a sanitized vesting and unlock pressure demo"
+   },
+   "narrative": {
+    "user": "program operator",
+    "need": "What happened: Friendocash and WOW demonstrate supply schedules, cliffs, vesting, and unlocks, but their scripts and inputs are client-shaped. The new schema already allowlists constant, from-data, and cliff-vesting supply controllers.\n\nTarget and outcome: create public-safe vesting-and-unlock-pressure scenarios with named allocation pools, declared cliffs and durations, baseline demand, and concentrated-versus-smoothed unlock comparisons.\n\nData lineage and coverage: all maximum supply, initial ",
+    "outcome": "The requested Program Manager capability is represented as an implementation-ready backlog story."
+   },
+   "acceptance_criteria": [],
+   "notes": " Vesting adapter executed under child plan plan_2026-08-17_f0b932c2102a09d3: synthetic reconciled allocation (TGE 150M + 5 pools = 1e9 exact), concentrated/smoothed/no-unlock scenarios, exact boundary proofs, parity fixture, replay hashes, sanitization audit 0 hits, browser smoke 12/13 (all required assertions pass). PARTIALLY_COVERED pending close gates."
+  },
+  {
+   "id": "US-PM-AUTO-HD831D2BD43331EFE",
+   "title": "Adapt Z1 treasury solvency stress testing into a demo",
+   "priority": "MEDIUM",
+   "status": "PARTIALLY_COVERED",
+   "code_refs": [
+    "projects/z1/core_solvency/adapter.py",
+    "src/TokenLab/agentic/gallery.py",
+    "src/TokenLab/agentic/data/z1_solvency_profile.json"
+   ],
+   "test_refs": [
+    "tests/test_z1_solvency_adapter.py",
+    "tests/test_z1_sanitization.py"
+   ],
+   "validation_refs": [
+    "tests/test_z1_solvency_adapter.py",
+    "tests/test_z1_sanitization.py",
+    "tests/test_demo_gallery.py",
+    "tests/test_z1_shared_core_parity.py"
+   ],
+   "doc_refs": [
+    "docs/public-demo.md"
+   ],
+   "tags": [
+    "program_manager",
+    "auto_story",
+    "draft",
+    "fallback"
+   ],
+   "generated_from": {
+    "source": "program_manager_intake",
+    "source_hash": "d831d2bd43331efe",
+    "generated_at": "2026-08-13T13:21:43.814Z",
+    "review_status": "draft_review_needed",
+    "source_title": "Adapt Z1 treasury solvency stress testing into a demo"
+   },
+   "narrative": {
+    "user": "program operator",
+    "need": "What happened: Z1 has a maintained reduced-form solvency model with baseline, stable, collapse, and 27-case stress-grid outputs, but it uses a project-specific reporting contract rather than the canonical artifact bundle. Its documented boundary is directional structural solvency, not final calibration.\n\nTarget and outcome: add an adapter that runs canonical Z1 core-solvency scenarios and publishes validated bundles for the gallery. Preserve Z1 architecture and invariants; do not force it into t",
+    "outcome": "The requested Program Manager capability is represented as an implementation-ready backlog story."
+   },
+   "acceptance_criteria": [],
+   "notes": " Z1 adapter executed under child plan plan_2026-08-17_75269b929f68747e: canonical v1 bundles for baseline/stable (zero numeric drift vs fixed-seed runs), collapse_case recorded blocked (pre-existing upstream L10 failure, operator decision D-005), adapted gallery kind with read-only projection, sanitization audit 0 hits, browser smoke 11/11. PARTIALLY_COVERED pending close gates."
+  },
+  {
+   "id": "US-PM-AUTO-HBD48E6CAE9D9DF04",
+   "title": "Support sanitized staking and multi-token economy demos",
+   "priority": "MEDIUM",
+   "status": "PARTIALLY_COVERED",
+   "code_refs": [
+    "src/TokenLab/agentic/schema.py",
+    "src/TokenLab/agentic/factory.py",
+    "src/TokenLab/agentic/data/synthetic_staking.py",
+    "src/TokenLab/agentic/data/public_staking_rewards_v3.yaml",
+    "src/TokenLab/agentic/data/public_multitoken_dependency_v3.yaml"
+   ],
+   "test_refs": [
+    "tests/test_schema_v3.py",
+    "tests/test_staking_conservation.py",
+    "tests/test_staking_migration_parity.py",
+    "tests/test_staking_sanitization.py"
+   ],
+   "validation_refs": [
+    "tests/test_schema_v3.py",
+    "tests/test_staking_conservation.py",
+    "tests/test_staking_migration_parity.py",
+    "tests/test_staking_sanitization.py",
+    "tests/test_agentic_runner.py"
+   ],
+   "doc_refs": [
+    "docs/agentic-runner.md",
+    "docs/public-demo.md"
+   ],
+   "tags": [
+    "program_manager",
+    "auto_story",
+    "draft",
+    "fallback"
+   ],
+   "generated_from": {
+    "source": "program_manager_intake",
+    "source_hash": "bd48e6cae9d9df04",
+    "generated_at": "2026-08-13T13:21:43.814Z",
+    "review_status": "draft_review_needed",
+    "source_title": "Support sanitized staking and multi-token economy demos"
+   },
+   "narrative": {
+    "user": "program operator",
+    "need": "What happened: historical APIz and Fido models use AgentPool_Staking, while Kix uses dependent economies, channeled transactions, bonding or issuance curves, and TokenEcosystem. These maintained classes are not exposed by the current declarative allowlist.\n\nTarget and outcome: extend the versioned schema with explicit typed references and finite allowlists so one sanitized staking/rewards scenario and one sanitized dependent multi-token scenario can run through the canonical artifacts and galler",
+    "outcome": "The requested Program Manager capability is represented as an implementation-ready backlog story."
+   },
+   "acceptance_criteria": [],
+   "notes": " Staking/multi-token adapter executed under child plan plan_2026-08-17_7bdfafaef39b274b: schema v3 typed finite-allowlist references (staking/treasuries/ecosystem channels/named curves) with two-pass fail-closed resolution, rng forwarding fixes, both sanitized demos + controls live, conservation and parity fixtures, replay hashes, sanitization audit, browser smoke 13/13. PARTIALLY_COVERED pending close gates."
+  },
+  {
+   "id": "US-PM-AUTO-H5C4D76290B437A5B",
+   "title": "Agent command surface for simulations",
+   "description": "A TokenLab operator or AI agent can inspect scenario assumptions, validate uncertainty specifications, propose a bounded run, execute an approved scenario through the canonical runner, and summarize evidence with exact artifact citations, through deterministic allowlisted operations that refuse draft, incomplete, invalid, or unsupported assumptions instead of inventing executable priors.",
+   "status": "PARTIALLY_COVERED",
+   "priority": "high",
+   "source": "program_manager_intake",
+   "annotation_refs": [],
+   "capability_refs": [],
+   "code_refs": [
+    "src/TokenLab/agentic/assumptions.py",
+    "src/TokenLab/agentic/runner.py",
+    "src/TokenLab/agentic/uncertainty.py",
+    "src/TokenLab/cli.py"
+   ],
+   "test_refs": [
+    "tests/test_agentic_assumptions.py",
+    "tests/test_monte_carlo_runner.py"
+   ],
+   "validation_refs": [
+    "tests/test_agentic_assumptions.py",
+    "tests/test_monte_carlo_runner.py",
+    "tests/test_statistical_artifacts.py"
+   ],
+   "doc_refs": [
+    "docs/agentic-runner.md",
+    "docs/public-demo.md"
+   ],
+   "acceptance_criteria": [
+    "Deterministic operations inspect_assumptions, validate_uncertainty, propose_run, run_simulation, and summarize_evidence execute through path/class/execution allowlists (plan_2026-08-16_4c55a1a347b5e818 MC-008, SC-04).",
+    "Missing range, provenance, unit, calibration status, or material dependence produces structured questions or needs_evidence items; draft candidates are non-executable until explicit approval.",
+    "The agent cannot promote illustrative assumptions to calibrated, suppress failed paths, or make investment, legal, launch-readiness, forecast-accuracy, or profitability claims.",
+    "Summaries cite exact scenario, manifest, parameter, and statistic identifiers."
+   ],
+   "notes": "Restored to registry on 2026-08-16 by corrective /program-manager intake T-INTAKE-7CDACBB8 (traceability gap repair; story was present in Program Packet but absent from registry). Implementation pending corrective foundation child plan plan_2026-08-16_4c55a1a347b5e818. Deterministic agent operations implemented and tested under plan_2026-08-16_4c55a1a347b5e818 (T-INTAKE-7CDACBB8); PARTIALLY_COVERED pending planner close gates.",
+   "postconditions": [
+    "success: an approved executable scenario completes inspect-validate-propose-run-summarize with cited artifacts",
+    "invalid: draft, needs_evidence, or structurally invalid priors are refused with structured questions",
+    "cancelled: no partial bundle or summary is produced for a cancelled run"
+   ],
+   "conflicts": [
+    {
+     "story_id": "US-PM-AUTO-HFC7DB1681D268A66",
+     "reason": "the deterministic control demo and the stochastic flagship demo are mutually exclusive claim classes; deterministic output can never satisfy Monte Carlo evidence"
+    }
+   ]
+  }
+ ],
+ "generated_at": "2026-05-18T13:00:00.000Z",
+ "source": "story_registry_bootstrap.mjs",
+ "updated_at": "2026-08-17T18:35:58.116452+00:00",
+ "commit": "21ee728",
+ "consolidations": []
 }

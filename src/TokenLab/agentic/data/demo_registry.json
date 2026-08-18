@@ -1,0 +1,457 @@
+{
+  "registry_version": 1,
+  "gallery_id": "tokenlab-public-gallery-v1",
+  "title": "TokenLab scenario gallery",
+  "boundary": "Illustrative simulation only; not investment, launch, legal, financial, forecast, or decision-grade advice.",
+  "demos": [
+    {
+      "id": "growth-path",
+      "kind": "deterministic",
+      "role": "control",
+      "title": "Deterministic scenario explorer",
+      "summary": "Deterministic control: runs repeated identical deterministic paths of the reviewed public scenario. This is NOT Monte Carlo and carries no statistical uncertainty evidence; it serves as the zero-variance negative control for the stochastic flagship demo.",
+      "maturity": "illustrative",
+      "boundary": "This deterministic scenario explorer demonstrates model wiring and comparative UX only. Its repeated paths are identical by construction: zero dispersion is a property of the deterministic controllers, not statistical evidence. It is not Monte Carlo, is uncalibrated, and is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_demo.yaml",
+      "profile_resource": "public_demo_profile.json",
+      "controls": [
+        {
+          "id": "user_ceiling",
+          "label": "User ceiling",
+          "description": "Maximum modeled user cohort reached by the configured growth curve.",
+          "type": "integer",
+          "path": ["economy", "agent_pools", 0, "users", "parameters", "max_users"],
+          "minimum": 5000,
+          "maximum": 50000,
+          "step": 1000,
+          "unit": "modeled users"
+        },
+        {
+          "id": "transaction_value_end",
+          "label": "Ending transaction value",
+          "description": "Final average fiat-denominated transaction value assumed by the trend controller.",
+          "type": "number",
+          "path": ["economy", "agent_pools", 0, "transactions", "parameters", "average_transaction_final"],
+          "minimum": 40,
+          "maximum": 240,
+          "step": 10,
+          "unit": "$ per illustrative transaction"
+        },
+        {
+          "id": "holding_time",
+          "label": "Holding time",
+          "description": "Constant illustrative holding-time assumption used by the public scenario.",
+          "type": "number",
+          "path": ["economy", "holding_time", "parameters", "holding_time"],
+          "minimum": 0.5,
+          "maximum": 4.0,
+          "step": 0.25,
+          "unit": "illustrative time units"
+        }
+      ],
+      "presets": [
+        {
+          "id": "baseline",
+          "label": "Baseline",
+          "summary": "The reviewed public-demo assumptions.",
+          "values": {
+            "user_ceiling": 20000,
+            "transaction_value_end": 120,
+            "holding_time": 1.5
+          }
+        },
+        {
+          "id": "downside",
+          "label": "Downside",
+          "summary": "Lower adoption and transaction value with faster token turnover.",
+          "values": {
+            "user_ceiling": 12000,
+            "transaction_value_end": 80,
+            "holding_time": 0.75
+          }
+        },
+        {
+          "id": "upside",
+          "label": "Upside",
+          "summary": "Higher adoption and transaction value with longer holding time.",
+          "values": {
+            "user_ceiling": 32000,
+            "transaction_value_end": 180,
+            "holding_time": 2.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-growth-uncertainty-v2",
+      "kind": "stochastic",
+      "role": "flagship",
+      "title": "Stochastic growth — Monte Carlo uncertainty",
+      "summary": "Flagship stochastic demo: the reviewed public economy with three approved, illustrative, independent per-path priors executed by the real Monte Carlo runner with seeded reproducibility, outcome intervals, estimator confidence intervals, sensitivity, and convergence evidence.",
+      "maturity": "illustrative",
+      "boundary": "This Monte Carlo demo samples three illustrative, uncalibrated, explicitly independent priors derived from the reviewed public presets. Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes, not confidence intervals and not forecasts. It is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_growth_uncertainty_v2.yaml",
+      "profile_resource": "public_growth_uncertainty_v2_profile.json",
+      "default_run_tier": "fast",
+      "interactive_run_tiers": ["test", "fast", "standard"],
+      "cli_only_run_tiers": ["deep"]
+    },
+    {
+      "id": "public-demand-history-v2",
+      "kind": "stochastic",
+      "role": "historical-archetype",
+      "title": "Demand history replay — Monte Carlo uncertainty",
+      "summary": "Historical-demand archetype: a documented synthetic fiat volume series (logistic rise, plateau, terminal dip; recorded seed, no external data lineage) replayed through the real Monte Carlo runner with three approved, illustrative, independent per-path priors (price noise scale, price anchoring, holding-time dispersion), seeded reproducibility, outcome intervals, estimator confidence intervals, sensitivity, and convergence evidence.",
+      "maturity": "illustrative",
+      "boundary": "This Monte Carlo demo replays a synthetic, uncalibrated demand series and samples three illustrative, uncalibrated, explicitly independent priors bracketing library defaults. Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes, not confidence intervals and not forecasts. It is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_demand_history_v2.yaml",
+      "profile_resource": "public_demand_history_v2_profile.json",
+      "default_run_tier": "fast",
+      "interactive_run_tiers": ["test", "fast", "standard"],
+      "cli_only_run_tiers": ["deep"]
+    },
+    {
+      "id": "public-demand-constant-v1",
+      "kind": "deterministic",
+      "role": "control",
+      "title": "Constant demand — deterministic control",
+      "summary": "Deterministic control: constant fiat transaction volume on the same illustrative token skeleton as the demand-history demo, running repeated identical deterministic paths. This is NOT Monte Carlo and carries no statistical uncertainty evidence; it is the constant-volume companion and zero-variance negative control for the demand-history archetype.",
+      "maturity": "illustrative",
+      "boundary": "This deterministic scenario explorer demonstrates model wiring and comparative UX only. Its repeated paths are identical by construction: zero dispersion is a property of the deterministic controllers, not statistical evidence. It is not Monte Carlo, is uncalibrated, and is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_demand_constant_v1.yaml",
+      "profile_resource": "public_demand_constant_v1_profile.json",
+      "controls": [
+        {
+          "id": "average_transaction_value",
+          "label": "Constant transaction volume",
+          "description": "Constant fiat-denominated transaction value per illustrative step assumed by the control.",
+          "type": "integer",
+          "path": ["economy", "agent_pools", 0, "transactions", "parameters", "average_transaction_value"],
+          "minimum": 200000,
+          "maximum": 1600000,
+          "step": 100000,
+          "unit": "illustrative $ per step"
+        },
+        {
+          "id": "holding_time",
+          "label": "Holding time",
+          "description": "Constant illustrative holding-time assumption used by the control.",
+          "type": "number",
+          "path": ["economy", "holding_time", "parameters", "holding_time"],
+          "minimum": 0.5,
+          "maximum": 4.0,
+          "step": 0.25,
+          "unit": "illustrative time units"
+        }
+      ],
+      "presets": [
+        {
+          "id": "baseline",
+          "label": "Baseline",
+          "summary": "The reviewed constant-volume control assumptions.",
+          "values": {
+            "average_transaction_value": 900000,
+            "holding_time": 1.0
+          }
+        },
+        {
+          "id": "downside",
+          "label": "Downside",
+          "summary": "Lower constant demand with faster token turnover.",
+          "values": {
+            "average_transaction_value": 500000,
+            "holding_time": 0.75
+          }
+        },
+        {
+          "id": "upside",
+          "label": "Upside",
+          "summary": "Higher constant demand with longer holding time.",
+          "values": {
+            "average_transaction_value": 1400000,
+            "holding_time": 1.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-vesting-concentrated-v2",
+      "kind": "stochastic",
+      "role": "historical-archetype",
+      "title": "Vesting unlocks, concentrated — Monte Carlo uncertainty",
+      "summary": "Vesting/unlock archetype: a synthetic, exactly reconciling five-pool allocation (TGE float plus five named cliff-vesting pools summing to the illustrative 1,000,000,000 total supply; staggered zero-release cliffs, concentrated 1-3 period unlocks) executed by the real Monte Carlo runner with four approved, illustrative, independent per-path priors (price noise scale, price anchoring, holding-time dispersion, integer Early Backers cliff), seeded reproducibility, outcome intervals, estimator confidence intervals, sensitivity, and convergence evidence.",
+      "maturity": "illustrative",
+      "boundary": "This Monte Carlo demo replays a synthetic, uncalibrated demand series over a synthetic, uncalibrated allocation and samples four illustrative, uncalibrated, explicitly independent priors bracketing library defaults and the declared schedule. Modeled unlock pressure is supply expansion only, not sell-pressure or liquidity modeling. Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes, not confidence intervals and not forecasts. It is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_vesting_concentrated_v2.yaml",
+      "profile_resource": "public_vesting_concentrated_v2_profile.json",
+      "default_run_tier": "fast",
+      "interactive_run_tiers": ["test", "fast", "standard"],
+      "cli_only_run_tiers": ["deep"]
+    },
+    {
+      "id": "public-vesting-smoothed-v2",
+      "kind": "stochastic",
+      "role": "historical-archetype",
+      "title": "Vesting unlocks, smoothed — Monte Carlo uncertainty",
+      "summary": "Smoothed companion to the concentrated vesting demo: identical synthetic allocation totals, cliffs, demand series, priors, and seed, but every pool's unlock is spread over 12-24 periods instead of 1-3, so the comparison isolates unlock pacing; both variants reach the identical post-vesting supply. Executed by the real Monte Carlo runner with seeded reproducibility, outcome intervals, estimator confidence intervals, sensitivity, and convergence evidence.",
+      "maturity": "illustrative",
+      "boundary": "This Monte Carlo demo replays a synthetic, uncalibrated demand series over a synthetic, uncalibrated allocation and samples four illustrative, uncalibrated, explicitly independent priors bracketing library defaults and the declared schedule. Modeled unlock pressure is supply expansion only, not sell-pressure or liquidity modeling. Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes, not confidence intervals and not forecasts. It is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_vesting_smoothed_v2.yaml",
+      "profile_resource": "public_vesting_smoothed_v2_profile.json",
+      "default_run_tier": "fast",
+      "interactive_run_tiers": ["test", "fast", "standard"],
+      "cli_only_run_tiers": ["deep"]
+    },
+    {
+      "id": "public-vesting-constant-v1",
+      "kind": "deterministic",
+      "role": "control",
+      "title": "No unlocks — deterministic control",
+      "summary": "Deterministic control: the same illustrative token skeleton as the vesting demos (VTLB, TGE float 150,000,000) with NO supply pools — circulating supply stays at the TGE float — constant fiat transaction volume, and deterministic controllers, running repeated identical deterministic paths. This is NOT Monte Carlo and carries no statistical uncertainty evidence; it is the no-unlock companion and zero-variance negative control for the vesting archetypes.",
+      "maturity": "illustrative",
+      "boundary": "This deterministic scenario explorer demonstrates model wiring and comparative UX only. Its repeated paths are identical by construction: zero dispersion is a property of the deterministic controllers, not statistical evidence. It is not Monte Carlo, is uncalibrated, and is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_vesting_constant_v1.yaml",
+      "profile_resource": "public_vesting_constant_v1_profile.json",
+      "controls": [
+        {
+          "id": "average_transaction_value",
+          "label": "Constant transaction volume",
+          "description": "Constant fiat-denominated transaction value per illustrative step assumed by the control.",
+          "type": "integer",
+          "path": ["economy", "agent_pools", 0, "transactions", "parameters", "average_transaction_value"],
+          "minimum": 200000,
+          "maximum": 1600000,
+          "step": 100000,
+          "unit": "illustrative $ per step"
+        },
+        {
+          "id": "holding_time",
+          "label": "Holding time",
+          "description": "Constant illustrative holding-time assumption used by the control.",
+          "type": "number",
+          "path": ["economy", "holding_time", "parameters", "holding_time"],
+          "minimum": 0.5,
+          "maximum": 4.0,
+          "step": 0.25,
+          "unit": "illustrative time units"
+        }
+      ],
+      "presets": [
+        {
+          "id": "baseline",
+          "label": "Baseline",
+          "summary": "The reviewed no-unlock control assumptions.",
+          "values": {
+            "average_transaction_value": 900000,
+            "holding_time": 1.0
+          }
+        },
+        {
+          "id": "downside",
+          "label": "Downside",
+          "summary": "Lower constant demand with faster token turnover.",
+          "values": {
+            "average_transaction_value": 500000,
+            "holding_time": 0.75
+          }
+        },
+        {
+          "id": "upside",
+          "label": "Upside",
+          "summary": "Higher constant demand with longer holding time.",
+          "values": {
+            "average_transaction_value": 1400000,
+            "holding_time": 1.5
+          }
+        }
+      ]
+    },
+    {
+      "id": "z1-solvency-adapted-v1",
+      "kind": "adapted",
+      "role": "historical-archetype",
+      "title": "Core solvency archetypes — adapted scenario evidence",
+      "summary": "Adapted archetype: precomputed canonical bundles of the maintained Z1 core-solvency M1 scenarios executed unchanged at repetitions=1 (baseline and stable published), served read-only with hash-verified tables, neutral publish-time metric names, provenance, and a tested-region disclosure. The collapse preset is visibly blocked: Z1's own L10 hard validation rejects the collapse configuration upstream, and no bundle is fabricated for a scenario Z1 refuses to run. Diagnostic scenario evidence only; no Monte Carlo uncertainty is claimed.",
+      "maturity": "experimental",
+      "boundary": "This adapted demo serves precomputed, hash-verified bundles of deterministic solvency scenarios at repetitions=1. It is directional structural-solvency scenario evidence over the disclosed tested region (2/3 named scenarios published, 1/3 blocked upstream), not Monte Carlo, not a probability estimate, not a forecast, and not investment, launch, legal, financial, or decision-grade advice. The collapse preset is visibly blocked by Z1's own L10 hard validation until Z1 is fixed upstream.",
+      "scenario_resource": "z1_solvency_index.json",
+      "profile_resource": "z1_solvency_profile.json",
+      "presets": [
+        {
+          "id": "baseline",
+          "label": "Baseline",
+          "summary": "The reviewed baseline solvency scenario, published as a validated precomputed bundle.",
+          "values": {}
+        },
+        {
+          "id": "stable",
+          "label": "Stable",
+          "summary": "The reviewed stable-case solvency scenario, published as a validated precomputed bundle.",
+          "values": {}
+        },
+        {
+          "id": "collapse",
+          "label": "Collapse (blocked)",
+          "summary": "Blocked upstream: Z1's own config validation raises its L10 hard assertion for the collapse configuration, so no bundle exists; the failure is recorded as negative-control evidence.",
+          "values": {}
+        }
+      ]
+    },
+    {
+      "id": "public-staking-rewards-v3",
+      "kind": "stochastic",
+      "role": "historical-archetype",
+      "title": "Staking rewards, minted — Monte Carlo uncertainty",
+      "summary": "Staking/rewards archetype (schema v3): a synthetic illustrative STLB economy on a documented exogenous release series whose staking cohort locks a fixed illustrative amount through SupplyStakerLockup (reward_as_perc pinned false) and receives a fixed illustrative token reward at unlock; with no declared treasury, rewards are honestly modeled as minted dilution. Executed by the real Monte Carlo runner with three approved, illustrative, independent per-path priors (staking amount, fixed reward amount, lockup duration), seeded reproducibility, outcome intervals, estimator confidence intervals, sensitivity, and convergence evidence.",
+      "maturity": "illustrative",
+      "boundary": "This Monte Carlo demo replays synthetic, uncalibrated supply and staking-demand series and samples three illustrative, uncalibrated, explicitly independent priors bracketing the declared configuration. Staking rewards are fixed illustrative token amounts minted at unlock (modeled dilution); they are not a yield, not a rate, and never APY. Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes, not confidence intervals and not forecasts. It is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_staking_rewards_v3.yaml",
+      "profile_resource": "public_staking_rewards_v3_profile.json",
+      "default_run_tier": "fast",
+      "interactive_run_tiers": ["test", "fast", "standard"],
+      "cli_only_run_tiers": ["deep"]
+    },
+    {
+      "id": "public-multitoken-dependency-v3",
+      "kind": "stochastic",
+      "role": "historical-archetype",
+      "title": "Multi-token dependency — Monte Carlo uncertainty",
+      "summary": "Master/dependent archetype (schema v3 ecosystem): a synthetic illustrative two-economy ecosystem whose master (MTLB) prices through an allowlisted named issuance curve over a documented linear demand trend and whose dependent (MTDB) prices through an allowlisted named bonding curve, fed by one directional channel moving a fixed illustrative percentage of the master's token-denominated volume (the channeled value is subtracted from the master supply each step — the pinned conservation point). Executed by the real Monte Carlo runner with two approved, illustrative, independent per-path priors (channel percentage, master demand scale), seeded reproducibility, outcome intervals, estimator confidence intervals, sensitivity, and convergence evidence.",
+      "maturity": "illustrative",
+      "boundary": "This Monte Carlo demo samples two illustrative, uncalibrated, explicitly independent priors over a synthetic, uncalibrated master/dependent ecosystem. The channel models directional value transfer only: no liquidity depth, order flow, or market impact is simulated. Modeled outcome intervals (P10-P90) are cross-path spreads of simulated outcomes, not confidence intervals and not forecasts. It is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_multitoken_dependency_v3.yaml",
+      "profile_resource": "public_multitoken_dependency_v3_profile.json",
+      "default_run_tier": "fast",
+      "interactive_run_tiers": ["test", "fast", "standard"],
+      "cli_only_run_tiers": ["deep"]
+    },
+    {
+      "id": "public-staking-constant-v1",
+      "kind": "deterministic",
+      "role": "control",
+      "title": "No staking — deterministic control",
+      "summary": "Deterministic control: the same illustrative token skeleton as the staking demo (STLB, the same synthetic exogenous release series) with a plain AgentPool_Basic — NO staking controller and NO staking rewards, so circulating supply is exactly the cumulative release series — running repeated identical deterministic paths. This is NOT Monte Carlo and carries no statistical uncertainty evidence; it is the no-staking companion and zero-variance negative control for the staking archetype.",
+      "maturity": "illustrative",
+      "boundary": "This deterministic scenario explorer demonstrates model wiring and comparative UX only. Its repeated paths are identical by construction: zero dispersion is a property of the deterministic controllers, not statistical evidence. It is not Monte Carlo, is uncalibrated, and is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_staking_constant_v1.yaml",
+      "profile_resource": "public_staking_constant_v1_profile.json",
+      "controls": [
+        {
+          "id": "average_transaction_value",
+          "label": "Constant transaction volume",
+          "description": "Constant token-denominated transaction value per illustrative step assumed by the control.",
+          "type": "integer",
+          "path": ["economy", "agent_pools", 0, "transactions", "parameters", "average_transaction_value"],
+          "minimum": 100000,
+          "maximum": 800000,
+          "step": 100000,
+          "unit": "illustrative STLB per step"
+        },
+        {
+          "id": "holding_time",
+          "label": "Holding time",
+          "description": "Constant illustrative holding-time assumption used by the control.",
+          "type": "number",
+          "path": ["economy", "holding_time", "parameters", "holding_time"],
+          "minimum": 2.0,
+          "maximum": 12.0,
+          "step": 0.5,
+          "unit": "illustrative time units"
+        }
+      ],
+      "presets": [
+        {
+          "id": "baseline",
+          "label": "Baseline",
+          "summary": "The reviewed no-staking control assumptions.",
+          "values": {
+            "average_transaction_value": 400000,
+            "holding_time": 6.0
+          }
+        },
+        {
+          "id": "downside",
+          "label": "Downside",
+          "summary": "Lower constant token-denominated demand with faster token turnover.",
+          "values": {
+            "average_transaction_value": 200000,
+            "holding_time": 4.0
+          }
+        },
+        {
+          "id": "upside",
+          "label": "Upside",
+          "summary": "Higher constant token-denominated demand with longer holding time.",
+          "values": {
+            "average_transaction_value": 700000,
+            "holding_time": 9.0
+          }
+        }
+      ]
+    },
+    {
+      "id": "public-multitoken-disconnected-v3",
+      "kind": "deterministic",
+      "role": "control",
+      "title": "Disconnected dependent — deterministic control",
+      "summary": "Deterministic control: the same illustrative two-economy ecosystem skeleton as the multi-token demo (master MTLB with the allowlisted named issuance curve, dependent MTDB with the allowlisted named bonding curve) but with NO channels declared — the dependent is fed by an exogenous synthetic dependent-demand series (recorded seed) instead of a channel — running repeated identical deterministic paths. This is NOT Monte Carlo and carries no statistical uncertainty evidence; it isolates proportional channel coupling from exogenous dependent demand as the zero-variance negative control for the multi-token archetype.",
+      "maturity": "illustrative",
+      "boundary": "This deterministic scenario explorer demonstrates model wiring and comparative UX only. Its repeated paths are identical by construction: zero dispersion is a property of the deterministic controllers, not statistical evidence. It is not Monte Carlo, is uncalibrated, and is not investment, launch, legal, financial, forecast, or decision-grade advice.",
+      "scenario_resource": "public_multitoken_disconnected_v3.yaml",
+      "profile_resource": "public_multitoken_disconnected_v3_profile.json",
+      "controls": [
+        {
+          "id": "master_demand_final",
+          "label": "Master terminal demand",
+          "description": "Terminal level of the master economy's documented linear demand trend.",
+          "type": "integer",
+          "path": ["ecosystem", "economies", 0, "agent_pools", 0, "transactions", "parameters", "average_transaction_final"],
+          "minimum": 200000,
+          "maximum": 720000,
+          "step": 40000,
+          "unit": "illustrative $ per step"
+        },
+        {
+          "id": "master_holding_time",
+          "label": "Master holding time",
+          "description": "Constant illustrative holding-time assumption used by the master economy.",
+          "type": "number",
+          "path": ["ecosystem", "economies", 0, "holding_time", "parameters", "holding_time"],
+          "minimum": 2.0,
+          "maximum": 8.0,
+          "step": 0.5,
+          "unit": "illustrative time units"
+        }
+      ],
+      "presets": [
+        {
+          "id": "baseline",
+          "label": "Baseline",
+          "summary": "The reviewed disconnected-control assumptions.",
+          "values": {
+            "master_demand_final": 480000,
+            "master_holding_time": 4.0
+          }
+        },
+        {
+          "id": "downside",
+          "label": "Downside",
+          "summary": "Lower master terminal demand with faster token turnover.",
+          "values": {
+            "master_demand_final": 280000,
+            "master_holding_time": 3.0
+          }
+        },
+        {
+          "id": "upside",
+          "label": "Upside",
+          "summary": "Higher master terminal demand with longer holding time.",
+          "values": {
+            "master_demand_final": 680000,
+            "master_holding_time": 6.0
+          }
+        }
+      ]
+    }
+  ]
+}

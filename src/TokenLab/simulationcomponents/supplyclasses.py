@@ -211,6 +211,7 @@ class SupplyStaker(SupplyController, ABC):
         staking_amount: float = 0,
         reward_as_perc: bool = True,
         quit_prob: float = 0,
+        rng=None,
     ):
         """
 
@@ -221,6 +222,10 @@ class SupplyStaker(SupplyController, ABC):
             DESCRIPTION.
         source : If none, then the source is the token economy. No special treatment required.
             If not None, then this has to be set to a treasury class, and rewards will come from there.
+        rng : numpy.random.Generator, optional
+            When provided, all randomness for this instance is drawn from it. When None,
+            a private generator seeded from OS entropy is created lazily on first use
+            (no wall-clock, no global state).
 
         Returns
         -------
@@ -233,6 +238,13 @@ class SupplyStaker(SupplyController, ABC):
         self.dependencies = {AgentPool: None}
         self.reward_as_perc = True
         self._quit_prob = quit_prob
+        self._rng = rng
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def get_staking_amount(self):
 
@@ -249,7 +261,7 @@ class SupplyStaker(SupplyController, ABC):
     @abstractmethod
     def execute(self):
         self.source = self.get_linked_agentpool().treasury
-        if np.random.rand() < self._quit_prob:
+        if self._draw_rng().random() < self._quit_prob:
             self.quit_staking()
 
         pass
@@ -263,6 +275,7 @@ class SupplyStakerLockup(SupplyStaker):
         lockup_duration: int,
         reward_as_perc: bool = True,
         quit_prob: float = 0.0,
+        rng=None,
     ):
         """
         Staking class for lockup types of vaults
@@ -281,7 +294,7 @@ class SupplyStakerLockup(SupplyStaker):
         None.
 
         """
-        super(SupplyStakerLockup, self).__init__(staking_amount=staking_amount, quit_prob=quit_prob)
+        super(SupplyStakerLockup, self).__init__(staking_amount=staking_amount, quit_prob=quit_prob, rng=rng)
         self.staking_amount = staking_amount
         self.rewards = rewards
         self.lockup_duration = lockup_duration
@@ -321,14 +334,16 @@ class SupplyStakerLockup(SupplyStaker):
 
         self._iteration += 1
 
-        if np.random.rand() < self._quit_prob:
+        if self._draw_rng().random() < self._quit_prob:
             self.quit_staking()
 
     def _get_value(self, param):
-        try:
-            return param.rvs(1)[0]  # Sample from the distribution
-        except:
-            return param  # Use the float value directly
+        # Distribution-shaped parameters are drawn with the instance
+        # generator (injected or lazily created), never the global
+        # np.random state; scalars pass through unchanged.
+        if hasattr(param, "rvs"):
+            return param.rvs(1, random_state=self._draw_rng())[0]
+        return param
 
 
 class SupplyStakerMonthly(SupplyStaker):
@@ -338,6 +353,7 @@ class SupplyStakerMonthly(SupplyStaker):
         rewards: Union[float, scipy.stats.rv_continuous],
         reward_as_perc: bool = True,
         quit_prob: float = 0,
+        rng=None,
     ):
         """
         Staking class for monthly rewards.
@@ -359,7 +375,7 @@ class SupplyStakerMonthly(SupplyStaker):
         None.
 
         """
-        super(SupplyStakerMonthly, self).__init__(staking_amount=staking_amount, quit_prob=quit_prob)
+        super(SupplyStakerMonthly, self).__init__(staking_amount=staking_amount, quit_prob=quit_prob, rng=rng)
         self.staking_amount = staking_amount
         self.rewards = rewards
         self.reward_as_perc = reward_as_perc
@@ -392,14 +408,16 @@ class SupplyStakerMonthly(SupplyStaker):
 
         self._iteration += 1
 
-        if np.random.rand() < self._quit_prob:
+        if self._draw_rng().random() < self._quit_prob:
             self.quit_staking()
 
     def _get_value(self, param):
-        try:
-            return param.rvs(1)[0]
-        except:
-            return param
+        # Distribution-shaped parameters are drawn with the instance
+        # generator (injected or lazily created), never the global
+        # np.random state; scalars pass through unchanged.
+        if hasattr(param, "rvs"):
+            return param.rvs(1, random_state=self._draw_rng())[0]
+        return param
 
 
 class SupplyController_Bonding(SupplyController):
@@ -439,6 +457,7 @@ class SupplyController_AdaptiveStochastic(SupplyController):
         addition_distribution: scipy.stats = uniform,
         addition_dist_parameters: Dict[str, Any] = {"loc": 0, "scale": 0.05},
         return_negative: bool = True,
+        rng=None,
     ):
         """
         Initializes the SupplyController_AdaptiveStochastic class.
@@ -462,6 +481,11 @@ class SupplyController_AdaptiveStochastic(SupplyController):
         return_negative : bool, optional
             If True, the `execute()` function can return a negative value, indicating a net removal from the supply.
             Default is True.
+
+        rng : numpy.random.Generator, optional
+            When provided, all randomness for this instance is drawn from it. When None,
+            a private generator seeded from OS entropy is created lazily on first use
+            (no wall-clock, no global state).
         """
         self.dependencies = {TokenEconomy: None}
         self.inactive_tokens = 0
@@ -474,6 +498,13 @@ class SupplyController_AdaptiveStochastic(SupplyController):
 
         self.return_negative = return_negative
         self.supply = 0
+        self._rng = rng
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def execute(self) -> None:
         """
@@ -497,16 +528,15 @@ class SupplyController_AdaptiveStochastic(SupplyController):
         )
 
         # Step 2: Calculate the percentage and amount of tokens to be removed
-        seed = int(time.time() * np.random.rand())
         percentage_removal = self._removal_distribution.rvs(
-            size=1, **self._removal_dist_parameters, random_state=seed
+            size=1, **self._removal_dist_parameters, random_state=self._draw_rng()
         )[0]
         token_removal = purchases_in_tokens * percentage_removal
         self.inactive_tokens += token_removal
 
         # Step 3: Calculate the percentage and amount of tokens to be added back
         percentage_addition = self._addition_distribution.rvs(
-            size=1, **self._addition_dist_parameters, random_state=seed
+            size=1, **self._addition_dist_parameters, random_state=self._draw_rng()
         )[0]
         tokens_coming_back = self.inactive_tokens * percentage_addition
         self.inactive_tokens -= tokens_coming_back
@@ -688,6 +718,7 @@ class SupplyController_Speculator(SupplyController):
         take_profit: float = 1.1,
         stop_loss: float = 0.9,
         max_prop_to_supply: float = 0.9,
+        rng=None,
     ):
         """
         Initializes the SupplyController_AdaptiveStochastic class.
@@ -724,6 +755,13 @@ class SupplyController_Speculator(SupplyController):
         self.stop_loss = stop_loss
 
         self.max_prop_to_supply = max_prop_to_supply
+        self._rng = rng
+
+    def _draw_rng(self):
+        """Return the instance generator, creating a private one lazily."""
+        if self._rng is None:
+            self._rng = np.random.default_rng()
+        return self._rng
 
     def execute(self) -> None:
         """
@@ -751,9 +789,8 @@ class SupplyController_Speculator(SupplyController):
                 speculation["number_token_speculation"] = 0
 
         # Step 3: The speculator will buy a number of tokens in a iteration, this number, along with the buying price, will be stored.
-        seed = int(time.time() * np.random.rand())
         percentage_speculation = self._speculation_distribution.rvs(
-            size=1, **self._speculation_dist_parameters, random_state=seed
+            size=1, **self._speculation_dist_parameters, random_state=self._draw_rng()
         )[0]
         number_token_speculation = (
             transactions_value_in_fiat * percentage_speculation / price
