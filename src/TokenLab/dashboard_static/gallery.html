@@ -229,7 +229,7 @@
     .claim-ok { color: var(--lime); }
     .claim-blocked { color: var(--red); }
     .metric-note { margin: 6px 0 0; }
-    .topology-panel { grid-column: 1 / -1; overflow: hidden; }
+    .topology-panel { margin-top: 18px; overflow: hidden; }
     .topology-wrap { min-height: 200px; padding: 14px 18px 20px; overflow-x: auto; }
     .topology-node:focus-visible { outline: 3px solid var(--aqua); outline-offset: 2px; }
     @media (max-width: 1000px) {
@@ -449,14 +449,14 @@
           </section>
         </div>
       </div>
-
-      <section class="panel chart-panel topology-panel" id="topology-panel" aria-labelledby="topology-title" hidden>
-        <div class="chart-toolbar">
-          <div><h2 id="topology-title">Scenario topology</h2><p id="topology-copy">Declarative component wiring of the selected demo.</p></div>
-        </div>
-        <div id="topology-wrap" class="detail-body topology-wrap"><div class="chart-empty">Loading topology…</div></div>
-      </section>
     </main>
+
+    <section class="panel chart-panel topology-panel" id="topology-panel" aria-labelledby="topology-title" hidden>
+      <div class="chart-toolbar">
+        <div><h2 id="topology-title">Scenario topology</h2><p id="topology-copy">Declarative component wiring of the selected demo.</p></div>
+      </div>
+      <div id="topology-wrap" class="detail-body topology-wrap"><div class="chart-empty">Loading topology…</div></div>
+    </section>
 
     <footer>TokenLab gallery runs on loopback only. Outputs demonstrate software behavior and assumption propagation; live token decisions require qualified review and external evidence.</footer>
   </div>
@@ -1554,69 +1554,312 @@
         : "Derived from the validated declarative scenario; names match the published neutral names.";
       const nodes = topo.nodes;
       const edges = Array.isArray(topo.edges) ? topo.edges : [];
-      // Deterministic layered layout: economies on top; composition edges
-      // flow downward. Channel/reference/dependency edges never move layers.
-      const layer = new Map();
-      nodes.forEach((node) => { if (node.type === "economy") layer.set(node.id, 0); });
-      for (let pass = 0; pass < 8; pass += 1) {
-        let changed = false;
-        edges.forEach((edge) => {
-          if (edge.kind !== "composition") return;
-          const from = layer.get(edge.from);
-          if (from == null) return;
-          if ((layer.get(edge.to) ?? -1) < from + 1) { layer.set(edge.to, from + 1); changed = true; }
+      // Deterministic layered schematic layout. Composition edges form a forest:
+      // every parent's children are ordered by type rank (controllers, then
+      // pools, then treasury) and declaration order, split into balanced bands
+      // of at most MAX_PER_ROW nodes, and stacked below the parent. Each parent
+      // connects to its children through an orthogonal trunk-and-bus network
+      // that descends through reserved center gaps, so composition lines never
+      // cross nodes. Channel/reference/dependency edges never move bands; they
+      // route as shallow arcs (same row), gentle curves (adjacent rows), or
+      // side-entry elbows (deeper rows) that stay clear of nodes, buses, and
+      // each other. All edges render behind the nodes.
+      const byId = new Map(nodes.map((node) => [node.id, node]));
+      const declIndex = new Map(nodes.map((node, index) => [node.id, index]));
+      const typeRank = { economy: 0, controller: 1, supply_pool: 2, agent_pool: 2, staking: 2, treasury: 3 };
+      const compParent = new Map();
+      const nonCompEdges = [];
+      edges.forEach((edge) => {
+        if (!byId.has(edge.from) || !byId.has(edge.to)) return;
+        if (edge.kind === "composition") {
+          if (!compParent.has(edge.to)) compParent.set(edge.to, edge.from);
+        } else {
+          nonCompEdges.push(edge);
+        }
+      });
+      const childrenOf = new Map();
+      const roots = [];
+      nodes.forEach((node) => {
+        const parent = compParent.get(node.id);
+        if (parent != null && byId.has(parent)) {
+          if (!childrenOf.has(parent)) childrenOf.set(parent, []);
+          childrenOf.get(parent).push(node);
+        } else {
+          roots.push(node);
+        }
+      });
+      const rankOf = (node) => (typeRank[node.type] ?? 2);
+      const byRankThenDecl = (a, b) => rankOf(a) - rankOf(b) || declIndex.get(a.id) - declIndex.get(b.id);
+      childrenOf.forEach((list) => list.sort(byRankThenDecl));
+      roots.sort(byRankThenDecl);
+      // Stable topological root order from cross edges (master before dependent).
+      for (let pass = 0; pass < roots.length; pass += 1) {
+        let moved = false;
+        nonCompEdges.forEach((edge) => {
+          const order = new Map(roots.map((node, index) => [node.id, index]));
+          const a = order.get(edge.from), b = order.get(edge.to);
+          if (a == null || b == null || a <= b) return;
+          roots.splice(b, 0, roots.splice(a, 1)[0]);
+          moved = true;
         });
-        if (!changed) break;
+        if (!moved) break;
       }
-      const maxLayer = Math.max(0, ...layer.values());
-      nodes.forEach((node) => {
-        if (!layer.has(node.id)) layer.set(node.id, node.type === "treasury" ? maxLayer + 1 : 1);
-      });
-      const layers = new Map();
-      nodes.forEach((node) => {
-        const key = layer.get(node.id);
-        if (!layers.has(key)) layers.set(key, []);
-        layers.get(key).push(node);
-      });
-      const rowHeight = 110, nodeWidth = 168, nodeHeight = 46, gap = 26;
-      const maxCount = Math.max(...Array.from(layers.values()).map((list) => list.length));
-      const width = Math.max(920, maxCount * (nodeWidth + gap) + gap);
-      const height = (Math.max(...layer.values()) + 1) * rowHeight + 30;
-      const pos = new Map();
-      Array.from(layers.entries()).forEach(([key, list]) => {
-        const rowWidth = list.length * (nodeWidth + gap) - gap;
-        const startX = (width - rowWidth) / 2;
-        list.forEach((node, index) => {
-          pos.set(node.id, { x: startX + index * (nodeWidth + gap), y: 18 + key * rowHeight });
+      // Bands: a parent's child chunks stack directly beneath it, one row each.
+      const MAX_PER_ROW = 4;
+      const nodeRow = new Map();
+      const chunksOf = new Map();
+      const visiting = new Set();
+      const assignRows = (node, row) => {
+        if (visiting.has(node.id)) return;
+        visiting.add(node.id);
+        nodeRow.set(node.id, Math.max(nodeRow.get(node.id) ?? 0, row));
+        const kids = childrenOf.get(node.id) || [];
+        if (kids.length) {
+          const bandCount = Math.ceil(kids.length / MAX_PER_ROW);
+          const perBand = Math.ceil(kids.length / bandCount);
+          const chunks = [];
+          for (let i = 0; i < kids.length; i += perBand) chunks.push(kids.slice(i, i + perBand));
+          chunksOf.set(node.id, chunks);
+          chunks.forEach((chunk, index) => chunk.forEach((child) => assignRows(child, row + 1 + index)));
+        }
+        visiting.delete(node.id);
+      };
+      roots.forEach((root) => assignRows(root, 0));
+      // Degenerate fallback: nodes unreachable from roots (cyclic composition)
+      // become extra roots so nothing is dropped from the diagram.
+      nodes.forEach((node) => { if (!nodeRow.has(node.id)) { nodeRow.set(node.id, 0); roots.push(node); } });
+      const nodeWidth = 184, nodeHeight = 52, gapX = 40, pitch = nodeWidth + gapX;
+      const rowGap = 76, padX = 44, padTop = 46, padBottom = 46, busAbove = 18;
+      // Subtree extents bottom-up: how far each node's subtree reaches to the
+      // left (l) and right (r) of its spine. A chunk's extent uses each child's
+      // full subtree reach (a child's own descendants may extend past the
+      // child's box), plus half a pitch when the chunk is shifted off the
+      // spine. Bands the parent's trunk must pass through keep a center gap:
+      // even counts gap naturally, odd counts shift half a pitch.
+      const spanOf = new Map();
+      const shiftedChunks = new Set();
+      const measure = (node) => {
+        if (spanOf.has(node.id)) return;
+        spanOf.set(node.id, { l: nodeWidth / 2, r: nodeWidth / 2 }); // provisional, guards cycles
+        let extL = nodeWidth / 2, extR = nodeWidth / 2;
+        (chunksOf.get(node.id) || []).forEach((chunk, index, chunks) => {
+          chunk.forEach(measure);
+          const trunkPasses = index < chunks.length - 1;
+          const shift = trunkPasses && chunk.length % 2 === 1;
+          if (shift) shiftedChunks.add(`${node.id}:${index}`);
+          const chunkNodeWidth = chunk.length * pitch - gapX;
+          chunk.forEach((child, i) => {
+            const childSpan = spanOf.get(child.id);
+            const offset = -chunkNodeWidth / 2 + i * pitch + nodeWidth / 2 + (shift ? pitch / 2 : 0);
+            extL = Math.max(extL, -(offset - childSpan.l));
+            extR = Math.max(extR, offset + childSpan.r);
+          });
         });
+        spanOf.set(node.id, { l: extL, r: extR });
+      };
+      roots.forEach(measure);
+      const rootGap = pitch;
+      const contentWidth = roots.reduce((sum, node) => {
+        const span = spanOf.get(node.id);
+        return sum + span.l + span.r;
+      }, 0) + rootGap * Math.max(0, roots.length - 1);
+      const width = Math.max(640, Math.ceil(contentWidth + padX * 2));
+      const maxRow = Math.max(0, ...nodeRow.values());
+      const height = Math.ceil(padTop + (maxRow + 1) * nodeHeight + maxRow * rowGap + padBottom);
+      const rowTop = (row) => padTop + row * (nodeHeight + rowGap);
+      const pos = new Map();
+      const place = (node, cx) => {
+        pos.set(node.id, { x: cx - nodeWidth / 2, y: rowTop(nodeRow.get(node.id)), cx });
+        (chunksOf.get(node.id) || []).forEach((chunk, index) => {
+          const chunkWidth = chunk.length * pitch - gapX;
+          let start = cx - chunkWidth / 2;
+          if (shiftedChunks.has(`${node.id}:${index}`)) start += pitch / 2;
+          chunk.forEach((child, i) => place(child, start + i * pitch + nodeWidth / 2));
+        });
+      };
+      let cursor = padX;
+      roots.forEach((node) => {
+        const span = spanOf.get(node.id);
+        place(node, cursor + span.l);
+        cursor += span.l + span.r + rootGap;
+      });
+      const rowExtent = new Map();
+      pos.forEach((point, id) => {
+        const row = nodeRow.get(id);
+        const ext = rowExtent.get(row) || { left: Infinity, right: -Infinity };
+        ext.left = Math.min(ext.left, point.x);
+        ext.right = Math.max(ext.right, point.x + nodeWidth);
+        rowExtent.set(row, ext);
+      });
+      // X-ranges spanned by same-row cross edges; trunk connectors must avoid them.
+      const rowArcSpans = new Map();
+      nonCompEdges.forEach((edge) => {
+        if (nodeRow.get(edge.from) !== nodeRow.get(edge.to)) return;
+        const a = pos.get(edge.from), b = pos.get(edge.to);
+        if (!a || !b) return;
+        const lo = Math.min(a.cx, b.cx) + 10, hi = Math.max(a.cx, b.cx) - 10;
+        const row = nodeRow.get(edge.from);
+        if (!rowArcSpans.has(row)) rowArcSpans.set(row, []);
+        rowArcSpans.get(row).push({ lo: Math.min(lo, hi), hi: Math.max(lo, hi) });
       });
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.style.width = `${width}px`;
+      svg.style.maxWidth = "none";
       svg.setAttribute("role", "img");
       svg.setAttribute("aria-label", `${state.demo.title} component topology`);
-      const center = (id) => {
-        const point = pos.get(id);
-        return point ? { x: point.x + nodeWidth / 2, y: point.y + nodeHeight / 2 } : null;
+      const NS = svg.namespaceURI;
+      const make = (tag, attrs) => {
+        const el = document.createElementNS(NS, tag);
+        Object.entries(attrs).forEach(([key, value]) => el.setAttribute(key, value));
+        return el;
       };
-      edges.forEach((edge) => {
-        const a = center(edge.from), b = center(edge.to);
-        if (!a || !b) return;
-        const line = document.createElementNS(svg.namespaceURI, "line");
-        line.setAttribute("x1", a.x); line.setAttribute("y1", a.y);
-        line.setAttribute("x2", b.x); line.setAttribute("y2", b.y);
-        line.setAttribute("stroke", edge.kind === "channel" ? "#ffbd59" : edge.kind === "composition" ? "#2a354a" : "#5fe1d2");
-        line.setAttribute("stroke-width", edge.kind === "composition" ? "1.5" : "2");
-        if (edge.kind === "reference" || edge.kind === "dependency") line.setAttribute("stroke-dasharray", "5 4");
-        svg.append(line);
-        if (edge.label) {
-          const text = document.createElementNS(svg.namespaceURI, "text");
-          text.setAttribute("x", (a.x + b.x) / 2); text.setAttribute("y", (a.y + b.y) / 2 - 5);
-          text.setAttribute("text-anchor", "middle");
-          text.setAttribute("fill", edge.kind === "channel" ? "#ffbd59" : "#aeb8c8");
-          text.setAttribute("font-size", "10.5");
-          text.textContent = edge.label;
-          svg.append(text);
-        }
+      const edgeLayer = make("g", {});
+      svg.append(edgeLayer);
+      const addEdgeLabel = (x, y, label, fill) => {
+        const text = make("text", { x, y, "text-anchor": "middle", fill, "font-size": "10.5" });
+        text.textContent = label;
+        edgeLayer.append(text);
+      };
+      // Composition: one trunk-and-bus network per parent. The connector that
+      // descends through a band uses the parent's spine gap; when a same-row
+      // cross edge spans the spine, the connector detours around the band's
+      // side opposite to any cross-edge lanes leaving that row (adjacent-row
+      // curves and multi-row elbows alike), and the buses extend to it.
+      const busSpan = new Map();
+      chunksOf.forEach((chunks, parentId) => {
+        const parent = pos.get(parentId);
+        if (!parent) return;
+        const busY = (chunk) => rowTop(nodeRow.get(chunk[0].id)) - busAbove;
+        let d = `M ${parent.cx} ${parent.y + nodeHeight} L ${parent.cx} ${busY(chunks[0])}`;
+        let prevConn = parent.cx;
+        chunks.forEach((chunk, index) => {
+          const row = nodeRow.get(chunk[0].id);
+          const y = busY(chunk);
+          const cxs = chunk.map((child) => pos.get(child.id).cx);
+          let conn = null;
+          if (index < chunks.length - 1) {
+            conn = parent.cx;
+            const spans = rowArcSpans.get(row) || [];
+            const covered = (x) => spans.some((span) => x > span.lo - 6 && x < span.hi + 6);
+            if (covered(conn)) {
+              const rightX = Math.max(...cxs) + nodeWidth / 2 + 14;
+              const leftX = Math.min(...cxs) - nodeWidth / 2 - 14;
+              const laneOn = (side) => nonCompEdges.some((edge) => {
+                const ra = nodeRow.get(edge.from), rb = nodeRow.get(edge.to);
+                if (ra == null || rb == null || ra === rb) return false;
+                const up = Math.min(ra, rb);
+                if (up !== row) return false;
+                const upper = pos.get(ra < rb ? edge.from : edge.to);
+                const lower = pos.get(ra < rb ? edge.to : edge.from);
+                const s = Math.sign(upper.cx - lower.cx) || 1;
+                return side > 0 ? s > 0 : s < 0;
+              });
+              const preferLeft = covered(rightX) || (laneOn(1) && !covered(leftX));
+              conn = preferLeft ? leftX : rightX;
+            }
+          }
+          const lo = Math.min(...cxs, prevConn, conn ?? prevConn);
+          const hi = Math.max(...cxs, prevConn, conn ?? prevConn);
+          d += ` M ${lo} ${y} L ${hi} ${y}`;
+          cxs.forEach((cx) => { d += ` M ${cx} ${y} L ${cx} ${y + busAbove}`; });
+          if (conn != null) d += ` M ${conn} ${y} L ${conn} ${busY(chunks[index + 1])}`;
+          const ext = busSpan.get(row) || { left: Infinity, right: -Infinity };
+          ext.left = Math.min(ext.left, lo);
+          ext.right = Math.max(ext.right, hi);
+          busSpan.set(row, ext);
+          prevConn = conn ?? prevConn;
+        });
+        edgeLayer.append(make("path", { d, stroke: "#2a354a", "stroke-width": "1.5", fill: "none" }));
+      });
+      // Channel/reference/dependency edges: gold channels, dashed teal for
+      // reference/dependency, labels offset from lines and nodes.
+      const kindStroke = (kind) => (kind === "channel" ? "#ffbd59" : "#5fe1d2");
+      const kindLabelFill = (kind) => (kind === "channel" ? "#ffbd59" : "#aeb8c8");
+      const pairEdges = new Map();
+      nonCompEdges.forEach((edge) => {
+        const key = `${edge.from}|${edge.to}`;
+        if (!pairEdges.has(key)) pairEdges.set(key, []);
+        pairEdges.get(key).push(edge);
+      });
+      pairEdges.forEach((group) => {
+        let belowCount = 0;
+        group.forEach((edge) => {
+          const a = pos.get(edge.from), b = pos.get(edge.to);
+          if (!a || !b) return;
+          const rowA = nodeRow.get(edge.from), rowB = nodeRow.get(edge.to);
+          const attrs = { stroke: kindStroke(edge.kind), "stroke-width": "2", fill: "none" };
+          if (edge.kind === "reference" || edge.kind === "dependency") attrs["stroke-dasharray"] = "5 4";
+          const labelFill = kindLabelFill(edge.kind);
+          if (rowA === rowB) {
+            // Same row: shallow arc between inner attachment points. Channel
+            // arcs in the top row bulge upward into the free margin instead.
+            const up = edge.kind === "channel" && rowA === 0;
+            const bulge = up ? 16 : 16 + belowCount * 20;
+            if (!up) belowCount += 1;
+            const left = a.cx <= b.cx ? a : b;
+            const right = a.cx <= b.cx ? b : a;
+            const yA = up ? left.y : left.y + nodeHeight;
+            const yB = up ? right.y : right.y + nodeHeight;
+            const startX = left.cx + 24, endX = right.cx - 24;
+            const midX = (startX + endX) / 2;
+            const baseY = up ? Math.min(yA, yB) : Math.max(yA, yB);
+            edgeLayer.append(make("path", { ...attrs, d: `M ${startX} ${yA} Q ${midX} ${baseY + (up ? -2 * bulge : 2 * bulge)} ${endX} ${yB}` }));
+            if (edge.label) addEdgeLabel(midX, baseY + (up ? -bulge - 9 : bulge + 14), edge.label, labelFill);
+            return;
+          }
+          const upper = rowA < rowB ? a : b;
+          const lower = rowA < rowB ? b : a;
+          const upperRow = Math.min(rowA, rowB), lowerRow = Math.max(rowA, rowB);
+          const side = Math.sign(upper.cx - lower.cx) || 1;
+          const startY = upper.y + nodeHeight;
+          if (lowerRow - upperRow === 1) {
+            // Adjacent rows: gentle quadratic from the upper node's bottom to
+            // the lower node's top, entering offset toward the upper node's
+            // side so it stays clear of the composition drop.
+            const entryX = lower.cx + side * 26;
+            const ctrlY = lower.y - 14;
+            edgeLayer.append(make("path", { ...attrs, d: `M ${upper.cx} ${startY} Q ${upper.cx} ${ctrlY} ${entryX} ${lower.y}` }));
+            if (edge.label) {
+              const midX = 0.75 * upper.cx + 0.25 * entryX;
+              const midY = 0.25 * startY + 0.5 * ctrlY + 0.25 * lower.y;
+              addEdgeLabel(midX + side * 10, midY + 12, edge.label, labelFill);
+            }
+            return;
+          }
+          // Deeper rows: elbow around the side, beyond every intermediate row
+          // and bus extent, entering the target's side at mid-height (or its
+          // top when another node blocks the side approach).
+          const laneY = startY + 16;
+          let laneX;
+          if (side > 0) {
+            let ext = upper.cx;
+            for (let row = upperRow + 1; row <= lowerRow; row += 1) {
+              ext = Math.max(ext, (rowExtent.get(row) || { right: ext }).right, (busSpan.get(row) || { right: ext }).right);
+            }
+            laneX = Math.max(ext + 18, upper.cx + 14);
+          } else {
+            let ext = upper.cx;
+            for (let row = upperRow + 1; row <= lowerRow; row += 1) {
+              ext = Math.min(ext, (rowExtent.get(row) || { left: ext }).left, (busSpan.get(row) || { left: ext }).left);
+            }
+            laneX = Math.min(ext - 18, upper.cx - 14);
+          }
+          const lowerId = rowA < rowB ? edge.to : edge.from;
+          const blocked = Array.from(pos.entries()).some(([id, point]) =>
+            id !== lowerId && nodeRow.get(id) === lowerRow &&
+            (side > 0 ? point.cx > lower.cx : point.cx < lower.cx));
+          let d;
+          if (blocked) {
+            const entryX = lower.cx + side * 10;
+            d = `M ${upper.cx} ${startY} L ${upper.cx} ${laneY} L ${laneX} ${laneY} L ${laneX} ${lower.y - 26} L ${entryX} ${lower.y - 26} L ${entryX} ${lower.y}`;
+          } else {
+            const midY = lower.y + nodeHeight / 2;
+            d = `M ${upper.cx} ${startY} L ${upper.cx} ${laneY} L ${laneX} ${laneY} L ${laneX} ${midY} L ${lower.cx + side * (nodeWidth / 2)} ${midY}`;
+          }
+          edgeLayer.append(make("path", { ...attrs, d, "stroke-linejoin": "round" }));
+          if (edge.label) addEdgeLabel((upper.cx + laneX) / 2, laneY - 7, edge.label, labelFill);
+        });
       });
       const typeColors = { economy: "#b8f56a", controller: "#7aa8ff", supply_pool: "#5fe1d2", agent_pool: "#5fe1d2", staking: "#ffbd59", treasury: "#ffbd59" };
       nodes.forEach((node) => {
@@ -1635,17 +1878,38 @@
         rect.setAttribute("stroke", typeColors[node.type] || "#2a354a");
         rect.setAttribute("stroke-width", "1.5");
         const name = document.createElementNS(svg.namespaceURI, "text");
-        name.setAttribute("x", point.x + nodeWidth / 2); name.setAttribute("y", point.y + 19);
+        name.setAttribute("x", point.x + nodeWidth / 2); name.setAttribute("y", point.y + 22);
         name.setAttribute("text-anchor", "middle"); name.setAttribute("fill", "#f4f1e8"); name.setAttribute("font-size", "11.5");
         name.textContent = node.name;
         const detail = document.createElementNS(svg.namespaceURI, "text");
-        detail.setAttribute("x", point.x + nodeWidth / 2); detail.setAttribute("y", point.y + 35);
+        detail.setAttribute("x", point.x + nodeWidth / 2); detail.setAttribute("y", point.y + 38);
         detail.setAttribute("text-anchor", "middle"); detail.setAttribute("fill", "#aeb8c8"); detail.setAttribute("font-size", "9.5");
         detail.textContent = node.detail || String(node.type).replace("_", " ");
         group.append(rect, name, detail);
         svg.append(group);
       });
       wrap.append(svg);
+      // Initial framing for wide canvases: when the topology is wider than the
+      // container, scale it down to fit if the result stays readable (node
+      // names >= ~6.5px); otherwise keep natural size and let the wrap scroll
+      // horizontally, with the initial scroll window framed on the economies
+      // row (centered on it, or starting at the first economy when the row
+      // itself is wider than the container).
+      const MIN_SCALE = 0.55;
+      const container = Math.max(0, wrap.clientWidth - 36); // wrap padding-inline: 18px
+      const fitScale = container > 0 ? container / width : 1;
+      const scale = fitScale < 1 && fitScale >= MIN_SCALE ? fitScale : 1;
+      if (scale < 1) svg.style.width = `${Math.floor(width * scale)}px`;
+      if (width * scale > container && container > 0) {
+        const topRow = rowExtent.get(0) || { left: 0, right: width };
+        const rowWidth = (topRow.right - topRow.left) * scale;
+        const target = rowWidth > container * 0.9
+          ? topRow.left * scale - 24
+          : ((topRow.left + topRow.right) / 2) * scale - container / 2;
+        wrap.scrollLeft = Math.max(0, Math.min(Math.round(target), Math.ceil(width * scale - container)));
+      } else {
+        wrap.scrollLeft = 0;
+      }
     }
 
     async function loadGallery() {
@@ -1688,6 +1952,12 @@
     $("mc-run-button").addEventListener("click", runMonteCarlo);
     $("mc-cancel-button").addEventListener("click", cancelMonteCarlo);
     $("fan-metric-select").addEventListener("change", redrawSelectedFan);
+    let topologyResizeFrame = 0;
+    window.addEventListener("resize", () => {
+      if (!state.demo || $("topology-panel").hidden) return;
+      cancelAnimationFrame(topologyResizeFrame);
+      topologyResizeFrame = requestAnimationFrame(renderTopology);
+    });
     loadGallery();
   </script>
 </body>
