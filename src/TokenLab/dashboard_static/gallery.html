@@ -343,6 +343,25 @@
           <div id="legend" class="legend"></div>
         </section>
 
+        <section class="panel chart-panel" aria-labelledby="v1-band-title">
+          <div class="chart-toolbar">
+            <div><h2 id="v1-band-title">Deterministic band chart</h2><p>Band and center line come from the latest run's deterministic paths; the legend states the exact band semantics for this run. A deterministic band is never a Monte Carlo outcome interval or a confidence band. Follows the comparison metric above.</p></div>
+          </div>
+          <div id="v1-band-wrap" class="chart-wrap"><div class="chart-empty">Run a scenario to render its deterministic band here.</div></div>
+          <div id="v1-band-legend" class="legend"></div>
+        </section>
+
+        <div class="detail-grid">
+          <section class="panel detail-panel" aria-labelledby="v1-histogram-title">
+            <div class="panel-head"><h3 id="v1-histogram-title">Terminal outcome histogram</h3><p>Final-step values across the latest run's deterministic paths; no hidden downsampling. Follows the comparison metric above.</p></div>
+            <div id="v1-histogram-wrap" class="detail-body"><div class="chart-empty">Awaiting a completed run.</div></div>
+          </section>
+          <section class="panel detail-panel" aria-labelledby="v1-percentile-title">
+            <div class="panel-head"><h3 id="v1-percentile-title">Outcome percentiles</h3><p>Final-step quantiles across the latest run's deterministic paths for every emitted column; undeclared columns keep their raw names.</p></div>
+            <div id="v1-percentile-table" class="detail-body"><span class="muted">Awaiting a completed run.</span></div>
+          </section>
+        </div>
+
         <div class="detail-grid">
           <section class="panel detail-panel" aria-labelledby="provenance-title">
             <div class="panel-head"><h3 id="provenance-title">Provenance</h3><p>Identity and reproducibility evidence from the latest validated bundle.</p></div>
@@ -452,7 +471,7 @@
 
   <script>
     "use strict";
-    const state = { catalog: null, demo: null, preset: null, runs: new Map(), running: false };
+    const state = { catalog: null, demo: null, preset: null, runs: new Map(), running: false, latestRun: null };
     const colors = { baseline: "#b8f56a", downside: "#ffbd59", upside: "#5fe1d2" };
     const $ = (id) => document.getElementById(id);
 
@@ -640,6 +659,7 @@
 
     function resetWorkspaceForDemo() {
       state.runs.clear();
+      state.latestRun = null;
       $("overview-copy").textContent = "Choose a preset and run the model to populate this evidence view.";
       $("run-id").textContent = "No completed run";
       const starterMetrics = [
@@ -661,6 +681,12 @@
       const metricOption = document.createElement("option"); metricOption.textContent = "Run a scenario first";
       $("metric-select").replaceChildren(metricOption); $("metric-select").disabled = true;
       $("metric-select-note").hidden = true; $("metric-select-note").textContent = "";
+      const bandEmpty = document.createElement("div"); bandEmpty.className = "chart-empty"; bandEmpty.textContent = "Run a scenario to render its deterministic band here.";
+      $("v1-band-wrap").replaceChildren(bandEmpty); $("v1-band-legend").replaceChildren();
+      const histogramEmpty = document.createElement("div"); histogramEmpty.className = "chart-empty"; histogramEmpty.textContent = "Awaiting a completed run.";
+      $("v1-histogram-wrap").replaceChildren(histogramEmpty);
+      const noQuantiles = document.createElement("span"); noQuantiles.className = "muted"; noQuantiles.textContent = "Awaiting a completed run.";
+      $("v1-percentile-table").replaceChildren(noQuantiles);
       const provenance = document.createElement("div"); provenance.className = "fact";
       const term = document.createElement("dt"); term.textContent = "Status";
       const detail = document.createElement("dd"); detail.textContent = "Awaiting a run";
@@ -757,6 +783,79 @@
       wrap.append(svg);
     }
 
+    function selectedV1SeriesEntry() {
+      const run = state.latestRun;
+      if (!run) return null;
+      const value = $("metric-select").value || "";
+      const entries = seriesEntriesOf(run.dashboard);
+      if (value.startsWith("column:")) {
+        const column = value.slice("column:".length);
+        return entries.find((item) => item.column === column) || null;
+      }
+      return entries.find((item) => item.metric_id === value) || entries.find((item) => item.column === value) || null;
+    }
+
+    function quantileOf(sorted, q) {
+      if (!sorted.length) return null;
+      const pos = (sorted.length - 1) * q;
+      const base = Math.floor(pos);
+      const rest = pos - base;
+      const next = sorted[Math.min(base + 1, sorted.length - 1)];
+      return sorted[base] + rest * (next - sorted[base]);
+    }
+
+    function renderV1Band(entry) {
+      const target = { wrapId: "v1-band-wrap", legendId: "v1-band-legend", svgId: "v1-band-chart", ariaKind: "deterministic band chart" };
+      if (!entry) { drawFan(null, target); return; }
+      const paths = entry.terminal && typeof entry.terminal.n === "number" ? entry.terminal.n : 0;
+      target.midLabel = paths > 1 ? "Mean across repeated deterministic paths" : "Single deterministic path";
+      drawFan(fanViewFromSeries(entry), target);
+    }
+
+    function renderV1TerminalQuantiles(run) {
+      const container = $("v1-percentile-table");
+      container.replaceChildren();
+      const entries = seriesEntriesOf(run && run.dashboard);
+      if (!entries.length) {
+        const note = document.createElement("span"); note.className = "muted"; note.textContent = "No series were published for this run."; container.append(note); return;
+      }
+      const table = document.createElement("table");
+      table.className = "mc-table";
+      const caption = document.createElement("caption");
+      caption.textContent = "Final-step quantiles across the repeated deterministic paths — descriptive spread of modeled path outcomes, never a Monte Carlo outcome interval or a confidence interval.";
+      const head = document.createElement("thead");
+      const headRow = document.createElement("tr");
+      ["Metric", "P10", "P50", "P90", "Mean", "n"].forEach((text) => {
+        const cell = document.createElement("th"); cell.textContent = text; headRow.append(cell);
+      });
+      head.append(headRow);
+      const body = document.createElement("tbody");
+      entries.forEach((entry) => {
+        const values = (Array.isArray(entry.terminal_values) ? entry.terminal_values : [])
+          .filter((value) => typeof value === "number" && Number.isFinite(value))
+          .sort((a, b) => a - b);
+        const terminal = entry.terminal || {};
+        const row = document.createElement("tr");
+        [entry.label || entry.column, quantileOf(values, .1), quantileOf(values, .5), quantileOf(values, .9), terminal.mean, values.length].forEach((value) => {
+          const cell = document.createElement("td");
+          cell.textContent = typeof value === "string" ? value : formatValue(value);
+          row.append(cell);
+        });
+        body.append(row);
+      });
+      table.append(caption, head, body);
+      container.append(table);
+    }
+
+    function renderV1DetailPanels() {
+      const run = state.latestRun;
+      if (!run) return;
+      const entry = selectedV1SeriesEntry();
+      renderV1Band(entry);
+      drawHistogram(entry, "v1-histogram-wrap");
+      renderV1TerminalQuantiles(run);
+    }
+
     async function runSimulation() {
       if (state.running) return;
       state.running = true; $("run-button").disabled = true; showMessage(""); setStatus("running", "Running simulation");
@@ -768,7 +867,8 @@
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || "Simulation failed");
         state.runs.set(state.preset, result);
-        renderOverview(result); prepareMetricPicker(result); drawComparison();
+        state.latestRun = result;
+        renderOverview(result); prepareMetricPicker(result); drawComparison(); renderV1DetailPanels();
         const resultState = ["success", "empty", "partial"].includes(result.dashboard.state) ? result.dashboard.state : "invalid";
         setStatus(resultState, resultState === "success" ? "Validated run" : `${resultState} result`);
         showMessage(`${currentPreset().label} completed and validated. ${state.runs.size} preset${state.runs.size === 1 ? "" : "s"} available for comparison.`);
@@ -968,9 +1068,9 @@
       return metric ? { declared: true, entry: metric } : null;
     }
 
-    function drawFan(view) {
-      const wrap = $("fan-chart-wrap");
-      const legend = $("fan-legend");
+    function drawFan(view, target = {}) {
+      const wrap = $(target.wrapId || "fan-chart-wrap");
+      const legend = $(target.legendId || "fan-legend");
       wrap.replaceChildren(); legend.replaceChildren();
       if (!view || !Array.isArray(view.x) || !view.x.length) {
         const empty = document.createElement("div");
@@ -987,10 +1087,10 @@
       const x = (value) => pad.left + ((value - xMin) / Math.max(xMax - xMin, 1)) * (width - pad.left - pad.right);
       const y = (value) => pad.top + (1 - (value - yMin + yPad) / (yMax - yMin + 2 * yPad)) * (height - pad.top - pad.bottom);
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-      svg.id = "comparison-chart";
+      svg.id = target.svgId || "comparison-chart";
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       svg.setAttribute("role", "img");
-      svg.setAttribute("aria-label", `${view.label} modeled outcome fan chart`);
+      svg.setAttribute("aria-label", `${view.label} ${target.ariaKind || "modeled outcome fan chart"}`);
       for (let index = 0; index <= 4; index += 1) {
         const line = document.createElementNS(svg.namespaceURI, "line");
         const yPos = pad.top + index * (height - pad.top - pad.bottom) / 4;
@@ -1018,7 +1118,7 @@
       median.setAttribute("stroke-width", "3"); median.setAttribute("stroke-linejoin", "round");
       svg.append(median);
       wrap.append(svg);
-      [[view.bandLabel, "rgba(95,225,210,.6)"], ["P50 modeled outcome", "#b8f56a"]].forEach(([text, color]) => {
+      [[view.bandLabel, "rgba(95,225,210,.6)"], [target.midLabel || "P50 modeled outcome", "#b8f56a"]].forEach(([text, color]) => {
         const item = document.createElement("span");
         item.className = "legend-item";
         const swatch = document.createElement("i");
@@ -1029,8 +1129,8 @@
       });
     }
 
-    function drawHistogram(metric) {
-      const wrap = $("histogram-wrap");
+    function drawHistogram(metric, wrapId = "histogram-wrap") {
+      const wrap = $(wrapId);
       wrap.replaceChildren();
       const values = (metric && Array.isArray(metric.terminal_values)) ? metric.terminal_values.filter((v) => typeof v === "number" && Number.isFinite(v)) : [];
       if (!values.length) {
@@ -1076,7 +1176,7 @@
       const caption = document.createElementNS(svg.namespaceURI, "text");
       caption.setAttribute("x", pad.left); caption.setAttribute("y", height - 6);
       caption.setAttribute("fill", "#aeb8c8"); caption.setAttribute("font-size", "11");
-      caption.textContent = `${values.length} completed paths · ${metric.unit}`;
+      caption.textContent = `${values.length} completed paths${metric.unit ? ` · ${metric.unit}` : ""}`;
       svg.append(caption);
       wrap.append(svg);
     }
@@ -1584,7 +1684,7 @@
     }
 
     $("run-button").addEventListener("click", runSimulation);
-    $("metric-select").addEventListener("change", drawComparison);
+    $("metric-select").addEventListener("change", () => { drawComparison(); renderV1DetailPanels(); });
     $("mc-run-button").addEventListener("click", runMonteCarlo);
     $("mc-cancel-button").addEventListener("click", cancelMonteCarlo);
     $("fan-metric-select").addEventListener("change", redrawSelectedFan);
