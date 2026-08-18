@@ -2000,3 +2000,59 @@ def test_adapted_topology_is_declared_schematic(tmp_path):
     assert all(
         demo.topology is None for demo in registry.demos if demo.kind != "adapted"
     )
+
+
+def test_gallery_html_histogram_low_count_branches():
+    """New histogram rendering branches for 1-path stat card and 2-9 dot plot."""
+    html = gallery_html().decode("utf-8")
+    # 1-path stat card
+    assert "terminal-stat" in html
+    assert "no distribution to display" in html
+    # 2-9 dot plot
+    assert "exact values" in html
+    assert "circle" in html.lower() or "dot" in html.lower()
+    # ≥10 real histogram still present
+    assert "bins = 20" in html
+
+
+def test_gallery_html_ci_state_cards_present():
+    """CI state card sections exist in both workspaces with explicit reasons."""
+    html = gallery_html().decode("utf-8")
+    # V1 workspace CI section
+    assert 'id="v1-ci-state"' in html
+    assert 'id="v1-ci-title"' in html
+    # Stochastic workspace CI cards already exist
+    assert 'id="ci-cards"' in html
+    # Absence reason text in JS
+    assert "No estimator confidence interval" in html
+    assert "single deterministic run" in html
+    assert "fewer completed paths" in html
+    assert "declared minimum" in html
+
+
+def test_gallery_html_evolution_grid_present():
+    """Evolution grid sections exist with IntersectionObserver lazy rendering."""
+    html = gallery_html().decode("utf-8")
+    # V1 evolution grid
+    assert 'id="v1-evolution-grid"' in html
+    assert 'id="v1-evolution-title"' in html
+    # MC evolution grid
+    assert 'id="mc-evolution-grid"' in html
+    assert 'id="mc-evolution-title"' in html
+    # Lazy rendering
+    assert "IntersectionObserver" in html
+    # Evolution card structure
+    assert "evolution-card" in html
+    assert "evo-chart-slot" in html
+    # Responsive grid CSS
+    assert "evolution-grid" in html
+    assert "minmax(380px, 1fr)" in html
+
+
+def test_gallery_html_min_paths_ci_constant():
+    """MIN_PATHS_FOR_CI is declared in the HTML and equals SENSITIVITY_MIN_PATHS."""
+    from TokenLab.agentic.runner import SENSITIVITY_MIN_PATHS
+
+    html = gallery_html().decode("utf-8")
+    assert "MIN_PATHS_FOR_CI" in html
+    assert f"MIN_PATHS_FOR_CI = {SENSITIVITY_MIN_PATHS}" in html

@@ -232,8 +232,29 @@
     .topology-panel { margin-top: 18px; overflow: hidden; }
     .topology-wrap { min-height: 200px; padding: 14px 18px 20px; overflow-x: auto; }
     .topology-node:focus-visible { outline: 3px solid var(--aqua); outline-offset: 2px; }
+    .evolution-grid {
+      display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr));
+      gap: 14px; padding: 18px 22px 22px;
+    }
+    .evolution-card {
+      padding: 14px 15px; border: 1px solid var(--line); border-radius: 12px;
+      background: #0e1524; min-height: 120px;
+    }
+    .evolution-card:focus-visible { outline: 3px solid var(--aqua); outline-offset: 2px; }
+    .evolution-card h4 { margin: 0 0 2px; font-size: .78rem; font-weight: 700; color: var(--text); }
+    .evolution-card .evo-subtitle { margin: 0 0 8px; color: var(--muted); font-size: .64rem; line-height: 1.3; }
+    .evolution-card svg { width: 100%; height: auto; display: block; }
+    .evolution-card .evo-placeholder { color: var(--muted); font-size: .72rem; padding: 18px 0; text-align: center; }
+    .terminal-stat {
+      display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; padding: 18px 20px;
+      border: 1px solid var(--line); border-radius: 12px; background: #0e1524;
+      font-size: .86rem; line-height: 1.5; color: var(--text);
+    }
+    .terminal-stat .stat-value { font-size: 1.3rem; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--aqua); }
+    .terminal-stat .stat-copy { color: var(--muted); font-size: .76rem; }
+    .ci-state-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
     @media (max-width: 1000px) {
-      .ci-cards, .coverage-grid { grid-template-columns: 1fr; }
+      .ci-cards, .coverage-grid, .ci-state-cards { grid-template-columns: 1fr; }
       .prior-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 1000px) {
@@ -256,6 +277,7 @@
       .metric-picker { width: 100%; }
       .chart-wrap { min-height: 310px; padding-inline: 5px; }
       #comparison-chart, .chart-empty { min-height: 290px; }
+      .evolution-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 420px) {
       .shell { padding-inline: 12px; }
@@ -351,9 +373,14 @@
           <div id="v1-band-legend" class="legend"></div>
         </section>
 
+        <section class="panel chart-panel" aria-labelledby="v1-evolution-title">
+          <div class="panel-head"><h3 id="v1-evolution-title">Parameter evolution</h3><p>Per-step band for every emitted numeric column. Declared metrics show their labels and units; undeclared columns show raw names with a descriptive-only note. No hidden downsampling: every column is shown.</p></div>
+          <div id="v1-evolution-grid" class="evolution-grid"><div class="chart-empty">Awaiting a completed run.</div></div>
+        </section>
+
         <div class="detail-grid">
           <section class="panel detail-panel" aria-labelledby="v1-histogram-title">
-            <div class="panel-head"><h3 id="v1-histogram-title">Terminal outcome histogram</h3><p>Final-step values across the latest run's deterministic paths; no hidden downsampling. Follows the comparison metric above.</p></div>
+            <div class="panel-head"><h3 id="v1-histogram-title">Terminal outcome distribution</h3><p>Final-step values across the latest run's deterministic paths; no hidden downsampling. Follows the comparison metric above.</p></div>
             <div id="v1-histogram-wrap" class="detail-body"><div class="chart-empty">Awaiting a completed run.</div></div>
           </section>
           <section class="panel detail-panel" aria-labelledby="v1-percentile-title">
@@ -361,6 +388,11 @@
             <div id="v1-percentile-table" class="detail-body"><span class="muted">Awaiting a completed run.</span></div>
           </section>
         </div>
+
+        <section class="panel detail-panel" aria-labelledby="v1-ci-title">
+          <div class="panel-head"><h3 id="v1-ci-title">Estimator confidence intervals</h3><p>Estimator CIs require stochastic Monte Carlo runs with sufficient completed paths; deterministic runs cannot support them.</p></div>
+          <div id="v1-ci-state" class="detail-body ci-state-cards"><span class="muted">Awaiting a completed run.</span></div>
+        </section>
 
         <div class="detail-grid">
           <section class="panel detail-panel" aria-labelledby="provenance-title">
@@ -406,9 +438,14 @@
           <div id="fan-legend" class="legend"></div>
         </section>
 
+        <section class="panel chart-panel" aria-labelledby="mc-evolution-title">
+          <div class="panel-head"><h3 id="mc-evolution-title">Parameter evolution</h3><p>Per-step P10–P90 band for every emitted numeric column. Declared metrics show their labels and units; undeclared columns show raw names with a descriptive-only note. No hidden downsampling: every column is shown.</p></div>
+          <div id="mc-evolution-grid" class="evolution-grid"><div class="chart-empty">Awaiting a completed run.</div></div>
+        </section>
+
         <div class="detail-grid">
           <section class="panel detail-panel" aria-labelledby="histogram-title">
-            <div class="panel-head"><h3 id="histogram-title">Terminal outcome histogram</h3><p>Raw final-step values across completed paths; no hidden downsampling.</p></div>
+            <div class="panel-head"><h3 id="histogram-title">Terminal outcome distribution</h3><p>Raw final-step values across completed paths; no hidden downsampling.</p></div>
             <div id="histogram-wrap" class="detail-body"><div class="chart-empty">Awaiting a completed run.</div></div>
           </section>
           <section class="panel detail-panel" aria-labelledby="percentile-title">
@@ -473,6 +510,7 @@
     "use strict";
     const state = { catalog: null, demo: null, preset: null, runs: new Map(), running: false, latestRun: null };
     const colors = { baseline: "#b8f56a", downside: "#ffbd59", upside: "#5fe1d2" };
+    const MIN_PATHS_FOR_CI = 100;
     const $ = (id) => document.getElementById(id);
 
     function setStatus(next, message) {
@@ -687,6 +725,10 @@
       $("v1-histogram-wrap").replaceChildren(histogramEmpty);
       const noQuantiles = document.createElement("span"); noQuantiles.className = "muted"; noQuantiles.textContent = "Awaiting a completed run.";
       $("v1-percentile-table").replaceChildren(noQuantiles);
+      const noCiState = document.createElement("span"); noCiState.className = "muted"; noCiState.textContent = "Awaiting a completed run.";
+      $("v1-ci-state").replaceChildren(noCiState);
+      const evoEmpty = document.createElement("div"); evoEmpty.className = "chart-empty"; evoEmpty.textContent = "Awaiting a completed run.";
+      $("v1-evolution-grid").replaceChildren(evoEmpty);
       const provenance = document.createElement("div"); provenance.className = "fact";
       const term = document.createElement("dt"); term.textContent = "Status";
       const detail = document.createElement("dd"); detail.textContent = "Awaiting a run";
@@ -847,6 +889,141 @@
       container.append(table);
     }
 
+    function renderV1CiState(run) {
+      const container = $("v1-ci-state");
+      container.replaceChildren();
+      const entries = seriesEntriesOf(run && run.dashboard).filter((entry) => entry.declared);
+      if (!entries.length) {
+        const note = document.createElement("span");
+        note.className = "muted";
+        note.textContent = "No declared metrics in this run.";
+        container.append(note);
+        return;
+      }
+      const paths = run.dashboard && run.dashboard.run ? run.dashboard.run.repetitions : 0;
+      const reason = paths <= 1
+        ? "No estimator confidence interval — single deterministic run"
+        : `No estimator confidence interval — deterministic run (${paths} paths)`;
+      entries.forEach((entry) => {
+        const card = document.createElement("div");
+        card.className = "ci-card";
+        const title = document.createElement("span");
+        title.textContent = `${entry.label}: no estimator CI`;
+        const value = document.createElement("strong");
+        value.textContent = "—";
+        const detail = document.createElement("small");
+        detail.textContent = reason;
+        card.append(title, value, detail);
+        container.append(card);
+      });
+    }
+
+    function drawMiniChart(entry, container) {
+      const band = entry && entry.band;
+      if (!band || !Array.isArray(band.x) || !band.x.length) {
+        const placeholder = document.createElement("div");
+        placeholder.className = "evo-placeholder";
+        placeholder.textContent = "No time-series data.";
+        container.append(placeholder);
+        return;
+      }
+      const xs = band.x, lo = band.low, mid = band.mid, hi = band.high;
+      const width = 380, height = 150, pad = { left: 50, right: 12, top: 14, bottom: 28 };
+      const xMin = Math.min(...xs), xMax = Math.max(...xs);
+      const yMin = Math.min(...lo), yMax = Math.max(...hi);
+      const yPad = Math.max((yMax - yMin) * .1, Math.abs(yMax) * .02, 1e-9);
+      const x = (v) => pad.left + ((v - xMin) / Math.max(xMax - xMin, 1)) * (width - pad.left - pad.right);
+      const y = (v) => pad.top + (1 - (v - yMin + yPad) / (yMax - yMin + 2 * yPad)) * (height - pad.top - pad.bottom);
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", `${entry.label || entry.column} evolution band chart`);
+      // Grid lines (3 lines)
+      for (let i = 0; i <= 2; i += 1) {
+        const line = document.createElementNS(svg.namespaceURI, "line");
+        const yPos = pad.top + i * (height - pad.top - pad.bottom) / 2;
+        line.setAttribute("x1", pad.left); line.setAttribute("x2", width - pad.right);
+        line.setAttribute("y1", yPos); line.setAttribute("y2", yPos);
+        line.setAttribute("stroke", "#2a354a"); svg.append(line);
+        const label = document.createElementNS(svg.namespaceURI, "text");
+        label.setAttribute("x", pad.left - 6); label.setAttribute("y", yPos + 3);
+        label.setAttribute("text-anchor", "end"); label.setAttribute("fill", "#aeb8c8");
+        label.setAttribute("font-size", "9");
+        label.textContent = formatValue(yMax + yPad - i * (yMax - yMin + 2 * yPad) / 2);
+        svg.append(label);
+      }
+      // Band polygon
+      const bandPoints = xs.map((v, i) => `${x(v)},${y(hi[i])}`)
+        .concat(xs.slice().reverse().map((v, i) => `${x(v)},${y(lo[xs.length - 1 - i])}`))
+        .join(" ");
+      const polygon = document.createElementNS(svg.namespaceURI, "polygon");
+      polygon.setAttribute("points", bandPoints);
+      polygon.setAttribute("fill", "rgba(95,225,210,.18)");
+      polygon.setAttribute("stroke", "rgba(95,225,210,.5)");
+      polygon.setAttribute("stroke-width", "0.5");
+      svg.append(polygon);
+      // Mid line
+      const midLine = document.createElementNS(svg.namespaceURI, "polyline");
+      midLine.setAttribute("points", xs.map((v, i) => `${x(v)},${y(mid[i])}`).join(" "));
+      midLine.setAttribute("fill", "none"); midLine.setAttribute("stroke", "#b8f56a");
+      midLine.setAttribute("stroke-width", "2"); midLine.setAttribute("stroke-linejoin", "round");
+      svg.append(midLine);
+      // Step axis labels
+      const stepCaption = document.createElementNS(svg.namespaceURI, "text");
+      stepCaption.setAttribute("x", width / 2); stepCaption.setAttribute("y", height - 4);
+      stepCaption.setAttribute("text-anchor", "middle"); stepCaption.setAttribute("fill", "#aeb8c8");
+      stepCaption.setAttribute("font-size", "9");
+      stepCaption.textContent = `steps ${formatValue(xMin)}–${formatValue(xMax)}`;
+      svg.append(stepCaption);
+      container.append(svg);
+    }
+
+    function renderEvolutionGrid(series, targetId) {
+      const grid = $(targetId);
+      grid.replaceChildren();
+      if (!series || !series.length) {
+        const empty = document.createElement("div");
+        empty.className = "chart-empty";
+        empty.textContent = "No series data to display.";
+        grid.append(empty);
+        return;
+      }
+      const observer = ("IntersectionObserver" in window)
+        ? new IntersectionObserver((entries, obs) => {
+            entries.forEach((ioEntry) => {
+              if (!ioEntry.isIntersecting) return;
+              obs.unobserve(ioEntry.target);
+              const data = ioEntry.target._evoData;
+              if (data) drawMiniChart(data, ioEntry.target.querySelector(".evo-chart-slot") || ioEntry.target);
+            });
+          }, { rootMargin: "100px" })
+        : null;
+      series.forEach((entry) => {
+        const card = document.createElement("div");
+        card.className = "evolution-card";
+        card.setAttribute("tabindex", "0");
+        const title = document.createElement("h4");
+        title.textContent = entry.label || entry.column;
+        const subtitle = document.createElement("div");
+        subtitle.className = "evo-subtitle";
+        if (entry.declared) {
+          subtitle.textContent = entry.unit ? `Unit: ${entry.unit}` : "Declared profile metric";
+        } else {
+          subtitle.textContent = `${entry.column}: descriptive only, not a declared profile metric`;
+        }
+        const slot = document.createElement("div");
+        slot.className = "evo-chart-slot";
+        card.append(title, subtitle, slot);
+        if (observer) {
+          card._evoData = entry;
+          observer.observe(card);
+        } else {
+          drawMiniChart(entry, slot);
+        }
+        grid.append(card);
+      });
+    }
+
     function renderV1DetailPanels() {
       const run = state.latestRun;
       if (!run) return;
@@ -854,6 +1031,8 @@
       renderV1Band(entry);
       drawHistogram(entry, "v1-histogram-wrap");
       renderV1TerminalQuantiles(run);
+      renderV1CiState(run);
+      renderEvolutionGrid(seriesEntriesOf(run.dashboard), "v1-evolution-grid");
     }
 
     async function runSimulation() {
@@ -1140,6 +1319,79 @@
         wrap.append(empty);
         return;
       }
+      const unitSuffix = metric.unit ? ` ${metric.unit}` : "";
+      const labelText = metric.label || metric.column || "value";
+      // --- Single path: stat card, no distribution to display ---
+      if (values.length === 1) {
+        const card = document.createElement("div");
+        card.className = "terminal-stat";
+        card.setAttribute("role", "status");
+        const valSpan = document.createElement("span");
+        valSpan.className = "stat-value";
+        valSpan.textContent = `${formatValue(values[0])}${unitSuffix}`;
+        const copy = document.createElement("span");
+        copy.className = "stat-copy";
+        copy.textContent = `Final value of ${labelText} · 1 completed path — no distribution to display`;
+        card.append(valSpan, copy);
+        wrap.append(card);
+        return;
+      }
+      // --- 2–9 paths: dot/strip plot of exact values ---
+      if (values.length < 10) {
+        const sorted = values.slice().sort((a, b) => a - b);
+        const min = sorted[0], max = sorted[sorted.length - 1];
+        const width = 920, height = 120, pad = { left: 56, right: 24, top: 24, bottom: 40 };
+        const span = Math.max(max - min, 1e-12);
+        const xScale = (v) => pad.left + ((v - min) / span) * (width - pad.left - pad.right);
+        const midY = (height - pad.top - pad.bottom) / 2 + pad.top;
+        const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+        svg.setAttribute("role", "img");
+        svg.setAttribute("aria-label", `${labelText} terminal values: ${sorted.length} completed paths shown as individual dots`);
+        // Axis line
+        const axis = document.createElementNS(svg.namespaceURI, "line");
+        axis.setAttribute("x1", pad.left); axis.setAttribute("x2", width - pad.right);
+        axis.setAttribute("y1", midY); axis.setAttribute("y2", midY);
+        axis.setAttribute("stroke", "#2a354a"); axis.setAttribute("stroke-width", "1");
+        svg.append(axis);
+        // Dots with jitter for overlapping values
+        const jitterStep = 14;
+        const positionCounts = {};
+        sorted.forEach((value) => {
+          const key = Math.round(xScale(value));
+          positionCounts[key] = (positionCounts[key] || 0) + 1;
+          const count = positionCounts[key];
+          const jitter = (count - 1) * jitterStep * (count % 2 === 0 ? -1 : 1) * 0.5;
+          const dot = document.createElementNS(svg.namespaceURI, "circle");
+          dot.setAttribute("cx", xScale(value));
+          dot.setAttribute("cy", midY + jitter);
+          dot.setAttribute("r", "6");
+          dot.setAttribute("fill", "#5fe1d2");
+          dot.setAttribute("stroke", "#0e1524");
+          dot.setAttribute("stroke-width", "1.5");
+          const title = document.createElementNS(svg.namespaceURI, "title");
+          title.textContent = `${formatValue(value)}${unitSuffix}`;
+          dot.append(title);
+          svg.append(dot);
+        });
+        // Axis labels
+        [[pad.left, min], [width - pad.right, max]].forEach(([xPos, value]) => {
+          const label = document.createElementNS(svg.namespaceURI, "text");
+          label.setAttribute("x", xPos); label.setAttribute("y", height - pad.bottom + 18);
+          label.setAttribute("fill", "#aeb8c8"); label.setAttribute("font-size", "11");
+          label.setAttribute("text-anchor", xPos === pad.left ? "start" : "end");
+          label.textContent = formatValue(value);
+          svg.append(label);
+        });
+        const caption = document.createElementNS(svg.namespaceURI, "text");
+        caption.setAttribute("x", pad.left); caption.setAttribute("y", height - 6);
+        caption.setAttribute("fill", "#aeb8c8"); caption.setAttribute("font-size", "11");
+        caption.textContent = `${sorted.length} completed paths — exact values${unitSuffix ? ` · ${metric.unit}` : ""}`;
+        svg.append(caption);
+        wrap.append(svg);
+        return;
+      }
+      // --- ≥10 paths: real histogram ---
       const bins = 20;
       const min = Math.min(...values), max = Math.max(...values);
       const span = Math.max(max - min, 1e-12);
@@ -1154,7 +1406,7 @@
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
       svg.setAttribute("role", "img");
-      svg.setAttribute("aria-label", `${metric.label} terminal value histogram across ${values.length} completed paths`);
+      svg.setAttribute("aria-label", `${labelText} terminal value histogram across ${values.length} completed paths`);
       counts.forEach((count, index) => {
         const barHeight = (count / peak) * (height - pad.top - pad.bottom);
         const rect = document.createElementNS(svg.namespaceURI, "rect");
@@ -1228,18 +1480,29 @@
     function renderCiCards(result) {
       const container = $("ci-cards");
       container.replaceChildren();
+      const completed = (result.run || {}).completed_paths || 0;
       (result.metrics || []).forEach((metric) => {
         const interval = (metric.confidence_intervals || []).find((item) => item.estimator === "median");
         const card = document.createElement("div");
         card.className = "ci-card";
         const title = document.createElement("span");
-        title.textContent = interval ? `${metric.label}: ${interval.label}` : `${metric.label}: unavailable`;
         const value = document.createElement("strong");
-        value.textContent = interval ? `${formatValue(interval.estimate)} ${metric.unit}` : "—";
         const detail = document.createElement("small");
-        detail.textContent = interval
-          ? `median estimate ${formatValue(interval.estimate)}; interval [${formatValue(interval.ci_low)}, ${formatValue(interval.ci_high)}]; n=${interval.n}, ${interval.resamples} resamples`
-          : "No estimator interval was published for this metric.";
+        if (interval) {
+          title.textContent = `${metric.label}: ${interval.label}`;
+          value.textContent = `${formatValue(interval.estimate)} ${metric.unit}`;
+          detail.textContent = `median estimate ${formatValue(interval.estimate)}; interval [${formatValue(interval.ci_low)}, ${formatValue(interval.ci_high)}]; n=${interval.n}, ${interval.resamples} resamples`;
+        } else {
+          let reason;
+          if (completed < MIN_PATHS_FOR_CI) {
+            reason = `No estimator confidence interval — fewer completed paths (${completed}) than the declared minimum (${MIN_PATHS_FOR_CI})`;
+          } else {
+            reason = "No estimator interval was published for this metric.";
+          }
+          title.textContent = `${metric.label}: no estimator CI`;
+          value.textContent = "—";
+          detail.textContent = reason;
+        }
         card.append(title, value, detail);
         container.append(card);
       });
@@ -1412,6 +1675,7 @@
       picker.value = mc.metric;
       renderSelectedMc(result);
       renderCiCards(result);
+      renderEvolutionGrid(seriesEntriesOf(result), "mc-evolution-grid");
       const insufficient = renderSensitivity(result);
       renderConvergence(result);
       renderCoverage(result);
