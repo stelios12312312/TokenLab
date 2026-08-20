@@ -14,7 +14,9 @@
 //   - Non-worthy path (e.g., docs/)      -> no result emitted
 //   - PLANNER_ANNOTATION_DISCIPLINE=off  -> WARN (advisory mode)
 //   - Plan with no worthy files          -> no result emitted
-//   - Pre-existing file in git HEAD       -> EXEMPT (net-new scoping); net-new file still FAILs
+//   - Legacy-unannotated file in git HEAD -> EXEMPT (net-new scoping)
+//   - Committed identity removed/downgraded -> FAIL; identity replacement -> PASS
+//   - Net-new unannotated file            -> FAIL
 
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "fs";
 import { join } from "path";
@@ -358,26 +360,48 @@ console.log("\nAnnotation Discipline Gate (GATE-PLN-ANN-001) Regression\n");
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Scenario 11: net-new scoping (remediation for the 856af38 false-red).
-// A worthy file already in git HEAD is EXEMPT (pre-existing/legacy code being
-// modified — real plans do this constantly and must not be blocked). A
-// brand-new un-annotated owned worthy file (the AV-7 bypass) still FAILs.
+// Scenario 11: baseline-aware net-new scoping.
+// A worthy file that was already unannotated in git HEAD remains EXEMPT
+// (remediation for the 856af38 false-red). If HEAD established a valid identity
+// annotation, removing or downgrading it FAILs. Replacing one valid identity
+// kind with the other remains valid. A brand-new unannotated owned worthy file
+// (the AV-7 bypass) still FAILs.
 // ──────────────────────────────────────────────────────────────────────
 {
   const cwd = makeFixture("ann-net-new", {
     "scripts/legacy_committed.mjs": "export const legacy = 1;\n",
+    "scripts/identity_committed.mjs": "// @planner:module = committed_identity\nexport const identity = 1;\n",
   });
   try {
     const git = (args) => execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t", ...args], { cwd, stdio: "ignore" });
     git(["init", "-q"]);
-    git(["add", "scripts/legacy_committed.mjs"]);
-    git(["commit", "-q", "-m", "legacy"]);
+    git(["add", "scripts/legacy_committed.mjs", "scripts/identity_committed.mjs"]);
+    git(["commit", "-q", "-m", "baseline"]);
 
     // Pre-existing committed file → EXEMPT (this is what was false-redding real plans).
     const plan1 = "## Files To Modify\n- scripts/legacy_committed.mjs\n";
     const r1 = analyzeAnnotationDiscipline({ planContent: plan1, cwd });
     assert(r1.satisfied === true, "pre-existing (in git HEAD) un-annotated file is EXEMPT — no false-red");
     assert(r1.violations.length === 0, "no violation for a legacy committed file");
+
+    // Established identity removed entirely → regression must be rejected.
+    const identityPlan = "## Files To Modify\n- scripts/identity_committed.mjs\n";
+    writeFileSync(join(cwd, "scripts", "identity_committed.mjs"), "export const identity = 2;\n");
+    const stripped = analyzeAnnotationDiscipline({ planContent: identityPlan, cwd });
+    assert(stripped.satisfied === false, "removing a committed identity annotation FAILs");
+    assert(stripped.violations[0]?.kind === "identity_annotation_regression", "identity removal has a stable regression kind");
+
+    // Established identity downgraded to story-only → still a regression.
+    writeFileSync(join(cwd, "scripts", "identity_committed.mjs"), "// @planner:story = US-077\nexport const identity = 3;\n");
+    const downgraded = analyzeAnnotationDiscipline({ planContent: identityPlan, cwd });
+    assert(downgraded.satisfied === false, "downgrading a committed identity to story-only FAILs");
+    assert(downgraded.violations[0]?.kind === "identity_annotation_regression", "identity downgrade has a stable regression kind");
+
+    // Identity kind is interchangeable: capability still satisfies a module baseline.
+    writeFileSync(join(cwd, "scripts", "identity_committed.mjs"), "// @planner:capability = replacement_identity\nexport const identity = 4;\n");
+    const replaced = analyzeAnnotationDiscipline({ planContent: identityPlan, cwd });
+    assert(replaced.satisfied === true, "replacing committed module identity with capability PASSes");
+    assert(replaced.violations.length === 0, "valid identity replacement records no violation");
 
     // Net-new un-annotated worthy file (not committed) → still ENFORCED (AV-7 stays closed).
     writeFileSync(join(cwd, "scripts", "brand_new.mjs"), "export const fresh = 1;\n");

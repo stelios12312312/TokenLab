@@ -92,19 +92,21 @@ try {
     process.exit(0);
   }
   const payload = buildPayload(args);
-  if (args.json) emitJson(payload);
-  else printHuman(payload);
-  process.exit(payload.ok ? 0 : 1);
+  if (args.json) emitJson(payload, { exitCode: payload.ok ? 0 : 1 });
+  else {
+    printHuman(payload);
+    process.exit(payload.ok ? 0 : 1);
+  }
 } catch (error) {
   const payload = {
     ok: false,
     status: "error",
     error: error?.message || String(error),
   };
-  if (process.argv.includes("--json")) emitJson(payload);
+  if (process.argv.includes("--json")) emitJson(payload, { exitCode: 2 });
   else {
     console.error(payload.error);
     console.error(usage());
+    process.exit(2);
   }
-  process.exit(2);
 }

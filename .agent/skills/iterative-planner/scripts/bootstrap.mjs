@@ -29,6 +29,7 @@ import { renderArchetypeAccomplicePlanSection } from "../packs/quant/archetype_a
 import { scaffoldVerificationStrategy } from "./lib/verification_strategy.mjs";
 import { inspectInstallHealth, maybeHandleInstallHealth, maybeRunSelfHeal } from "./lib/bootstrap_self_heal.mjs";
 import { createBootstrapStatusContext } from "./lib/bootstrap_status_context.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 
 const KB_INDEX_TEMPLATE = `# Knowledge Base Index
 
@@ -80,10 +81,11 @@ maybeRunSelfHeal(process.cwd(), process.argv.slice(1));
 maybeHandleInstallHealth(process.cwd());
 
 const {
-  createInitialStateJson, writeStateJson, readStateJson, nowISO, validateStateIntegrity, isFeatureEnabled,
+  createInitialStateJson, writeStateJsonResult, readStateJson, readStateJsonWithProvenance, nowISO, validateStateIntegrity, isFeatureEnabled,
   hashRuleFiles,
 } = await import("./lib/determinism.mjs");
 const { renderStateMarkdownFromJson } = await import("./lib/plan_artifact_renderer.mjs");
+const { requireOwnedFileCommit } = await import("./lib/owned_file_replace.mjs");
 const {
   debugLog, getActivePlan, GATE_HISTORY_POISON_THRESHOLD,
   findPoisonedGateHistories,
@@ -108,7 +110,11 @@ const { computeTriage, renderTriage } = await import("./lib/triage.mjs");
 const { deriveTaskFocusContract, summarizeTaskFocusContract } = await import("./lib/task_focus_contract.mjs");
 const { DEFAULT_PLANNER_POLICY, loadPlannerPolicy, policyAllowsCompactVerification, resolvePlannerPolicyShape } = await import("./lib/planner_policy.mjs");
 const { previewContract, renderContractPreview } = await import("./lib/contract_preview.mjs");
-const { inferPersonaAdaptation, isProblematicPersonaStatus } = await import("./lib/persona_adaptation.mjs");
+const {
+  inferPersonaAdaptation,
+  isProblematicPersonaStatus,
+  registryPathFromEnv,
+} = await import("./lib/persona_adaptation.mjs");
 const { formatSessionAssumption, summarizeSessionObligations } = await import("./lib/session_obligations.mjs");
 const {
   computeVerificationObligationSynthesis,
@@ -441,6 +447,25 @@ function warnTelemetryInstallHealth(projectRoot) {
   console.error("If this IDE cannot provide hooks, mark this plan as no-tool-telemetry in verification.md.");
 }
 
+function warnProjectRegistryReachability(projectRoot) {
+  let registry;
+  try {
+    registry = JSON.parse(readFileSync(registryPathFromEnv(), "utf-8"));
+  } catch {
+    return;
+  }
+  const projects = registry?.projects;
+  if (!Array.isArray(projects) || projects.length === 0) return;
+  const paths = projects.map((project) =>
+    typeof project?.path === "string" && project.path.trim() ? project.path.trim() : null
+  );
+  if (paths.some((projectPath) => !projectPath)) return;
+  const reachable = paths.filter((projectPath) => existsSync(resolve(projectRoot, projectPath))).length;
+  if (reachable !== 0) return;
+  console.error(`Project registry reachability warning: 0/${paths.length} registered project path(s) resolve on this host.`);
+  console.error("Rescan this host's sibling planner installations with: node .agent/skills/iterative-planner/scripts/migrate.mjs scan ..");
+}
+
 function readPointer() {
   try {
     const name = readFileSync(pointerFile, "utf-8").trim();
@@ -630,7 +655,7 @@ function refreshActivePlanAliasFor(planDirName = null) {
   return syncActivePlanAlias(plansDir, { planDirName, planDir, stateJson });
 }
 
-function ensureConsolidatedFiles() {
+function ensureConsolidatedFiles({ refreshPlanIndex = true } = {}) {
   mkdirSync(plansDir, { recursive: true });
   const findingsPath = join(plansDir, "FINDINGS.md");
   const decisionsPath = join(plansDir, "DECISIONS.md");
@@ -684,7 +709,9 @@ Non-obvious traps and constraints. Format: \`G-NNN: Short title (date)\`.
     writeFileSync(retroLedgerPath, RETRO_LEDGER_TEMPLATE);
   }
 
-  rebuildPlanIndex();
+  if (refreshPlanIndex || !existsSync(join(plansDir, "INDEX.md"))) {
+    rebuildPlanIndex();
+  }
 }
 
 function prependToConsolidated(filePath, planDirName, newSection) {
@@ -996,6 +1023,7 @@ function parsePromoteSafePlanArgs(rawArgs) {
     program: null,
     workflow: "/safe-change",
     copy: false,
+    parallel: false,
     write: false,
     json: false,
   };
@@ -1011,6 +1039,8 @@ function parsePromoteSafePlanArgs(rawArgs) {
       opts.workflow = rawArgs[++index] || null;
     } else if (arg === "--copy") {
       opts.copy = true;
+    } else if (arg === "--parallel") {
+      opts.parallel = true;
     } else if (arg === "--write") {
       opts.write = true;
     } else if (arg === "--json") {
@@ -1083,7 +1113,8 @@ async function cmdPromoteSafePlan(rawArgs = []) {
     const sourcePlan = resolvePromotionSourcePlan({ explicitPlan: opts.plan, programTicket });
     const sourcePlanDirName = sourcePlan.planDirName;
     const sourcePlanDir = join(plansDir, sourcePlanDirName);
-    const sourceState = readStateJson(sourcePlanDir);
+    const sourceStateRead = readStateJsonWithProvenance(sourcePlanDir);
+    const sourceState = sourceStateRead.state;
     if (!sourceState || typeof sourceState !== "object") {
       throw new Error(`Plan state.json is missing or invalid: plans/${sourcePlanDirName}`);
     }
@@ -1091,8 +1122,14 @@ async function cmdPromoteSafePlan(rawArgs = []) {
       throw new Error(`Can only promote PLAN-state plans; plans/${sourcePlanDirName} is ${sourceState.state || "UNKNOWN"}`);
     }
 
+    const sourceWorkflow = normalizeWorkflowId(sourceState.workflow_id) || null;
     const targetPlanDirName = opts.copy ? makeFreshPlanDirName() : sourcePlanDirName;
     const targetPlanDir = join(plansDir, targetPlanDirName);
+    const activePointerBefore = readPointer();
+    const preserveForeignPointer = Boolean(
+      opts.parallel && activePointerBefore && activePointerBefore !== targetPlanDirName,
+    );
+    const activePointerAfter = preserveForeignPointer ? activePointerBefore : targetPlanDirName;
     const nextCommand = `node .agent/skills/iterative-planner/scripts/transition.mjs plan-to-execute --plan ${targetPlanDirName}`;
     const now = nowISO();
     const promotionHandoff = renderPromotionHandoffSection({
@@ -1107,10 +1144,13 @@ async function cmdPromoteSafePlan(rawArgs = []) {
     const plannedActions = [
       opts.copy ? `copy plans/${sourcePlanDirName} -> plans/${targetPlanDirName}` : `use plans/${sourcePlanDirName} in place`,
       `set workflow_id=${workflowId}`,
-      "record promotion_context",
+      `record promotion_context source_workflow=${sourceWorkflow || "null"} target_workflow=${workflowId}`,
       "write Promotion Handoff section",
       ...(effectiveProgramContext ? ["write Program Context section", `link ticket ${effectiveProgramContext.ticket_id} child_plan.plan_dir`] : []),
-      opts.copy ? "refresh active plan pointer and aliases" : "refresh active plan aliases",
+      preserveForeignPointer
+        ? `preserve active plan pointer plans/.current_plan -> ${activePointerBefore} and refresh its aliases`
+        : `set active plan pointer plans/.current_plan -> ${targetPlanDirName} and refresh its aliases`,
+      `set invoking thread plan target -> ${targetPlanDirName} when thread isolation is available`,
     ];
     const appliedActions = [];
 
@@ -1120,13 +1160,14 @@ async function cmdPromoteSafePlan(rawArgs = []) {
         appliedActions.push(`copied:plans/${sourcePlanDirName}:plans/${targetPlanDirName}`);
       }
 
-      const stateJson = opts.copy ? readStateJson(targetPlanDir) : sourceState;
+      const targetStateRead = opts.copy ? readStateJsonWithProvenance(targetPlanDir) : sourceStateRead;
+      const stateJson = targetStateRead.state;
       stateJson.plan_dir = targetPlanDirName;
       stateJson.workflow_id = workflowId;
       stateJson.workflow_contract_version = WORKFLOW_CONTRACT_VERSION;
       if (effectiveProgramContext) stateJson.program_context = effectiveProgramContext;
       stateJson.promotion_context = {
-        source_workflow: "/safe-plan",
+        source_workflow: sourceWorkflow,
         target_workflow: workflowId,
         promoted_at: now,
         source_plan_dir: sourcePlanDirName,
@@ -1138,10 +1179,10 @@ async function cmdPromoteSafePlan(rawArgs = []) {
         next_command: nextCommand,
       };
 
-      const stateWritten = writeStateJson(targetPlanDir, stateJson);
-      if (!stateWritten) {
-        throw new Error(`Failed to write state.json for plans/${targetPlanDirName}`);
-      }
+      requireOwnedFileCommit(
+        writeStateJsonResult(targetPlanDir, stateJson, { expected: targetStateRead.provenance }),
+        `Failed to write state.json for plans/${targetPlanDirName}`,
+      );
       const renderedState = renderStateMarkdownFromJson(stateJson);
       if (renderedState) {
         writeTextAtomic(join(targetPlanDir, "state.md"), renderedState);
@@ -1151,10 +1192,18 @@ async function cmdPromoteSafePlan(rawArgs = []) {
       appliedActions.push(...updatePromotionPlanSections(targetPlanDir, { programContext: effectiveProgramContext, promotionHandoff }));
       appliedActions.push(...updateProgramTicketForPromotion(programTicket, targetPlanDirName));
 
-      writeTextAtomic(pointerFile, targetPlanDirName);
-      refreshActivePlanAliasFor(targetPlanDirName);
-      writeThreadPlanTarget(plansDir, targetPlanDirName);
-      appliedActions.push("active_plan_pointer");
+      if (preserveForeignPointer) {
+        const aliasSync = refreshActivePlanAliasFor(activePointerBefore);
+        appliedActions.push(`preserved:plans/.current_plan:${activePointerBefore}`);
+        if (aliasSync.synced) appliedActions.push(`active_plan_alias:${activePointerBefore}`);
+      } else {
+        writeTextAtomic(pointerFile, targetPlanDirName);
+        const aliasSync = refreshActivePlanAliasFor(targetPlanDirName);
+        appliedActions.push(`updated:plans/.current_plan:${targetPlanDirName}`);
+        if (aliasSync.synced) appliedActions.push(`active_plan_alias:${targetPlanDirName}`);
+      }
+      const threadTarget = writeThreadPlanTarget(plansDir, targetPlanDirName);
+      if (threadTarget.written) appliedActions.push(`thread_plan_target:${targetPlanDirName}`);
     }
 
     result = {
@@ -1162,8 +1211,12 @@ async function cmdPromoteSafePlan(rawArgs = []) {
       dry_run: !opts.write,
       source_plan_dir: sourcePlanDirName,
       source_resolution: sourcePlan.source,
+      source_workflow: sourceWorkflow,
       target_plan_dir: targetPlanDirName,
       copied: Boolean(opts.copy),
+      parallel: Boolean(opts.parallel),
+      active_pointer_before: activePointerBefore,
+      active_pointer_after: activePointerAfter,
       workflow_id: workflowId,
       workflow_contract_version: WORKFLOW_CONTRACT_VERSION,
       ticket_id: effectiveProgramContext?.ticket_id || null,
@@ -1331,7 +1384,8 @@ function carryRecoveredArtifacts(sourcePlanDirName, targetPlanDirName, poisonedE
     .replace("*Nothing yet.*", `- [x] RECOVERY: carried forward sanitized context from \`${sourcePlanDirName}\``);
   writeFileSync(targetProgressPath, targetProgressContent);
 
-  const sourceState = readStateJson(sourcePlanDir);
+  const sourceStateRead = readStateJsonWithProvenance(sourcePlanDir);
+  const sourceState = sourceStateRead.state;
   if (sourceState) {
     sourceState.recovery_context = {
       mode: "source",
@@ -1340,10 +1394,14 @@ function carryRecoveredArtifacts(sourcePlanDirName, targetPlanDirName, poisonedE
       recovered_at: recoveryContext.recovered_at,
       poisoned_gates: recoveryContext.poisoned_gates,
     };
-    writeStateJson(sourcePlanDir, sourceState);
+    requireOwnedFileCommit(
+      writeStateJsonResult(sourcePlanDir, sourceState, { expected: sourceStateRead.provenance }),
+      "Recovery source state write",
+    );
   }
 
-  const targetState = readStateJson(targetPlanDir);
+  const targetStateRead = readStateJsonWithProvenance(targetPlanDir);
+  const targetState = targetStateRead.state;
   if (targetState) {
     targetState.recovery_context = {
       mode: "successor",
@@ -1389,7 +1447,10 @@ function carryRecoveredArtifacts(sourcePlanDirName, targetPlanDirName, poisonedE
       }
     }
 
-    writeStateJson(targetPlanDir, targetState);
+    requireOwnedFileCommit(
+      writeStateJsonResult(targetPlanDir, targetState, { expected: targetStateRead.provenance }),
+      "Recovery target state write",
+    );
     refreshActivePlanAliasFor(targetPlanDirName);
   }
 
@@ -1645,7 +1706,6 @@ ${crossPlanNote}`
     if (shapeNeedsAssumptionLedger) {
       findingsScaffold.push(``, `## Assumption Ledger`, ``, `| # | Assumption | Probe | Result |`, `|---|------------|-------|--------|`, `| 1 | *e.g. external endpoint exists* | *probe command* | *VERIFIED or VIOLATED* |`);
     }
-    writeFileSync(join(planDir, "findings.md"), findingsScaffold.join("\n") + "\n");
 
     writeFileSync(
       join(planDir, "findings_ledger.json"),
@@ -1858,7 +1918,10 @@ Mitigation:
       source: planShape.source,
       requirements: planShape.requirements,
     };
-    writeStateJson(planDir, stateJson);
+    requireOwnedFileCommit(
+      writeStateJsonResult(planDir, stateJson, { expected: null }),
+      "Initial state write",
+    );
     const scopeContract = writeScopeContract({
       cwd,
       planDir,
@@ -1947,6 +2010,7 @@ Mitigation:
   console.log(`  Cross-plan context: start with plans/INDEX.md, then use plans/FINDINGS.md and plans/DECISIONS.md`);
   console.log(`  Next: Read code, ask questions, write findings.`);
   warnTelemetryInstallHealth(cwd);
+  warnProjectRegistryReachability(cwd);
 
   // Check if rules.md has been customized with project-specific rules
   try {
@@ -2021,7 +2085,9 @@ function checkStaleness(planDirName) {
   const STALE_WARN_DAYS = 7;
   const STALE_CRITICAL_DAYS = 21;
   try {
-    const stateJson = readStateJson(join(plansDir, planDirName));
+    const statePlanDir = join(plansDir, planDirName);
+    const stateRead = readStateJsonWithProvenance(statePlanDir);
+    const stateJson = stateRead.state;
     if (!stateJson?.transitions?.length) return;
 
     // Stuck signal 1: stale pointer — plan is CLOSE but .current_plan still set
@@ -2096,10 +2162,6 @@ function renderActiveNorthStarDecisionSurfaceStatus(goalText) {
 }
 
 async function cmdResume() {
-  if (existsSync(plansDir)) {
-    try { ensureConsolidatedFiles(); } catch (e) { debugLog("bootstrap", `Consolidated file seed failed during resume: ${e.message}`); }
-  }
-
   const pointerPlanDirName = readPointer();
   const target = resolvePlanTarget(plansDir, { exitOnMissing: false });
   const planDirName = target.planDirName;
@@ -2251,10 +2313,6 @@ async function printDegradedCoverageStatus() {
 }
 
 async function cmdStatus() {
-  if (existsSync(plansDir)) {
-    try { ensureConsolidatedFiles(); } catch (e) { debugLog("bootstrap", `Consolidated file seed failed during status: ${e.message}`); }
-  }
-
   const pointerPlanDirName = readPointer();
   const target = resolvePlanTarget(plansDir, { exitOnMissing: false });
   const planDirName = target.planDirName;
@@ -2265,6 +2323,7 @@ async function cmdStatus() {
     printCapabilityBanner(cwd, null);
     printKernelProfileStatus(cwd);
     warnTelemetryInstallHealth(cwd);
+    warnProjectRegistryReachability(cwd);
     await printDegradedCoverageStatus();
     const noPlanAmbientStatus = renderAmbientPersonaStatus(cwd);
     if (noPlanAmbientStatus) {
@@ -2309,6 +2368,7 @@ async function cmdStatus() {
   printCapabilityBanner(cwd, planDirName);
   printKernelProfileStatus(cwd);
   warnTelemetryInstallHealth(cwd);
+  warnProjectRegistryReachability(cwd);
   await printDegradedCoverageStatus();
   const ambientStatus = renderAmbientPersonaStatus(cwd);
   if (ambientStatus) {
@@ -2433,8 +2493,8 @@ async function cmdStatus() {
 function cmdInstallHealth(jsonMode = false) {
   const health = inspectInstallHealth(cwd);
   if (jsonMode) {
-    console.log(JSON.stringify(health, null, 2));
-    process.exit(health.ok ? 0 : 1);
+    emitJson(health, { exitCode: health.ok ? 0 : 1 });
+    return;
   }
 
   console.log("Planner Install Health");
@@ -2472,11 +2532,13 @@ function cmdClose(opts = {}) {
     }
     return;
   }
+  const statePlanDir = join(plansDir, planDirName);
+  const stateRead = readStateJsonWithProvenance(statePlanDir);
 
   // Update state.md with CLOSE transition before removing pointer
   let prevState = "UNKNOWN";
   try {
-    const stateJson = readStateJson(join(plansDir, planDirName));
+    const stateJson = stateRead.state;
     const statePath = join(plansDir, planDirName, "state.md");
     const stateContent = readFileSync(statePath, "utf-8");
     prevState = stateJson?.state || stateContent.match(/^# Current State:\s*(.+)$/m)?.[1] || "UNKNOWN";
@@ -2514,7 +2576,7 @@ function cmdClose(opts = {}) {
 
   // Determinism: update state.json on close
   try {
-    const stateJson = readStateJson(join(plansDir, planDirName));
+    const stateJson = stateRead.state;
     if (stateJson) {
       stateJson.state = "CLOSE";
       const marker = opts.forceMarker
@@ -2531,12 +2593,13 @@ function cmdClose(opts = {}) {
         marker: marker.trim() || undefined,
         is_forced: opts.forceMarker ? true : undefined,
       });
-      writeStateJson(join(plansDir, planDirName), stateJson, {
-        allowPhaseMutation: true,
-        mutationOrigin: "bootstrap:close",
-      });
+      requireOwnedFileCommit(writeStateJsonResult(statePlanDir, stateJson, {
+          expected: stateRead.provenance,
+          allowPhaseMutation: true,
+          mutationOrigin: "bootstrap:close",
+        }), "close state write");
     }
-  } catch (e) { debugLog("bootstrap", `state.json close update failed: ${e.message}`); }
+  } catch (e) { debugLog("bootstrap", `state.json close update failed: ${e.message}`); throw e; }
 
   // Merge per-plan findings/decisions to consolidated files before removing pointer
   try {
@@ -2643,7 +2706,8 @@ function cmdResetCircuitBreaker(gate) {
     console.error("ERROR: No active plan. Cannot reset circuit breaker.");
     process.exit(1);
   }
-  const stateJson = readStateJson(planDir);
+  const stateRead = readStateJsonWithProvenance(planDir);
+  const stateJson = stateRead.state;
   if (!stateJson) {
     console.error("ERROR: state.json not found for active plan.");
     process.exit(1);
@@ -2654,7 +2718,11 @@ function cmdResetCircuitBreaker(gate) {
   }
   const prevFails = stateJson.circuit_breakers[gate].total_fails;
   stateJson.circuit_breakers[gate] = { total_fails: 0 };
-  writeStateJson(join(plansDir, planDirName), stateJson);
+  const stateWrite = writeStateJsonResult(join(plansDir, planDirName), stateJson, { expected: stateRead.provenance });
+  if (stateWrite.status !== "committed") {
+    console.error(`ERROR: Circuit breaker reset state write ${stateWrite.status}: ${stateWrite.reason}`);
+    process.exit(1);
+  }
   console.log(`✅ Circuit breaker reset for '${gate}' (was ${prevFails} total fails → 0).`);
 
   const poisoned = findPoisonedGateHistories(stateJson.transitions || [], GATE_REGISTRY, {
@@ -3026,7 +3094,8 @@ Commands:
   close --informational             Close from any state as informational (merges findings/KB, no execution)
   close --force                     Close active plan even from non-standard state
   list                              Show all plan directories (active and closed)
-  promote-safe-plan [options]       Prepare a PLAN-state /safe-plan handoff for /safe-change execution
+  promote-safe-plan [--parallel] [options]
+                                    Prepare a PLAN-state /safe-plan handoff for /safe-change execution
   promote-to-execution [options]    Alias for promote-safe-plan
   reset-circuit-breaker <gate>      Reset persistent failure counter for a gate (e.g. execute-to-reflect)
   abandon                           Abandon active plan — merges findings/decisions, clears pointer (work preserved)
@@ -3098,7 +3167,7 @@ if (!subcommands.has(cmd)) {
 } else if (cmd === "fix-stuck") {
   cmdFixStuck();
 } else if (cmd === "install-health") {
-  cmdInstallHealth(args.includes("--json"));
+  // Handled before runtime initialization by maybeHandleInstallHealth().
 } else if (cmd === "story-review") {
   cmdStoryReview(args[1]);
 } else if (cmd === "triage") {

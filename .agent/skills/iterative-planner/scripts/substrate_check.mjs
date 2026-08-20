@@ -3,6 +3,7 @@ import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { dirname, join, relative } from "path";
 import { verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 
 export const SEMANTIC_ROOT_RELATIVE_PATH = join(".agent", "semantic");
 export const READINESS_RELATIVE_PATH = join(SEMANTIC_ROOT_RELATIVE_PATH, "readiness.yaml");
@@ -471,15 +472,16 @@ export async function runSubstrateCommand({ projectRoot = process.cwd(), args = 
       status: "FAIL",
       message: "Usage: bootstrap.mjs substrate check [--json]",
     };
-    if (json) console.log(JSON.stringify(error, null, 2));
+    if (json) emitJson(error, { exitCode: 1 });
     else console.error(error.message);
     return 1;
   }
 
   const result = validateSubstrateReadiness(projectRoot);
-  if (json) console.log(JSON.stringify(result, null, 2));
+  const exitCode = result.ok ? 0 : 1;
+  if (json) emitJson(result, { exitCode });
   else console.log(formatHumanOutput(result));
-  return result.ok ? 0 : 1;
+  return exitCode;
 }
 
 const isMain = process.argv[1] && process.argv[1].includes("substrate_check");
@@ -488,5 +490,5 @@ if (isMain) {
     projectRoot: process.cwd(),
     args: process.argv.slice(2),
   });
-  process.exit(exitCode);
+  process.exitCode = exitCode;
 }

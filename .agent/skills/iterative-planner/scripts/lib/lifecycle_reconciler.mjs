@@ -8,6 +8,7 @@ import { dirname, isAbsolute, join, relative, resolve } from "path";
 import {
   effectiveTicketLifecycle,
   isDispositionResolvedTicket,
+  resolveProgramPacketPath,
   validateAwaitingExternalAction,
 } from "./program_packet.mjs";
 import { extractRepoStateStampFromObject } from "./repo_state_stamp.mjs";
@@ -74,6 +75,13 @@ function safeParseJson(path) {
   } catch {
     return null;
   }
+}
+
+function normalizedPlanState(state) {
+  const transitions = asArray(state.transitions);
+  const lastTransition = transitions.at(-1);
+  if (asString(lastTransition?.marker).toUpperCase() === "[ABANDONED]") return "abandoned";
+  return asString(state.state).toLowerCase();
 }
 
 function jsonMatch(document, expected) {
@@ -253,13 +261,9 @@ export function listProgramPacketPaths(cwd = process.cwd()) {
 function resolveProgramPath(cwd, program) {
   const raw = asString(program);
   if (!raw) return null;
-  const direct = isAbsolute(raw) ? raw : resolve(cwd, raw);
-  if (existsSync(direct)) {
-    const st = statSync(direct);
-    return st.isDirectory() ? join(direct, "program_packet.json") : direct;
-  }
-  const byId = join(cwd, "plans", "programs", raw, "program_packet.json");
-  return existsSync(byId) ? byId : direct;
+  const resolved = resolveProgramPacketPath({ cwd, program: raw });
+  if (resolved.status === "FOUND" && resolved.path && existsSync(resolved.path)) return resolved.path;
+  throw new Error(resolved.message || `Program Packet not found: ${raw}`);
 }
 
 function loadProgramPackets(cwd) {
@@ -317,7 +321,7 @@ function loadPlanRecords(cwd) {
     const scope = readPlanDeliveryScope({ cwd, planDir: rel(cwd, planDir) });
     records.push({
       plan_dir: rel(cwd, planDir),
-      state: asString(state.state).toLowerCase(),
+      state: normalizedPlanState(state),
       goal: asString(state.goal),
       state_path: rel(cwd, statePath),
       summary_path: existsSync(summaryPath) ? rel(cwd, summaryPath) : null,
@@ -472,7 +476,7 @@ function shouldConsiderTicket(ticket, packet, cwd, programPacketPath) {
     programPacketPath,
   })) return false;
   if (["closed", "deferred"].includes(lifecycle) && claimsProposedResolution(ticket)) return true;
-  if (lifecycle === "blocked" && ticket?.awaiting_external_action !== undefined) return true;
+  if (lifecycle === "blocked") return true;
   if (!lifecycle || FINAL_TICKET_LIFECYCLES.has(lifecycle)) return false;
   return OPEN_LIFECYCLES.has(lifecycle) || !FINAL_TICKET_LIFECYCLES.has(lifecycle);
 }
@@ -662,7 +666,7 @@ function titleSimilarity(leftTitle, rightTitle) {
   return shared / union;
 }
 
-function duplicateConfidence({ sharedLabel, sharedTokens, unitKind, titleScore, batchLabelHit }) {
+export function duplicateConfidence({ sharedLabel, sharedTokens, unitKind, titleScore, batchLabelHit }) {
   if (!sharedLabel) return "low";
   if (unitKind === "ticket" && titleScore < 0.45) return "low";
   if (unitKind === "decision" && !batchLabelHit && titleScore < 0.35) return "low";
@@ -744,38 +748,6 @@ function buildDuplicateFindings({ cwd, packets }) {
   return findings.sort((a, b) => `${a.ticket_id}:${a.matched_scope.packet_path}`.localeCompare(`${b.ticket_id}:${b.matched_scope.packet_path}`));
 }
 
-function filterReportByProgram(report, cwd, program) {
-  const selected = resolveProgramPath(cwd, program);
-  if (!selected) return report;
-  const selectedRel = normalizePath(rel(cwd, selected));
-  const filteredLifecycle = report.findings.shipped_open.filter((finding) =>
-    normalizePath(finding.packet_path) === selectedRel);
-  const filteredDuplicates = report.findings.duplicate_scope.filter((finding) =>
-    normalizePath(finding.packet_path) === selectedRel
-    || normalizePath(finding.matched_scope?.packet_path) === selectedRel);
-  const filteredAwaiting = asArray(report.exemptions?.awaiting_external_action).filter((entry) =>
-    normalizePath(entry.packet_path) === selectedRel);
-  const filteredStagedClose = asArray(report.pending?.staged_close).filter((entry) =>
-    normalizePath(entry.packet_path) === selectedRel);
-  return finalizeReport({
-    ...report,
-    program_filter: {
-      requested: asString(program),
-      packet_path: selectedRel,
-    },
-    findings: {
-      shipped_open: filteredLifecycle,
-      duplicate_scope: filteredDuplicates,
-    },
-    exemptions: {
-      awaiting_external_action: filteredAwaiting,
-    },
-    pending: {
-      staged_close: filteredStagedClose,
-    },
-  });
-}
-
 function defaultReportPath(cwd, timestamp) {
   return join(cwd, DEFAULT_REPORT_DIR, `lifecycle_reconciliation_${reportStamp(timestamp)}.json`);
 }
@@ -802,9 +774,18 @@ function finalizeReport(report) {
 }
 
 export function buildLifecycleReconciliationReport(options = {}) {
-  const cwd = resolve(options.cwd || process.cwd());
+  const requestedCwd = resolve(options.cwd || process.cwd());
+  const cwd = existsSync(requestedCwd) ? realpathSync(requestedCwd) : requestedCwd;
   const timestamp = asString(options.timestamp) || nowIso(options.clock);
-  const { packets, warnings } = loadProgramPackets(cwd);
+  const { packets: allPackets, warnings } = loadProgramPackets(cwd);
+  const selectedPath = asString(options.program) ? resolveProgramPath(cwd, options.program) : null;
+  const selectedRel = selectedPath ? normalizePath(rel(cwd, realpathSync(selectedPath))) : null;
+  const packets = selectedRel
+    ? allPackets.filter((packet) => normalizePath(rel(cwd, realpathSync(packet.path))) === selectedRel)
+    : allPackets;
+  if (selectedRel && packets.length !== 1) {
+    throw new Error(`Program filter did not resolve exactly once: ${asString(options.program)}`);
+  }
   const plans = loadPlanRecords(cwd);
   const repoState = collectRepoState(cwd);
   const lifecycle = buildLifecycleFindings({
@@ -817,12 +798,21 @@ export function buildLifecycleReconciliationReport(options = {}) {
   const baseReportPath = options.output
     ? (isAbsolute(options.output) ? options.output : resolve(cwd, options.output))
     : defaultReportPath(cwd, timestamp);
+  const duplicateScope = buildDuplicateFindings({ cwd, packets: allPackets });
+  const filteredDuplicateScope = selectedRel
+    ? duplicateScope.filter((finding) =>
+      normalizePath(finding.packet_path) === selectedRel
+      || normalizePath(finding.matched_scope?.packet_path) === selectedRel)
+    : duplicateScope;
   const report = finalizeReport({
     version: 1,
     generated_at: timestamp,
     mode: "advisory_only",
     repo_state: repoState,
-    program_filter: null,
+    program_filter: selectedRel ? {
+      requested: asString(options.program),
+      packet_path: selectedRel,
+    } : null,
     programs: packets.map((packet) => ({
       id: packet.program_id,
       title: packet.program_title,
@@ -838,7 +828,7 @@ export function buildLifecycleReconciliationReport(options = {}) {
     ],
     findings: {
       shipped_open: lifecycle.findings,
-      duplicate_scope: buildDuplicateFindings({ cwd, packets }),
+      duplicate_scope: filteredDuplicateScope,
     },
     exemptions: {
       awaiting_external_action: lifecycle.awaiting_external_action,
@@ -852,14 +842,13 @@ export function buildLifecycleReconciliationReport(options = {}) {
       write_requested: options.write === true,
     },
   });
-  const filtered = options.program ? filterReportByProgram(report, cwd, options.program) : report;
   const writePath = options.output
     ? (isAbsolute(options.output) ? options.output : resolve(cwd, options.output))
-    : resolve(cwd, filtered.repair_packet.path);
+    : resolve(cwd, report.repair_packet.path);
   const finalReport = {
-    ...filtered,
+    ...report,
     repair_packet: {
-      ...filtered.repair_packet,
+      ...report.repair_packet,
       path: rel(cwd, writePath),
       written: false,
       write_requested: options.write === true,

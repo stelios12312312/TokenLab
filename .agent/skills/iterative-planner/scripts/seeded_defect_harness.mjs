@@ -718,8 +718,12 @@ function printText(result) {
 if (isDirectInvocation(import.meta.url)) {
   const args = parseArgs(process.argv.slice(2));
   const result = runSeededDefectHarness({ rootDir: args.rootDir, keep: args.keep });
-  if (args.json) emitJson(result);
-  else printText(result);
   // proof-status-lint: exempt T-INTAKE-B07B8898 -- Seeded-defect benchmark aggregate is derived from controlled fixture outcomes.
-  process.exit(result.status === "PASS" ? 0 : 1);
+  const exitCode = result.status === "PASS" ? 0 : 1;
+  if (args.json) {
+    emitJson(result, { exitCode });
+  } else {
+    printText(result);
+    process.exit(exitCode);
+  }
 }

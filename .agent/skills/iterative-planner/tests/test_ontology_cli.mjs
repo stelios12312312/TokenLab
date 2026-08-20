@@ -1,16 +1,23 @@
 #!/usr/bin/env node
 
 import { execFileSync } from "child_process";
+import { createHash } from "crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { tmpdir } from "os";
 
 import { buildOntologyFacts } from "../scripts/lib/ontology_fact_builder.mjs";
-import { getOntologyCompiledFactPath } from "../scripts/lib/ontology_schema.mjs";
+import {
+  ONTOLOGY_ENTITY_CLASSES,
+  getOntologyCompiledFactPath,
+  getOntologyFactPath,
+} from "../scripts/lib/ontology_schema.mjs";
 import { createSemanticEngine } from "../scripts/lib/semantic_engine.mjs";
 import { createSession } from "../scripts/lib/prolog.mjs";
 import { loadRules } from "../scripts/lib/fact_loader.mjs";
+import { lintVerificationStrategy } from "../scripts/lib/verification_strategy.mjs";
+import { induceOntologyDocuments } from "../scripts/ontology_inducer.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -51,6 +58,36 @@ function readJson(filePath) {
   return JSON.parse(readFileSync(filePath, "utf-8"));
 }
 
+function sha256(bytes) {
+  return createHash("sha256").update(bytes).digest("hex");
+}
+
+function snapshotGeneratedAuthority(tmp) {
+  const paths = {
+    ...Object.fromEntries(
+      ONTOLOGY_ENTITY_CLASSES.map((entityClass) => [
+        entityClass,
+        getOntologyFactPath(entityClass, tmp),
+      ])
+    ),
+    compiled: getOntologyCompiledFactPath(tmp),
+  };
+  return Object.fromEntries(
+    Object.entries(paths).map(([name, path]) => {
+      const bytes = readFileSync(path);
+      return [name, { path, bytes, sha256: sha256(bytes) }];
+    })
+  );
+}
+
+function assertGeneratedAuthorityUnchanged(snapshot, label) {
+  for (const [name, expected] of Object.entries(snapshot)) {
+    const actual = readFileSync(expected.path);
+    assert(actual.equals(expected.bytes), `${label}: ${name} authority bytes remain unchanged`);
+    assert(sha256(actual) === expected.sha256, `${label}: ${name} authority SHA-256 remains unchanged`);
+  }
+}
+
 function runCli(scriptPath, args, cwd) {
   try {
     const stdout = execFileSync(nodeBin, [scriptPath, ...args], {
@@ -85,6 +122,8 @@ function seedStoryRegistry(tmp) {
         title: "Planner ontology context command",
         priority: "HIGH",
         status: "NOT_IMPLEMENTED",
+        domain: "planner_core",
+        tags: ["planner-core", "traceability"],
         code_refs: [
           ".agent/skills/iterative-planner/scripts/ontology_context.mjs",
           ".agent/skills/iterative-planner/scripts/planner.mjs",
@@ -93,7 +132,13 @@ function seedStoryRegistry(tmp) {
           ".agent/skills/iterative-planner/tests/test_ontology_cli.mjs",
         ],
         validation_refs: [
-          "reports/test_runs/plan_ontology_context_latest.yaml",
+          "reports/ive/test_runs/plan_ontology_context_latest.yaml",
+        ],
+        acceptance_criteria: [
+          {
+            id: "AC-US-900-EXPLICIT",
+            description: "Canonical story criterion description",
+          },
         ],
       },
     ],
@@ -105,16 +150,30 @@ function seedVerificationStrategy(tmp) {
     verification_strategy: {
       version: 1,
       plan_id: "plan_fixture",
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      repo_system_context: "Ontology verification fixture",
+      verification_obligation_synthesis: {
+        summary: "Exercise ontology source truth.",
+        scope: "Fixture-only ontology induction.",
+        non_goals: [],
+        dependencies: [],
+      },
       criteria: [
         {
           id: "CRIT-001",
           criterion: "planner ontology build returns non-empty facts",
           story_id: "US-900",
+          story_criterion_id: "AC-US-900-EXPLICIT",
+          domain: "planner_core",
+          repo_system_context: "Fixture ontology induction and graph validation.",
+          required_proof_type: "proof:integration_smoke",
           implementation: {
             file: ".agent/skills/iterative-planner/scripts/ontology_inducer.mjs",
             lines: "1-200",
             function: null,
           },
+          acceptance: ["planner ontology build returns non-empty facts"],
           tests: [
             {
               name: "scenarioBuildInducesAllOntologyClasses",
@@ -128,6 +187,14 @@ function seedVerificationStrategy(tmp) {
               path: "reports/coverage/ontology_inducer.json",
             },
           ],
+          concrete_action: {
+            type: "command",
+            command: "node test_ontology_cli.mjs",
+          },
+          how_verified: "integration_test",
+          pass_means: "The fixture builds and validates.",
+          what_remains_unverified: "Production data is outside this fixture.",
+          persona_audit_required: false,
         },
       ],
     },
@@ -135,6 +202,105 @@ function seedVerificationStrategy(tmp) {
   writeJson(join(tmp, "plans", "plan_fixture", "state.json"), {
     state: "EXECUTE",
   });
+}
+
+function seedAdditionalStory(tmp, {
+  storyId,
+  criterionId,
+  title = "Additional ontology story",
+} = {}) {
+  const registryPath = join(tmp, "reports", "user_story_audit", "story_registry.json");
+  const registry = readJson(registryPath);
+  registry.stories.push({
+    id: storyId,
+    title,
+    priority: "HIGH",
+    status: "NOT_IMPLEMENTED",
+    code_refs: [],
+    test_refs: [],
+    validation_refs: [],
+    acceptance_criteria: [
+      {
+        id: criterionId,
+        description: `${title} acceptance`,
+      },
+    ],
+  });
+  writeJson(registryPath, registry);
+}
+
+function seedAdditionalVerificationStrategy(tmp, {
+  planId,
+  criterionId = "CRIT-001",
+  storyId = "US-900",
+  storyCriterionId = null,
+  testName,
+  testFile,
+  artifactPath,
+  state = "EXECUTE",
+} = {}) {
+  const criterion = {
+    id: criterionId,
+    criterion: `${planId} keeps its verification identity`,
+    story_id: storyId,
+    implementation: {
+      file: ".agent/skills/iterative-planner/scripts/ontology_inducer.mjs",
+      lines: "1-200",
+      function: null,
+    },
+    tests: [
+      {
+        name: testName,
+        file: testFile,
+        type: "integration",
+      },
+    ],
+    evidence_artifacts: [
+      {
+        type: "test_output",
+        path: artifactPath,
+      },
+    ],
+  };
+  if (storyCriterionId) criterion.story_criterion_id = storyCriterionId;
+
+  writeJson(join(tmp, "plans", planId, "verification_strategy.yaml"), {
+    verification_strategy: {
+      version: 1,
+      plan_id: planId,
+      criteria: [criterion],
+    },
+  });
+  writeJson(join(tmp, "plans", planId, "state.json"), { state });
+}
+
+function seedFullAdditionalVerificationStrategy(tmp, {
+  planId,
+  storyId,
+  storyCriterionId,
+  testName,
+  testFile,
+  artifactPath,
+  state = "EXECUTE",
+} = {}) {
+  const document = readJson(join(tmp, "plans", "plan_fixture", "verification_strategy.yaml"));
+  document.verification_strategy.plan_id = planId;
+  document.verification_strategy.repo_system_context = `${planId} ontology verification fixture`;
+  const criterion = document.verification_strategy.criteria[0];
+  criterion.criterion = `${planId} keeps its verification identity`;
+  criterion.story_id = storyId;
+  criterion.story_criterion_id = storyCriterionId;
+  criterion.tests = [{
+    name: testName,
+    file: testFile,
+    type: "integration",
+  }];
+  criterion.evidence_artifacts = [{
+    type: "test_output",
+    path: artifactPath,
+  }];
+  writeJson(join(tmp, "plans", planId, "verification_strategy.yaml"), document);
+  writeJson(join(tmp, "plans", planId, "state.json"), { state });
 }
 
 function seedRetros(tmp) {
@@ -281,14 +447,688 @@ function scenarioBuildCliWritesGeneratedRepoFacts() {
     const facts = readFileSync(factsPath, "utf-8");
     assert(facts.includes("% Generated by planner ontology build"), "generated facts file records its provenance");
     assert(facts.includes("story('US-900')."), "generated facts include induced stories");
-    assert(facts.includes("story_has_criterion('US-900', 'AC-US-900-001')."), "generated facts include story-to-criterion links");
+    assert(facts.includes("acceptance_criterion('AC-US-900-EXPLICIT', 'Canonical story criterion description')."), "generated facts preserve canonical description-based criterion text");
+    assert(facts.includes("story_has_criterion('US-900', 'AC-US-900-EXPLICIT')."), "generated facts preserve canonical story-to-criterion links");
     assert(facts.includes("verification_criterion('CRIT-001', 'plan_fixture')."), "generated facts include verification criteria");
-    assert(facts.includes("artifact_proves_criterion('reports/coverage/ontology_inducer.json', 'CRIT-001')."), "generated facts include artifact-to-criterion proof links");
+    assert(facts.includes("plan_criterion_verifies_story_criterion('plan_fixture', 'CRIT-001', 'AC-US-900-EXPLICIT')."), "generated facts preserve explicit plan-to-story criterion links with plan identity");
+    assert(facts.includes("artifact_proves_plan_criterion('reports/coverage/ontology_inducer.json', 'plan_fixture', 'CRIT-001')."), "generated facts include plan-aware artifact-to-criterion proof links");
     assert(facts.includes("workflow('/advisor')."), "generated facts include induced workflows");
     assert(facts.includes("proof_weight_type('unit_test')."), "generated facts include proof weight type facts");
     assert(facts.includes("proof_weight_domain_default('planner_core', 'high')."), "generated facts include proof weight domain defaults");
     assert(facts.includes("convention('CONV-900')."), "generated facts include convention facts");
     assert(facts.includes("convention_applies_to_change_class('CONV-900', 'workflow')."), "generated facts include convention applicability facts");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function scenarioPlanCriterionIdentityIsScopedAndExplicit() {
+  const tmp = makeTemp("criterion-scope");
+  try {
+    seedAllSources(tmp);
+    seedAdditionalStory(tmp, {
+      storyId: "US-901",
+      criterionId: "AC-US-901-001",
+      title: "Second plan identity",
+    });
+    seedAdditionalVerificationStrategy(tmp, {
+      planId: "plan_second",
+      storyId: "US-901",
+      storyCriterionId: "AC-US-901-001",
+      testName: "scenarioSecondPlan",
+      testFile: ".agent/skills/iterative-planner/tests/test_second_plan.mjs",
+      artifactPath: "reports/test_runs/second-plan.json",
+    });
+
+    const secondStrategyPath = join(tmp, "plans", "plan_second", "verification_strategy.yaml");
+    const secondStrategy = readJson(secondStrategyPath);
+    secondStrategy.verification_strategy.criteria.push({
+      id: "CRIT-UNMAPPED",
+      criterion: "A story reference alone is not an acceptance-criterion mapping",
+      story_id: "US-901",
+      implementation: {
+        file: ".agent/skills/iterative-planner/scripts/ontology_inducer.mjs",
+        lines: "1-200",
+        function: null,
+      },
+      tests: [
+        {
+          name: "scenarioUnmappedPlanCriterion",
+          file: ".agent/skills/iterative-planner/tests/test_second_plan.mjs",
+          type: "integration",
+        },
+      ],
+    });
+    writeJson(secondStrategyPath, secondStrategy);
+
+    const build = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(build.ok, "same-ID two-plan fixture builds ontology facts");
+    const facts = build.facts;
+    assert(
+      facts.includes("plan_criterion_verifies_story_criterion('plan_fixture', 'CRIT-001', 'AC-US-900-EXPLICIT')."),
+      "plan A criterion keeps its explicit story criterion"
+    );
+    assert(
+      facts.includes("plan_criterion_verifies_story_criterion('plan_second', 'CRIT-001', 'AC-US-901-001')."),
+      "plan B same-local-ID criterion keeps its explicit story criterion"
+    );
+    assert(
+      facts.includes("test_verifies_plan_criterion('scenarioBuildInducesAllOntologyClasses', 'plan_fixture', 'CRIT-001')."),
+      "plan A test edge retains plan identity"
+    );
+    assert(
+      facts.includes("test_verifies_plan_criterion('scenarioSecondPlan', 'plan_second', 'CRIT-001')."),
+      "plan B test edge retains plan identity"
+    );
+    assert(
+      !facts.includes("criterion_verifies_story_criterion('CRIT-001'"),
+      "compiled facts omit ambiguous bare plan-criterion-to-story links"
+    );
+    assert(
+      !facts.includes("test_verifies_criterion('scenarioSecondPlan', 'CRIT-001')."),
+      "compiled facts omit ambiguous bare plan-criterion test links"
+    );
+    assert(
+      !facts.includes("plan_criterion_verifies_story_criterion('plan_second', 'CRIT-UNMAPPED'"),
+      "story_id alone does not guess the story's first acceptance criterion"
+    );
+    assert(
+      facts.includes("test_verifies_criterion('.agent/skills/iterative-planner/tests/test_ontology_cli.mjs', 'AC-US-900-EXPLICIT')."),
+      "globally identified story-criterion test links retain the two-argument compatibility predicate"
+    );
+
+    const { session } = createSemanticEngine({
+      cwd: tmp,
+      skillPath: plannerSkillPath,
+      refreshOntology: false,
+    });
+    assert(
+      session.check("test_verifies_plan_criterion('scenarioBuildInducesAllOntologyClasses', 'plan_fixture', 'CRIT-001')"),
+      "semantic query resolves plan A's exact test edge"
+    );
+    assert(
+      !session.check("test_verifies_plan_criterion('scenarioSecondPlan', 'plan_fixture', 'CRIT-001')"),
+      "semantic query cannot cross-join plan B's same-ID test into plan A"
+    );
+
+    const verificationPath = join(tmp, ".agent", "ontology", "facts", "verification.yaml");
+    const verification = readJson(verificationPath);
+    const secondPlanTest = verification.verification.tests.find((record) => record.name === "scenarioSecondPlan");
+    assert(
+      !secondPlanTest?.criterion_ids?.includes("CRIT-001"),
+      "canonical test records do not retain ambiguous bare plan-local criterion IDs"
+    );
+    secondPlanTest.criterion_ids = ["CRIT-001"];
+    writeJson(verificationPath, verification);
+    const invalid = runCli(ontologyCliPath, ["validate", "--dir", tmp, "--json"], tmp);
+    const invalidParsed = parseJson(invalid.stdout);
+    assert(!invalid.ok, "ontology validate rejects a planted ambiguous bare plan-local test criterion");
+    assert(
+      invalidParsed?.dangling_test_criteria?.some((entry) => entry.includes("CRIT-001")),
+      "ontology validate identifies the planted bare plan-local criterion"
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function scenarioCrossPlanCriterionReuseRemainsValid() {
+  const tmp = makeTemp("cross-plan-criterion-control");
+  try {
+    seedAllSources(tmp);
+    seedAdditionalStory(tmp, {
+      storyId: "US-901",
+      criterionId: "AC-US-901-001",
+      title: "Second plan identity positive control",
+    });
+    seedFullAdditionalVerificationStrategy(tmp, {
+      planId: "plan_second",
+      storyId: "US-901",
+      storyCriterionId: "AC-US-901-001",
+      testName: "scenarioCrossPlanCriterionReuseRemainsValid",
+      testFile: ".agent/skills/iterative-planner/tests/test_second_plan.mjs",
+      artifactPath: "reports/test_runs/cross-plan-control.json",
+    });
+
+    const firstLint = lintVerificationStrategy({
+      cwd: tmp,
+      planDir: join(tmp, "plans", "plan_fixture"),
+    });
+    const secondLint = lintVerificationStrategy({
+      cwd: tmp,
+      planDir: join(tmp, "plans", "plan_second"),
+    });
+    assert(firstLint.ok, "full strategy lint accepts the first owner of a plan-local criterion ID");
+    assert(secondLint.ok, "full strategy lint accepts the same normalized criterion ID in a different plan");
+
+    const build = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(build.ok, "cross-plan reuse of a normalized criterion ID remains a valid induction input");
+    const scopedCriteria = build.documents.verification.criteria.filter(
+      (record) => record.id === "CRIT-001"
+    );
+    assert(scopedCriteria.length === 2, "cross-plan reuse induces two independently scoped criterion records");
+    assert(
+      scopedCriteria.some((record) => record.plan_id === "plan_fixture" && record.story_id === "US-900"),
+      "cross-plan reuse retains plan A ownership"
+    );
+    assert(
+      scopedCriteria.some((record) => record.plan_id === "plan_second" && record.story_id === "US-901"),
+      "cross-plan reuse retains plan B ownership"
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function scenarioDuplicateSamePlanCriterionIdentityFailsClosed() {
+  const tmp = makeTemp("duplicate-plan-criterion");
+  try {
+    seedAllSources(tmp);
+    seedAdditionalStory(tmp, {
+      storyId: "US-901",
+      criterionId: "AC-US-901-001",
+      title: "Duplicate criterion owner B",
+    });
+    const baseline = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(baseline.ok, "duplicate criterion fixture establishes canonical ontology authority");
+    const authority = snapshotGeneratedAuthority(tmp);
+
+    const strategyPath = join(tmp, "plans", "plan_fixture", "verification_strategy.yaml");
+    const originalStrategy = readFileSync(strategyPath);
+    const strategyDocument = readJson(strategyPath);
+    const ownerB = JSON.parse(JSON.stringify(strategyDocument.verification_strategy.criteria[0]));
+    ownerB.id = ` ${ownerB.id} `;
+    ownerB.criterion = "duplicate normalized identity must not merge owner B evidence";
+    ownerB.story_id = "US-901";
+    ownerB.story_criterion_id = "AC-US-901-001";
+    ownerB.acceptance = ["owner B evidence remains unreachable"];
+    ownerB.tests = [{
+      name: "scenarioDuplicateOwnerB",
+      file: ".agent/skills/iterative-planner/tests/test_duplicate_owner_b.mjs",
+      type: "integration",
+    }];
+    ownerB.evidence_artifacts = [{
+      type: "test_output",
+      path: "reports/test_runs/duplicate-owner-b.json",
+    }];
+    strategyDocument.verification_strategy.criteria.push(ownerB);
+    writeJson(strategyPath, strategyDocument);
+
+    const lint = lintVerificationStrategy({
+      cwd: tmp,
+      planDir: join(tmp, "plans", "plan_fixture"),
+    });
+    assert(!lint.ok, "full strategy lint rejects duplicate normalized same-plan criterion IDs");
+    assert(
+      lint.issues.some((entry) =>
+        entry.toLowerCase().includes("duplicate") &&
+        entry.includes("plan_fixture:CRIT-001")
+      ),
+      "full strategy lint reports the duplicate normalized plan/criterion identity"
+    );
+
+    const induced = induceOntologyDocuments({ cwd: tmp });
+    assert(!induced.ok, "ontology induction rejects duplicate normalized criterion IDs during source preflight");
+    assert(
+      induced.issues.some((entry) =>
+        entry.includes(strategyPath) &&
+        entry.toLowerCase().includes("duplicate") &&
+        entry.includes("plan_fixture:CRIT-001")
+      ),
+      "induction reports the exact selected strategy path and duplicate normalized identity"
+    );
+    assert(
+      !induced.documents.verification.tests.some((record) => record.name === "scenarioDuplicateOwnerB"),
+      "rejected duplicate input cannot merge owner B test evidence in memory"
+    );
+    assert(
+      !induced.documents.verification.artifacts.some(
+        (record) => record.path === "reports/test_runs/duplicate-owner-b.json"
+      ),
+      "rejected duplicate input cannot merge owner B artifact evidence in memory"
+    );
+
+    const rejectedBuild = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(!rejectedBuild.ok, "duplicate normalized identity aborts ontology build before writes");
+    assert(rejectedBuild.wrote_fact_documents.length === 0, "duplicate rejection writes no canonical YAML documents");
+    assert(rejectedBuild.wrote_generated_facts === false, "duplicate rejection writes no compiled facts.pl");
+    assertGeneratedAuthorityUnchanged(authority, "duplicate rejection");
+
+    const { session } = createSemanticEngine({
+      cwd: tmp,
+      skillPath: plannerSkillPath,
+      refreshOntology: false,
+    });
+    assert(
+      !session.check("test_verifies_plan_criterion('scenarioDuplicateOwnerB', 'plan_fixture', 'CRIT-001')"),
+      "owner B test evidence is not semantically reachable through owner A's criterion"
+    );
+    assert(
+      !session.check("artifact_proves_plan_criterion('reports/test_runs/duplicate-owner-b.json', 'plan_fixture', 'CRIT-001')"),
+      "owner B artifact evidence is not semantically reachable through owner A's criterion"
+    );
+
+    writeText(strategyPath, originalStrategy);
+    const recovery = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(recovery.ok, "correcting the duplicate selected strategy restores ontology induction");
+    assertGeneratedAuthorityUnchanged(authority, "duplicate correction");
+
+    const verificationPath = join(tmp, ".agent", "ontology", "facts", "verification.yaml");
+    const verification = readJson(verificationPath);
+    verification.verification.criteria.push({
+      ...verification.verification.criteria[0],
+      id: ` ${verification.verification.criteria[0].id} `,
+    });
+    writeJson(verificationPath, verification);
+    const runtimeValidation = runCli(ontologyCliPath, ["validate", "--dir", tmp, "--json"], tmp);
+    const runtimeParsed = parseJson(runtimeValidation.stdout);
+    assert(!runtimeValidation.ok, "runtime ontology validation rejects duplicate normalized plan/criterion identities");
+    assert(
+      runtimeParsed?.issues?.some((entry) =>
+        entry.toLowerCase().includes("duplicate") &&
+        entry.includes("plan_fixture:CRIT-001")
+      ),
+      "runtime validation identifies the duplicate normalized plan/criterion identity"
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function scenarioInvalidSelectedStrategyFailsBeforeAuthorityWrites() {
+  const tmp = makeTemp("invalid-selected-strategy");
+  try {
+    seedAllSources(tmp);
+    const baseline = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(baseline.ok, "invalid selected-strategy fixture establishes canonical ontology authority");
+
+    const strategyPath = join(tmp, "plans", "plan_fixture", "verification_strategy.yaml");
+    const originalStrategy = readFileSync(strategyPath);
+    const authority = snapshotGeneratedAuthority(tmp);
+
+    function assertRejectedAndRecover(rawStrategy, expectedIssue, label) {
+      writeText(strategyPath, rawStrategy);
+      const rejected = buildOntologyFacts({ cwd: tmp, induce: true });
+      assert(!rejected.ok, `${label} selected strategy aborts ontology induction`);
+      assert(
+        rejected.issues.some((entry) =>
+          entry.includes(strategyPath) &&
+          entry.includes(expectedIssue)
+        ),
+        `${label} rejection reports the exact selected strategy path and structural issue`
+      );
+      assert(rejected.wrote_fact_documents.length === 0, `${label} rejection writes no canonical YAML`);
+      assert(rejected.wrote_generated_facts === false, `${label} rejection writes no compiled facts.pl`);
+      assertGeneratedAuthorityUnchanged(authority, `${label} rejection`);
+
+      writeText(strategyPath, originalStrategy);
+      const recovery = buildOntologyFacts({ cwd: tmp, induce: true });
+      assert(recovery.ok, `${label} strategy correction restores induction`);
+      assertGeneratedAuthorityUnchanged(authority, `${label} correction`);
+    }
+
+    assertRejectedAndRecover(
+      "{",
+      "must be valid JSON-compatible YAML",
+      "malformed"
+    );
+    assertRejectedAndRecover(
+      "{}\n",
+      "verification_strategy root object missing",
+      "structurally invalid"
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function scenarioStoryCriterionOwnershipAndPrimaryDomainFailClosed() {
+  const tmp = makeTemp("criterion-owner-domain");
+  try {
+    seedAllSources(tmp);
+    seedAdditionalStory(tmp, {
+      storyId: "US-901",
+      criterionId: "AC-US-901-001",
+      title: "Second story in one plan",
+    });
+    const registryPath = join(tmp, "reports", "user_story_audit", "story_registry.json");
+    const registry = readJson(registryPath);
+    registry.stories.push({
+      id: "US-902",
+      title: "Cross-surface implementation",
+      priority: "MEDIUM",
+      status: "NOT_IMPLEMENTED",
+      code_refs: [
+        ".agent/skills/iterative-planner/scripts/ontology_inducer.mjs",
+        "plans/knowledge/retros/retro_ledger.json",
+      ],
+      test_refs: [],
+      doc_refs: [],
+      validation_refs: [],
+      acceptance_criteria: ["Cross-surface ownership stays explicitly unclassified."],
+    });
+    writeJson(registryPath, registry);
+
+    const strategyPath = join(tmp, "plans", "plan_fixture", "verification_strategy.yaml");
+    const strategy = readJson(strategyPath);
+    strategy.verification_strategy.criteria.push({
+      ...strategy.verification_strategy.criteria[0],
+      id: "CRIT-002",
+      criterion: "second story remains independently owned",
+      story_id: "US-901",
+      story_criterion_id: "AC-US-901-001",
+      acceptance: ["second story remains independently owned"],
+      tests: [{
+        name: "scenarioSecondStorySamePlan",
+        file: "tests/analysis/test_second_story.mjs",
+        type: "integration",
+      }],
+      evidence_artifacts: [],
+    });
+    strategy.verification_strategy.criteria[0].story_criterion_id = "AC-US-901-001";
+    writeJson(strategyPath, strategy);
+
+    const lint = lintVerificationStrategy({
+      cwd: tmp,
+      planDir: join(tmp, "plans", "plan_fixture"),
+    });
+    assert(!lint.ok, "verification strategy lint rejects a cross-story acceptance-criterion owner");
+    assert(
+      lint.issues.some((entry) => entry.includes("AC-US-901-001") && entry.includes("US-900")),
+      "verification strategy lint identifies the exact criterion/story ownership mismatch"
+    );
+
+    const build = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(build.ok, "cross-story ownership fixture still induces structurally valid ontology documents");
+    const inducedCriterion = build.documents.verification.criteria.find(
+      (record) => record.plan_id === "plan_fixture" && record.id === "CRIT-001"
+    );
+    assert(inducedCriterion?.story_id === "US-900", "induced verification criteria retain their exact story identity");
+
+    const invalid = runCli(ontologyCliPath, ["validate", "--dir", tmp, "--json"], tmp);
+    const invalidParsed = parseJson(invalid.stdout);
+    assert(!invalid.ok, "ontology validate rejects a cross-story acceptance-criterion edge within one multi-story plan");
+    assert(
+      invalidParsed?.dangling_story_criteria?.some(
+        (entry) => entry.includes("plan_fixture:CRIT-001") && entry.includes("US-900")
+      ),
+      "ontology validate reports the exact row-level story ownership mismatch"
+    );
+
+    const specificationPath = join(tmp, ".agent", "ontology", "facts", "specification.yaml");
+    const specification = readJson(specificationPath);
+    const inducedStory = specification.specification.stories.find((record) => record.id === "US-900");
+    assert(
+      inducedStory?.domain === "planner_core",
+      "explicit canonical story domain outranks an incidental reports/ive validation path"
+    );
+    const ambiguousStory = specification.specification.stories.find((record) => record.id === "US-902");
+    assert(
+      ambiguousStory?.domain === undefined,
+      "ambiguous multi-domain code ownership fails closed without a primary domain"
+    );
+
+    const evidenceMutation = readJson(registryPath);
+    const mutableStory = evidenceMutation.stories.find((record) => record.id === "US-900");
+    mutableStory.test_refs.reverse();
+    mutableStory.doc_refs = ["AGENTS.md", "README.md"];
+    mutableStory.validation_refs = [
+      "plans/plan_evidence_only/verification.md",
+      "reports/ive/test_runs/evidence-only/manifest.json",
+      "apps/ive-visualizer/tests/evidence-only.spec.mjs",
+    ];
+    writeJson(registryPath, evidenceMutation);
+    const evidenceOnlyBuild = buildOntologyFacts({ cwd: tmp, induce: true, dryRun: true });
+    const evidenceOnlyStory = evidenceOnlyBuild.documents?.specification?.stories?.find(
+      (record) => record.id === "US-900"
+    );
+    assert(
+      evidenceOnlyStory?.domain === "planner_core",
+      "test, documentation, validation, and reference order changes cannot alter the primary story domain"
+    );
+
+    strategy.verification_strategy.criteria[0].story_criterion_id = "AC-US-900-EXPLICIT";
+    writeJson(strategyPath, strategy);
+    const correctedBuild = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(correctedBuild.ok, "corrected same-plan story ownership fixture rebuilds");
+    const corrected = runCli(ontologyCliPath, ["validate", "--dir", tmp, "--json"], tmp);
+    const correctedParsed = parseJson(corrected.stdout);
+    assert(
+      correctedParsed?.dangling_story_criteria?.length === 0,
+      "corrected same-plan story ownership clears criterion-ownership issues before duplicate-ID mutation"
+    );
+
+    const secondStory = specification.specification.stories.find((record) => record.id === "US-901");
+    secondStory.acceptance_criteria[0].id = "AC-US-900-EXPLICIT";
+    writeJson(specificationPath, specification);
+    const duplicate = runCli(ontologyCliPath, ["validate", "--dir", tmp, "--json"], tmp);
+    const duplicateParsed = parseJson(duplicate.stdout);
+    assert(!duplicate.ok, "ontology validate rejects acceptance-criterion IDs owned by multiple stories");
+    assert(
+      duplicateParsed?.dangling_story_criteria?.some(
+        (entry) => entry.includes("AC-US-900-EXPLICIT") && entry.includes("multiple stories")
+      ),
+      "ontology validate reports duplicate acceptance-criterion ownership"
+    );
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function scenarioGitInductionExcludesInactiveUntrackedPlans() {
+  const tmp = makeTemp("plan-authority");
+  try {
+    seedAllSources(tmp);
+    seedAdditionalVerificationStrategy(tmp, {
+      planId: "plan_active",
+      criterionId: "ACTIVE-001",
+      storyCriterionId: "AC-US-900-EXPLICIT",
+      testName: "scenarioActivePlan",
+      testFile: ".agent/skills/iterative-planner/tests/test_active_plan.mjs",
+      artifactPath: "reports/test_runs/active-plan.json",
+    });
+    seedAdditionalVerificationStrategy(tmp, {
+      planId: "plan_abandoned",
+      criterionId: "ABANDONED-001",
+      storyCriterionId: "AC-US-900-EXPLICIT",
+      testName: "scenarioAbandonedPlan",
+      testFile: ".agent/skills/iterative-planner/tests/test_abandoned_plan.mjs",
+      artifactPath: "reports/test_runs/abandoned-plan.json",
+      state: "CLOSE",
+    });
+    writeText(join(tmp, "plans", ".current_plan"), "plan_active\n");
+    execFileSync("git", ["init", "-q"], { cwd: tmp, stdio: "pipe" });
+    execFileSync("git", ["add", "--", "plans/plan_fixture/verification_strategy.yaml"], {
+      cwd: tmp,
+      stdio: "pipe",
+    });
+
+    const build = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(build.ok, "Git plan-authority fixture builds ontology facts");
+    const plans = readJson(join(tmp, ".agent", "ontology", "facts", "specification.yaml"))
+      .specification.plans.map((record) => record.id);
+    assert(plans.includes("plan_fixture"), "tracked historical plan remains an induction input");
+    assert(plans.includes("plan_active"), "explicitly current untracked plan remains an induction input");
+    assert(!plans.includes("plan_abandoned"), "inactive untracked plan is excluded from canonical ontology");
+    assert(!build.facts.includes("plan('plan_abandoned')."), "inactive untracked plan is excluded from compiled Prolog facts");
+
+    const repeat = buildOntologyFacts({ cwd: tmp, induce: true, dryRun: true });
+    assert(repeat.ok, "repeated authoritative-plan induction succeeds");
+    assert(repeat.facts === build.facts, "authoritative-plan induction is byte-deterministic");
+    assert(repeat.changed_fact_documents.length === 0, "repeated authoritative-plan induction has no canonical YAML drift");
+
+    const originalPath = process.env.PATH;
+    try {
+      process.env.PATH = join(tmp, "missing-git-bin");
+      const failedInventory = buildOntologyFacts({ cwd: tmp, induce: true, dryRun: true });
+      assert(!failedInventory.ok, "Git worktree induction fails closed when tracked-plan inventory is unavailable");
+      assert(
+        failedInventory.issues.some((entry) => entry.includes("tracked-plan inventory failed")),
+        "failed Git inventory reports the plan-authority error instead of selecting every directory"
+      );
+    } finally {
+      process.env.PATH = originalPath;
+    }
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function scenarioPlanPointersRespectLifecycleAuthority() {
+  const tmp = makeTemp("pointer-lifecycle-authority");
+  try {
+    seedAllSources(tmp);
+    const planFixtures = [
+      ["plan_tracked_close", "TRACKED-CLOSE-001", "CLOSE"],
+      ["plan_current_close", "CURRENT-CLOSE-001", "CLOSE"],
+      ["plan_current_unreadable", "CURRENT-UNREADABLE-001", "EXECUTE"],
+      ["plan_thread_close", "THREAD-CLOSE-001", "CLOSE"],
+      ["plan_thread_unreadable", "THREAD-UNREADABLE-001", "EXECUTE"],
+      ["plan_thread_active", "THREAD-ACTIVE-001", "PLAN"],
+      ["plan_inactive", "INACTIVE-001", "EXECUTE"],
+    ];
+    for (const [planId, criterionId, state] of planFixtures) {
+      seedAdditionalVerificationStrategy(tmp, {
+        planId,
+        criterionId,
+        storyCriterionId: "AC-US-900-EXPLICIT",
+        testName: `scenario${criterionId.replace(/[^A-Za-z0-9]/g, "")}`,
+        testFile: `.agent/skills/iterative-planner/tests/${planId}.mjs`,
+        artifactPath: `reports/test_runs/${planId}.json`,
+        state,
+      });
+    }
+    writeText(join(tmp, "plans", "plan_current_unreadable", "state.json"), "{");
+    writeText(join(tmp, "plans", "plan_thread_unreadable", "state.json"), "{");
+
+    const currentPointerPath = join(tmp, "plans", ".current_plan");
+    const threadPointerPaths = {
+      terminal: join(tmp, "plans", ".thread_targets", "terminal.txt"),
+      missing: join(tmp, "plans", ".thread_targets", "missing.txt"),
+      unreadable: join(tmp, "plans", ".thread_targets", "unreadable.txt"),
+      active: join(tmp, "plans", ".thread_targets", "active.txt"),
+    };
+    writeText(currentPointerPath, "plan_current_close\n");
+    writeText(threadPointerPaths.terminal, "plan_thread_close\n");
+    writeText(threadPointerPaths.missing, "plan_thread_missing\n");
+    writeText(threadPointerPaths.unreadable, "plan_thread_unreadable\n");
+    writeText(threadPointerPaths.active, "plan_thread_active\n");
+
+    execFileSync("git", ["init", "-q"], { cwd: tmp, stdio: "pipe" });
+    execFileSync(
+      "git",
+      [
+        "add",
+        "--",
+        "plans/plan_fixture/verification_strategy.yaml",
+        "plans/plan_tracked_close/verification_strategy.yaml",
+      ],
+      { cwd: tmp, stdio: "pipe" }
+    );
+
+    const initialPointerBytes = new Map(
+      [currentPointerPath, ...Object.values(threadPointerPaths)]
+        .map((path) => [path, readFileSync(path)])
+    );
+    const build = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(build.ok, "pointer lifecycle fixture builds canonical ontology authority");
+    const planIds = build.documents.specification.plans.map((record) => record.id);
+    assert(planIds.includes("plan_fixture"), "tracked nonterminal historical control remains selected");
+    assert(planIds.includes("plan_tracked_close"), "tracked CLOSE history remains selected");
+    assert(planIds.includes("plan_thread_active"), "readable nonterminal untracked thread target remains selected");
+    assert(!planIds.includes("plan_current_close"), "terminal untracked .current_plan target is excluded");
+    assert(!planIds.includes("plan_thread_close"), "terminal untracked thread target is excluded");
+    assert(!planIds.includes("plan_thread_missing"), "missing untracked thread target is excluded");
+    assert(!planIds.includes("plan_thread_unreadable"), "unreadable untracked thread target is excluded");
+    assert(!planIds.includes("plan_inactive"), "unpointed untracked plan remains excluded");
+
+    const warningText = build.warnings.join("\n");
+    assert(
+      warningText.includes(".current_plan") &&
+      warningText.includes("plan_current_close") &&
+      /terminal|close/i.test(warningText),
+      "terminal current-pointer exclusion emits a lifecycle-specific warning"
+    );
+    assert(
+      warningText.includes("terminal.txt") &&
+      warningText.includes("plan_thread_close") &&
+      /terminal|close/i.test(warningText),
+      "terminal thread-pointer exclusion emits a lifecycle-specific warning"
+    );
+    assert(
+      warningText.includes("missing.txt") &&
+      warningText.includes("plan_thread_missing") &&
+      /missing|does not exist/i.test(warningText),
+      "missing thread-pointer exclusion emits a target-specific warning"
+    );
+    assert(
+      warningText.includes("unreadable.txt") &&
+      warningText.includes("plan_thread_unreadable") &&
+      /unreadable|invalid/i.test(warningText),
+      "unreadable thread-pointer exclusion emits a target-specific warning"
+    );
+    for (const [path, bytes] of initialPointerBytes.entries()) {
+      assert(readFileSync(path).equals(bytes), `ontology induction leaves pointer bytes unchanged: ${path}`);
+    }
+
+    const repeat = buildOntologyFacts({ cwd: tmp, induce: true, dryRun: true });
+    assert(repeat.ok, "repeated pointer lifecycle induction succeeds");
+    assert(repeat.facts === build.facts, "pointer lifecycle selection is fact-byte deterministic");
+    assert(
+      JSON.stringify(repeat.warnings) === JSON.stringify(build.warnings),
+      "pointer lifecycle warnings are order- and byte-deterministic"
+    );
+    assert(
+      repeat.changed_fact_documents.length === 0,
+      "repeated pointer lifecycle induction has no canonical YAML drift"
+    );
+
+    function assertRejectedCurrentPointer(target, reasonPattern, label) {
+      writeText(currentPointerPath, `${target}\n`);
+      const pointerBytes = readFileSync(currentPointerPath);
+      const candidate = buildOntologyFacts({ cwd: tmp, induce: true, dryRun: true });
+      const candidatePlans = candidate.documents.specification.plans.map((record) => record.id);
+      assert(candidate.ok, `${label} current-pointer target is handled without failing induction`);
+      assert(!candidatePlans.includes(target), `${label} current-pointer target is excluded`);
+      assert(
+        candidate.warnings.some((warning) =>
+          warning.includes(".current_plan") &&
+          warning.includes(target) &&
+          reasonPattern.test(warning)
+        ),
+        `${label} current-pointer target emits a deterministic reason-specific warning`
+      );
+      assert(candidate.facts === build.facts, `${label} current-pointer target cannot change authoritative facts`);
+      assert(
+        readFileSync(currentPointerPath).equals(pointerBytes),
+        `${label} current-pointer evaluation leaves pointer bytes unchanged`
+      );
+
+      const candidateRepeat = buildOntologyFacts({ cwd: tmp, induce: true, dryRun: true });
+      assert(candidateRepeat.facts === candidate.facts, `${label} current-pointer facts repeat deterministically`);
+      assert(
+        JSON.stringify(candidateRepeat.warnings) === JSON.stringify(candidate.warnings),
+        `${label} current-pointer warnings repeat deterministically`
+      );
+    }
+
+    assertRejectedCurrentPointer(
+      "plan_current_missing",
+      /missing|does not exist/i,
+      "missing"
+    );
+    assertRejectedCurrentPointer(
+      "plan_current_unreadable",
+      /unreadable|invalid/i,
+      "unreadable"
+    );
+
+    for (const path of Object.values(threadPointerPaths)) {
+      assert(
+        readFileSync(path).equals(initialPointerBytes.get(path)),
+        `repeated current-pointer probes leave thread pointer bytes unchanged: ${path}`
+      );
+    }
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -352,7 +1192,7 @@ function scenarioSemanticEngineLoadsGeneratedRepoFacts() {
       refreshOntology: false,
     });
 
-    assert(session.check("story_has_criterion('US-900', 'AC-US-900-001')"), "semantic engine auto-loads generated repo story criteria facts");
+    assert(session.check("story_has_criterion('US-900', 'AC-US-900-EXPLICIT')"), "semantic engine auto-loads generated repo story criteria facts");
     assert(session.check("verification_criterion('CRIT-001', 'plan_fixture')"), "semantic engine auto-loads generated repo verification facts");
     assert(session.check("workflow('/advisor')"), "semantic engine auto-loads generated repo workflow facts");
   } finally {
@@ -382,7 +1222,7 @@ function scenarioRuleEngineIgnoresHandEditedCompiledRepoFacts() {
       "rule loader renders repo ontology facts from source YAML"
     );
     assert(
-      session.check("story_has_criterion('US-900', 'AC-US-900-001')"),
+      session.check("story_has_criterion('US-900', 'AC-US-900-EXPLICIT')"),
       "rule loader still exposes legitimate source-generated ontology facts"
     );
     assert(
@@ -401,7 +1241,7 @@ function scenarioQueryAndFactsSurfaceStructuredOntologyData() {
     const seededBuild = buildOntologyFacts({ cwd: tmp, induce: true });
     assert(seededBuild.ok, "query/facts fixture builds ontology facts before querying");
 
-    const query = runCli(ontologyCliPath, ["query", "artifact_proves_criterion(A, 'CRIT-001').", "--dir", tmp, "--json"], tmp);
+    const query = runCli(ontologyCliPath, ["query", "artifact_proves_plan_criterion(A, 'plan_fixture', 'CRIT-001').", "--dir", tmp, "--json"], tmp);
     assert(query.ok, "ontology query exits cleanly");
     const queryParsed = parseJson(query.stdout);
     assert(!!queryParsed, "ontology query emits valid JSON");
@@ -464,6 +1304,13 @@ function scenarioValidateFlagsPlantedDanglingTestReference() {
 }
 
 scenarioBuildCliWritesGeneratedRepoFacts();
+scenarioPlanCriterionIdentityIsScopedAndExplicit();
+scenarioCrossPlanCriterionReuseRemainsValid();
+scenarioDuplicateSamePlanCriterionIdentityFailsClosed();
+scenarioInvalidSelectedStrategyFailsBeforeAuthorityWrites();
+scenarioStoryCriterionOwnershipAndPrimaryDomainFailClosed();
+scenarioGitInductionExcludesInactiveUntrackedPlans();
+scenarioPlanPointersRespectLifecycleAuthority();
 scenarioIncrementalBuildSkipsUnchangedWrites();
 scenarioPlannerAliasDelegatesToOntologyBuild();
 scenarioQueryAndFactsSurfaceStructuredOntologyData();

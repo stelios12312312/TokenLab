@@ -1,5 +1,6 @@
 // semantic_hygiene.mjs - Source/config discovery for planner ontology hygiene.
 
+import { execFileSync } from "child_process";
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "fs";
 import { basename, extname, join, relative } from "path";
 
@@ -40,6 +41,16 @@ const MAX_HEADER_BYTES = 4096;
 const MAX_CONFIG_BYTES = 512_000;
 const ENV_KEY_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const UPPER_ENV_KEY_RE = /^[A-Z][A-Z0-9_]{2,}$/;
+const GIT_ROUTING_ENV_KEYS = [
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_COMMON_DIR",
+  "GIT_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_PREFIX",
+  "GIT_QUARANTINE_PATH",
+  "GIT_WORK_TREE",
+];
 
 function arrayValue(value) {
   return Array.isArray(value) ? value.filter((entry) => typeof entry === "string" && entry.trim()) : [];
@@ -103,7 +114,20 @@ function readJsonFile(filePath) {
 export function loadSemanticHygieneConfig(cwd = process.cwd(), { configPath = null } = {}) {
   const path = configPath || join(cwd, ".agent", "skills", "iterative-planner", "config", "source_hygiene.json");
   const raw = readJsonFile(path);
-  return mergeConfig(raw && typeof raw === "object" ? raw : {});
+  const config = mergeConfig(raw && typeof raw === "object" ? raw : {});
+  const env = { ...process.env };
+  for (const key of GIT_ROUTING_ENV_KEYS) delete env[key];
+  try {
+    execFileSync("git", ["-C", cwd, "check-ignore", "-q", "--", ".agent"], {
+      env,
+      stdio: "ignore",
+    });
+    config.skip_path_prefixes = [...new Set([...config.skip_path_prefixes, ".agent/"])];
+  } catch {
+    // The planner source repository tracks .agent; non-Git workspaces and
+    // ordinary unignored source trees retain the configured discovery rules.
+  }
+  return config;
 }
 
 function globToRegExp(pattern) {

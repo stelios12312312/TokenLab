@@ -9,6 +9,7 @@ import { join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { getPaths, normalizePlanDirName } from "./lib/plan_utils.mjs";
 import { lintVerificationStrategy } from "./lib/verification_strategy.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 
 function parseArgs(argv) {
   const args = {
@@ -81,12 +82,14 @@ function main() {
     cwd: process.cwd(),
     planDir: resolvePlanArg(process.cwd(), args.plan),
   });
+  const exitCode = result.ok ? 0 : 1;
   if (args.json) {
-    console.log(JSON.stringify(result, null, 2));
+    emitJson(result, { exitCode });
+    return;
   } else {
     console.log(renderHuman(result));
   }
-  process.exit(result.ok ? 0 : 1);
+  process.exitCode = exitCode;
 }
 
 function isMainModule() {

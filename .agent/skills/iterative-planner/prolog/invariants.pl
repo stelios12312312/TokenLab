@@ -574,6 +574,20 @@ audit_set_has_two_distinct_perspectives :-
 evidence_phase_reached :- current_state(validate).
 evidence_phase_reached :- current_state(close).
 
+%% I-067: A required scoped truth-convergence signal must be green before close.
+%% The generated signal is shared with the JS gate; ontology only verifies it.
+invariant_violated(truth_surface_nonconvergent, Blocker) :-
+    evidence_phase_reached,
+    truth_convergence_required(true),
+    \+ truth_convergence_satisfied(true),
+    truth_convergence_blocker(Blocker).
+invariant_violated(truth_surface_nonconvergent, status(Status)) :-
+    evidence_phase_reached,
+    truth_convergence_required(true),
+    \+ truth_convergence_satisfied(true),
+    \+ truth_convergence_blocker(_),
+    truth_convergence_status(Status).
+
 phase_index(explore, 1).
 phase_index(plan, 2).
 phase_index(execute, 3).
@@ -832,6 +846,49 @@ invariant_violated(active_mistake_missing_verification_hook, MistakeId) :-
     mistake_verification_hook(MistakeId, Hook),
     phase_reached(reflect),
     \+ mistake_hook_satisfied(MistakeId, Hook).
+
+%% Scientific review axes are independent, but several combinations are
+%% impossible by contract. Invalid, underpowered, fixture, and legacy evidence
+%% cannot acquire an evaluated scientific verdict or promotable lifecycle state.
+invariant_violated(scientific_invalid_has_evaluated_verdict, supported) :-
+    scientific_review_present(true),
+    scientific_design_validity(invalid),
+    scientific_verdict(supported).
+invariant_violated(scientific_invalid_has_evaluated_verdict, falsified) :-
+    scientific_review_present(true),
+    scientific_design_validity(invalid),
+    scientific_verdict(falsified).
+
+invariant_violated(scientific_underpowered_has_evaluated_verdict, supported) :-
+    scientific_review_present(true),
+    scientific_evidence_grade(underpowered),
+    scientific_verdict(supported).
+invariant_violated(scientific_underpowered_has_evaluated_verdict, falsified) :-
+    scientific_review_present(true),
+    scientific_evidence_grade(underpowered),
+    scientific_verdict(falsified).
+
+invariant_violated(scientific_non_evidence_promoted, info(smoke_fixture, Promotion)) :-
+    scientific_review_present(true),
+    scientific_evidence_grade(smoke_fixture),
+    scientific_promotion_status(Promotion),
+    Promotion \= blocked.
+invariant_violated(scientific_non_evidence_promoted, info(legacy_unknown, Promotion)) :-
+    scientific_review_present(true),
+    scientific_evidence_grade(legacy_unknown),
+    scientific_promotion_status(Promotion),
+    Promotion \= blocked.
+invariant_violated(scientific_non_evidence_promoted, info(underpowered, Promotion)) :-
+    scientific_review_present(true),
+    scientific_evidence_grade(underpowered),
+    scientific_promotion_status(Promotion),
+    Promotion \= blocked.
+
+invariant_violated(scientific_falsified_promoted, Promotion) :-
+    scientific_review_present(true),
+    scientific_verdict(falsified),
+    scientific_promotion_status(Promotion),
+    Promotion \= blocked.
 
 %% ───────────────────────────────────────────────────────────────────────────
 %% Agent journal advisory memory. Facts come from plans/knowledge/agent_journal.jsonl

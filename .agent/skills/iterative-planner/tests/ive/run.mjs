@@ -6,7 +6,7 @@
 // can run focused phases such as core.packet-contract without inventing a
 // second orchestration path.
 
-import { execFileSync } from "child_process";
+import { execFileSync, spawn } from "child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "path";
 import { fileURLToPath } from "url";
@@ -26,13 +26,38 @@ const REPO_ROOT = resolve(SKILL_DIR, "..", "..", "..");
 
 const SCHEMA_VERSION = 1;
 const STDOUT_EXCERPT_BYTES = 500;
+const DIRECT_OUTPUT_LIMIT_BYTES = 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 120000;
 const NODE = process.execPath;
 const REPORT_ROOT = join(REPO_ROOT, "reports", "ive", "test_runs");
 const RELEASE_PROFILES_PATH = join(SKILL_DIR, "config", "ive_release_profiles.json");
 const VISUALIZER_SKIP_EXIT_CODE = 78;
+const HOST_PROOF_SKIP_EXIT_CODE = 78;
+const HOST_PROOF_SKIP_PREFIX = "IVE_HOST_PROOF_SKIP:";
+
+const DIRECT_SUITE_WAVE_IDS = Object.freeze([
+  Object.freeze(["transition-gate-flows", "cli-determinism"]),
+  Object.freeze(["transition-dry-run-equivalence", "lifecycle-reconciler"]),
+  Object.freeze(["lifecycle-journey-proof", "ive-conformance-runner-meta"]),
+  Object.freeze(["committed-dogfood-lifecycle-replay", "visualizer-contract-bridge-guard"]),
+  Object.freeze(["l3-autonomous-dogfood-harness", "reflection-invariants"]),
+  Object.freeze(["transition-env-cleanup", "gate-idempotence"]),
+  Object.freeze(["reflection-verdict-routing", "program-packet-design-to-ready"]),
+  Object.freeze(["program-manager-tests", "migration-bootstrap"]),
+  Object.freeze(["advisor-task-intake-routing", "adversarial-idea-barrenness"]),
+  Object.freeze(["verification-truth", "planner-shell-wrapper-hooks"]),
+]);
 
 const FAILING_STATUSES = new Set(["FAIL", "TIMEOUT", "NOT_IMPLEMENTED_YET"]);
+const RESULT_STATUSES = new Set([
+  "PASS",
+  "WARN",
+  "SKIPPED",
+  "NOT_APPLICABLE",
+  "FAIL",
+  "TIMEOUT",
+  "NOT_IMPLEMENTED_YET",
+]);
 const TEST_CLASS_FUNCTIONAL_PROOF = "functional_proof_test";
 const TEST_CLASS_QUALITY_SCORE = "quality_score_evaluation";
 const TEST_CLASS_LABELS = Object.freeze({
@@ -201,6 +226,50 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
+    id: "owned-file-replacement",
+    category: "structured_plan",
+    label: "Ownership-returning no-overwrite planner file replacement and caller recovery",
+    command: ["node", join(TESTS_ROOT, "test_owned_file_replace.mjs")],
+    phases: ["state-machine", "planner-core", "fault-injection", "recovery"],
+    surfaces: ["state_machine", "filesystem", "persistence", "migration", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_owned_file_replace.mjs"),
+      skillRel("scripts/lib/owned_file_replace.mjs"),
+      skillRel("scripts/lib/determinism.mjs"),
+      skillRel("scripts/lib/plan_metrics.mjs"),
+      skillRel("scripts/lib/gate_verdict.mjs"),
+      skillRel("scripts/lib/gate_input_snapshot.mjs"),
+      skillRel("scripts/lib/plan_refresh.mjs"),
+      skillRel("scripts/lib/transition_journal.mjs"),
+      skillRel("scripts/transition.mjs"),
+      skillRel("scripts/bootstrap.mjs"),
+      skillRel("scripts/migrate.mjs"),
+      skillRel("scripts/ritual_lint.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_owned_file_replace\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(owned_file_replace|determinism|plan_metrics|gate_verdict|gate_input_snapshot|plan_refresh|transition_journal)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(transition|bootstrap|migrate|ritual_lint)\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "plan-target-ownership",
+    category: "structured_plan",
+    label: "Per-thread plan targets preserve foreign and same-bytes replacement owners",
+    command: ["node", join(TESTS_ROOT, "test_plan_target_ownership.mjs")],
+    phases: ["state-machine", "planner-core", "fault-injection"],
+    surfaces: ["state_machine", "filesystem", "concurrency", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_plan_target_ownership.mjs"),
+      skillRel("scripts/lib/plan_utils.mjs"),
+      skillRel("scripts/lib/owned_file_replace.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_plan_target_ownership\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(plan_utils|owned_file_replace)\.mjs$/,
+    ],
+  }),
+  suite({
     id: "ontology-invariants",
     category: "ontology",
     label: "Ontology invariants",
@@ -261,19 +330,57 @@ const DEFAULT_SUITES = [
     command: ["node", join(TESTS_ROOT, "test_ontology_cli.mjs")],
     fixtures: [
       skillRel("tests/test_ontology_cli.mjs"),
+      skillRel("scripts/ontology_inducer.mjs"),
       skillRel("scripts/ontology_cli.mjs"),
       skillRel("scripts/planner.mjs"),
       skillRel("scripts/lib/fact_loader.mjs"),
       skillRel("scripts/lib/ontology_fact_builder.mjs"),
+      skillRel("scripts/lib/ontology_runtime.mjs"),
       skillRel("scripts/lib/ontology_schema.mjs"),
+      skillRel("scripts/lib/verification_strategy.mjs"),
       skillRel("scripts/lib/semantic_engine.mjs"),
+      skillRel("config/verification_strategy.schema.json"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_ontology_cli\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/ontology_inducer\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/ontology_cli\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/planner\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(fact_loader|ontology_fact_builder|ontology_schema|semantic_engine)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(fact_loader|ontology_fact_builder|ontology_runtime|ontology_schema|semantic_engine|verification_strategy)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/verification_strategy\.schema\.json$/,
       /^\.agent\/ontology\/facts\//,
+    ],
+  }),
+  suite({
+    id: "truth-surface-convergence",
+    category: "structured_plan",
+    label: "Freshness-aware Program, story, issue, plan, branch, PR, audit, and close-gate truth convergence",
+    command: ["node", join(TESTS_ROOT, "test_truth_surface_convergence.mjs")],
+    timeoutMs: 120000,
+    phases: ["truth-surface-convergence", "close-truth", "planner-core", "migration-parity"],
+    surfaces: ["program_packet", "story_registry", "github_mirror", "git_refs", "audit_freshness", "transition_gates", "ontology", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_truth_surface_convergence.mjs"),
+      skillRel("scripts/truth_surface_reconciler.mjs"),
+      skillRel("scripts/lib/truth_surface_convergence.mjs"),
+      skillRel("scripts/lib/plan_refresh.mjs"),
+      skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("scripts/lib/program_packet.mjs"),
+      skillRel("scripts/verify_gate.mjs"),
+      skillRel("prolog/invariants.pl"),
+      skillRel("prolog/transitions.pl"),
+      skillRel("config/state.schema.json"),
+      skillRel("config/failure-codes.json"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_truth_surface_convergence\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/truth_surface_reconciler\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(truth_surface_convergence|plan_refresh|fact_loader|program_packet)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/verify_gate\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/prolog\/(invariants|transitions)\.pl$/,
+      /^\.agent\/skills\/iterative-planner\/config\/(state\.schema|failure-codes)\.json$/,
+      /^reports\/user_story_audit\/story_registry\.json$/,
+      /^plans\/programs\/[^/]+\/program_packet\.json$/,
     ],
   }),
   suite({
@@ -281,7 +388,7 @@ const DEFAULT_SUITES = [
     category: "structured_plan",
     label: "Planner transition gate lifecycle flows",
     command: ["node", join(TESTS_ROOT, "test_transition_gate_flows.mjs")],
-    timeoutMs: 180000,
+    timeoutMs: 300000,
     phases: ["state-machine", "gate-lifecycle", "planner-core"],
     surfaces: ["state_machine", "transition_gates", "planner_core", "semantic_gate"],
     fixtures: [
@@ -388,6 +495,7 @@ const DEFAULT_SUITES = [
       skillRel("scripts/lib/determinism.mjs"),
       skillRel("scripts/lib/plan_refresh.mjs"),
       skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("scripts/lib/semantic_hygiene.mjs"),
       skillRel("prolog/invariants.pl"),
       skillRel("prolog/transitions.pl"),
       skillRel("config/gates.json"),
@@ -398,6 +506,7 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/tests\/test_ive_conformance_runner\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/(bootstrap|transition|verify_gate)\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/gate_input_snapshot\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/semantic_hygiene\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/prolog\/(invariants|transitions)\.pl$/,
       /^\.agent\/skills\/iterative-planner\/config\/gates\.json$/,
       /^plans\/programs\/ive-trust-repair\/program_packet\.json$/,
@@ -450,7 +559,6 @@ const DEFAULT_SUITES = [
       skillRel("scripts/lib/dogfood_lifecycle_replay.mjs"),
       skillRel("scripts/transition.mjs"),
       skillRel("config/gates.json"),
-      ".github/workflows/l3-autonomous-dogfood.yml",
       "docs/ci/l3-autonomous-dogfood.md",
     ],
     changedFilePatterns: [
@@ -803,6 +911,26 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
+    id: "production-autonomous-ticket-delivery",
+    category: "structured_plan",
+    label: "Production Program-ticket worktree execution, parent grading, budget, and receipt contracts",
+    command: ["node", join(TESTS_ROOT, "test_autonomous_ticket_delivery.mjs")],
+    phases: ["production-autonomy", "ticket-delivery", "tier3", "l3"],
+    surfaces: ["program_manager", "git_worktree", "agent_process", "artifact_grade", "budget", "receipt", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_autonomous_ticket_delivery.mjs"),
+      skillRel("scripts/autonomous_ticket_delivery.mjs"),
+      skillRel("scripts/lib/autonomous_ticket_delivery.mjs"),
+      skillRel("scripts/lib/task_rubric_grader.mjs"),
+      skillRel("scripts/lib/work_order_contract.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_autonomous_ticket_delivery\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/autonomous_ticket_delivery\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(autonomous_ticket_delivery|task_rubric_grader)\.mjs$/,
+    ],
+  }),
+  suite({
     id: "lifecycle-reconciler",
     category: "structured_plan",
     label: "J9 lifecycle reconciler: shipped-open tickets and cross-program duplicate scope",
@@ -854,6 +982,7 @@ const DEFAULT_SUITES = [
       skillRel("scripts/lib/ritual_replay.mjs"),
       skillRel("scripts/lib/rule_commands.mjs"),
       skillRel("scripts/project_health.mjs"),
+      "plans/programs/ive-autocoder-v2/baselines",
       "plans/programs/findings-to-intake/program_packet.json",
       "reports/user_story_audit/story_registry.json",
     ],
@@ -863,6 +992,7 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(scoreboard|ritual_replay|rule_commands)\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/project_health\.mjs$/,
+      /^plans\/programs\/ive-autocoder-v2\/baselines\//,
       /^plans\/programs\/findings-to-intake\/program_packet\.json$/,
       /^reports\/user_story_audit\/story_registry\.json$/,
     ],
@@ -892,7 +1022,7 @@ const DEFAULT_SUITES = [
       "reports/user_story_audit/story_registry.json",
       "reports/ive/scoreboard/scoreboard-2026-07-07T17-40-11-369Z/scoreboard.json",
       "reports/ive/test_runs/scoreboard-2026-07-07T17-40-11-369Z-conformance/manifest.json",
-      "reports/ive/test_runs/scoreboard-2026-07-07T17-40-11-369Z-conformance/logs/cli-determinism.stdout.log",
+      skillRel("tests/fixtures/findings_triage/cli-determinism.failure-excerpt.txt"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_program_manager_findings_triage\.mjs$/,
@@ -942,15 +1072,19 @@ const DEFAULT_SUITES = [
     surfaces: ["story_registry", "program_manager", "conformance"],
     fixtures: [
       skillRel("tests/test_story_registry_merge_guard.mjs"),
+      skillRel("scripts/story_cli.mjs"),
       skillRel("scripts/story_registry.mjs"),
       skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("scripts/lib/planner_canonicalizer.mjs"),
       skillRel("scripts/lib/prolog.mjs"),
       skillRel("scripts/lib/sanitize.mjs"),
       skillRel("prolog/stories.pl"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_story_registry_merge_guard\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/story_cli\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/story_registry\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/planner_canonicalizer\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(fact_loader|rule_commands)\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/prolog\/(stories|invariants)\.pl$/,
       /^reports\/user_story_audit\/story_registry\.json$/,
@@ -1019,12 +1153,14 @@ const DEFAULT_SUITES = [
       skillRel("tests/fixtures/autocoder_outcomes/real_history_replay_manifest.json"),
       skillRel("scripts/autocoder_metrics.mjs"),
       skillRel("scripts/lib/behavior_report.mjs"),
+      "plans/programs/ive-autocoder-v2/baselines",
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_autocoder_metrics\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/autocoder_outcomes\/real_history_replay_manifest\.json$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/autocoder_metrics\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/behavior_report\.mjs$/,
+      /^plans\/programs\/ive-autocoder-v2\/baselines\//,
     ],
   }),
   suite({
@@ -1196,7 +1332,7 @@ const DEFAULT_SUITES = [
       skillRel("tests/fixtures/pack_guard_benchmark/corpus.json"),
       skillRel("references/convergence-metrics.md"),
       skillRel("references/planning-rigor.md"),
-      "plans/programs/ive-autocoder-v2/baselines/baseline-2026-06-12.json",
+      "plans/programs/ive-autocoder-v2/baselines",
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_scoreboard\.mjs$/,
@@ -1211,7 +1347,7 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/pack_guard_benchmark\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/pack_guard_benchmark\//,
       /^\.agent\/skills\/iterative-planner\/references\/(convergence-metrics|planning-rigor)\.md$/,
-      /^plans\/programs\/ive-autocoder-v2\/baselines\/baseline-2026-06-12\.json$/,
+      /^plans\/programs\/ive-autocoder-v2\/baselines\//,
     ],
   }),
   suite({
@@ -1323,18 +1459,51 @@ const DEFAULT_SUITES = [
   suite({
     id: "harvest-real-telemetry",
     category: "projection",
-    label: "Fixture supply chain: registry-driven harvester stages provenance-led real telemetry (US-088)",
-    command: ["node", join(TESTS_ROOT, "test_harvest_real_telemetry.mjs")],
+    label: "Portable fixture supply chain: bootstrap and byte-verbatim telemetry contracts (US-088)",
+    command: ["node", join(TESTS_ROOT, "test_harvest_real_telemetry.mjs"), "--portable-only"],
+    surfaces: ["projection", "planner_core", "real_telemetry", "bootstrap"],
+    testClass: "functional_proof_test",
     fixtures: [
       skillRel("tests/test_harvest_real_telemetry.mjs"),
+      skillRel("tests/helpers/env.mjs"),
+      skillRel("scripts/bootstrap.mjs"),
       skillRel("scripts/harvest_real_telemetry.mjs"),
       skillRel("scripts/gate_false_failure_ledger.mjs"),
+      skillRel("config/.project_registry.json"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_harvest_real_telemetry\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/helpers\/env\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/bootstrap\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/harvest_real_telemetry\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/\.project_registry\.json$/,
       /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/real_telemetry\//,
     ],
+  }),
+  suite({
+    id: "harvest-real-telemetry-host",
+    category: "projection",
+    label: "Host integration: require a real registered sibling telemetry harvest (US-088)",
+    command: ["node", join(TESTS_ROOT, "test_harvest_real_telemetry.mjs"), "--require-real"],
+    surfaces: ["projection", "host_real_telemetry"],
+    testClass: "functional_proof_test",
+    fixtures: [
+      skillRel("tests/test_harvest_real_telemetry.mjs"),
+      skillRel("tests/helpers/env.mjs"),
+      skillRel("scripts/bootstrap.mjs"),
+      skillRel("scripts/harvest_real_telemetry.mjs"),
+      skillRel("scripts/gate_false_failure_ledger.mjs"),
+      skillRel("config/.project_registry.json"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_harvest_real_telemetry\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/helpers\/env\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/bootstrap\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/harvest_real_telemetry\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/\.project_registry\.json$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/real_telemetry\//,
+    ],
+    run: runHarvestRealTelemetryHost,
   }),
   suite({
     id: "real-telemetry-replay",
@@ -1569,6 +1738,25 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
+    id: "blast-radius-budget",
+    category: "cli_contract",
+    label: "Blast-radius mapper terminates and reports explicit partial completeness (US-008)",
+    command: ["node", join(SCRIPTS_DIR, "blast_radius.mjs"), "--self-test"],
+    phases: ["blast-radius-budget", "planner-core", "cli-contract"],
+    surfaces: ["cli_contract", "planner_core", "traceability", "mcp"],
+    fixtures: [
+      skillRel("scripts/blast_radius.mjs"),
+      skillRel("mcp_server.mjs"),
+      skillRel("tests/ive/run.mjs"),
+    ],
+    changedFilePatterns: [
+      exactRepoPathPattern(skillRel("scripts/blast_radius.mjs")),
+      exactRepoPathPattern(skillRel("mcp_server.mjs")),
+      exactRepoPathPattern(skillRel("tests/ive/run.mjs")),
+    ],
+    timeoutMs: 28000,
+  }),
+  suite({
     id: "autonomous-driver",
     category: "structured_plan",
     label: "t13 autonomous driver: executed-test gates block CLOSE",
@@ -1653,6 +1841,43 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/prolog\/invariants\.pl$/,
       /^\.agent\/skills\/iterative-planner\/config\/ontology_namespace\.json$/,
       /^apps\/ive-visualizer\//,
+    ],
+  }),
+  suite({
+    id: "scientific-artifact-review",
+    category: "quant",
+    label: "content-addressed semantic scientific reviewer and canonical evidence immutability",
+    command: ["node", join(TESTS_ROOT, "test_scientific_review.mjs")],
+    phases: ["scientific-review", "quant-results-validation", "semantic-gates"],
+    surfaces: ["quant", "semantic_gate", "validation", "ontology"],
+    fixtures: [
+      skillRel("tests/test_scientific_review.mjs"),
+      skillRel("tests/lib/scientific_fixture.mjs"),
+      skillRel("scripts/lib/scientific_review.mjs"),
+      skillRel("config/scientific_review_request.schema.json"),
+      skillRel("config/scientific_evidence_artifact.schema.json"),
+      skillRel("config/scientific_review_receipt.schema.json"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/(scripts\/lib\/scientific_.*\.mjs|config\/scientific_.*\.schema\.json|tests\/(test_scientific_review\.mjs|lib\/scientific_fixture\.mjs|fixtures\/scientific\/.*))$/,
+    ],
+  }),
+  suite({
+    id: "scientific-transition-gate",
+    category: "quant",
+    label: "scientific receipt separation and exact EXP-010 real transition rejection",
+    command: ["node", join(TESTS_ROOT, "test_scientific_transition.mjs")],
+    phases: ["scientific-review", "quant-results-validation", "transition"],
+    surfaces: ["quant", "semantic_gate", "validation", "transition"],
+    fixtures: [
+      skillRel("tests/test_scientific_transition.mjs"),
+      skillRel("scripts/lib/scientific_review.mjs"),
+      skillRel("scripts/lib/quant_results_validation.mjs"),
+      skillRel("scripts/transition.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_scientific_transition\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(scientific_.*|quant_results_validation)\.mjs$/,
     ],
   }),
   suite({
@@ -1941,13 +2166,54 @@ const DEFAULT_SUITES = [
     changedFilePatterns: [docsIvePattern("16_multi_ide_portability.md")],
   }),
   suite({
+    id: "workflow-disposition-contract",
+    category: "doc_contract",
+    label: "Workflow migration dispositions govern active, parked, and fleet-managed surfaces",
+    command: ["node", join(TESTS_ROOT, "test_workflow_disposition_contract.mjs")],
+    phases: ["h1", "docs-integrity", "workflow-disposition"],
+    surfaces: ["config", "migration", "doc_contract", "workflow"],
+    fixtures: [
+      skillRel("tests/test_workflow_disposition_contract.mjs"),
+      skillRel("scripts/lib/workflow_contracts.mjs"),
+      skillRel("scripts/workflow.mjs"),
+      skillRel("config/workflow_migration_inventory.json"),
+      ".agent/_parked/sidekick.md",
+      "reports/workflow_migration_inventory.yaml",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_workflow_disposition_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/workflow_contracts\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/workflow\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/workflow_migration_inventory\.json$/,
+      /^\.agent\/(?:workflows|_parked)\/[^/]+\.md$/,
+      /^reports\/workflow_migration_inventory\.yaml$/,
+    ],
+  }),
+  suite({
     id: "docs-contracts",
     category: "doc_contract",
     label: "Combined IVE doc contracts",
-    command: ["node", join(TEST_DIR, "run.mjs"), "--only", "doc-contract-mvp", "--only", "doc-contract-multi-ide", "--json"],
+    command: ["node", join(TEST_DIR, "run.mjs"), "--only", "doc-contract-mvp", "--only", "doc-contract-multi-ide", "--only", "workflow-disposition-contract", "--json"],
     run: runDocsContractsAggregate,
-    fixtures: ["docs/ive-redesign/08_visualizer_ui.md", "docs/ive-redesign/16_multi_ide_portability.md"],
-    changedFilePatterns: [/^docs\/ive-redesign\//],
+    fixtures: [
+      "docs/ive-redesign/08_visualizer_ui.md",
+      "docs/ive-redesign/16_multi_ide_portability.md",
+      skillRel("tests/test_workflow_disposition_contract.mjs"),
+      skillRel("scripts/lib/workflow_contracts.mjs"),
+      skillRel("scripts/workflow.mjs"),
+      skillRel("config/workflow_migration_inventory.json"),
+      ".agent/_parked/sidekick.md",
+      "reports/workflow_migration_inventory.yaml",
+    ],
+    changedFilePatterns: [
+      /^docs\/ive-redesign\//,
+      /^\.agent\/skills\/iterative-planner\/tests\/test_workflow_disposition_contract\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/workflow_contracts\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/workflow\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/workflow_migration_inventory\.json$/,
+      /^\.agent\/(?:workflows|_parked)\/[^/]+\.md$/,
+      /^reports\/workflow_migration_inventory\.yaml$/,
+    ],
   }),
   suite({
     id: "visualizer-contract-bridge-guard",
@@ -1969,7 +2235,12 @@ const DEFAULT_SUITES = [
       "apps/ive-visualizer/src/data/visualizerPayload.js",
       "apps/ive-visualizer/public/ive-graph-payload.json",
     ],
-    changedFilePatterns: [/^apps\/ive-visualizer\//, docsIvePattern("08_visualizer_ui.md"), docsIvePattern("15_visualizer_mvp.md")],
+    changedFilePatterns: [
+      /^apps\/ive-visualizer\//,
+      /^public\/ive-graph-payload\.json$/,
+      docsIvePattern("08_visualizer_ui.md"),
+      docsIvePattern("15_visualizer_mvp.md"),
+    ],
   }),
   suite({
     id: "visualizer-browser-proof",
@@ -2167,6 +2438,7 @@ const DEFAULT_SUITES = [
       skillRel("scripts/transition.mjs"),
       skillRel("scripts/lib/plan_utils.mjs"),
       skillRel("scripts/lib/plan_refresh.mjs"),
+      skillRel("scripts/story_registry.mjs"),
       skillRel("config/failure-codes.json"),
       skillRel("SKILL.md"),
     ],
@@ -2176,6 +2448,7 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/scripts\/transition\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/plan_utils\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/plan_refresh\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/story_registry\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/config\/failure-codes\.json$/,
       /^\.agent\/skills\/iterative-planner\/SKILL\.md$/,
     ],
@@ -2517,6 +2790,7 @@ const DEFAULT_SUITES = [
       skillRel("config/proof_status_reader_census.json"),
       skillRel("config/mcp_tools.json"),
       skillRel("scripts/proof_status_census.mjs"),
+      skillRel("scripts/hooks/pre_push_conformance.mjs"),
       skillRel("scripts/lib/verification_truth.mjs"),
       skillRel("scripts/lib/verification_status_vocabulary.mjs"),
       skillRel("scripts/lib/verification_strategy.mjs"),
@@ -2533,6 +2807,7 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/config\/proof_status_reader_census\.json$/,
       /^\.agent\/skills\/iterative-planner\/config\/mcp_tools\.json$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/proof_status_census\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/hooks\/pre_push_conformance\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/verification_truth\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/verification_status_vocabulary\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/verification_strategy\.mjs$/,
@@ -2633,6 +2908,28 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/scripts\/irreversible_action_gate\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/triage\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/SKILL\.md$/,
+    ],
+  }),
+  suite({
+    id: "scientific-migration-parity",
+    category: "migration",
+    label: "fresh setup and pinned transactional upgrade scientific-review parity",
+    command: ["node", join(TESTS_ROOT, "test_scientific_migration_parity.mjs")],
+    phases: ["migration", "scientific-review", "quant-results-validation"],
+    surfaces: ["migration", "quant", "validation", "persona"],
+    fixtures: [
+      skillRel("tests/test_scientific_migration_parity.mjs"),
+      skillRel("scripts/migrate.mjs"),
+      skillRel("scripts/lib/scientific_review.mjs"),
+      skillRel("config/scientific_review_request.schema.json"),
+      skillRel("config/scientific_evidence_artifact.schema.json"),
+      skillRel("config/scientific_review_receipt.schema.json"),
+      skillRel("SKILL.md"),
+      skillRel("references/role-auditors.md"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_scientific_migration_parity\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/(scripts\/lib\/scientific_.*\.mjs|config\/scientific_.*\.schema\.json|SKILL\.md|references\/role-auditors\.md)$/,
     ],
   }),
   suite({
@@ -2795,12 +3092,15 @@ const DEFAULT_SUITES = [
   suite({
     id: "cli-determinism",
     category: "cli_contract",
-    label: "IVE JSON CLI determinism across pipe, TTY, path, and repeat runs",
+    label: "IVE JSON CLI determinism and P-061 exit-after-stdout-JSON enforcement across pipe, TTY, path, and repeat runs",
     command: ["node", join(TESTS_ROOT, "test_cli_determinism.mjs")],
     phases: ["stage1", "cli-json", "determinism"],
-    surfaces: ["cli", "json", "stdout", "tty", "path", "conformance"],
+    surfaces: ["cli", "json", "stdout", "exit_discipline", "p_061", "tty", "path", "conformance", "dispatcher", "workflow"],
     fixtures: [
       skillRel("tests/test_cli_determinism.mjs"),
+      skillRel("scripts/planner.mjs"),
+      ".agent/workflows/reflection.md",
+      "plans/knowledge/patterns.md",
       skillRel("scripts/lib/emit_json.mjs"),
       skillRel("scripts/knowledge_packs.mjs"),
       skillRel("scripts/project_ive.mjs"),
@@ -2830,7 +3130,11 @@ const DEFAULT_SUITES = [
       skillRel("scripts/lib/ive_release_handoff.mjs"),
     ],
     changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/scripts\/[^/]+\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/[^/]+\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/tests\/test_cli_determinism\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/planner\.mjs$/,
+      /^\.agent\/workflows\/reflection\.md$/,
       /^\.agent\/skills\/iterative-planner\/tests\/test_emit_json_cli\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/emit_json\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/(knowledge_packs|project_ive|reflection_guide|validate_reflection|ive_packet_validator|check_profile|journal|decision_anchors|thrashing_detector|ab_task_benchmark|ideation_quality_benchmark|ttinsights_report|dispatcher_v1|scoreboard|ritual_replay|rubric_admin_runner|delivery_receipt_assemble|ive_release_handoff|autonomous_dogfood_run)\.mjs$/,
@@ -2923,6 +3227,25 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
+    id: "quant-persona-gate-scoring",
+    category: "semantic",
+    label: "IVE quant persona gate scoring and non-quant conflict advisory",
+    command: ["node", join(TESTS_ROOT, "test_quant_persona_gate_scoring.mjs")],
+    phases: ["stage1", "persona", "quant"],
+    surfaces: ["persona", "quant", "semantic_gate"],
+    fixtures: [
+      skillRel("tests/test_quant_persona_gate_scoring.mjs"),
+      skillRel("tests/fixtures/persona_quant_genuine.json"),
+      skillRel("tests/fixtures/persona_quant_false_positive.json"),
+      skillRel("scripts/lib/quant_persona_gate.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_quant_persona_gate_scoring\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/tests\/fixtures\/persona_quant_(genuine|false_positive)\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/quant_persona_gate\.mjs$/,
+    ],
+  }),
+  suite({
     id: "verification-runner",
     category: "structured_plan",
     label: "IVE verification runner provenance",
@@ -2961,7 +3284,14 @@ const DEFAULT_SUITES = [
       skillRel("scripts/pack_contract_validate.mjs"),
       skillRel("scripts/lib/pack_contract.mjs"),
       skillRel("config/pack_contract.schema.json"),
-      ".github/workflows/ive-conformance.yml",
+      skillRel("scripts/clean_checkout_conformance.mjs"),
+      skillRel("config/ive_release_profiles.json"),
+      ".agent/workflows/release.md",
+      "docs/ive-redesign/17_release_lane.md",
+      "docs/ci/github_actions.md",
+      skillRel("SKILL.md"),
+      skillRel("references/file-formats.md"),
+      skillRel("scripts/pre_commit_policy.mjs"),
       ".github/branch-protection.snapshot.json",
       "tests/test_escalation_triggers.mjs",
       "tests/test_loop_guards.mjs",
@@ -2975,7 +3305,17 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/scripts\/pack_contract_validate\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/pack_contract\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/config\/pack_contract\.schema\.json$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/clean_checkout_conformance\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/ive_release_profiles\.json$/,
+      /^\.agent\/skills\/iterative-planner\/SKILL\.md$/,
+      /^\.agent\/skills\/iterative-planner\/references\/file-formats\.md$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/pre_commit_policy\.mjs$/,
+      /^\.agent\/workflows\/release\.md$/,
+      /^docs\/ive-redesign\/17_release_lane\.md$/,
+      /^docs\/ci\/github_actions\.md$/,
+      // Legacy hosted paths are routing-only recurrence guards, never required fixtures.
       /^\.github\/workflows\/ive-conformance\.yml$/,
+      /^\.github\/workflows\/fresh-context-reviewer\.yml$/,
       /^\.github\/branch-protection\.snapshot\.json$/,
       /^tests\/test_escalation_triggers\.mjs$/,
       /^tests\/test_loop_guards\.mjs$/,
@@ -3000,7 +3340,6 @@ const DEFAULT_SUITES = [
       skillRel("packs/traceability/index.mjs"),
       skillRel("packs/config_integrity/index.mjs"),
       ".github/reviewer/config.json",
-      ".github/workflows/fresh-context-reviewer.yml",
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_fresh_context_reviewer\.mjs$/,
@@ -3010,7 +3349,6 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/provider_client\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/packs\/(wiring_auditor|assumptions_challenger|traceability|config_integrity)\/index\.mjs$/,
       /^\.github\/reviewer\/config\.json$/,
-      /^\.github\/workflows\/fresh-context-reviewer\.yml$/,
     ],
   }),
   suite({
@@ -3085,7 +3423,7 @@ const DEFAULT_SUITES = [
     phases: ["stage1", "ci-enforcement", "n03"],
     surfaces: ["git_hooks", "planner_runtime", "conformance"],
     fixtures: [skillRel("tests/test_planner_shell_wrappers.mjs"), skillRel("scripts/pre_commit_policy.mjs"), skillRel("scripts/hooks/pre-commit"), skillRel("scripts/hooks/pre-push"), skillRel("scripts/pre-commit-hook.sh"), skillRel("SKILL.md")],
-    changedFilePatterns: [/^\.agent\/skills\/iterative-planner\/tests\/test_planner_shell_wrappers\.mjs$/, /^\.agent\/skills\/iterative-planner\/scripts\/pre_commit_policy\.mjs$/, /^\.agent\/skills\/iterative-planner\/scripts\/hooks\/pre-(commit|push)$/, /^\.agent\/skills\/iterative-planner\/scripts\/pre-commit-hook\.sh$/, /^\.agent\/skills\/iterative-planner\/SKILL\.md$/],
+    changedFilePatterns: [/^\.agent\/skills\/iterative-planner\/tests\/test_planner_shell_wrappers\.mjs$/, /^\.agent\/skills\/iterative-planner\/scripts\/pre_commit_policy\.mjs$/, /^\.agent\/skills\/iterative-planner\/scripts\/hooks\/(pre-(commit|push)|pre_push_conformance\.mjs)$/, /^\.agent\/skills\/iterative-planner\/scripts\/pre-commit-hook\.sh$/, /^\.agent\/skills\/iterative-planner\/SKILL\.md$/],
   }),
   suite({
     id: "active-ontology-temporal-provenance",
@@ -3285,7 +3623,14 @@ function repoRelPath(absPath, repoRoot = REPO_ROOT) {
 function sanitizeRunId(value, now = new Date()) {
   const fallback = `ive-${now.toISOString().replace(/\.\d{3}Z$/, "Z").replace(/:/g, "-")}`;
   const raw = String(value || process.env.IVE_RUN_ID || fallback).trim() || fallback;
-  return raw.replace(/[^A-Za-z0-9_.-]/g, "-").replace(/-+/g, "-").slice(0, 120) || fallback;
+  const normalized = raw.replace(/[^A-Za-z0-9_.-]/g, "-").replace(/-+/g, "-").slice(0, 120) || fallback;
+  if (normalized === "." || normalized === "..") {
+    throw profileConfigError(
+      "IVE run ID cannot resolve to a reserved path segment",
+      "invalid_run_id",
+    );
+  }
+  return normalized;
 }
 
 function splitChangedFiles(values = []) {
@@ -3425,7 +3770,6 @@ function isRunnerSurfaceChange(file) {
     ".agent/skills/iterative-planner/tests/ive/run.mjs",
     ".agent/skills/iterative-planner/tests/ive/test_run.mjs",
     ".agent/skills/iterative-planner/tests/test_ive_conformance_runner.mjs",
-    ".github/workflows/ive-conformance.yml",
   ].includes(file);
 }
 
@@ -3485,6 +3829,28 @@ function runExitCodeCheck(command, {
   }
 }
 
+function classifyHarvestRealTelemetryHostResult(result) {
+  if (result?.exit_code !== HOST_PROOF_SKIP_EXIT_CODE || result?.timed_out) return result;
+  const rawStdout = String(result.raw_stdout || result.stdout_excerpt || "");
+  const reasonLine = rawStdout
+    .split(/\r?\n/)
+    .find((line) => line.startsWith(HOST_PROOF_SKIP_PREFIX));
+  const reason = reasonLine
+    ? reasonLine.slice(HOST_PROOF_SKIP_PREFIX.length).trim()
+    : "real sibling telemetry unavailable";
+  return {
+    ...result,
+    status: "SKIPPED",
+    timed_out: false,
+    status_reason: `host_real_telemetry_unavailable: ${reason}`,
+    stdout_excerpt: captureExcerpt(rawStdout),
+  };
+}
+
+function runHarvestRealTelemetryHost(command, options = {}) {
+  return classifyHarvestRealTelemetryHostResult(runExitCodeCheck(command, options));
+}
+
 function runJsonAdvisoryStatus(command, options = {}) {
   const result = runExitCodeCheck(command, options);
   if (result.status !== "PASS") return result;
@@ -3511,7 +3877,30 @@ function runJsonAdvisoryStatus(command, options = {}) {
   }
 }
 
-function runVisualizerBrowserProof(_command, { timeoutMs = DEFAULT_TIMEOUT_MS, repoRoot = REPO_ROOT } = {}) {
+function visualizerProofPortCandidates(pid = process.pid, count = 5) {
+  const normalizedPid = Math.abs(Number.parseInt(pid, 10) || 0);
+  return Array.from({ length: count }, (_, index) => 45000 + ((normalizedPid + (index * 7919)) % 10000));
+}
+
+function visualizerPortCollision(result) {
+  const detail = [
+    result?.raw_stdout,
+    result?.raw_stderr,
+    result?.stdout_excerpt,
+    result?.stderr_excerpt,
+  ].map((value) => String(value || "")).join("\n").toLowerCase();
+  return detail.includes("is already used")
+    || detail.includes("eaddrinuse")
+    || detail.includes("address already in use");
+}
+
+function runVisualizerBrowserProof(_command, {
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  repoRoot = REPO_ROOT,
+  env = process.env,
+  pid = process.pid,
+  execute = runExitCodeCheck,
+} = {}) {
   const appRoot = visualizerAppRoot(repoRoot);
   const playwrightBin = visualizerPlaywrightBin(repoRoot);
   if (!existsSync(playwrightBin)) {
@@ -3528,10 +3917,21 @@ function runVisualizerBrowserProof(_command, { timeoutMs = DEFAULT_TIMEOUT_MS, r
       raw_stderr: "",
     };
   }
-  return runExitCodeCheck([playwrightBin, "test", "--config=playwright.config.mjs"], {
-    timeoutMs,
-    cwd: appRoot,
-  });
+  const requestedPort = Number.parseInt(env.IVE_VISUALIZER_PORT || "", 10);
+  const explicitPort = Number.isInteger(requestedPort) && requestedPort >= 1024 && requestedPort <= 65535;
+  const candidates = explicitPort ? [requestedPort] : visualizerProofPortCandidates(pid);
+  const attemptedPorts = [];
+  let result = null;
+  for (const proofPort of candidates) {
+    attemptedPorts.push(proofPort);
+    result = execute([playwrightBin, "test", "--config=playwright.config.mjs"], {
+      timeoutMs,
+      cwd: appRoot,
+      envOverrides: { IVE_VISUALIZER_PORT: String(proofPort) },
+    });
+    if (result?.status === "PASS" || explicitPort || !visualizerPortCollision(result)) break;
+  }
+  return { ...result, visualizer_port_attempts: attemptedPorts };
 }
 
 function runDocContractCheck(command) {
@@ -3575,7 +3975,7 @@ function runDocContractCheck(command) {
 }
 
 function runDocsContractsAggregate(_command, options) {
-  const docContractIds = new Set(["doc-contract-mvp", "doc-contract-multi-ide"]);
+  const docContractIds = new Set(["doc-contract-mvp", "doc-contract-multi-ide", "workflow-disposition-contract"]);
   const docSuites = DEFAULT_SUITES.filter((item) => docContractIds.has(item.id));
   const results = docSuites.map((item) => executeSuite(item, options));
   const failed = results.filter((result) => result.status !== "PASS");
@@ -3911,33 +4311,306 @@ function profileFailureReport(error, profileId = null) {
 }
 
 function normalizeResult(item, result) {
-  const status = String(result.status || "FAIL").trim().toUpperCase();
+  const candidate = result && typeof result === "object" && !Array.isArray(result) ? result : {};
+  const candidateStatus = String(candidate.status || "").trim().toUpperCase();
+  const invalidReasons = [];
+  if (candidate.id !== item.id) invalidReasons.push("id_mismatch");
+  if (!RESULT_STATUSES.has(candidateStatus)) invalidReasons.push("unknown_status");
+  if (!Number.isInteger(candidate.exit_code)) invalidReasons.push("exit_code_missing");
+  if (typeof candidate.timed_out !== "boolean") invalidReasons.push("timed_out_missing");
+  if (typeof candidate.started_at !== "string" || !candidate.started_at.trim()) invalidReasons.push("started_at_missing");
+  if (typeof candidate.finished_at !== "string" || !candidate.finished_at.trim()) invalidReasons.push("finished_at_missing");
+  if (candidateStatus === "PASS" && candidate.exit_code !== 0) invalidReasons.push("pass_exit_code_nonzero");
+  if (candidateStatus === "WARN" && candidate.exit_code !== 0) invalidReasons.push("warn_exit_code_nonzero");
+  if (candidateStatus === "PASS" && candidate.timed_out === true) invalidReasons.push("pass_marked_timed_out");
+  if (candidateStatus === "TIMEOUT" && candidate.timed_out !== true) invalidReasons.push("timeout_not_marked");
+  if (candidateStatus === "TIMEOUT" && candidate.exit_code === 0) invalidReasons.push("timeout_exit_code_zero");
+  if (candidateStatus && candidateStatus !== "TIMEOUT" && candidate.timed_out === true) invalidReasons.push("non_timeout_marked_timed_out");
+  const expectedManifestStatus = toManifestStatus(candidateStatus);
+  if (
+    typeof candidate.manifest_status === "string"
+    && candidate.manifest_status.trim().toLowerCase() !== expectedManifestStatus
+  ) invalidReasons.push("manifest_status_mismatch");
+
+  const invalid = invalidReasons.length > 0;
+  const invalidDetail = invalid ? `invalid suite result: ${invalidReasons.join(",")}` : "";
+  const rawStderr = [
+    candidate.raw_stderr ?? candidate.stderr_excerpt ?? "",
+    invalidDetail,
+  ].filter(Boolean).join("\n");
+  const status = invalid ? "FAIL" : candidateStatus;
   return {
-    id: result.id || item.id,
-    name: result.name || result.id || item.id,
-    category: result.category || item.category,
-    test_class: normalizeTestClass(result.test_class || item.test_class),
-    test_class_label: result.test_class_label || TEST_CLASS_LABELS[normalizeTestClass(result.test_class || item.test_class)],
-    label: result.label || item.label,
-    required: result.required !== false && item.required !== false,
-    command: result.command || item.display_command,
+    id: item.id,
+    name: candidate.name || candidate.id || item.id,
+    category: candidate.category || item.category,
+    test_class: normalizeTestClass(candidate.test_class || item.test_class),
+    test_class_label: candidate.test_class_label || TEST_CLASS_LABELS[normalizeTestClass(candidate.test_class || item.test_class)],
+    label: candidate.label || item.label,
+    required: item.required !== false,
+    command: candidate.command || item.display_command,
     status,
-    manifest_status: result.manifest_status || toManifestStatus(status),
-    status_reason: result.status_reason || "",
-    missing_fixtures: result.missing_fixtures || [],
-    surfaces: result.surfaces || item.surfaces || [item.category],
-    phases: result.phases || item.phases || [],
-    exit_code: result.exit_code,
-    timed_out: !!result.timed_out,
-    duration_ms: result.duration_ms ?? 0,
-    started_at: result.started_at || null,
-    finished_at: result.finished_at || null,
-    stdout_excerpt: result.stdout_excerpt || "",
-    stderr_excerpt: result.stderr_excerpt || "",
-    raw_stdout: result.raw_stdout ?? result.stdout_excerpt ?? "",
-    raw_stderr: result.raw_stderr ?? result.stderr_excerpt ?? "",
-    injected: !!result.injected,
+    manifest_status: invalid ? "fail" : expectedManifestStatus,
+    status_reason: invalid ? "invalid_suite_result" : candidate.status_reason || "",
+    missing_fixtures: candidate.missing_fixtures || [],
+    surfaces: candidate.surfaces || item.surfaces || [item.category],
+    phases: candidate.phases || item.phases || [],
+    exit_code: invalid ? 70 : candidate.exit_code,
+    timed_out: invalid ? false : candidate.timed_out,
+    duration_ms: candidate.duration_ms ?? 0,
+    started_at: candidate.started_at || null,
+    finished_at: candidate.finished_at || null,
+    stdout_excerpt: candidate.stdout_excerpt || "",
+    stderr_excerpt: invalid ? captureExcerpt(rawStderr) : candidate.stderr_excerpt || "",
+    raw_stdout: candidate.raw_stdout ?? candidate.stdout_excerpt ?? "",
+    raw_stderr: rawStderr,
+    injected: !!candidate.injected,
   };
+}
+
+async function executeDirectSuiteWave(items, {
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  repoRoot = REPO_ROOT,
+  planTarget = null,
+} = {}) {
+  const waveItems = Array.isArray(items) ? items : [];
+  if (waveItems.length !== 2 || new Set(waveItems.map((item) => item?.id)).size !== 2) {
+    throw new Error("direct suite wave requires exactly two unique suite IDs");
+  }
+  if (waveItems.some((item) => !Array.isArray(item?.command) || item.command.length === 0 || typeof item.run === "function")) {
+    throw new Error("direct suite wave requires two ordinary command suites");
+  }
+  const missingFixtures = waveItems.flatMap((item) => missingRequiredFixtures(item, repoRoot));
+  if (missingFixtures.length > 0) {
+    throw new Error(`direct suite wave has missing fixture(s): ${[...new Set(missingFixtures)].join(", ")}`);
+  }
+
+  const records = waveItems.map((item) => ({
+    item,
+    child: null,
+    startedAt: new Date().toISOString(),
+    startedMs: Date.now(),
+    stdout: "",
+    stderr: "",
+    outputBytes: 0,
+    outputExceeded: false,
+    timedOut: false,
+    error: null,
+    settled: false,
+    ownershipComplete: false,
+    finish: null,
+    timer: null,
+    signals: new Set(),
+    cleanupErrors: new Set(),
+  }));
+  let aborting = false;
+  let parentSignal = null;
+  let forceTimer = null;
+  let terminalTimer = null;
+  const wait = (ms) => new Promise((resolveWait) => setTimeout(resolveWait, ms));
+  const groupAlive = (record) => {
+    if (record.ownershipComplete || !record.child?.pid) return false;
+    if (process.platform === "win32") {
+      return record.child.exitCode === null && record.child.signalCode === null;
+    }
+    try {
+      process.kill(-record.child.pid, 0);
+      return true;
+    } catch (error) {
+      if (error?.code === "ESRCH") return false;
+      record.cleanupErrors.add(`process-group probe failed: ${error?.message || error}`);
+      return true;
+    }
+  };
+  const signalRecord = (record, signal) => {
+    if (record.ownershipComplete || !record.child?.pid || record.signals.has(signal)) return;
+    record.signals.add(signal);
+    try {
+      if (process.platform === "win32") record.child.kill(signal);
+      else process.kill(-record.child.pid, signal);
+    } catch (error) {
+      if (error?.code === "ESRCH") {
+        record.ownershipComplete = true;
+        record.child = null;
+      } else record.cleanupErrors.add(`process-group ${signal} failed: ${error?.message || error}`);
+    }
+  };
+  const stopAll = (signal) => {
+    aborting = true;
+    for (const record of records) signalRecord(record, signal);
+    if (!forceTimer && records.some((record) => !record.settled || groupAlive(record))) {
+      forceTimer = setTimeout(() => {
+        for (const record of records) signalRecord(record, "SIGKILL");
+        terminalTimer = setTimeout(() => {
+          for (const record of records.filter((entry) => !entry.settled)) {
+            record.cleanupErrors.add("direct process did not close after SIGKILL");
+            void record.finish?.(null, "SIGKILL");
+          }
+        }, 500);
+      }, signal === "SIGKILL" ? 0 : 500);
+    }
+  };
+  const onParentSignal = (signal) => {
+    if (parentSignal) return;
+    parentSignal = signal;
+    stopAll("SIGTERM");
+  };
+  const onSigint = () => onParentSignal("SIGINT");
+  const onSigterm = () => onParentSignal("SIGTERM");
+  const onExit = () => records.forEach((record) => signalRecord(record, "SIGKILL"));
+  process.on("SIGINT", onSigint);
+  process.on("SIGTERM", onSigterm);
+  process.on("exit", onExit);
+
+  try {
+    const tasks = records.map((record) => new Promise((resolveRecord) => {
+      const { item } = record;
+      const declaredTimeoutMs = Number.isFinite(item.timeout_ms) && item.timeout_ms > 0
+        ? item.timeout_ms
+        : timeoutMs;
+
+      const finish = async (code, signal) => {
+        if (record.settled) return;
+        record.settled = true;
+        if (record.timer) clearTimeout(record.timer);
+        const commandFailed = record.timedOut || record.outputExceeded || record.error || code !== 0 || !!signal;
+        if (commandFailed) stopAll("SIGTERM");
+
+        await wait(25);
+        if (groupAlive(record)) {
+          signalRecord(record, "SIGTERM");
+          await wait(125);
+        }
+        if (groupAlive(record)) {
+          signalRecord(record, "SIGKILL");
+          await wait(75);
+        }
+        const stillAlive = groupAlive(record);
+        if (stillAlive) record.cleanupErrors.add("direct process group survived SIGKILL");
+        const cleanupFailed = stillAlive || record.cleanupErrors.size > 0;
+        record.ownershipComplete = !stillAlive;
+        if (record.ownershipComplete) record.child = null;
+        if (cleanupFailed) stopAll("SIGKILL");
+
+        const status = cleanupFailed
+          ? "FAIL"
+          : record.timedOut
+            ? "TIMEOUT"
+            : record.outputExceeded || record.error || code !== 0 || signal
+              ? "FAIL"
+              : "PASS";
+        const statusReason = cleanupFailed
+          ? "direct_process_cleanup_failed"
+          : record.timedOut
+            ? "direct_process_timeout"
+            : record.outputExceeded
+              ? "direct_process_output_limit"
+            : record.error
+              ? "direct_process_spawn_failed"
+              : signal
+                ? `direct_process_signal_${signal}`
+                : code !== 0
+                  ? "direct_process_nonzero_exit"
+                  : "";
+        const failureStderr = [
+          record.stderr,
+          record.outputExceeded ? `direct process output exceeded ${DIRECT_OUTPUT_LIMIT_BYTES} bytes` : "",
+          record.error?.message || "",
+          ...record.cleanupErrors,
+        ].filter(Boolean).join("\n");
+        // Match runExitCodeCheck's established success contract: a zero-exit suite
+        // publishes stdout proof but no stderr diagnostic surface.  Failure paths
+        // retain the complete captured stderr, and both streams still count toward
+        // the direct-transport output limit while the child is running.
+        const rawStderr = status === "PASS" ? "" : failureStderr;
+        const result = normalizeResult(item, {
+          id: item.id,
+          status,
+          status_reason: statusReason,
+          exit_code: record.timedOut ? -1 : Number.isInteger(code) ? code : status === "PASS" ? 0 : 1,
+          timed_out: record.timedOut,
+          duration_ms: Date.now() - record.startedMs,
+          started_at: record.startedAt,
+          finished_at: new Date().toISOString(),
+          stdout_excerpt: captureExcerpt(record.stdout),
+          stderr_excerpt: captureExcerpt(rawStderr),
+          raw_stdout: record.stdout,
+          raw_stderr: rawStderr,
+        });
+        resolveRecord([item.id, result]);
+      };
+      record.finish = finish;
+
+      if (aborting) {
+        record.error = new Error("direct suite wave aborted before spawn");
+        void finish(null, null);
+        return;
+      }
+
+      const envOverrides = item.accepts_plan_target === true && planTarget
+        ? { _PLANNER_PLAN_TARGET: planTarget }
+        : {};
+      try {
+        record.child = spawn(item.command[0], item.command.slice(1), {
+          detached: process.platform !== "win32",
+          cwd: repoRoot,
+          env: commandEnv(envOverrides),
+          stdio: ["ignore", "pipe", "pipe"],
+        });
+      } catch (error) {
+        record.error = error;
+        stopAll("SIGTERM");
+        void finish(null, null);
+        return;
+      }
+
+      record.child.stdout?.setEncoding("utf-8");
+      record.child.stderr?.setEncoding("utf-8");
+      const appendOutput = (field, chunk) => {
+        record.outputBytes += Buffer.byteLength(chunk);
+        if (record.outputBytes > DIRECT_OUTPUT_LIMIT_BYTES && !record.outputExceeded) {
+          record.outputExceeded = true;
+          stopAll("SIGTERM");
+        } else if (!record.outputExceeded) record[field] += chunk;
+      };
+      record.child.stdout?.on("data", (chunk) => appendOutput("stdout", chunk));
+      record.child.stderr?.on("data", (chunk) => appendOutput("stderr", chunk));
+      record.child.once("error", (error) => {
+        record.error = error;
+        stopAll("SIGTERM");
+        queueMicrotask(() => { void finish(null, null); });
+      });
+      record.child.once("close", (code, signal) => { void finish(code, signal); });
+      record.timer = setTimeout(() => {
+        record.timedOut = true;
+        stopAll("SIGTERM");
+      }, declaredTimeoutMs);
+    }));
+
+    return new Map(await Promise.all(tasks));
+  } finally {
+    stopAll("SIGKILL");
+    for (let attempt = 0; attempt < 5 && records.some(groupAlive); attempt += 1) {
+      await wait(100);
+      records.forEach((record) => signalRecord(record, "SIGKILL"));
+    }
+    for (const record of records.filter((entry) => !groupAlive(entry))) {
+      record.ownershipComplete = true;
+      record.child = null;
+    }
+    if (forceTimer) clearTimeout(forceTimer);
+    if (terminalTimer) clearTimeout(terminalTimer);
+    process.removeListener("SIGINT", onSigint);
+    process.removeListener("SIGTERM", onSigterm);
+    if (!parentSignal) {
+      process.removeListener("exit", onExit);
+    } else {
+      records.forEach((record) => signalRecord(record, "SIGKILL"));
+      await wait(50);
+      process.removeListener("exit", onExit);
+      process.kill(process.pid, parentSignal);
+      await new Promise(() => {});
+    }
+  }
 }
 
 function syntheticNotApplicableResult(changedFiles) {
@@ -3975,7 +4648,12 @@ function writeRunArtifacts(report, {
   repoRoot = REPO_ROOT,
   reportRoot = REPORT_ROOT,
 } = {}) {
-  const reportDir = join(reportRoot, report.run_id);
+  const resolvedReportRoot = resolve(reportRoot);
+  const reportDir = resolve(resolvedReportRoot, report.run_id);
+  const reportRelative = relative(resolvedReportRoot, reportDir);
+  if (!reportRelative || reportRelative.startsWith(`..${sep}`) || reportRelative === ".." || isAbsolute(reportRelative)) {
+    return { ok: false, reason: "run artifact directory must be a strict child of reportRoot" };
+  }
   const logsDir = join(reportDir, "logs");
   try {
     mkdirSync(logsDir, { recursive: true });
@@ -4055,7 +4733,9 @@ function runConformance({
   reportRoot = REPORT_ROOT,
   profile = null,
   planTarget = null,
+  runStartedAt = null,
 } = {}) {
+  const effectiveRunId = sanitizeRunId(runId);
   if (profile) {
     const activeIds = suites.map((item) => item.id);
     const governedIds = Array.isArray(profile.selected_suite_ids) ? profile.selected_suite_ids : [];
@@ -4069,7 +4749,7 @@ function runConformance({
       );
     }
   }
-  const runStartedAt = new Date().toISOString();
+  const effectiveRunStartedAt = runStartedAt || new Date().toISOString();
   const sourceRepoStateStamp = profile
     ? buildRepoStateStamp({
       cwd: repoRoot,
@@ -4105,9 +4785,9 @@ function runConformance({
     return normalizeResult(
       item,
       executeCommand(item, {
-      timeoutMs: effectiveTimeoutMs,
-      repoRoot,
-      planTarget,
+        timeoutMs: effectiveTimeoutMs,
+        repoRoot,
+        planTarget,
       })
     );
   });
@@ -4127,6 +4807,14 @@ function runConformance({
     if (result.status === "SKIPPED") skippedCount += 1;
     if (result.status === "NOT_APPLICABLE") notApplicableCount += 1;
     if (result.status === "NOT_IMPLEMENTED_YET") notImplementedCount += 1;
+
+    if (result.status_reason === "invalid_suite_result") {
+      issues.push({
+        code: "invalid_suite_result",
+        suite_id: result.id,
+        message: `${result.id} returned malformed or incoherent result metadata`,
+      });
+    }
 
     if (result.status === "NOT_APPLICABLE" && !result.status_reason) {
       issues.push({
@@ -4173,10 +4861,10 @@ function runConformance({
   const scores = buildQualityScores(results);
   const report = {
     schema_version: SCHEMA_VERSION,
-    run_id: sanitizeRunId(runId),
+    run_id: effectiveRunId,
     phase,
     changed_files: normalizedChangedFiles,
-    run_started_at: runStartedAt,
+    run_started_at: effectiveRunStartedAt,
     run_finished_at: new Date().toISOString(),
     ok: issues.length === 0,
     status,
@@ -4254,6 +4942,249 @@ function runConformance({
   }
 
   return report;
+}
+
+function resolveDirectSuiteWaves(suites = DEFAULT_SUITES, repoRoot = REPO_ROOT) {
+  const catalog = Array.isArray(suites) ? suites : [];
+  const catalogIds = catalog.map((item) => item?.id).filter((id) => typeof id === "string" && id);
+  const catalogIndex = new Map(catalog.map((item, index) => [item?.id, index]));
+  const allIds = DIRECT_SUITE_WAVE_IDS.flat();
+  const waves = DIRECT_SUITE_WAVE_IDS.map((ids) => ({
+    ids,
+    items: ids.map((id) => catalog.find((item) => item?.id === id)),
+  }));
+  const membershipHealthy = catalogIds.length === catalog.length
+    && catalogIds.length === new Set(catalogIds).size
+    && allIds.length === new Set(allIds).size
+    && waves.every(({ ids, items }) => (
+      ids.length === 2
+      && ids[0] !== ids[1]
+      && items.every(Boolean)
+      && ids.every((id) => catalog.filter((item) => item?.id === id).length === 1)
+      && catalogIndex.get(ids[0]) < catalogIndex.get(ids[1])
+    ));
+  const executionHealthy = membershipHealthy && waves.every(({ items }) => items.every((item) => (
+    item.required !== false
+    && Array.isArray(item.command)
+    && item.command.length > 0
+    && typeof item.run !== "function"
+    && missingRequiredFixtures(item, repoRoot).length === 0
+  )));
+  const fixtureIsolationHealthy = executionHealthy && waves.every(({ items }) => {
+    const leftFixtures = new Set(Array.isArray(items[0]?.fixtures) ? items[0].fixtures : []);
+    const rightFixtures = Array.isArray(items[1]?.fixtures) ? items[1].fixtures : [];
+    return rightFixtures.every((fixture) => !leftFixtures.has(fixture));
+  });
+  return {
+    healthy: membershipHealthy && executionHealthy && fixtureIsolationHealthy,
+    wave_count: waves.length,
+    suite_count: allIds.length,
+    waves,
+    checks: {
+      unique_ordered_membership: membershipHealthy,
+      executable_required_suites: executionHealthy,
+      pair_fixture_isolation: fixtureIsolationHealthy,
+    },
+  };
+}
+
+function directSchedulingFailure(runStartedAt, detail, reason = "invalid_direct_wave_result") {
+  return {
+    status: "FAIL",
+    status_reason: reason,
+    exit_code: 70,
+    timed_out: false,
+    started_at: runStartedAt,
+    finished_at: new Date().toISOString(),
+    stderr_excerpt: captureExcerpt(detail),
+    raw_stderr: detail,
+  };
+}
+
+async function prepareDirectConformanceResults({
+  suites = DEFAULT_SUITES,
+  directWavePlan = null,
+  executeWave = executeDirectSuiteWave,
+  executeCommand = executeSuite,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  minimumTimeoutMs = null,
+  repoRoot = REPO_ROOT,
+  planTarget = null,
+  runStartedAt = new Date().toISOString(),
+} = {}) {
+  const resolvedWavePlan = directWavePlan || resolveDirectSuiteWaves(suites, repoRoot);
+  if (!resolvedWavePlan?.healthy) {
+    throw new Error("direct suite wave plan must be healthy before scheduling");
+  }
+  const precomputedResults = new Map();
+  const waveByTrigger = new Map(resolvedWavePlan.waves.map((wave) => [wave.ids[0], wave]));
+  for (const item of suites) {
+    if (precomputedResults.has(item.id)) continue;
+    const wave = waveByTrigger.get(item.id);
+    if (wave) {
+      const { ids: waveIds, items: waveItems } = wave;
+      let waveResults;
+      let detail = "";
+      try {
+        waveResults = await executeWave(waveItems, {
+          timeoutMs,
+          repoRoot,
+          planTarget,
+        });
+      } catch (error) {
+        detail = error?.message || String(error);
+      }
+      const validWave = waveResults instanceof Map
+        && waveResults.size === waveIds.length
+        && waveIds.every((id) => {
+          const result = waveResults.get(id);
+          if (result?.id !== id) return false;
+          const waveItem = waveItems.find((entry) => entry.id === id);
+          const normalized = normalizeResult(waveItem, result);
+          if (normalized.status_reason === "invalid_suite_result") {
+            detail ||= `${id}: ${normalized.stderr_excerpt}`;
+            return false;
+          }
+          return true;
+        });
+      if (!validWave) {
+        detail ||= `invalid direct wave result: ${waveResults instanceof Map ? `size=${waveResults.size}` : "not-a-map"}`;
+        for (const waveItem of waveItems) {
+          precomputedResults.set(waveItem.id, {
+            id: waveItem.id,
+            ...directSchedulingFailure(runStartedAt, detail),
+          });
+        }
+      } else {
+        waveIds.forEach((id) => precomputedResults.set(id, waveResults.get(id)));
+      }
+      continue;
+    }
+
+    const declaredTimeoutMs = Number.isFinite(item.timeout_ms) && item.timeout_ms > 0
+      ? item.timeout_ms
+      : timeoutMs;
+    const effectiveTimeoutMs = Number.isFinite(minimumTimeoutMs) && minimumTimeoutMs > 0
+      ? Math.max(declaredTimeoutMs, minimumTimeoutMs)
+      : declaredTimeoutMs;
+    precomputedResults.set(item.id, executeCommand(item, {
+      timeoutMs: effectiveTimeoutMs,
+      repoRoot,
+      planTarget,
+    }));
+  }
+  return precomputedResults;
+}
+
+async function runConformanceLive({
+  suites = DEFAULT_SUITES,
+  only = [],
+  phase = "all",
+  changedFiles = [],
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  minimumTimeoutMs = null,
+  executeCommand = executeSuite,
+  writeManifest = false,
+  runId = null,
+  repoRoot = REPO_ROOT,
+  reportRoot = REPORT_ROOT,
+  profile = null,
+  planTarget = null,
+  invocationArgv = [],
+} = {}) {
+  const effectiveRunId = sanitizeRunId(runId);
+  const directWavePlan = resolveDirectSuiteWaves(suites, repoRoot);
+  const rawArgs = Array.isArray(invocationArgv) ? invocationArgv : [];
+  let invocationIsExact = true;
+  for (let index = 0; index < rawArgs.length; index += 1) {
+    const arg = rawArgs[index];
+    if (arg === "--json") continue;
+    if (arg === "--run-id" || arg === "--plan-target") {
+      const value = rawArgs[index + 1];
+      if (!value || String(value).startsWith("--")) {
+        invocationIsExact = false;
+        break;
+      }
+      index += 1;
+      continue;
+    }
+    if (arg.startsWith("--run-id=") || arg.startsWith("--plan-target=")) {
+      if (!arg.slice(arg.indexOf("=") + 1)) invocationIsExact = false;
+      continue;
+    }
+    invocationIsExact = false;
+    break;
+  }
+
+  const eligible = isDirectInvocation(import.meta.url)
+    && invocationIsExact
+    && suites === DEFAULT_SUITES
+    && executeCommand === executeSuite
+    && only.length === 0
+    && phase === "all"
+    && splitChangedFiles(changedFiles).length === 0
+    && timeoutMs === DEFAULT_TIMEOUT_MS
+    && minimumTimeoutMs === null
+    && writeManifest === true
+    && profile === null
+    && !process.env.IVE_RUNNER_INJECT_FAILURE
+    && directWavePlan.healthy;
+
+  if (!eligible) {
+    return runConformance({
+      suites,
+      only,
+      phase,
+      changedFiles,
+      timeoutMs,
+      minimumTimeoutMs,
+      executeCommand,
+      writeManifest,
+      runId: effectiveRunId,
+      repoRoot,
+      reportRoot,
+      profile,
+      planTarget,
+    });
+  }
+
+  const runStartedAt = new Date().toISOString();
+  const precomputedResults = await prepareDirectConformanceResults({
+    suites,
+    directWavePlan,
+    executeWave: executeDirectSuiteWave,
+    executeCommand,
+    timeoutMs,
+    minimumTimeoutMs,
+    repoRoot,
+    planTarget,
+    runStartedAt,
+  });
+
+  return runConformance({
+    suites,
+    only,
+    phase,
+    changedFiles,
+    timeoutMs,
+    minimumTimeoutMs,
+    executeCommand: (item) => precomputedResults.get(item.id)
+      || {
+        id: item.id,
+        ...directSchedulingFailure(
+          runStartedAt,
+          `Missing prepared result for ${item.id}`,
+          "invalid_precomputed_result",
+        ),
+      },
+    writeManifest,
+    runId: effectiveRunId,
+    repoRoot,
+    reportRoot,
+    profile,
+    planTarget,
+    runStartedAt,
+  });
 }
 
 function listSuites(suites = DEFAULT_SUITES) {
@@ -4373,7 +5304,7 @@ function printText(report) {
   }
 }
 
-function main(argv = process.argv.slice(2)) {
+async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   if (args.help) {
     console.log(usage());
@@ -4395,7 +5326,7 @@ function main(argv = process.argv.slice(2)) {
           selected_suites: undefined,
         } } : {}),
       }
-      : runConformance({
+      : await runConformanceLive({
         suites,
         only: args.only,
         phase: args.phase,
@@ -4406,6 +5337,7 @@ function main(argv = process.argv.slice(2)) {
         writeManifest: args.writeManifest,
         profile,
         planTarget: args.planTarget,
+        invocationArgv: argv,
       });
   } catch (error) {
     report = profileFailureReport(error, args.profile);
@@ -4417,15 +5349,22 @@ function main(argv = process.argv.slice(2)) {
 }
 
 if (isDirectInvocation(import.meta.url)) {
-  process.exitCode = main();
+  process.exitCode = await main();
 }
 
 export {
+  classifyHarvestRealTelemetryHostResult,
   DEFAULT_SUITES,
+  DIRECT_SUITE_WAVE_IDS,
+  executeDirectSuiteWave,
   listSuites,
   parseArgs,
+  prepareDirectConformanceResults,
   readReleaseProfiles,
+  resolveDirectSuiteWaves,
   resolveReleaseProfile,
+  runVisualizerBrowserProof,
   runConformance,
   selectSuites,
+  visualizerProofPortCandidates,
 };

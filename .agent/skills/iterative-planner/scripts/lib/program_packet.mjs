@@ -59,6 +59,14 @@ export const DONE_OR_LATER = new Set(["done", "verified", "closed"]);
 // proof-status-lint: exempt T-INTAKE-B07B8898 -- Program dependency lifecycle enum (verified, closed, deferred), not an authored verification outcome; missing and unknown lifecycle values do not satisfy Set membership.
 export const DEPENDENCY_PROOF_LIFECYCLES = new Set(["verified", "closed", "deferred"]);
 export const VERIFIED_OR_CLOSED = new Set(["verified", "closed"]);
+const FORWARD_TICKET_LIFECYCLE_RANK = new Map([
+  ["proposed", 0],
+  ["ready", 1],
+  ["in_progress", 2],
+  ["done", 3],
+  ["verified", 4],
+  ["closed", 5],
+]);
 export const ADMINISTRATIVE_BACKLOG_DISPOSITION_CLASSIFICATIONS = new Set([
   "close_obsolete",
   "fold_into_existing_ticket",
@@ -112,6 +120,13 @@ function ticketPersonaReviewStatus(ticket) {
 export function effectiveTicketLifecycle(value) {
   const normalized = lower(value);
   return TICKET_LIFECYCLE_ALIASES.get(normalized) || normalized;
+}
+
+function ticketLifecycleSatisfiesRequirement(observed, required) {
+  if (observed === required) return true;
+  const observedRank = FORWARD_TICKET_LIFECYCLE_RANK.get(observed);
+  const requiredRank = FORWARD_TICKET_LIFECYCLE_RANK.get(required);
+  return observedRank !== undefined && requiredRank !== undefined && observedRank >= requiredRank;
 }
 
 function isSafeRelativeEvidenceRoot(value) {
@@ -535,20 +550,12 @@ export function resolveProgramPacketRemotePolicy(packet, options = {}) {
       env: options.env || process.env,
     });
   }
-  if (!modeResolution && repository.status === "resolved") {
-    modeResolution = {
-      mode: "remote-sync",
-      source: `${repository.source}:inferred-remote-sync`,
-      raw: repository.slug,
-    };
-  }
-
   const effectiveMode = modeResolution?.mode || "local-only";
   const modeResolved = !!modeResolution;
   const repositoryRequired = effectiveMode === "remote-read" || effectiveMode === "remote-sync";
   const policyReason = repository.status === "ambiguous"
     ? `Program remote policy is unresolved because repository identity is ambiguous: ${repository.candidates.join(", ")}.`
-    : "Program remote policy is unresolved: choose local-only, provide repository identity, or record a governed waiver.";
+    : "Program remote policy is unresolved: choose an explicit local/remote mode or record a governed waiver. Repository identity alone is not policy authority.";
   const requirements = [
     {
       id: PROGRAM_REMOTE_POLICY_REQUIREMENT,
@@ -558,7 +565,7 @@ export function resolveProgramPacketRemotePolicy(packet, options = {}) {
       reason: policyReason,
       resolution_options: [
         { id: "set_local_only", action: "Set explicit local-only mode.", command: "--remote-mode local-only" },
-        { id: "provide_repository", action: "Provide canonical repository identity and select remote-sync.", command: "--repo owner/name" },
+        { id: "provide_repository", action: "Select explicit remote-sync and provide canonical repository identity.", command: "--remote-mode remote-sync --repo owner/name" },
         { id: "record_governed_waiver", action: "Record a decision-backed gate requirement waiver." },
       ],
       metadata: { mode_source: modeResolution?.source || null },
@@ -1135,6 +1142,110 @@ export function loadProgramPacket(packetPath) {
   return { packet: JSON.parse(raw), raw };
 }
 
+function repositoryProgramPackets(cwd) {
+  const programsDir = join(resolve(cwd), "plans", "programs");
+  if (!existsSync(programsDir)) return [];
+  const packets = [];
+  for (const entry of readdirSync(programsDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const packetPath = join(programsDir, entry.name, "program_packet.json");
+    if (!existsSync(packetPath)) continue;
+    try {
+      packets.push(JSON.parse(readFileSync(packetPath, "utf-8")));
+    } catch {
+      // The selected packet validator reports its own parse errors. A sibling
+      // that cannot be read is deliberately treated as unknown authority.
+    }
+  }
+  return packets;
+}
+
+// @planner:proves = US-PM-AUTO-221, US-079
+export function evaluateExternalPrerequisites(packet, options = {}) {
+  const supplied = Array.isArray(options.programPackets)
+    ? options.programPackets
+    : repositoryProgramPackets(options.cwd || process.cwd());
+  const packetsById = new Map();
+  for (const candidate of [...supplied, packet]) {
+    const programId = asString(candidate?.id);
+    if (programId) packetsById.set(programId, candidate);
+  }
+  const prerequisites = [];
+  const blockers = [];
+
+  for (const ticket of asArray(packet?.tickets)) {
+    const ticketId = asString(ticket?.id);
+    const seen = new Set();
+    for (const [index, prerequisite] of asArray(ticket?.external_prerequisites).entries()) {
+      const path = `$.tickets[${ticketId || "unknown"}].external_prerequisites[${index}]`;
+      const programRef = asString(prerequisite?.program_ref);
+      const ticketRef = asString(prerequisite?.ticket_ref);
+      const requiredStatus = lower(prerequisite?.required_status);
+      const requiredLifecycle = lower(prerequisite?.required_lifecycle);
+      const identity = `${programRef}\u0000${ticketRef || "program"}`;
+      let code = null;
+      let observed = null;
+      let message = null;
+
+      if (
+        !programRef
+        || (!ticketRef && (!requiredStatus || requiredLifecycle))
+        || (ticketRef && (!requiredLifecycle || requiredStatus))
+        || (requiredStatus && !PROGRAM_STATUSES.has(requiredStatus))
+        || (requiredLifecycle && !CANONICAL_TICKET_LIFECYCLES.has(requiredLifecycle))
+      ) {
+        code = "ticket_external_prerequisite_invalid";
+        message = `External prerequisite needs program_ref plus required_status, or program_ref + ticket_ref + required_lifecycle`;
+      } else if (seen.has(identity)) {
+        code = "ticket_external_prerequisite_duplicate";
+        message = `Duplicate external prerequisite: ${programRef}${ticketRef ? `/${ticketRef}` : ""}`;
+      } else {
+        seen.add(identity);
+        const authority = packetsById.get(programRef);
+        if (!authority) {
+          code = "ticket_external_prerequisite_program_unknown";
+          message = `External prerequisite Program not found: ${programRef}`;
+        } else if (ticketRef) {
+          const subject = asArray(authority.tickets).find((entry) => asString(entry?.id) === ticketRef);
+          if (!subject) {
+            code = "ticket_external_prerequisite_ticket_unknown";
+            message = `External prerequisite ticket not found: ${programRef}/${ticketRef}`;
+          } else {
+            observed = effectiveTicketLifecycle(subject.lifecycle);
+            if (!ticketLifecycleSatisfiesRequirement(observed, requiredLifecycle)) {
+              code = "ticket_external_prerequisite_lifecycle_mismatch";
+              message = `External prerequisite ${programRef}/${ticketRef} requires lifecycle=${requiredLifecycle} or later; observed ${observed || "unknown"}`;
+            }
+          }
+        } else {
+          observed = lower(authority.status);
+          if (observed !== requiredStatus) {
+            code = "ticket_external_prerequisite_status_mismatch";
+            message = `External prerequisite ${programRef} requires status=${requiredStatus}; observed ${observed || "unknown"}`;
+          }
+        }
+      }
+
+      const row = {
+        ticket_id: ticketId || null,
+        program_ref: programRef || null,
+        ticket_ref: ticketRef || null,
+        required_status: requiredStatus || null,
+        required_lifecycle: requiredLifecycle || null,
+        observed,
+        satisfied: !code,
+        code,
+        path,
+        message,
+      };
+      prerequisites.push(row);
+      if (code) blockers.push(row);
+    }
+  }
+
+  return { ok: blockers.length === 0, prerequisites, blockers };
+}
+
 export function validateProgramPacket(packet, options = {}) {
   const errors = [];
   const warnings = [];
@@ -1220,6 +1331,15 @@ export function validateProgramPacket(packet, options = {}) {
   const verificationRowsById = mapById(verificationRows);
   const ticketIds = idSet(tickets);
   const storyIds = options.storyIds instanceof Set ? options.storyIds : null;
+  const programStoryErrors = status !== "design";
+  const programStoryTarget = programStoryErrors ? errors : warnings;
+  const externalPrerequisites = evaluateExternalPrerequisites(packet, options);
+
+  for (const storyRef of asArray(packet.story_refs)) {
+    if (storyIds && !storyIds.has(asString(storyRef))) {
+      issue(programStoryTarget, "program_unknown_story", "$.story_refs", `Story not found in registry: ${storyRef}`);
+    }
+  }
 
   for (const epic of epics) {
     const epicId = asString(epic?.id);
@@ -1232,7 +1352,7 @@ export function validateProgramPacket(packet, options = {}) {
     }
     for (const storyRef of asArray(epic.story_refs)) {
       if (storyIds && !storyIds.has(asString(storyRef))) {
-        issue(warnings, "epic_unknown_story", `$.epics[${epicId}].story_refs`, `Story not found in registry: ${storyRef}`);
+        issue(programStoryTarget, "epic_unknown_story", `$.epics[${epicId}].story_refs`, `Story not found in registry: ${storyRef}`);
       }
     }
     for (const ticketRef of asArray(epic.ticket_refs)) {
@@ -1305,10 +1425,20 @@ export function validateProgramPacket(packet, options = {}) {
     if (executable && !hasRefs(ticket.story_refs) && !hasRefs(ticket.defect_refs) && !hasRefs(ticket.gap_refs)) {
       issue(errors, "ticket_without_traceability", `$.tickets[${ticketId}]`, "Executable tickets must link to at least one story, defect, or gap");
     }
+    const ticketStoryTarget = lifecycle === "proposed" ? warnings : errors;
+    for (const storyRef of asArray(ticket.story_refs)) {
+      if (storyIds && !storyIds.has(asString(storyRef))) {
+        issue(ticketStoryTarget, "ticket_unknown_story", `$.tickets[${ticketId}].story_refs`, `Story not found in registry: ${storyRef}`);
+      }
+    }
     for (const depRef of asArray(ticket.depends_on)) {
       const depId = asString(depRef);
       if (!ticketsById.has(depId)) issue(errors, "ticket_dependency_unknown", `$.tickets[${ticketId}].depends_on`, `Unknown dependency: ${depId}`);
       dependencyEdges.push([ticketId, depId]);
+    }
+    for (const prerequisite of externalPrerequisites.prerequisites.filter((entry) => entry.ticket_id === ticketId && !entry.satisfied)) {
+      const target = READY_OR_LATER.has(lifecycle) ? errors : warnings;
+      issue(target, prerequisite.code, prerequisite.path, prerequisite.message);
     }
 
     const acceptanceRefs = asArray(ticket.acceptance_criteria).map(asString).filter(Boolean);
@@ -1465,6 +1595,11 @@ export function validateProgramPacket(packet, options = {}) {
     }
     if (!hasRefs(criterion.story_refs) && !asString(criterion.maintenance_rationale)) {
       issue(errors, "acceptance_without_story_or_rationale", `$.acceptance_criteria[${criterionId}]`, "Acceptance criteria need story refs or a non-user-facing maintenance rationale");
+    }
+    for (const storyRef of asArray(criterion.story_refs)) {
+      if (storyIds && !storyIds.has(asString(storyRef))) {
+        issue(programStoryTarget, "acceptance_unknown_story", `$.acceptance_criteria[${criterionId}].story_refs`, `Story not found in registry: ${storyRef}`);
+      }
     }
   }
 
@@ -1671,6 +1806,7 @@ export function programPacketToFacts(packet, options = {}) {
     ...options,
     enforceNegativeCitations: gateContext === "execution_to_program_validate",
   });
+  const externalPrerequisites = evaluateExternalPrerequisites(packet, options);
 
   facts.push(fact(`program_gate_context(${atom(gateContext)})`));
   facts.push(fact(`program(${id(programId)}, ${text(packet.title)}, ${atom(packet.status)})`));
@@ -1742,6 +1878,15 @@ export function programPacketToFacts(packet, options = {}) {
     for (const defectRef of asArray(ticket.defect_refs)) facts.push(fact(`ticket_defect(${id(ticketId)}, ${id(defectRef)})`));
     for (const gapRef of asArray(ticket.gap_refs)) facts.push(fact(`ticket_gap(${id(ticketId)}, ${id(gapRef)})`));
     for (const depRef of asArray(ticket.depends_on)) facts.push(fact(`ticket_depends_on(${id(ticketId)}, ${id(depRef)})`));
+    for (const prerequisite of externalPrerequisites.prerequisites.filter((entry) => entry.ticket_id === ticketId)) {
+      const subject = prerequisite.ticket_ref || "program";
+      facts.push(fact(`ticket_external_prerequisite(${id(ticketId)}, ${id(prerequisite.program_ref || "unknown")}, ${id(subject)})`));
+      if (prerequisite.satisfied) {
+        facts.push(fact(`ticket_external_prerequisite_satisfied(${id(ticketId)}, ${id(prerequisite.program_ref || "unknown")}, ${id(subject)})`));
+      } else {
+        facts.push(fact(`ticket_external_prerequisite_unsatisfied(${id(ticketId)}, ${id(prerequisite.program_ref || "unknown")}, ${id(subject)})`));
+      }
+    }
     for (const acRef of asArray(ticket.acceptance_criteria)) facts.push(fact(`ticket_acceptance_criterion(${id(ticketId)}, ${id(acRef)})`));
     if (ticketHasGithubIssueMirror(ticket)) facts.push(fact(`ticket_github_issue(${id(ticketId)})`));
     for (const ref of asArray(ticket.external_refs)) {

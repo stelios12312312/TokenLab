@@ -246,7 +246,7 @@ const payload = buildPayload({
 });
 
 if (flags.json) {
-  emitJson(payload);
+  emitJson(payload, { exitCode: payload.ok ? 0 : 1 });
 } else if (payload.ok) {
   console.log("Recipe Runner");
   console.log(`Recipe: ${payload.selected_recipe_id}`);
@@ -264,6 +264,5 @@ if (flags.json) {
   if (payload.missing_params.length > 0) {
     console.log(`Missing params: ${payload.missing_params.join(", ")}`);
   }
+  process.exitCode = payload.ok ? 0 : 1;
 }
-
-process.exitCode = payload.ok ? 0 : 1;

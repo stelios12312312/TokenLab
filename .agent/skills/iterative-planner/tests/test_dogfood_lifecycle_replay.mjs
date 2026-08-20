@@ -2,7 +2,7 @@
 // test_dogfood_lifecycle_replay.mjs - Tier 2 committed journey compatibility proof.
 
 import { execFileSync } from "child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "fs";
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
@@ -182,7 +182,14 @@ try {
   });
   assert(malformedReplay.failures.some((entry) => entry.code === "gate_input_snapshot_invalid" && entry.detail.includes("not valid JSON")), "malformed snapshot pointer fails closed");
 
-  removeGateInputSnapshot(resolvedSnapshot);
+  const tamperedCleanup = removeGateInputSnapshot(resolvedSnapshot);
+  assert(
+    tamperedCleanup.status === "cleanup_pending"
+      && existsSync(resolvedSnapshot.path)
+      && existsSync(resolvedSnapshot.pointer_path),
+    "owned snapshot cleanup preserves replaced input and pointer bytes",
+  );
+  rmSync(dirname(resolvedSnapshot.pointer_path), { recursive: true, force: true });
   writeFileSync(incidentStatePath, `${JSON.stringify(gateTimeState, null, 2)}\n`);
   const recaptured = captureGateInputSnapshot({
     planDir: incidentPlanDir,
@@ -198,7 +205,12 @@ try {
   });
   assert(incompleteReplay.failures.some((entry) => entry.code === "gate_input_snapshot_invalid" && entry.detail.includes("snapshot file is missing: state.json")), "incomplete snapshot file census fails closed");
 
-  removeGateInputSnapshot(recaptured);
+  const incompleteCleanup = removeGateInputSnapshot(recaptured);
+  assert(
+    incompleteCleanup.status === "cleanup_pending" && existsSync(recaptured.path),
+    "owned snapshot cleanup preserves an incomplete replacement tree",
+  );
+  rmSync(dirname(recaptured.pointer_path), { recursive: true, force: true });
   writeFileSync(incidentStatePath, `${JSON.stringify(gateTimeState, null, 2)}\n`);
   const escapeCandidate = captureGateInputSnapshot({
     planDir: incidentPlanDir,

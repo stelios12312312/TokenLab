@@ -1,10 +1,14 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "fs";
-import { dirname, join, resolve } from "path";
+import { mkdirSync, realpathSync, writeFileSync } from "fs";
+import { dirname, join, relative, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 
 import { detectWorkflowCustomizations, formatWorkflowCustomizationText } from "./lib/workflow_customization.mjs";
+import {
+  buildWorkflowDispositionSurface,
+  normalizeWorkflowAction,
+} from "./lib/workflow_contracts.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -20,8 +24,6 @@ function isMain(entry = process.argv[1]) {
 }
 
 const CONFIG_RELATIVE_PATH = join(".agent", "skills", "iterative-planner", "config", "workflow_migration_inventory.json");
-const REGISTRY_RELATIVE_PATH = join(".agent", "skills", "iterative-planner", "config", "workflow_registry.json");
-const WORKFLOW_DIR_RELATIVE_PATH = join(".agent", "workflows");
 
 function usage() {
   return [
@@ -39,56 +41,9 @@ function usage() {
   ].join("\n");
 }
 
-function safeReadJson(path) {
-  try {
-    return JSON.parse(readFileSync(path, "utf-8"));
-  } catch {
-    return null;
-  }
-}
-
-function normalizeActionKey(value) {
-  return String(value || "")
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
-}
-
-function listWorkflowFiles(root) {
-  const workflowDir = join(root, WORKFLOW_DIR_RELATIVE_PATH);
-  if (!existsSync(workflowDir)) return [];
-  return readdirSync(workflowDir)
-    .filter((entry) => entry.endsWith(".md"))
-    .sort()
-    .map((entry) => ({
-      file: join(WORKFLOW_DIR_RELATIVE_PATH, entry),
-      workflow: `/${entry.replace(/\.md$/i, "")}`,
-    }));
-}
-
-function loadInventoryConfig(root) {
-  const configPath = join(root, CONFIG_RELATIVE_PATH);
-  const parsed = safeReadJson(configPath);
-  if (!parsed || parsed.version !== 1 || !Array.isArray(parsed.entries)) {
-    throw new Error(`workflow migration inventory config must be version=1 with an entries array at ${configPath}`);
-  }
-  return {
-    path: configPath,
-    generated_report: typeof parsed.generated_report === "string" && parsed.generated_report.trim()
-      ? parsed.generated_report.trim()
-      : join("reports", "workflow_migration_inventory.yaml"),
-    entries: parsed.entries,
-  };
-}
-
-function loadWorkflowRegistry(root) {
-  const parsed = safeReadJson(join(root, REGISTRY_RELATIVE_PATH));
-  return Array.isArray(parsed?.workflows)
-    ? new Set(parsed.workflows
-      .map((entry) => (typeof entry?.id === "string" ? entry.id.trim() : ""))
-      .filter(Boolean))
-    : new Set();
+function repoRelative(root, path) {
+  if (!path) return null;
+  return relative(root, path).split(sep).join("/");
 }
 
 function buildAliasTarget(entry) {
@@ -98,41 +53,28 @@ function buildAliasTarget(entry) {
 }
 
 export function buildWorkflowMigrationInventory(root = defaultProjectRoot) {
-  const workflowFiles = listWorkflowFiles(root);
-  const inventoryConfig = loadInventoryConfig(root);
-  const registryIds = loadWorkflowRegistry(root);
-  const entryByWorkflow = new Map(
-    inventoryConfig.entries.map((entry) => [entry.workflow, entry])
-  );
-
-  const missingFromInventory = workflowFiles
-    .filter(({ workflow }) => !entryByWorkflow.has(workflow))
-    .map(({ workflow }) => workflow);
-
-  const missingWorkflowFiles = inventoryConfig.entries
-    .filter((entry) => normalizeActionKey(entry.v7_action) !== "parked")
-    .filter((entry) => !workflowFiles.some(({ workflow }) => workflow === entry.workflow))
-    .map((entry) => entry.workflow)
-    .sort();
-
-  const workflows = workflowFiles.map(({ workflow, file }) => {
-    const entry = entryByWorkflow.get(workflow) || {};
-    const action = typeof entry.v7_action === "string" ? entry.v7_action.trim() : "UNMAPPED";
+  const surface = buildWorkflowDispositionSurface(root);
+  const inventoryConfig = surface.inventory;
+  const workflows = surface.entries.map((entry) => {
+    const action = typeof entry.v7_action === "string" ? entry.v7_action.trim() : null;
     return {
-      workflow,
-      workflow_file: file,
+      workflow: entry.workflow,
+      workflow_file: entry.active_file_exists ? repoRelative(root, entry.active_file) : null,
+      parked_workflow_file: entry.parked_file_exists ? repoRelative(root, entry.parked_file) : null,
       v6_purpose: typeof entry.v6_purpose === "string" ? entry.v6_purpose.trim() : null,
       v7_action: action,
       v7_owner: typeof entry.v7_owner === "string" ? entry.v7_owner.trim() : null,
       notes: typeof entry.notes === "string" ? entry.notes.trim() : null,
       alias_target: buildAliasTarget(entry),
-      registry_tracked: registryIds.has(workflow),
+      disposition_status: entry.disposition_status,
+      fleet_propagation: entry.fleet_managed ? "included" : "excluded",
+      registry_tracked: entry.registry_tracked,
     };
   });
 
   const actionCounts = {};
   for (const entry of workflows) {
-    const key = normalizeActionKey(entry.v7_action);
+    const key = normalizeWorkflowAction(entry.v7_action) || "invalid";
     actionCounts[key] = (actionCounts[key] || 0) + 1;
   }
 
@@ -146,15 +88,28 @@ export function buildWorkflowMigrationInventory(root = defaultProjectRoot) {
       source_config: CONFIG_RELATIVE_PATH,
       report_path: inventoryConfig.generated_report,
       summary: {
-        workflow_file_count: workflowFiles.length,
-        mapped_workflow_count: workflows.filter((entry) => entry.v7_action !== "UNMAPPED").length,
+        workflow_file_count: surface.active_workflow_ids.length,
+        parked_workflow_file_count: surface.parked_workflow_ids.length,
+        disposition_count: workflows.length,
+        mapped_workflow_count: surface.entries.filter((entry) => entry.workflow && entry.action_known).length,
         workflow_registry_tracked_count: registryTracked.length,
         workflow_registry_untracked_count: registryUntracked.length,
         action_counts: actionCounts,
       },
       coverage: {
-        missing_from_inventory: missingFromInventory,
-        missing_workflow_files: missingWorkflowFiles,
+        missing_from_inventory: surface.issues
+          .filter((entry) => entry.id === "workflow_markdown_missing_inventory_entry")
+          .map((entry) => entry.workflow),
+        missing_workflow_files: surface.issues
+          .filter((entry) => entry.id === "workflow_active_file_missing")
+          .map((entry) => entry.workflow),
+        parked_in_active_workflow_dir: surface.issues
+          .filter((entry) => entry.id === "workflow_parked_present_in_active_dir")
+          .map((entry) => entry.workflow),
+        missing_parked_workflow_files: surface.issues
+          .filter((entry) => entry.id === "workflow_parked_artifact_missing")
+          .map((entry) => entry.workflow),
+        disposition_issues: surface.issues,
         workflow_registry_tracked: registryTracked,
         workflow_registry_untracked: registryUntracked,
       },
@@ -172,6 +127,8 @@ function formatInventoryText(document) {
   const lines = [];
   lines.push("Workflow migration inventory");
   lines.push(`  Workflow files: ${payload.summary.workflow_file_count}`);
+  lines.push(`  Parked workflow files: ${payload.summary.parked_workflow_file_count}`);
+  lines.push(`  Governed dispositions: ${payload.summary.disposition_count}`);
   lines.push(`  Mapped workflows: ${payload.summary.mapped_workflow_count}`);
   lines.push(`  Registry tracked: ${payload.summary.workflow_registry_tracked_count}`);
   lines.push(`  Registry untracked: ${payload.summary.workflow_registry_untracked_count}`);
@@ -181,6 +138,12 @@ function formatInventoryText(document) {
   }
   if (payload.coverage.missing_workflow_files.length > 0) {
     lines.push(`  Missing workflow files: ${payload.coverage.missing_workflow_files.join(", ")}`);
+  }
+  if (payload.coverage.parked_in_active_workflow_dir.length > 0) {
+    lines.push(`  Parked but active: ${payload.coverage.parked_in_active_workflow_dir.join(", ")}`);
+  }
+  if (payload.coverage.missing_parked_workflow_files.length > 0) {
+    lines.push(`  Missing parked archives: ${payload.coverage.missing_parked_workflow_files.join(", ")}`);
   }
 
   return lines.join("\n");
@@ -228,8 +191,8 @@ function main(argv = process.argv) {
     console.log(formatInventoryText(report));
   }
 
-  const hasCoverageGap = report.workflow_migration_inventory.coverage.missing_from_inventory.length > 0
-    || report.workflow_migration_inventory.coverage.missing_workflow_files.length > 0;
+  const hasCoverageGap = report.workflow_migration_inventory.coverage.disposition_issues
+    .some((entry) => entry.blocking);
   return hasCoverageGap ? 1 : 0;
 }
 

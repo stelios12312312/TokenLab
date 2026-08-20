@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import { buildTaskContext } from "./ontology_context.mjs";
 import { nowISO, readStateJson } from "./lib/determinism.mjs";
 import { buildConventionArtifactsForCriterion } from "./lib/convention_checks.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 import { loadOntologyRuntime } from "./lib/ontology_runtime.mjs";
 import { getPaths, normalizePlanDirName } from "./lib/plan_utils.mjs";
 import {
@@ -1058,11 +1059,11 @@ function main() {
     updateStrategy: options.updateStrategy,
   });
   if (options.json) {
-    console.log(JSON.stringify(result, null, 2));
+    emitJson(result, { exitCode: result.ok ? 0 : 1 });
   } else {
     console.log(renderHuman(result));
+    process.exit(result.ok ? 0 : 1);
   }
-  process.exit(result.ok ? 0 : 1);
 }
 
 function isMainModule() {

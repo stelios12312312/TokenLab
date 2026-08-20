@@ -237,7 +237,7 @@ try {
   assert(!!scoreboard, "behavior_report run attaches an autocoder_scoreboard");
   assert(integrated.by_category.right_action === 1, "scoreboard integration preserves behavior category counts");
   assert(integrated.output_volume_lines?.source_status === "live_repair_surface_counter", "behavior_report CLI run carries live output-volume counters");
-  assert(scoreboard.metrics.autonomous_ticket_completion_rate === 1, "scoreboard uses fixture Program Packet ticket data");
+  assert(scoreboard.metrics.autonomous_ticket_completion_rate === 0, "scoreboard does not count Program Packet completion metadata without a countersigned production receipt");
   assert(scoreboard.metrics.program_proof_execution_rate === 1, "scoreboard exposes Program Packet proof rate");
   assert(scoreboard.metrics.manifest_proof_execution_rate === 1, "scoreboard exposes manifest proof rate");
   assert(scoreboard.metrics.real_executed_proof_ratio === 1, "scoreboard uses fixture manifest proof data");

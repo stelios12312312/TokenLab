@@ -2,320 +2,175 @@
 
 How to upgrade projects already using the iterative planner to the current shipped version.
 
-## 10.6.9 — Verified Consumer-Surface Adoption
+## 10.9.0 — Migration Ergonomics and GitHub Realignment
 
-Version 10.6.9 closes the gap between transactional proof and final install
-verification for consumers with project-specific workflows. When canonical
-source history proves that an extra workflow was never planner-owned, migration
-preserves its content and frontmatter while adding the explicit
-`planner:host-owned-workflow` marker required by the ritual contract.
+Version 10.9.0 eliminates the four migration refusal classes blocking fleet adoption, eliminates hosted GitHub CI workflows in favor of local-only independent verification, and makes GitHub Issues a push-only default projection while local Program Packets remain authoritative.
 
-Managed root-instruction symlinks are also resolved during preflight. A symlink
-to a target inside the same repository keeps the link intact while the resolved
-file is included in cleanliness checks and the atomic candidate commit. Broken
-links and links outside the target repository are refused before writes.
+### Fix 1 — Stop Self-Dirtying Consumers
+- Volatile plan projections (`plans/ACTIVE_PLAN.md`, `plans/ACTIVE_PLAN.json`, `plans/.current_plan*`) are automatically gitignored via the managed `.gitignore` payload.
+- Read-only commands `bootstrap.mjs status` and `bootstrap.mjs resume` no longer write or touch `plans/INDEX.md`, `plans/FINDINGS.md`, or `plans/DECISIONS.md`.
+- `plans/INDEX.md` is updated strictly when plans are created, closed, or via explicit setup.
 
-The internal scratch apply now performs final managed-file, setup, and ritual
-contract verification after setup. Any failure exits the scratch apply and
-rolls the transaction back before the live target advances.
+### Fix 2 — Overlap-Scoped Cleanliness
+- `migrate.mjs` preflight cleanliness inspection now scopes check strictly to dirty/untracked files intersecting the managed payload or written migration targets.
+- Consumers with dirty files outside managed surfaces (e.g. `src/`, `data/`, unrelated backups) migrate cleanly without false refusal.
+- The transactional migration commit stages exactly its own managed files.
 
-## 10.6.8 — Legacy-Free Migration Fixture
+### Fix 3 — Consumer-Owned Overlay Configuration
+- `source_hygiene.json` and `.project_registry.json` are reclassified as consumer-owned overlay configuration (`allow_content_drift: true, consumer_owned: true`).
+- Seeded on initial install, never overwritten or flagged as committed divergence during upgrades, preserving custom ignores and project settings byte-for-byte.
 
-Version 10.6.8 makes the temporary migration project explicitly start without
-the retired `.config_integrity` artifact after copying a consumer snapshot.
-Older consumers may still contain that historical file; its presence in the
-host no longer makes the fixture falsely claim that phase 2 recreated it.
+### Fix 4 — Parked Workflow Disposition Safety
+- Resolved `/sidekick` upgrade blocker: `listFleetManagedWorkflowFiles` throws only on inventory specification errors, enabling transactional migration to cleanly prune obsolete workflows without tripping on-disk active/parked mismatches.
 
-The retirement assertion remains unchanged and now measures the operation under
-test against a controlled precondition. Live consumer files remain governed by
-the transactional ownership, proof, and rollback rules.
+### Fix 5 — Remove Hosted GitHub CI
+- Deleted all hosted GitHub Actions workflows (`.github/workflows/l3-autonomous-dogfood.yml`, etc.).
+- CI enforcement contract now enforces the complete absence of workflow files in `.github/workflows/`.
+- Local bound clean-checkout conformance (`clean_checkout_conformance.mjs` / `run.mjs`) is the sole independent release authority.
 
-## 10.6.7 — Consumer-Neutral Receipt Proof
+### Fix 6 — Default Push-Only GitHub Issues Mirror
+- Local Program Packets remain the sole authoritative source of truth verified by gates.
+- Configured git remotes automatically enable push-only GitHub Issue mirroring:
+  - `program_manager.mjs intake --write` automatically creates GitHub issues (respecting secrets redaction) and records external references.
+  - Ticket closure posts a closing comment and closes the issue.
+  - Ticket deferral adds `lifecycle:deferred` label.
+  - Failures to reach GitHub (network offline, auth failure) are logged as non-blocking advisory records and queued for retry without failing local operations.
 
-Version 10.6.7 makes the checklist-regeneration receipt assertion evaluate the
-temporary Git fixture that the test owns, rather than the consuming
-repository's root ignore policy. Consumers may legitimately ignore
-`reports/ive/**`; that host choice no longer produces a false migration failure.
+## 10.8.1 — Catalog Repair and Coverage Ratchet Alignment
 
-The receipt visibility contract remains fully exercised inside an initialized
-fixture repository. Transactional upgrades still fail closed for real payload,
-census, or planner-core proof failures.
+Version 10.8.1 repairs IVE test runner registrations, aligns test census denominators, updates version surfaces, and reinforces test coverage for transition, bootstrap, and program manager helpers to maintain coverage baseline floors.
 
-## 10.6.6 — Isolated Nested Git Fixtures
+- **IVE Runner & Census Alignment:** Registered `quant-persona-gate-scoring` suite in `run.mjs`, updated test census denominator in `test_verification_truth.mjs` and default suite count assertion in `test_ive_conformance_runner.mjs`.
+- **Version Surface Alignment:** Aligned `SKILL.md` frontmatter, `config/version.json`, and `MIGRATION.md` history.
+- **Coverage Ratchet Reinforcement:** Added CLI test coverage for `transition.mjs`, `bootstrap.mjs`, and `program_manager.mjs` ensuring all coverage baselines remain strictly at or above committed floors.
 
-Version 10.6.6 makes the transactional migration proof independent of Git
-routing variables inherited from its caller. Migration fixture subprocesses
-clear parent `GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, common-directory,
-object-directory, and alternate-object-directory overrides before creating or
-operating on nested temporary repositories.
+## 10.8.0 — Kernel Extraction
 
-This prevents pre-commit, pre-push, CI, and managed-upgrade callers from routing
-fixture Git commands back into the host repository. The live consumer remains
-isolated in the scratch-candidate transaction and is rolled back unchanged if
-any proof still fails.
+Version 10.8.0 trims the planner to its kernel. Owner decision: trim-first,
+overriding the migrate-first sequencing in `docs/kernel-extraction-proposal.md`.
+v10.7.0 was tagged; the v10.5.0 gate census (742 rows) provides sufficient
+evidence for trim decisions without waiting for fleet migration usage data.
 
-## 10.6.5 — Host-Neutral Migration Proof Fixture
+**Shipped trim slices:**
 
-Version 10.6.5 keeps the transactional proof bundle portable to older
-consumers that do not yet have the host-owned `.agent/ontology/facts`
-directory. The irreversible-action migration fixture now copies existing
-ontology facts when present and otherwise seeds canonical empty ontology
-documents inside its temporary fixture. This removes a source-repository-only
-assumption without weakening the proof or adding ontology facts to the managed
-payload.
+- **T1 — Local-first ticket truth.** Default `remote_mode` changed from
+  `remote-sync` to `local-only`. The `github_issue_required_before_ready`
+  readiness gate is removed; `github_publication` defaults to `opt_in`.
+  `github_ticket_review.mjs publish` remains an explicit opt-in command.
+  Existing mirrored ticket refs stay read-only.
 
-The failure discovered during the Evolution Trading Scientist rollout left the
-live consumer at its original commit and restored the exact managed
-before-image. The retry must use a new immutable source pin containing this
-fixture repair.
+- **T3 — Per-plan artifact diet.** Stopped generating `findings.md` (duplicate
+  of `findings_ledger.json`). Stopped generating `health_final.json` in
+  transition gates (unread across gate boundaries). Health report findings
+  arrays capped at 100 items to prevent multi-thousand-line files.
 
-## 10.6.4 — Atomic Retired-Test Pruning
+- **T5 — Persona ambient reduction.** Fixed defect T-INTAKE-0817C573: persona
+  scoring over-classified non-quant planner-infra work as quant when body text
+  mentioned vocabulary like "quant", "model", "ranking". Declared ticket-type
+  and program domain now outrank body vocabulary. Conflicting signals emit an
+  advisory suggesting `--quant-scope` override, not a hard block. Two-sided
+  regression fixtures prove both directions.
 
-Version 10.6.4 closes the fleet rollout gap discovered when upgrading an older
-consumer with planner tests that had been retired from the canonical source.
-Before applying a candidate, migration now inventories test files absent from
-the selected source snapshot. A retired test is removed only when its exact
-same-path blob belongs to canonical source history; a consumer-modified,
-unknown, or indeterminate file blocks the entire sync and survives byte-for-byte.
-Non-canonical test assets with no same-path canonical history are preserved.
+**Defect fix:**
 
-This keeps the installed test tree and `test_gate_census.json` atomic, so the
-scratch `gate-or-delete-census` proof evaluates one coherent release instead of
-a mixture of current census rows and historical planner tests. Failed
-conformance output now includes the bounded proof stdout/stderr needed to name
-the exact mismatch. The existing scratch-candidate, rollback, receipt, explicit
-`--commit`, and immutable-source-pin guarantees are unchanged.
+- **T-INTAKE-962DFCF9 — Preserve consumer identity across parked-workflow
+  migration.** `isCanonicalWorkflowSource` now returns `false` when running
+  inside a managed upgrade proof (`_PLANNER_MANAGED_UPGRADE_PROOF_RUNNING=1`)
+  or pinned source snapshot (`_PLANNER_PINNED_SOURCE_RUNNING=1`). Candidates
+  and snapshots are never the canonical source, even if their registry's
+  `source_project_path` self-references. This unblocks fleet migration of
+  consumers with stale active workflows across parked-workflow transitions.
 
-Proof execution is hermetic with respect to the outer source-pin dispatcher:
-private routing variables are removed before candidate suites run, so nested
-migration fixtures resolve their own temporary repositories. JSONL and HTML
-proof fixtures are also shipped with the test modules that consume them.
+**Deferred trim slices (census evidence recorded, not forced):**
 
-## 10.6.3 — Transactional Managed Upgrades
+- **T2 — Workflow consolidation (38→~10).** Census identified 11 unreachable
+  workflows. Blocked: `workflow_contracts.mjs` disposition surface is kernel
+  infrastructure; consolidation requires inventory, registry, and ontology
+  updates that exceed the deletion-only pattern.
 
-Version 10.6.3 makes the source-pinned managed upgrade one transaction. The
-command first refuses dirty planner-owned target paths, then creates a complete
-candidate in a scratch Git clone. Payload copy and project setup happen only in
-that clone. The configured `gate-or-delete-census`, `migration-bootstrap`,
-`preplanning-scaffolding`, and `transition-gate-flows` suites must all pass
-before the candidate is committed and the live consumer is fast-forwarded.
-Apply, setup, proof, or candidate-commit failure therefore leaves the live
-target at its exact original `HEAD` and working-tree state.
+- **T4 — Memory consolidation.** Census: all ambient memory surfaces
+  (`agent_journal`, `knowledge_triggers`, `findings_ledger`, `insight_induction`)
+  have gate/script/ontology readers. No surfaces removable without kernel edits.
 
-Live mutation requires explicit `--commit` consent:
+- **T6 — Consumer-lite payload.** Research ticket requiring analysis of 841-file
+  payload against usage census. Too large for this session; deferred to follow
+  fleet migration.
 
-```bash
-node /absolute/path/to/canonical/.agent/skills/iterative-planner/scripts/migrate.mjs \
-  upgrade /absolute/path/to/consumer \
-  --source-ref <release-tag-or-commit> \
-  --commit
-```
+- **T7 — Deferral policy.** Blocked: test fixtures (`test_program_manager.mjs`)
+  directly load live program packets for revive logic and depend on deferred
+  tickets being present in live packets.
 
-Without `--commit`, upgrade is a read-only preview and prints the exact consent
-command. No token is required. `upgrade-all` follows the same rule.
+**Upgrade path:** `migrate.mjs upgrade <target> --commit` handles the transition
+automatically. No breaking changes for consumers. New programs default to
+`local-only` remote mode; existing `remote-sync` programs continue unchanged.
 
-The operation writes its active journal under target Git metadata and, after
-success, writes an ignored
-`.agent/skills/iterative-planner/config/last_upgrade_receipt.json`. The receipt
-binds from/to versions, selected source commit, proof results, changed-file
-count, and the resulting consumer commit SHA. `doctor` and bootstrap report
-committed, working-tree, and source versions separately. An interrupted final
-handoff is recovered with `recover-upgrade`; receiptless mixed-version dirt is
-reported as a half-applied payload with safe stash/revert-and-rerun guidance.
+## 10.7.0 — Scientific Review and Migration Simplification
 
-There is no force-overwrite path. Existing provenance refusals remain
-authoritative, unrelated dirty project files remain outside the candidate
-commit, and a host-owned pre-commit hook is preserved.
+Version 10.7.0 replaces authored scientific summary trust with a referenced,
+content-addressed review contract. Result-bearing `serious_search` and
+`promotion_candidate` packets now point to a scientific review request whose
+preregistration, executed configuration, universe, fold, trial, observation,
+result, registry, ticket, and plan-identity files are read and recomputed by the
+planner. Semantic-role dates, actual counts, independent asset×period×event
+groups, universe membership, choices, provenance, identities, and six required
+counterarguments feed a deterministic five-axis receipt.
 
-## 10.6.2 — Exact Legacy Managed-File Provenance
+Existing diagnostic and non-result plans remain readable. Historical strict
+scientific packets without the request are classified `legacy_unknown` and
+blocked from promotion; they are not silently treated as evidence. Valid,
+powered negative evidence can become `falsified` but never promotable, while
+invalid, underpowered, fixture, and legacy evidence remains `not_evaluated`.
+Fresh setup and transactional upgrade install identical schemas, reviewer code,
+persona instructions, and lifecycle behavior. No migration rewrites historical
+result artifacts or canonical evidence directories.
 
-Version 10.6.2 repairs migration safety for legacy installations whose managed
-planner files are ignored or otherwise absent from target `HEAD`. Upgrade may
-overwrite such a file only when its exact Git blob is present at the same path
-in the selected source commit's ancestry or in that selected snapshot's
-versioned `config/legacy_managed_blob_provenance.json` ledger. Ledger entries
-are exact path/blob pairs backed by reviewed legacy release cohorts; no
-wildcard, similarity, normalization, or target-authored entry is accepted.
-This recovers canonical legacy files without treating “untracked” as
-permission to replace arbitrary content.
+The pre-migration surface is also smaller and clearer. Managed root instructions
+now render one canonical planner snapshot while preserving host-specific prose;
+historical release detail lives in the linked `MIGRATION_HISTORY.md`; and only
+whole-repository-census-proven, unreferenced IVE evidence moved to the archive.
+The hosted L3 dogfood lane is manual-only, and clean-checkout conformance now
+marks unbound receipts as `release_authority: false` and displays an explicit
+`NOT-RELEASE-AUTHORITY` warning. A passing receipt becomes release authority only
+when it is bound to the passing governed release profile for the same candidate.
 
-The check remains fail-closed and atomic. Unknown untracked bytes are
-`unclassifiable_target`; exact canonical bytes found only outside the selected
-ancestry are `untracked_ahead_of_source_ref`, preventing a pinned downgrade.
-Both classifications abort the whole managed sync before sibling writes and
-preserve the target bytes. Existing refusal behavior for dirty tracked files,
-committed divergence, and tracked ahead-of-ref files is unchanged. Conflict
-evidence now records both target `HEAD` and working-tree blob IDs.
+## 10.6.10 — Observable Harness Truth
 
-Workflow retirement is also provenance-bound. A target workflow absent from
-the selected source is prunable only when that same path exists in canonical
-source history; unrelated project workflows are preserved even without an
-ownership marker. The project-local `.project_registry.json` is merged rather
-than copied: its fleet entries remain intact and only `source_project_path` is
-updated.
+Version 10.6.10 completes the 10.6.x harness-trust repair. Planner JSON
+emitters now flush synchronously through the shared pipe-safe path while
+preserving the requested process status. The CLI determinism contract scans
+same-frame exit misuse and routes direct-root changes into the governed suite,
+so a large JSON document or an incorrectly successful failure path cannot
+silently escape release proof.
 
-There is no force flag, normalization fallback, alternate-path inference, or
-host-overlay rewrite. Roll back by reverting the source-pin classifier,
-migration merger, provenance ledger, regression cases, version marker, story
-evidence, and these docs together. Validate with the real-Git migration
-bootstrap suite, a candidate-pinned dry-run against a legacy fleet project,
-transition-gate flows, ripple, story/annotation checks, invariants, and the
-governed `core-release` profile.
+Program Manager adds an explicit, fail-closed `--defer-open` disposition lane
+for reversible backlog reduction. The caller must name the exact expected
+deferral count and protected ticket set; lifecycle reconciliation does not
+promote abandoned child plans as shipment evidence. Existing disposition
+defaults are unchanged.
 
-## 10.6.1 — Direct Human Confirmation
+The B3 scoreboard repair distinguishes sandbox browser-cache failures from
+product regressions, authenticates raw and projected suite data against the
+outer run and persisted artifacts, confines runner output paths, enforces one
+combined output budget, and preserves serial/concurrent transport parity. The
+dated `2026-08-07` source baseline retains the June baseline and documents 70
+suite additions, 4 retirements, and 2406 aggregate gate bounces without
+inventing unavailable per-program allocation. Final source proof exercised all
+134 suites with zero required failures and zero regressions inside the unchanged
+600000 ms conformance budget.
 
-Version 10.6.1 removes class-specific exact confirmation tokens from all six
-irreversible action families. After the exact action class, target, and payload
-are displayed, the operator may type a fresh ordinary affirmative such as
-`yes`, `go ahead`, or `ok, let's do it`.
+Release qualification remains two-commit by design: run the governed
+`core-release` profile from the exact clean candidate, bind its manifest with
+`clean_checkout_conformance.mjs`, store proof later, and tag the candidate SHA.
+The managed pre-push helper now removes the same eight parent Git routing
+variables as pre-commit before starting the full IVE runner. Hooks launched
+from linked worktrees therefore cannot redirect nested fixture repositories to
+the caller's Git directory or create cross-suite index/status collisions.
 
-The evaluator remains deterministic and fail-closed. Execute mode requires the
-direct-user source, actor, fresh timestamp, `generated: false`,
-`delegated: false`, and confirmation metadata matching the canonical class,
-exact target, and exact payload reference. The bounded grammar rejects missing,
-negative, ambiguous, conditional, draft, delayed, delegated, inferred,
-generated, stale, and mismatched confirmation. Receipts hash confirmation text
-without replaying it.
+## Historical Release Notes
 
-Project action-class overlays remain additive-only. A legacy
-`confirmation_token` property is temporarily accepted for compatibility, then
-discarded from normalized runtime data; it has no authorization effect and
-never appears in verdicts or receipts. Built-in registry entries contain no
-token fields. The CLI uses `--confirmation-text` plus explicit confirmation
-class/target/payload metadata.
-
-Task intake now applies explicit no-external-action and safety-implementation
-suppression before generic destructive ambiguity routing, so a code-only
-request to repair this contract is not mistaken for authorization to perform a
-live action. Actual live irreversible intent still asks for direct human
-confirmation. The quant kill/promote path uses the same human contract and
-retains its separate artifact-only referee or skeptic key.
-
-Rollback by reverting the registry/schema, evaluator, CLI, triage, quant
-fixtures, story, and docs together. No data migration or host-overlay rewrite
-is required. Validate with the focused irreversible-action suite, quant runtime
-and E2E suites, migration-bootstrap, ripple, invariants, and the governed
-`core-release` profile.
-
-## 10.6.0 — Stable Core Release Hardening
-
-Version 10.6.0 adds a governed `core-release` IVE profile for fast,
-deterministic release decisions. The profile selects required planner-core
-functional proof plus explicit ontology, Program Manager, ripple, migration,
-CLI, documentation, runner-meta, coverage, and clean-checkout must-includes.
-Every catalog suite is visible as selected, explicitly excluded, or omitted by
-rule. Unsafe selector combinations, malformed profiles, missing must-includes,
-and every selected non-PASS status fail closed.
-
-The release workflow now binds the all-PASS profile manifest to the exact clean
-candidate SHA through `clean_checkout_conformance.mjs`. Stale, dirty, failed,
-wrong-profile, missing, malformed, or cross-SHA manifests fail. The candidate
-commit is tagged; generated proof is stored in a later proof-only commit.
-Hosted CI and the full lab catalog remain advisory corroboration.
-Nested detached Git operations remove inherited `GIT_*` hook authority, so a
-pre-commit index path cannot redirect the verifier or its seeded regressions.
-
-Pre-commit keeps ordinary changed-file selection for bounded planner edits, but
-runner, profile, and pre-commit-policy changes use `core-release`. This avoids
-the former runner-surface expansion to all 129 lab suites, which could exceed
-the hook's 15-minute timeout before returning a verdict. The governed hook path
-writes a manifest and includes its own wrapper regression in the must-pass set.
-Coverage measurement derives the same governed selection, excluding only its
-recursive ratchet and timing-sensitive CLI determinism suites, so an explicitly
-non-release lab failure cannot prevent canonical baseline refresh. Its c8-only
-budget is 600 seconds per suite and 20 minutes overall because instrumentation
-can more than double transition-fixture time; normal release execution keeps
-the stricter ten-minute whole-profile criterion.
-
-Migration remains additive and non-destructive. The new JSON profile config is
-part of the dynamically managed config payload, while existing no-profile IVE
-runner and ordinary clean-checkout invocations keep their behavior. Recipe
-contract tests are hermetic by default; live sibling-project compatibility is
-explicitly opt-in through `PLANNER_TEST_IPBS_RECIPES` and
-`PLANNER_TEST_TESSERACT_RECIPES`.
-
-`GATE-SEM-003` now fires only for unexplained JavaScript/Prolog gate
-divergence. A Prolog-only block is quiet only when every blocking semantic row
-is structured `GATE-SEM-002` evidence and every violation belongs to the closed
-ordinary family (`high_priority_untested`, `deliverable_missing_purpose`,
-`active_mistake_missing_declared_guard`,
-`active_mistake_missing_verification_hook`, or `broken_evidence_chain`). The
-non-blocking receipt records the sorted explaining check IDs in additive
-`explained_divergences` arrays at receipt top level and in `equivalence`.
-
-Unknown, mixed, missing/empty structured violations, semantic transition or
-engine failures, and I-035 `unmapped_source_file` remain hard
-`GATE-SEM-003`. JavaScript-only divergence remains the diagnostic
-`GATE-SEM-004` warning. `prolog_enforce_mode` keeps its current default and
-disabled behavior. Historical receipts are immutable and readers treat a
-missing `explained_divergences` field as empty; no persisted-data rewrite,
-feature flag, dependency, version bump, network action, or fleet action is
-required.
-
-This is a precision change to the surviving semantic guard, not a restoration
-of the transition nonce, approval envelope, tamper fingerprint, state hash, or
-`.config_integrity` machinery retired by E8-1. Roll back by reverting the
-shared classifier, both callers, receipt projection, failure guidance, docs,
-story refs, and governed tests together. Run `transition-gate-flows`,
-`transition-dry-run-equivalence`, `migration-bootstrap`, and `ripple-check`
-after adopting it.
-
-Transition receipts now distinguish planner tool execution failure from semantic
-gate failure. If `ritual_lint.mjs` crashes, is terminated, emits empty or invalid
-JSON, returns an invalid result shape, or contradicts `ok: true` with a non-zero
-exit, `transition.mjs` exits 3 with `status: TOOL_ERROR` and stable code
-`TOOL-RIT-001`. A valid `{ "ok": false, ... }` response remains an ordinary
-semantic result even when the child exits non-zero.
-
-The ritual process timeout remains 60000 ms by default. Deterministic local
-fixtures may lower it with `PLANNER_RITUAL_LINT_TIMEOUT_MS`; values are clamped
-to 10–60000 ms and do not change the semantic/tool-error boundary.
-
-The receipt additions are backward compatible: `tool_error_count`,
-`tool_error_codes`, `tool_errors`, and `result_counts.tool_error` appear beside
-the existing semantic `failure_codes` and `hard_blocks`. Tool errors retain
-secret-redacted, bounded stdout/stderr excerpts (2 KiB each) plus original byte counts. Actual
-tool errors write an immutable receipt and separate telemetry entry, but do not
-append lifecycle state or decision history, increment `gate_attempts_total`, add
-a semantic `gate_failures` row, or trip a circuit breaker. Dry-run remains
-non-writing. Operators should retry the same dry-run once and report a repeated
-tool code/receipt; they should not repair plan artifacts unless a later healthy
-tool run reports a semantic gate failure.
-
-No persisted-data rewrite, feature flag, dependency, version bump, network
-action, or fleet action is required. Historical receipts and metrics remain
-immutable and readers default absent tool-error fields to zero. Roll back by
-reverting the transition classifier, receipt/metrics readers, registry entry,
-docs, and governed tests together.
-
-Selected checks now carry a managed degraded-coverage census at
-`config/degraded_coverage_census.json`. The semantic loader preserves whether
-canonical repository ontology facts actually loaded, and the same assessment is
-visible in `bootstrap.mjs status`, direct `rule_engine.mjs check-invariants`
-output, and transition receipts. A missing or invalid selected substrate no
-longer inherits a full-coverage PASS merely because core rules loaded.
-
-The migration payload adds `scripts/lib/degraded_coverage.mjs` and the census.
-Bootstrap status loads the helper dynamically after its self-heal boundary so a
-lagging target can still repair the new managed files. Configured projects stay
-quiet. A project intentionally proceeding without a selected substrate may add
-`.agent/degraded_coverage_waivers.json` with schema version 1 and typed,
-approved, time-bounded entries. A valid waiver remains `degraded_coverage` and
-cannot support claims; invalid, unknown, duplicate, expired, unapproved, or
-redundant entries fail. The only operator exits are to build the named substrate
-or record that governed waiver.
-
-This is an additive unreleased contract, not a version bump or release action.
-Run the governed `migration-bootstrap` and `transition-gate-flows` IVE suites
-after adopting it. No host waiver file is created by migration.
-
-Result-bearing quant/model/betting evidence now declares `evidence.claimed_data_sources` in `quant_results_validation.json`. At REFLECT/VALIDATE the planner computes a read-only environment receipt from the active project filesystem: canonical worktree identity and containment, existence, regular-file status, non-empty bytes, non-future mtime, declared freshness, and SHA-256. Missing, empty, stale, future-dated, sibling-worktree, or malformed source declarations yield `environment_invalid`; the result remains unsatisfied and numeric output is non-reportable. A result claim cannot opt out with `applicable=false`. Non-result work remains proportional: it returns `not_required` without source enumeration or filesystem probes.
-
-This is an unreleased compatibility-tightening note, not a version bump or release instruction. Existing result producers must add the source declarations before adopting the unreleased payload. Existing non-result plans require no artifact migration. The receipt is additive in `close_signals.quant_results_validation`, state schema, evidence-preflight diagnostics (`GATE-REF-017`, `GATE-VAL-016`), and semantic facts.
-
-Result-bearing plans now also declare rerunnable risk evidence in `verification_ledger.json`. Each opted-in evidence row uses `rerun.risk_bearing: true`, `selection: critical|sample`, a runnable command, and typed `stdout_json` expectations. Numeric expectations record finite non-negative absolute and relative tolerance; exit code defaults to 0, timeout defaults to 120000ms, and timeout is capped at 300000ms. `validate-to-close` runs all critical rows, or one deterministic sample when none is critical, through a local fresh process with planner/IDE/author-session authority neutralized. Missing runnable evidence or any named contract, execution, JSON-path, exit, or tolerance divergence blocks existing `GATE-VAL-016`. The composed receipt is additive under `close_signals.quant_results_validation` and is passed to ontology rather than recomputed.
-
-This is an unreleased compatibility tightening with no version bump, persisted data rewrite, feature flag, dependency, network call, or fleet action. Existing non-result plans remain `not_required`. Existing result-bearing plans remain readable but cannot newly close until they add runnable typed evidence. Roll back by reverting the executor, close-signal composition, schema/docs, and governed test registration together; historical receipts are immutable and require no transformation.
+Detailed release prose for 10.6.9 and earlier is archived in
+[Historical release notes](MIGRATION_HISTORY.md). The complete version matrix
+and all breaking-change tables remain below.
 
 ## Agent Invocation
 
@@ -873,6 +728,11 @@ If the project has a test suite, run test_baseline.mjs capture "<test-command>" 
 
 | Version | Codename | Key Features |
 |---------|----------|-------------|
+| 10.9.0 | Migration Ergonomics and GitHub Realignment | Eliminates the four migration refusal classes (self-dirtying, overlap-cleanliness, consumer-owned source_hygiene, parked workflow disposition), removes hosted GitHub CI workflows, and makes GitHub Issues default push-only mirror. |
+| 10.8.1 | Catalog Repair and Coverage Ratchet Alignment | Registers quant persona scoring suite in IVE runner, aligns test census denominators, updates version surfaces, and reinforces test coverage for transition, bootstrap, and program manager helpers. |
+| 10.8.0 | IVE Runtime Phase 6 Release Handoff / Kernel Extraction | Trims local-only ticket truth, per-plan artifact diet, and persona ambient reduction; preserves consumer identity across parked workflows. |
+| 10.7.0 | Scientific Review and Migration Simplification | Adds strict content-addressed scientific review and independent recomputation; deduplicates managed instructions, separates release history, archives only census-proven unreferenced evidence, makes hosted L3 dogfood manual-only, and distinguishes unbound conformance from release authority. |
+| 10.6.10 | Observable Harness Truth | Makes JSON emission pipe-safe with enforced exit discipline, adds exact reversible backlog deferral, authenticates browser/scoreboard/runner/baseline/lifecycle evidence, and isolates the full pre-push harness from parent Git routing. |
 | 10.6.9 | Verified Consumer-Surface Adoption | Marks proven non-canonical workflows as host-owned without disturbing their frontmatter/body, safely includes in-repo targets behind managed root symlinks while refusing external targets, and requires final install/setup/ritual verification before live advancement. |
 | 10.6.8 | Legacy-Free Migration Fixture | Removes the retired `.config_integrity` artifact from the owned temporary project before exercising phase-2 migration, preventing legacy consumer debris from producing a false recreation failure. |
 | 10.6.7 | Consumer-Neutral Receipt Proof | Evaluates checklist-regeneration receipt visibility inside the owned temporary Git fixture instead of inheriting the consumer's root ignore policy, eliminating a false migration rollback without weakening the receipt contract. |
@@ -1025,6 +885,15 @@ paths, dirty authority inputs, and unreachable commits fail closed. No packet
 rewrite, environment variable, remote action, or migration of existing
 administrative closures is required.
 
+## Breaking Changes (v10.6.9 -> v10.6.10)
+
+None. This patch release preserves the public state-machine, migration-command,
+and persisted-plan schemas. It deliberately rejects several previously
+false-green JSON, subprocess, path, and scoreboard states; automation that
+depended on contradictory success data will now fail closed and should repair
+the producer rather than weaken the verifier. The backlog-deferral lane is
+opt-in, and ordinary Program dispositions retain their prior behavior.
+
 ## Breaking Changes (v10.6.8 -> v10.6.9)
 
 None. Project-specific workflows that have no same-path canonical source history
@@ -1083,7 +952,7 @@ the exact-revision conformance command.
 
 ## Breaking Changes (v10.4.0 -> v10.5.0)
 
-No iterative-planner state-machine change. Program Packet policy behavior is intentionally stricter: new `program_manager.mjs init` calls must choose explicit local-only, provide a repository slug, or record a typed decision-backed governed waiver. Existing Program Packets with neither an explicit mode nor one unambiguous repository identity now stop at their first Program `check`, `verify`, or lifecycle `disposition` touch instead of silently defaulting to local-only; structural requirement blockers are not grandfathered as ordinary baseline validation debt. The schema adds optional `remote_mode`, `remote_policy.repository_slug`, and `gate_requirement_waivers[]` fields; explicit local-only packets remain valid without a slug, repository-backed packets pass unchanged, and read-only checks do not rewrite packets. Remote-read/remote-sync require repository identity, and conflicting packet-level mode or repository aliases fail instead of selecting by field order. Operators may migrate locally by adding `"remote_mode": "local-only"`, adding canonical repository policy, or recording a matching `gate_requirement_waiver` decision and waiver row.
+No iterative-planner state-machine change. Program Packet policy behavior is intentionally stricter: new `program_manager.mjs init` calls must choose explicit local-only, use the explicit `--repo` constructor shorthand for persisted remote-sync plus repository identity, or record a typed decision-backed governed waiver. Existing Program Packets without an explicit mode now stop at their first Program `check`, `verify`, or lifecycle `disposition` touch instead of inferring policy from packet fields, environment repository identity, or historical ticket refs; structural requirement blockers are not grandfathered as ordinary baseline validation debt. The schema retains optional `remote_mode`, `remote_policy.repository_slug`, and `gate_requirement_waivers[]` fields; explicit local-only packets remain valid without a slug, and read-only checks do not rewrite packets. Remote-read/remote-sync require both explicit mode and repository identity, and conflicting packet-level mode or repository aliases fail instead of selecting by field order. Operators may migrate locally by adding `"remote_mode": "local-only"`, adding an explicit remote mode alongside canonical repository identity, or recording a matching `gate_requirement_waiver` decision and waiver row. The new dry-run-first `program_manager.mjs defer` command is additive: it dispositions only one exact `in_progress`/`blocked` ticket backed by its exact terminal `[ABANDONED]` child plan, so legacy packets need no rewrite unless operators use that lane. In copied consumer installs where `.agent` is Git-ignored, source-hygiene discovery now excludes that managed runtime from the consumer's application-source ontology; the planner source repository still scans its tracked `.agent` implementation normally.
 
 Preflight authority is also consolidated: use `transition.mjs <gate> --dry-run` immediately before the actual transition. Ordinary `verify_gate.mjs` calls delegate to that evaluator, and `rule_engine.mjs check-transition` remains diagnostic-only rather than a transition predictor. Existing projects migrate through the normal source-driven `migrate.mjs upgrade` path; historical receipts and KPI telemetry remain immutable.
 

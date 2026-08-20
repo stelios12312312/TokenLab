@@ -6,9 +6,12 @@
 // @planner:capability = autocoder_outcome_metrics_collector
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "fs";
+import { createHash } from "crypto";
+import { spawnSync } from "child_process";
 import { dirname, isAbsolute, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 import { classifyRun, gateFailureCodes, gateFailureNature } from "./lib/behavior_report.mjs";
+import { assertDeliveryArtifactHashes } from "./lib/autonomous_ticket_delivery.mjs";
 import { emitJson } from "./lib/emit_json.mjs";
 import { isDispositionResolvedTicket } from "./lib/program_packet.mjs";
 import { isDirectInvocation } from "./lib/script_entrypoint.mjs";
@@ -58,6 +61,7 @@ const DEFAULT_CLOSE_EVIDENCE_BACKFILL = join(
   "config",
   "close_evidence_backfill.json",
 );
+const DEFAULT_PRODUCTION_DELIVERY_RECEIPTS = join("reports", "ive", "autonomous_ticket_deliveries");
 
 function parseArgs(argv = []) {
   const args = {
@@ -67,6 +71,7 @@ function parseArgs(argv = []) {
     testRunsDir: join("reports", "ive", "test_runs"),
     outcomeReplayManifest: DEFAULT_OUTCOME_REPLAY_MANIFEST,
     closeEvidenceBackfill: DEFAULT_CLOSE_EVIDENCE_BACKFILL,
+    deliveryReceiptsDir: DEFAULT_PRODUCTION_DELIVERY_RECEIPTS,
     closeEvidenceBackfillExplicit: false,
     noCloseEvidenceBackfill: false,
     outDir: join("reports", "ive", "autocoder_metrics"),
@@ -88,6 +93,8 @@ function parseArgs(argv = []) {
     else if (arg.startsWith("--programs-dir=")) args.programsDir = arg.slice("--programs-dir=".length);
     else if (arg === "--test-runs-dir") args.testRunsDir = argv[++i] || args.testRunsDir;
     else if (arg.startsWith("--test-runs-dir=")) args.testRunsDir = arg.slice("--test-runs-dir=".length);
+    else if (arg === "--delivery-receipts-dir") args.deliveryReceiptsDir = argv[++i] || args.deliveryReceiptsDir;
+    else if (arg.startsWith("--delivery-receipts-dir=")) args.deliveryReceiptsDir = arg.slice("--delivery-receipts-dir=".length);
     else if (arg === "--outcome-replay-manifest") args.outcomeReplayManifest = argv[++i] || args.outcomeReplayManifest;
     else if (arg.startsWith("--outcome-replay-manifest=")) args.outcomeReplayManifest = arg.slice("--outcome-replay-manifest=".length);
     else if (arg === "--close-evidence-backfill") {
@@ -127,6 +134,115 @@ function safeJson(path) {
   } catch {
     return null;
   }
+}
+
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
+}
+
+function sha256(value) {
+  return createHash("sha256").update(String(value)).digest("hex");
+}
+
+function productionReceiptIdentity(receipt) {
+  const material = { ...receipt };
+  for (const key of ["receipt_id", "started_at", "finished_at", "agent_transport", "workspace"]) delete material[key];
+  return sha256(JSON.stringify(stable(material)));
+}
+
+function safeRelativePath(value) {
+  const text = String(value || "").trim().replace(/\\/g, "/");
+  return !!text && !text.startsWith("/") && !/^[A-Za-z]:\//.test(text) && !text.split("/").includes("..");
+}
+
+function gitCommitReachable(cwd, commit) {
+  if (!/^[0-9a-f]{40}$/i.test(String(commit || ""))) return false;
+  const probe = spawnSync("git", ["merge-base", "--is-ancestor", commit, "HEAD"], {
+    cwd,
+    encoding: "utf-8",
+    timeout: 5000,
+  });
+  return probe.status === 0;
+}
+
+// @planner:proves = US-PM-AUTO-221
+function collectProductionDeliveryReceipts({ cwd, receiptsDir = DEFAULT_PRODUCTION_DELIVERY_RECEIPTS } = {}) {
+  const root = resolveUnder(cwd, receiptsDir);
+  const receiptPaths = [];
+  for (const ticketDir of listDirs(root)) {
+    const ticketRoot = join(root, ticketDir);
+    for (const runDir of listDirs(ticketRoot)) {
+      const receiptPath = join(ticketRoot, runDir, "receipt.json");
+      if (existsSync(receiptPath)) receiptPaths.push(receiptPath);
+    }
+  }
+  const ledger = [];
+  const validByTicket = new Map();
+  for (const receiptPath of receiptPaths.sort()) {
+    const receipt = safeJson(receiptPath);
+    const reasons = [];
+    if (!receipt || receipt.schema_version !== "ive.autonomous_ticket_delivery.v1") reasons.push("schema_invalid");
+    if (receipt?.receipt_type !== "production_program_ticket_delivery") reasons.push("receipt_type_invalid");
+    if (receipt?.fixture !== false) reasons.push("fixture_or_unspecified");
+    if (!verificationStatusIsPass(receipt?.outcome, "execution") || receipt?.grade?.ok !== true || !verificationStatusIsPass(receipt?.grade?.status, "execution")) reasons.push("grade_not_pass");
+    if (receipt?.actor !== "agent" || receipt?.actor_observed_by !== "parent_harness") reasons.push("actor_not_parent_observed");
+    if (receipt?.countersign?.agent_self_graded !== false || receipt?.countersign?.transcript_used_for_outcome !== false || receipt?.grade?.transcript_used_for_outcome !== false) reasons.push("self_or_transcript_graded");
+    if (receipt?.invocation_count !== 1 || receipt?.automatic_retries !== 0) reasons.push("invocation_contract_invalid");
+    if (!receipt?.receipt_id || productionReceiptIdentity(receipt) !== receipt.receipt_id) reasons.push("receipt_identity_invalid");
+    try {
+      assertDeliveryArtifactHashes(dirname(receiptPath), receipt?.artifact_hashes);
+    } catch {
+      reasons.push("artifact_chain_invalid");
+    }
+    if (!gitCommitReachable(cwd, receipt?.final_commit)) reasons.push("final_commit_not_head_reachable");
+    if (!safeRelativePath(receipt?.program_packet_path)) reasons.push("program_packet_path_invalid");
+
+    let packet = null;
+    let ticket = null;
+    if (safeRelativePath(receipt?.program_packet_path)) {
+      packet = safeJson(resolveUnder(cwd, receipt.program_packet_path));
+      ticket = asArray(packet?.tickets).find((entry) => String(entry?.id || "").trim() === String(receipt?.ticket_id || "").trim());
+      const packetId = String(packet?.id || packet?.program_id || packet?.program?.id || "").trim();
+      if (!packet || packetId !== String(receipt?.program_id || "").trim()) reasons.push("program_authority_mismatch");
+      if (!ticket || !isCompletedTicket(ticket)) reasons.push("ticket_not_completed");
+      if (ticket && hasManualTicketSignal(ticket)) reasons.push("ticket_has_manual_signal");
+    }
+    const key = `${String(receipt?.program_id || "").trim()}\u0000${String(receipt?.ticket_id || "").trim()}`;
+    const row = {
+      path: relative(cwd, receiptPath),
+      receipt_id: receipt?.receipt_id || null,
+      program_id: receipt?.program_id || null,
+      ticket_id: receipt?.ticket_id || null,
+      final_commit: receipt?.final_commit || null,
+      valid: reasons.length === 0,
+      reasons,
+      human_touchpoints: asArray(receipt?.human_touchpoints),
+    };
+    ledger.push(row);
+    if (row.valid) {
+      if (!validByTicket.has(key)) validByTicket.set(key, []);
+      validByTicket.get(key).push(row);
+    }
+  }
+  const provenTicketKeys = new Set();
+  for (const [key, rows] of validByTicket.entries()) {
+    const identities = new Set(rows.map((row) => row.receipt_id));
+    if (identities.size === 1) provenTicketKeys.add(key);
+    else for (const row of rows) row.reasons.push("ambiguous_multiple_receipts");
+  }
+  return {
+    root,
+    provenTicketKeys,
+    totals: {
+      receipts: ledger.length,
+      valid_receipts: ledger.filter((row) => row.valid && !row.reasons.includes("ambiguous_multiple_receipts")).length,
+      invalid_receipts: ledger.filter((row) => !row.valid || row.reasons.includes("ambiguous_multiple_receipts")).length,
+      proven_completed_tickets: provenTicketKeys.size,
+    },
+    ledger,
+  };
 }
 
 function closeEvidenceBackfillPath(options = {}) {
@@ -957,7 +1073,7 @@ function lifecycleDriftRow({ cwd, packet, programName, packetPath, packetStatus,
   };
 }
 
-function collectProgramPackets({ cwd, programsDir = join("plans", "programs") } = {}) {
+function collectProgramPackets({ cwd, programsDir = join("plans", "programs"), provenAutonomousTicketKeys = new Set() } = {}) {
   const root = resolveUnder(cwd, programsDir);
   const rows = [];
   const proof = {
@@ -1001,6 +1117,7 @@ function collectProgramPackets({ cwd, programsDir = join("plans", "programs") } 
     totals.lifecycle_status_counts[packetStatus] = (totals.lifecycle_status_counts[packetStatus] || 0) + 1;
     if (INACTIVE_PROGRAM_STATUSES.has(packetStatus)) lifecycleDrift.summary.inactive_status_count += 1;
     const tickets = asArray(packet.tickets);
+    const packetId = String(packet?.id || packet?.program_id || packet?.program?.id || programName).trim();
     const verificationRows = asArray(packet.verification_matrix);
     let activeTicketCount = 0;
     let deferredTicketCount = 0;
@@ -1035,7 +1152,8 @@ function collectProgramPackets({ cwd, programsDir = join("plans", "programs") } 
       const completed = isCompletedTicket(ticket) || dispositionResolved;
       const deferred = DEFERRED_LIFECYCLES.has(ticketLifecycle(ticket)) && !dispositionResolved;
       const verified = isVerifiedTicket(ticket);
-      const autonomous = isAutonomousTicket(ticket);
+      const reportedAutonomous = isAutonomousTicket(ticket);
+      const autonomous = provenAutonomousTicketKeys.has(`${packetId}\u0000${String(ticket?.id || "").trim()}`);
       const manual = hasManualTicketSignal(ticket);
       const rework = hasReworkOrRecurrenceTicketSignal(ticket);
       if (!completed && !deferred) activeTicketCount += 1;
@@ -1061,6 +1179,7 @@ function collectProgramPackets({ cwd, programsDir = join("plans", "programs") } 
         deferred,
         backlog_disposition_resolved: dispositionResolved,
         autonomous,
+        reported_autonomous: reportedAutonomous,
         manual,
         rework_or_recurrence: rework,
       });
@@ -1306,7 +1425,7 @@ function computeMetrics({ plans, programs, manifests }) {
 
 function buildDefinitions() {
   return {
-    autonomous_ticket_completion_rate: "Program Packet tickets explicitly marked autonomous and completed without explicit manual/human intervention / total Program Packet tickets.",
+    autonomous_ticket_completion_rate: "Completed Program Packet tickets with one content-valid, parent-observed, non-fixture production delivery receipt whose final commit is HEAD-reachable / total Program Packet tickets.",
     human_interventions_per_close: "Explicit plan human/manual/approval markers / state==CLOSE plans.",
     retries_per_close: "Gate retries or failed gate attempts / state==CLOSE plans.",
     tool_errors_per_close: "Planner tool execution errors recorded separately from semantic lifecycle attempts / state==CLOSE plans.",
@@ -1340,7 +1459,15 @@ export function collectAutocoderMetrics(options = {}) {
     noCloseEvidenceBackfill: options.noCloseEvidenceBackfill || false,
     closeEvidenceBackfillDisabled: options.closeEvidenceBackfillDisabled || false,
   });
-  const programs = collectProgramPackets({ cwd, programsDir: options.programsDir || join("plans", "programs") });
+  const productionReceipts = collectProductionDeliveryReceipts({
+    cwd,
+    receiptsDir: options.deliveryReceiptsDir || DEFAULT_PRODUCTION_DELIVERY_RECEIPTS,
+  });
+  const programs = collectProgramPackets({
+    cwd,
+    programsDir: options.programsDir || join("plans", "programs"),
+    provenAutonomousTicketKeys: productionReceipts.provenTicketKeys,
+  });
   const manifests = collectTestManifests({ cwd, testRunsDir: options.testRunsDir || join("reports", "ive", "test_runs") });
   const outcomeProvenance = collectOutcomeProvenance({
     cwd,
@@ -1372,6 +1499,10 @@ export function collectAutocoderMetrics(options = {}) {
         ledger: plans.closeEvidence.ledger,
       },
       program_packets: programs.totals,
+      production_delivery_receipts: {
+        ...productionReceipts.totals,
+        ledger: productionReceipts.ledger,
+      },
       proof: {
         expected: programs.totals.verification_rows + manifests.totals.required_suites,
         executed: programs.totals.verification_rows_executed + manifests.totals.executed_suites,
@@ -1402,6 +1533,7 @@ export function collectAutocoderMetrics(options = {}) {
       test_runs_dir: relative(cwd, manifests.root) || ".",
       outcome_replay_manifest: outcomeProvenance.manifest_path,
       close_evidence_backfill: plans.closeEvidence.backfill.path,
+      production_delivery_receipts_dir: relative(cwd, productionReceipts.root) || ".",
     },
   };
 }

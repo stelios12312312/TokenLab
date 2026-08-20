@@ -13,7 +13,7 @@ import {
   validateWorkflowContractSurface
 } from "./lib/workflow_contracts.mjs";
 import { lintVerificationStrategy } from "./lib/verification_strategy.mjs";
-import { nowISO, readStateJson, writeStateJson } from "./lib/determinism.mjs";
+import { nowISO, readStateJsonWithProvenance, writeStateJsonResult } from "./lib/determinism.mjs";
 import { emitJson } from "./lib/emit_json.mjs";
 
 const args = process.argv.slice(2);
@@ -99,7 +99,8 @@ function lintPlan({ cwd, workflowId, phase, planDir, profile, contractVersion })
 
   const strict = profile?.enforcement === "strict";
   const advisorySeverity = strict ? "error" : "warning";
-  const state = readStateJson(planDir);
+  const stateRead = readStateJsonWithProvenance(planDir);
+  const state = stateRead.state;
   const planDirName = basename(planDir);
 
   if (state) {
@@ -107,12 +108,12 @@ function lintPlan({ cwd, workflowId, phase, planDir, profile, contractVersion })
       state.workflow_id = workflowId;
       state.workflow_contract_version = contractVersion;
       state.updated_at = nowISO();
-      const written = writeStateJson(planDir, state);
-      if (!written) {
+      const written = writeStateJsonResult(planDir, state, { expected: stateRead.provenance });
+      if (written.status !== "committed") {
         issues.push(makeIssue({
           id: "workflow_identity_adoption_failed",
           severity: "error",
-          message: `Could not write workflow identity to ${join(planDir, "state.json")}`
+          message: `Could not write workflow identity to ${join(planDir, "state.json")}: ${written.status}/${written.reason}`
         }));
       }
     } else if (!state.workflow_id) {
@@ -250,8 +251,8 @@ const result = await buildResult();
 if (flags.json) {
   // `process.exit()` can truncate asynchronous pipe writes at one OS pipe
   // buffer (8 KiB on macOS). Audit details legitimately exceed that size.
-  emitJson(result);
+  emitJson(result, { exitCode: result.ok ? 0 : 1 });
 } else {
   console.log(formatHuman(result));
+  process.exit(result.ok ? 0 : 1);
 }
-process.exit(result.ok ? 0 : 1);

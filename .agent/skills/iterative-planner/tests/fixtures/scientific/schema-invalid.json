@@ -1,0 +1,12 @@
+{
+  "schema_version": "planner.scientific_review_request.v0",
+  "canonical_evidence_root": "",
+  "artifacts": {},
+  "minimums": { "assets": 0 },
+  "expected_identity": { "experiment_id": "EXP-010" },
+  "claim_direction": "certain",
+  "confirmation_stage": "yes",
+  "run_metadata": { "run_class": "smoke" },
+  "provenance": {},
+  "authored_effective_sample_size": 999999
+}

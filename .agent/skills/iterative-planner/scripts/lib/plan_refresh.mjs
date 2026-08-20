@@ -3,7 +3,8 @@ import { dirname, extname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
 import { serializeToFacts } from "../ontology_serializer.mjs";
-import { computeKnowledgeSnapshot, nowISO, readStateJson, writeStateJson } from "./determinism.mjs";
+import { computeKnowledgeSnapshot, nowISO, readStateJsonWithProvenance, writeStateJsonResult } from "./determinism.mjs";
+import { ownedFileCommitSucceeded } from "./owned_file_replace.mjs";
 import { getPlannerCoreProofBundle } from "./archetype_scenarios.mjs";
 import { computeLearnedObligationsSignal } from "./learned_obligations.mjs";
 import { computeMistakeRegistrySignal } from "./mistake_registry.mjs";
@@ -23,6 +24,7 @@ import { computeRecipePromotionSignal } from "./recipe_promotion.mjs";
 import { ensurePlanScaffoldSections } from "./plan_scaffold.mjs";
 import { ensurePlanKbTags, resolveKbTagKnowledgeContext } from "./kb_plan_tags.mjs";
 import { deriveVerificationPresentationTruth } from "./verification_truth.mjs";
+import { computeTruthSurfaceConvergenceSignal } from "./truth_surface_convergence.mjs";
 import {
   deriveAntiRecurrencePresentationStatus,
   verificationStatusIsPass,
@@ -1139,6 +1141,12 @@ function computeCloseSignals({
     reflectionContent,
     verificationContent,
   });
+  const truthConvergence = computeTruthSurfaceConvergenceSignal({
+    cwd,
+    planDir,
+    stateJson,
+    planContent,
+  });
 
   const codePaths = plannedFiles.filter(requiresTestEvidence);
   const testPaths = plannedFiles.filter(looksLikeTestPath);
@@ -1225,6 +1233,7 @@ function computeCloseSignals({
     quant_results_validation: quantResultsValidation,
     semantic_substrate: semanticSubstrate,
     intent_evidence: intentEvidence,
+    truth_convergence: truthConvergence,
   };
 }
 
@@ -1272,7 +1281,8 @@ export function refreshPlanArtifacts({
     }
   }
 
-  const stateJson = readStateJson(planDir);
+  const stateRead = readStateJsonWithProvenance(planDir);
+  const stateJson = stateRead.state;
   let planContent = safeRead(join(planDir, "plan.md")) || "";
   const storyRegistry = loadStoryRegistry(cwd);
 
@@ -1371,12 +1381,14 @@ export function refreshPlanArtifacts({
   }
 
   let stateWritten = false;
+  let stateWriteResult = null;
   if (stateJson && persistState) {
     stateJson.close_signals = {
       ...closeSignals,
       ontology,
     };
-    stateWritten = writeStateJson(planDir, stateJson);
+    stateWriteResult = writeStateJsonResult(planDir, stateJson, { expected: stateRead.provenance });
+    stateWritten = ownedFileCommitSucceeded(stateWriteResult);
   }
 
   return {
@@ -1386,5 +1398,6 @@ export function refreshPlanArtifacts({
     closeSignals,
     ontology,
     stateWritten,
+    stateWriteResult,
   };
 }

@@ -1,0 +1,22 @@
+{
+  "schema_version": "planner.scientific_review_request.v1",
+  "canonical_evidence_root": "../canonical-evidence",
+  "artifacts": {
+    "preregistration": { "path": "artifacts/preregistration.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "executed_config": { "path": "artifacts/executed_config.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "universe": { "path": "artifacts/universe.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "folds": { "path": "artifacts/folds.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "trials": { "path": "artifacts/trials.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "observations": { "path": "artifacts/observations.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "result": { "path": "artifacts/result.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "registry": { "path": "artifacts/registry.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "ticket": { "path": "artifacts/ticket.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" },
+    "plan_identity": { "path": "artifacts/plan_identity.json", "sha256": "0000000000000000000000000000000000000000000000000000000000000000" }
+  },
+  "minimums": { "assets": 5, "completed_folds": 3, "completed_trials": 5, "eligible_observations": 20, "effective_groups": 20 },
+  "expected_identity": { "experiment_id": "EXP-010", "title": "Scientific review", "hypothesis_id": "H-010", "ticket_id": "T-010", "story_id": "US-003", "plan_id": "plan_010" },
+  "claim_direction": "positive",
+  "confirmation_stage": false,
+  "run_metadata": { "run_class": "promotion_candidate", "is_test": false, "is_synthetic": false, "short_history": false, "bypass_used": false, "output_root": "../run-output" },
+  "provenance": { "code_revision": "abcdef1234567890", "run_started_at": "2026-01-01T00:00:00.000Z", "run_completed_at": "2026-01-02T00:00:00.000Z" }
+}

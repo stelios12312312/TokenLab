@@ -1,6 +1,7 @@
 import { existsSync, readFileSync } from "fs";
 import { join, resolve } from "path";
 import { spawnSync } from "child_process";
+import { emitJson } from "./emit_json.mjs";
 
 const SELF_HEAL_ENV = "_PLANNER_SELF_HEAL_RUNNING";
 const SELF_HEAL_SKIP_ENV = "PLANNER_SKIP_SELF_HEAL";
@@ -114,12 +115,12 @@ export function maybeRunSelfHeal(projectRoot, entryArgs) {
 }
 
 export function maybeHandleInstallHealth(projectRoot) {
-  if (process.argv[2] !== "install-health") return;
+  if (process.argv[2] !== "install-health") return false;
   const jsonMode = process.argv.includes("--json");
   const health = inspectInstallHealth(projectRoot);
   if (jsonMode) {
-    console.log(JSON.stringify(health, null, 2));
-    process.exit(health.ok ? 0 : 1);
+    emitJson(health, { exitCode: health.ok ? 0 : 1 });
+    return true;
   }
 
   console.log("Planner Install Health");

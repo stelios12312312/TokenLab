@@ -51,6 +51,8 @@ Usage:
   node .agent/skills/iterative-planner/scripts/planner.mjs advise [--goal "<task>"] [--json]
   node .agent/skills/iterative-planner/scripts/planner.mjs batch <start|add|status|close> [...]
   node .agent/skills/iterative-planner/scripts/planner.mjs ritual-lint --workflow </workflow> --phase <phase> [--json]
+  node .agent/skills/iterative-planner/scripts/planner.mjs reflection-guide --plan <plan-dir> [--json]
+  node .agent/skills/iterative-planner/scripts/planner.mjs validate-reflection <path> [--json]
   node .agent/skills/iterative-planner/scripts/planner.mjs install-hook [--uninstall]
   node .agent/skills/iterative-planner/scripts/planner.mjs ontology build [--induce] [--incremental] [--dry-run] [--json]
   node .agent/skills/iterative-planner/scripts/planner.mjs ontology query "<prolog>" [--json]
@@ -79,7 +81,11 @@ function runScript(scriptName, args) {
     console.error(`planner.mjs failed to launch ${scriptName}: ${child.error.message}`);
     process.exit(1);
   }
-  process.exit(child.status ?? 0);
+  if (child.signal) {
+    console.error(`planner.mjs routed script ${scriptName} terminated by signal ${child.signal}`);
+    process.exit(1);
+  }
+  process.exit(child.status ?? 1);
 }
 
 const args = process.argv.slice(2);
@@ -112,6 +118,14 @@ if (command === "advise") {
 
 if (command === "batch") {
   runScript("batch.mjs", args.slice(1));
+}
+
+if (command === "reflection-guide") {
+  runScript("reflection_guide.mjs", args.slice(1));
+}
+
+if (command === "validate-reflection") {
+  runScript("validate_reflection.mjs", args.slice(1));
 }
 
 // Sub-tool aliases: forward the remaining args (drop the dispatcher command word)

@@ -5,6 +5,7 @@ import { existsSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
+import { emitJson } from "./lib/emit_json.mjs";
 import { applySafePersonaAdaptation } from "./lib/persona_adaptation.mjs";
 import {
   attachSemanticHealth,
@@ -191,9 +192,9 @@ try {
   }
 } catch (error) {
   if (jsonOutput) {
-    console.log(JSON.stringify({ status: "error", error: error.message }, null, 2));
+    emitJson({ status: "error", error: error.message }, { exitCode: 1 });
   } else {
     console.error(`ERROR: ${error.message}`);
+    process.exitCode = 1;
   }
-  process.exit(1);
 }

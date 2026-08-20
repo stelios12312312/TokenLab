@@ -10,6 +10,7 @@ import {
   normalizeWorkflowId,
   safeReadJson
 } from "./lib/workflow_contracts.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -219,9 +220,10 @@ if (flags.help) {
 }
 
 const result = buildResult();
+const exitCode = result.blocking.blocked ? 1 : 0;
 if (flags.json) {
-  console.log(JSON.stringify(result, null, 2));
+  emitJson(result, { exitCode });
 } else {
   console.log(formatHuman(result));
+  process.exitCode = exitCode;
 }
-process.exit(result.blocking.blocked ? 1 : 0);

@@ -436,6 +436,7 @@ function failedReceipt({ requestedRef, startedAt, stage, detail = null, governed
     schema_version: 1,
     check: "clean-checkout-conformance",
     status: "FAIL",
+    release_authority: false,
     repository: ".",
     requested_ref: requestedRef,
     target_sha: null,
@@ -571,11 +572,13 @@ function runCleanCheckoutConformance(options = {}) {
       };
       const probesPass = Object.values(checks)
         .every((check) => verificationStatusIsPass(check.status, "gate"));
+      const conformancePassed = probesPass && postRunClean;
 
       receipt = {
         schema_version: 1,
         check: "clean-checkout-conformance",
-        status: probesPass && postRunClean ? "PASS" : "FAIL",
+        status: conformancePassed ? "PASS" : "FAIL",
+        release_authority: Boolean(governedProfile) && conformancePassed,
         repository: ".",
         requested_ref: requestedRef,
         target_sha: targetSha,
@@ -613,6 +616,8 @@ function runCleanCheckoutConformance(options = {}) {
     receipt.status = "FAIL";
     receipt.failure_stage ||= "cleanup";
   }
+  receipt.release_authority = Boolean(receipt.governed_profile)
+    && verificationStatusIsPass(receipt.status, "gate");
   receipt.finished_at = new Date().toISOString();
   writeReceipt(receipt, outputPath);
   return receipt;
@@ -620,6 +625,9 @@ function runCleanCheckoutConformance(options = {}) {
 
 function printText(receipt) {
   console.log(`Clean checkout conformance: ${receipt.status}`);
+  if (!receipt.governed_profile) {
+    console.log("  NOT-RELEASE-AUTHORITY: no governed profile manifest is bound to this run.");
+  }
   console.log(`  ref:    ${receipt.requested_ref}`);
   console.log(`  commit: ${receipt.target_sha || "unresolved"}`);
   if (receipt.failure_stage) console.log(`  failure stage: ${receipt.failure_stage}`);

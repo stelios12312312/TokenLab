@@ -50,14 +50,14 @@ const result = runAutonomousDriver({
   plan: parsed.plan,
 });
 
+const exitCode = result.exit_code ?? (result.ok ? 0 : 1);
 if (parsed.json) {
-  emitJson(result);
+  emitJson(result, { exitCode });
 } else {
   console.log(`Autonomous driver: ${result.status}`);
   if (result.reason) console.log(`Reason: ${result.reason}`);
   for (const transition of result.transitions || []) {
     console.log(`- ${transition.gate}: ${transition.status} (exit ${transition.exit_code}) ${transition.from_state} -> ${transition.to_state}`);
   }
+  process.exit(exitCode);
 }
-
-process.exit(result.exit_code ?? (result.ok ? 0 : 1));

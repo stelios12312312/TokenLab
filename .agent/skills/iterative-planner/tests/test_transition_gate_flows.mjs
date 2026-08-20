@@ -20,7 +20,7 @@ import { basename, join, resolve, dirname } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
 import { execFileSync } from "child_process";
 import { tmpdir } from "os";
-import { evaluateGateResults, mistakeHookTargetIntegrityResult } from "../scripts/verify_gate.mjs";
+import { evaluateGateResults, gateNotifyUser, mistakeHookTargetIntegrityResult } from "../scripts/verify_gate.mjs";
 import { createHash } from "crypto";
 import { deriveGateDecision, KB_SALT_HEX_LEN } from "../scripts/lib/determinism.mjs";
 import { stampRunRecordPayload } from "../scripts/lib/run_record.mjs";
@@ -34,6 +34,7 @@ import { summarizeLearnedObligationsSignal } from "../scripts/verify_gate.mjs";
 import { analyzeVerificationMatrix } from "../scripts/lib/verification_matrix.mjs";
 import { refreshPlanArtifacts } from "../scripts/lib/plan_refresh.mjs";
 import { resolveGateInputSnapshot } from "../scripts/lib/gate_input_snapshot.mjs";
+import { observeOwnedFile } from "../scripts/lib/owned_file_replace.mjs";
 import { classifyRitualLintProcess, ritualLintTimeoutMs } from "../scripts/transition.mjs";
 import { plannerSubprocessEnv } from "./helpers/env.mjs";
 import {
@@ -53,6 +54,8 @@ const transitionScript = join(skillDir, "scripts", "transition.mjs");
 const verifyGateScript = join(skillDir, "scripts", "verify_gate.mjs");
 const verificationMatrixScript = join(skillDir, "scripts", "verification_matrix.mjs");
 const ruleEngineScript = join(skillDir, "scripts", "rule_engine.mjs");
+const projectHealthScript = join(skillDir, "scripts", "project_health.mjs");
+const escalationCheckScript = join(skillDir, "scripts", "escalation_check.mjs");
 const semanticDivergenceScript = join(skillDir, "scripts", "lib", "semantic_divergence.mjs");
 const gateVerdictScript = join(skillDir, "scripts", "lib", "gate_verdict.mjs");
 const semanticDivergencePatternFixture = join(testDir, "fixtures", "gate_sem_003_tesseract_pattern.json");
@@ -2650,6 +2653,317 @@ function scenarioPlanningOnlyGatePassesWithAuditBackedPlan() {
     if (!gate.ok) console.log(`  DEBUG: planning-only complete fixture output\n${gate.stdout}${gate.stderr}`);
     assert(gate.ok, "verify_gate plan-to-execute --planning-only accepts a complete audit-backed planning handoff");
     assert(gate.stdout.includes("GATE-PLN-021") && gate.stdout.includes("GATE-PLN-026"), "planning-only gate reports the dedicated planning-only checks");
+
+    const planName = basename(planDir);
+    mkdirSync(join(tmp, "plans", "different-plan"), { recursive: true });
+    writeFileSync(join(tmp, "plans", ".current_plan"), "different-plan\n");
+    const explicitGate = runNode(
+      [verifyGateScript, "plan-to-execute", "--planning-only", "--plan", planName],
+      tmp,
+    );
+    assert(explicitGate.ok, "planning-only verification accepts an explicit valid plan target");
+    assert(
+      explicitGate.stdout.includes("Target source: explicit") &&
+        explicitGate.stdout.includes("Pointer: plans/.current_plan → different-plan"),
+      "explicit verification discloses a divergent global pointer without changing its target",
+    );
+
+    const notifyStatePath = join(planDir, "state.json");
+    const notifyState = readJson(notifyStatePath);
+    notifyState.transitions.push({
+      from: "CLOSE",
+      to: "CLOSE",
+      timestamp: "2026-08-01T00:00:00.000Z",
+      gate_result: "PASS",
+      failure_codes: [],
+      script_versions: {},
+    });
+    writeJson(notifyStatePath, notifyState);
+    const notifyDiagnostic = runNode(
+      [verifyGateScript, "notify-user", "--planning-only", "--plan", planName],
+      tmp,
+    );
+    assert(
+      !notifyDiagnostic.ok &&
+        notifyDiagnostic.stdout.includes("This gate already passed") &&
+        notifyDiagnostic.stdout.includes("STALE GATE"),
+      "notify-user diagnostic recognizes PASS history without inventing a target phase",
+    );
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioSafePlanPromotionPreservesForeignPointerInParallelMode() {
+  const tmp = makeTemp("safe-plan-promotion-parallel");
+  try {
+    const primaryPlanDir = seedProject(tmp, "Keep the primary plan active while a parallel plan is promoted");
+    const primaryPlanName = basename(primaryPlanDir);
+    const sourceThreadId = "safe-plan-promotion-source";
+    const sourceCreation = runNode([
+      bootstrapScript,
+      "new",
+      "--parallel",
+      "--workflow",
+      "/safe-change",
+      "Promote a parallel implementation plan without displacing the primary plan",
+    ], tmp, {
+      CODEX_THREAD_ID: sourceThreadId,
+      PLANNER_SKIP_SELF_HEAL: "1",
+    });
+    assert(sourceCreation.ok, "parallel promotion fixture creates a source plan");
+
+    const sourceTargetPath = join(tmp, "plans", ".thread_targets", `${sourceThreadId}.txt`);
+    const sourcePlanName = existsSync(sourceTargetPath)
+      ? readFileSync(sourceTargetPath, "utf-8").trim()
+      : null;
+    assert(Boolean(sourcePlanName), "parallel promotion fixture records its source thread target");
+    const sourcePlanDir = join(tmp, "plans", sourcePlanName || "plan_missing_source");
+    if (!sourcePlanName || !existsSync(sourcePlanDir)) return;
+
+    setPlanState(sourcePlanDir, "PLAN", { workflow_id: "/safe-change" });
+    const pointerPath = join(tmp, "plans", ".current_plan");
+    const primaryStatePath = join(primaryPlanDir, "state.json");
+    const primaryPlanPath = join(primaryPlanDir, "plan.md");
+    const sourceStatePath = join(sourcePlanDir, "state.json");
+    const sourcePlanPath = join(sourcePlanDir, "plan.md");
+    const pointerBefore = readFileSync(pointerPath, "utf-8");
+    const primaryStateBefore = readFileSync(primaryStatePath, "utf-8");
+    const primaryPlanBefore = readFileSync(primaryPlanPath, "utf-8");
+    const sourceStateBefore = readFileSync(sourceStatePath, "utf-8");
+    const sourcePlanBefore = readFileSync(sourcePlanPath, "utf-8");
+
+    const promotionThreadId = "safe-plan-promotion-writer";
+    const parallelArgs = [
+      bootstrapScript,
+      "promote-safe-plan",
+      "--plan",
+      sourcePlanName,
+      "--workflow",
+      "/safe-change-power",
+      "--parallel",
+      "--json",
+    ];
+    const dryRun = runNode(parallelArgs, tmp, {
+      CODEX_THREAD_ID: promotionThreadId,
+      PLANNER_SKIP_SELF_HEAL: "1",
+    });
+    const dryPayload = dryRun.stdout.trim() ? JSON.parse(dryRun.stdout) : {};
+    assert(
+      dryRun.ok &&
+        dryPayload.ok === true &&
+        dryPayload.dry_run === true &&
+        dryPayload.source_workflow === "/safe-change" &&
+        dryPayload.parallel === true &&
+        dryPayload.active_pointer_before === primaryPlanName &&
+        dryPayload.active_pointer_after === primaryPlanName,
+      "parallel safe-plan promotion dry-run reports truthful workflow and pointer preservation",
+    );
+    assert(
+      readFileSync(pointerPath, "utf-8") === pointerBefore &&
+        readFileSync(primaryStatePath, "utf-8") === primaryStateBefore &&
+        readFileSync(primaryPlanPath, "utf-8") === primaryPlanBefore &&
+        readFileSync(sourceStatePath, "utf-8") === sourceStateBefore &&
+        readFileSync(sourcePlanPath, "utf-8") === sourcePlanBefore,
+      "parallel safe-plan promotion dry-run leaves pointer and both plans byte-identical",
+    );
+
+    const applied = runNode([...parallelArgs.slice(0, -1), "--write", "--json"], tmp, {
+      CODEX_THREAD_ID: promotionThreadId,
+      PLANNER_SKIP_SELF_HEAL: "1",
+    });
+    const appliedPayload = applied.stdout.trim() ? JSON.parse(applied.stdout) : {};
+    const promotedState = readJson(sourceStatePath);
+    const promotionThreadPath = join(tmp, "plans", ".thread_targets", `${promotionThreadId}.txt`);
+    const activeAlias = readJson(join(tmp, "plans", "ACTIVE_PLAN.json"));
+    assert(
+      applied.ok &&
+        appliedPayload.ok === true &&
+        appliedPayload.dry_run === false &&
+        appliedPayload.source_workflow === "/safe-change" &&
+        appliedPayload.parallel === true &&
+        appliedPayload.active_pointer_before === primaryPlanName &&
+        appliedPayload.active_pointer_after === primaryPlanName,
+      "parallel safe-plan promotion write reports its applied pointer-preserving disposition",
+    );
+    assert(
+      promotedState.workflow_id === "/safe-change-power" &&
+        promotedState.promotion_context?.source_workflow === "/safe-change" &&
+        promotedState.promotion_context?.target_workflow === "/safe-change-power",
+      "parallel safe-plan promotion records the actual source workflow before replacement",
+    );
+    assert(
+      readFileSync(pointerPath, "utf-8") === pointerBefore &&
+        readFileSync(primaryStatePath, "utf-8") === primaryStateBefore &&
+        readFileSync(primaryPlanPath, "utf-8") === primaryPlanBefore,
+      "parallel safe-plan promotion preserves the foreign pointer and foreign plan bytes",
+    );
+    assert(
+      activeAlias.plan_dir_name === primaryPlanName &&
+        existsSync(promotionThreadPath) &&
+        readFileSync(promotionThreadPath, "utf-8").trim() === sourcePlanName,
+      "parallel safe-plan promotion keeps the active alias foreign and retargets only the invoking thread",
+    );
+
+    const legacyThreadId = "safe-plan-promotion-legacy";
+    const legacyWrite = runNode([
+      bootstrapScript,
+      "promote-safe-plan",
+      "--plan",
+      sourcePlanName,
+      "--workflow",
+      "/safe-change",
+      "--write",
+      "--json",
+    ], tmp, {
+      CODEX_THREAD_ID: legacyThreadId,
+      PLANNER_SKIP_SELF_HEAL: "1",
+    });
+    const legacyPayload = legacyWrite.stdout.trim() ? JSON.parse(legacyWrite.stdout) : {};
+    const legacyState = readJson(sourceStatePath);
+    assert(
+      legacyWrite.ok &&
+        legacyPayload.ok === true &&
+        legacyPayload.parallel === false &&
+        readFileSync(pointerPath, "utf-8").trim() === sourcePlanName &&
+        legacyState.promotion_context?.source_workflow === "/safe-change-power",
+      "safe-plan promotion without --parallel keeps legacy pointer reassignment while recording truthful source workflow",
+    );
+
+    const invalidPointerBefore = readFileSync(pointerPath, "utf-8");
+    const invalidStateBefore = readFileSync(sourceStatePath, "utf-8");
+    const invalidPlanBefore = readFileSync(sourcePlanPath, "utf-8");
+    const invalidArgs = runNode([
+      bootstrapScript,
+      "promote-safe-plan",
+      "--unsupported-promotion-flag",
+      "--json",
+    ], tmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    const invalidPayload = invalidArgs.stdout.trim() ? JSON.parse(invalidArgs.stdout) : {};
+    assert(
+      !invalidArgs.ok &&
+        invalidArgs.status === 2 &&
+        invalidPayload.ok === false &&
+        invalidPayload.error?.includes("Unknown promote-safe-plan argument"),
+      "safe-plan promotion rejects unknown arguments through the structured no-write path",
+    );
+    assert(
+      readFileSync(pointerPath, "utf-8") === invalidPointerBefore &&
+        readFileSync(sourceStatePath, "utf-8") === invalidStateBefore &&
+        readFileSync(sourcePlanPath, "utf-8") === invalidPlanBefore,
+      "invalid safe-plan promotion leaves pointer and source plan bytes unchanged",
+    );
+
+    const programDir = join(tmp, "plans", "programs", "promotion-fixture");
+    const programPath = join(programDir, "program_packet.json");
+    mkdirSync(programDir, { recursive: true });
+    writeJson(programPath, {
+      id: "PROGRAM-PROMOTION-FIXTURE",
+      title: "Promotion coverage fixture",
+      status: "active",
+      tickets: [
+        {
+          id: "T-PROMOTION-FIXTURE",
+          epic_id: "E-PROMOTION",
+          title: "Promote a copied plan without displacing its source",
+          ticket_type: "implementation",
+          lifecycle: "proposed",
+          story_refs: ["US-079"],
+          acceptance_criteria: ["AC-PROMOTION-001"],
+          verification_refs: ["test_transition_gate_flows.mjs"],
+          child_plan: {
+            policy: "required",
+            plan_dir: `plans/${sourcePlanName}`,
+          },
+        },
+        {
+          id: "T-PROMOTION-SIBLING",
+          epic_id: "E-PROMOTION",
+          title: "Keep sibling Program state byte-stable",
+          ticket_type: "documentation",
+          lifecycle: "proposed",
+          story_refs: ["US-PROMOTION-SIBLING"],
+          acceptance_criteria: ["AC-PROMOTION-SIBLING"],
+          verification_refs: ["sibling-proof.md"],
+          child_plan: {
+            policy: "optional",
+            plan_dir: null,
+          },
+        },
+      ],
+    });
+    const programRelativePath = "plans/programs/promotion-fixture/program_packet.json";
+    const copyThreadId = "safe-plan-promotion-copy";
+    const sourceStateBeforeCopy = readFileSync(sourceStatePath, "utf-8");
+    const sourcePlanBeforeCopy = readFileSync(sourcePlanPath, "utf-8");
+    const programBeforeCopy = readJson(programPath);
+    const siblingBeforeCopy = JSON.stringify(programBeforeCopy.tickets?.[1] || null);
+    const copiedWrite = runNode([
+      bootstrapScript,
+      "promote-safe-plan",
+      "--ticket",
+      "T-PROMOTION-FIXTURE",
+      "--program",
+      programRelativePath,
+      "--workflow",
+      "/safe-change-power",
+      "--copy",
+      "--parallel",
+      "--write",
+      "--json",
+    ], tmp, {
+      CODEX_THREAD_ID: copyThreadId,
+      PLANNER_SKIP_SELF_HEAL: "1",
+    });
+    const copiedPayload = copiedWrite.stdout.trim() ? JSON.parse(copiedWrite.stdout) : {};
+    const copiedPlanDir = join(tmp, "plans", copiedPayload.target_plan_dir || "plan_missing_copy");
+    const copiedState = existsSync(join(copiedPlanDir, "state.json"))
+      ? readJson(join(copiedPlanDir, "state.json"))
+      : {};
+    const updatedProgram = readJson(programPath);
+    const updatedTicket = updatedProgram.tickets?.[0] || {};
+    const copyThreadPath = join(tmp, "plans", ".thread_targets", `${copyThreadId}.txt`);
+    const copiedPlanText = existsSync(join(copiedPlanDir, "plan.md"))
+      ? readFileSync(join(copiedPlanDir, "plan.md"), "utf-8")
+      : "";
+    assert(
+      copiedWrite.ok &&
+        copiedPayload.ok === true &&
+        copiedPayload.copied === true &&
+        copiedPayload.parallel === true &&
+        copiedPayload.source_resolution === "ticket_child_plan" &&
+        copiedPayload.source_plan_dir === sourcePlanName &&
+        copiedPayload.target_plan_dir !== sourcePlanName &&
+        copiedPayload.active_pointer_before === sourcePlanName &&
+        copiedPayload.active_pointer_after === sourcePlanName,
+      "parallel copy promotion resolves its Program ticket and preserves the source pointer",
+    );
+    assert(
+      copiedState.plan_dir === copiedPayload.target_plan_dir &&
+        copiedState.program_context?.ticket_id === "T-PROMOTION-FIXTURE" &&
+        copiedState.program_context?.ticket_lifecycle === "in_progress" &&
+        copiedState.promotion_context?.source === "ticket_child_plan" &&
+        copiedState.promotion_context?.copied === true,
+      "parallel copy promotion persists truthful Program and copy provenance",
+    );
+    assert(
+      updatedTicket.lifecycle === "in_progress" &&
+        updatedTicket.child_plan?.plan_dir === `plans/${copiedPayload.target_plan_dir}` &&
+        copiedPlanText.includes("## Program Context") &&
+        copiedPlanText.includes("## Promotion Handoff") &&
+        readFileSync(pointerPath, "utf-8").trim() === sourcePlanName &&
+        existsSync(copyThreadPath) &&
+        readFileSync(copyThreadPath, "utf-8").trim() === copiedPayload.target_plan_dir,
+      "parallel copy promotion updates its Program linkage and targets only the invoking thread",
+    );
+    assert(
+      readFileSync(sourceStatePath, "utf-8") === sourceStateBeforeCopy &&
+        readFileSync(sourcePlanPath, "utf-8") === sourcePlanBeforeCopy &&
+        updatedProgram.title === programBeforeCopy.title &&
+        updatedProgram.status === programBeforeCopy.status &&
+        JSON.stringify(updatedProgram.tickets?.[1] || null) === siblingBeforeCopy,
+      "parallel copy promotion preserves source-plan bytes and sibling Program state",
+    );
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -2856,12 +3170,41 @@ function scenarioResetCircuitBreaker() {
     };
     writeJson(statePath, state);
 
-    const reset = runNode([bootstrapScript, "reset-circuit-breaker", "execute-to-reflect"], tmp);
+    const missingGate = runNode(
+      [bootstrapScript, "reset-circuit-breaker"],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(!missingGate.ok, "bootstrap reset-circuit-breaker rejects a missing gate name");
+    assert(missingGate.stderr.includes("requires a gate name"), "bootstrap reset-circuit-breaker explains its missing-gate contract");
+
+    const unset = runNode(
+      [bootstrapScript, "reset-circuit-breaker", "validate-to-close"],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(unset.ok, "bootstrap reset-circuit-breaker treats an unset gate as an idempotent no-op");
+    assert(unset.stdout.includes("Nothing to reset"), "bootstrap reset-circuit-breaker reports the unset-gate no-op");
+
+    const reset = runNode(
+      [bootstrapScript, "reset-circuit-breaker", "execute-to-reflect"],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
     assert(reset.ok, "bootstrap reset-circuit-breaker exits cleanly");
     assert(reset.stdout.includes("Circuit breaker reset"), "bootstrap reset-circuit-breaker reports the reset");
 
     const afterReset = readJson(statePath);
     assert(afterReset.circuit_breakers["execute-to-reflect"].total_fails === 0, "bootstrap reset-circuit-breaker zeroes the persistent fail counter");
+
+    writeFileSync(statePath, "{ malformed state\n");
+    const malformedState = runNode(
+      [bootstrapScript, "reset-circuit-breaker", "execute-to-reflect"],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(!malformedState.ok, "bootstrap reset-circuit-breaker fails closed on malformed canonical state");
+    assert(malformedState.stderr.includes("state.json not found"), "bootstrap reset-circuit-breaker reports unusable canonical state");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -3104,8 +3447,8 @@ console.log(JSON.stringify({
     const detail = String((entry.checks || []).find((row) => String(row?.name || "").includes("Story invariants"))?.detail || "");
     return ordinaryFamilies.filter((name) => detail.includes(name));
   }))].sort();
-  assert(uniquePrologOnlyRows.size === 28, "checked-in telemetry deduplicates to 28 historical Prolog-only divergence rows");
-  assert(ordinaryCorpusRows.length === 22, "checked-in telemetry contains 22 unique ordinary-shape divergence rows after excluding sensitive families");
+  assert(uniquePrologOnlyRows.size === 30, "checked-in telemetry deduplicates to 30 historical Prolog-only divergence rows including the Polymarket planning episode");
+  assert(ordinaryCorpusRows.length === 23, "checked-in telemetry contains 23 unique ordinary-shape divergence rows after excluding sensitive families");
   assert(JSON.stringify(observedOrdinaryFamilies) === JSON.stringify(ordinaryFamilies), "checked-in telemetry independently confirms exactly the five admitted ordinary families");
 
   const transitionSource = readFileSync(transitionScript, "utf-8");
@@ -3349,6 +3692,75 @@ function scenarioValidateCloseScopesAsyncDriftMaintenanceToPlanFiles() {
   }
 }
 
+function scenarioValidateCloseEnforcesFreshTruthConvergence() {
+  const blockedTmp = makeTemp("validate-close-truth-blocked");
+  const passingTmp = makeTemp("validate-close-truth-passing");
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: blockedTmp });
+    const blockedPlanDir = seedProject(blockedTmp, "repository truth convergence blocked close");
+    prepareValidateCloseTransitionFixture(blockedTmp, blockedPlanDir, { filesToModify: ["notes/local.txt"] });
+    writeFileSync(join(blockedPlanDir, "plan.md"), `${readFileSync(join(blockedPlanDir, "plan.md"), "utf-8")}
+## Truth Surface Convergence Contract
+- Scope: \`repository\`
+`);
+    writeStructuredCloseSignals(blockedPlanDir, buildSatisfiedCloseSignals({
+      truth_convergence: {
+        required: true,
+        satisfied: true,
+        status: "converged",
+        blockers: [],
+        detail: "Deliberately stale pre-refresh truth signal.",
+      },
+    }));
+
+    const blocked = runNode([transitionScript, "validate-to-close"], blockedTmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(!blocked.ok, "required truth convergence blocks the real validate-to-close transition when fresh snapshots are missing");
+    assert(blocked.stdout.includes("GATE-VAL-024"), "blocked close names the JavaScript truth convergence failure code");
+    assert(blocked.stdout.includes("truth_surface_nonconvergent"), "blocked close names the semantic truth convergence guard");
+    assert(readJson(join(blockedPlanDir, "state.json")).state === "VALIDATE", "truth convergence failure preserves VALIDATE state");
+    const refreshed = readJson(join(blockedPlanDir, "state.json")).close_signals?.truth_convergence;
+    assert(refreshed?.required === true && refreshed?.satisfied === false, "same-invocation refresh replaces a stale satisfied truth signal with fresh failure truth");
+
+    const beforeStandalone = readFileSync(join(blockedPlanDir, "state.json"), "utf-8");
+    const standalone = runNode([verifyGateScript, "validate-to-close"], blockedTmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(!standalone.ok && standalone.stdout.includes("GATE-VAL-024"), "standalone validate-to-close agrees with the real transition verdict");
+    assert(readFileSync(join(blockedPlanDir, "state.json"), "utf-8") === beforeStandalone, "standalone truth convergence verification is non-writing");
+
+    execFileSync("git", ["init", "-q"], { cwd: passingTmp });
+    execFileSync("git", ["config", "user.name", "Planner Fixture"], { cwd: passingTmp });
+    execFileSync("git", ["config", "user.email", "planner@example.test"], { cwd: passingTmp });
+    const passingPlanDir = seedProject(passingTmp, "repository truth convergence passing close");
+    prepareValidateCloseTransitionFixture(passingTmp, passingPlanDir, { filesToModify: ["notes/local.txt"] });
+    writeFileSync(join(passingPlanDir, "plan.md"), `${readFileSync(join(passingPlanDir, "plan.md"), "utf-8")}
+## Truth Surface Convergence Contract
+- Scope: \`repository\`
+`);
+    const snapshotDir = join(passingPlanDir, "artifacts", "truth_surface");
+    mkdirSync(snapshotDir, { recursive: true });
+    const collectedAt = "2026-08-13T00:00:00Z";
+    const expiresAt = "2099-01-02T00:00:00Z";
+    writeJson(join(snapshotDir, "branch_snapshot.json"), { collected_at: collectedAt, expires_at: expiresAt, complete: true, branches: [] });
+    writeJson(join(snapshotDir, "pr_snapshot.json"), { repository: "owner/repo", collected_at: collectedAt, expires_at: expiresAt, complete: true, pull_requests: [] });
+    execFileSync("git", ["add", "."], { cwd: passingTmp });
+    execFileSync("git", ["commit", "-qm", "truth convergence fixture"], { cwd: passingTmp });
+    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: passingTmp, encoding: "utf-8" }).trim();
+    writeJson(join(passingTmp, "plans", "audit_log.json"), {
+      audits: ["red-team", "regression", "retro", "user-story", "advisor"].map((type) => ({
+        type,
+        timestamp: "2099-01-01T00:00:00Z",
+        commit: head,
+      })),
+    });
+
+    const passing = runNode([transitionScript, "validate-to-close"], passingTmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(passing.ok, "fresh satisfied repository truth permits the real validate-to-close transition");
+    assert(readJson(join(passingPlanDir, "state.json")).state === "CLOSE", "satisfied required truth advances the plan to CLOSE");
+  } finally {
+    try { rmSync(blockedTmp, { recursive: true, force: true }); } catch { /* best effort */ }
+    try { rmSync(passingTmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
 function scenarioValidateClosePreflightAlignsStatusAndStaysReadOnly() {
   const tmp = makeTemp("validate-close-status-parity");
   try {
@@ -3446,6 +3858,317 @@ console.log(JSON.stringify(evaluation));`,
     assert(help.ok && help.stdout.includes("Gates:"), "verify-gate help exits cleanly with the governed gate catalog");
     const unknownCli = runNode([verifyGateScript, "fixture-unknown-gate"], tmp);
     assert(!unknownCli.ok && unknownCli.stderr.includes("Unknown gate"), "verify-gate CLI rejects an unknown gate before resolving plan state");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioRegistryRefreshIsPhaseNeutralAndVerdictBound() {
+  const tmp = makeTemp("registry-refresh");
+  try {
+    const planDir = seedProject(tmp, "exercise phase-neutral story registry refresh");
+    const planName = basename(planDir);
+    const registryPath = join(tmp, "reports", "user_story_audit", "story_registry.json");
+    const statePath = join(planDir, "state.json");
+    const registryHash = () => createHash("sha256")
+      .update(readFileSync(registryPath, "utf-8"))
+      .digest("hex")
+      .slice(0, 32);
+
+    const initialState = readJson(statePath);
+    initialState.state = "EXECUTE";
+    initialState.registry_hash = registryHash();
+    writeJson(statePath, initialState);
+
+    writeFileSync(registryPath, `${readText(registryPath).trimEnd()}\n\n`);
+    const staleStateBytes = readText(statePath);
+    const staleState = readJson(statePath);
+    const expectedHash = registryHash();
+
+    const staleInvariant = runNode(
+      [ruleEngineScript, "check-invariants", "--smoke", "--json"],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      !staleInvariant.ok &&
+        staleInvariant.stdout.includes("registry_tampered") &&
+        readText(statePath) === staleStateBytes,
+      "ordinary invariant evaluation detects a stale registry without signing it",
+    );
+
+    const missingPlan = runNode(
+      [transitionScript, "refresh-registry", "--plan", "plan_does_not_exist"],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      !missingPlan.ok &&
+        missingPlan.stdout.includes("GATE-PLAN-001") &&
+        readText(statePath) === staleStateBytes,
+      "registry refresh fails closed when the explicit plan target is missing",
+    );
+
+    writeFileSync(statePath, "{ malformed state\n");
+    const malformedState = runNode(
+      [transitionScript, "refresh-registry", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      !malformedState.ok &&
+        malformedState.stdout.includes("Canonical plan state") &&
+        malformedState.stdout.includes("GATE-RUN-001"),
+      "registry refresh fails closed on malformed canonical state without treating missing fields as authority",
+    );
+    writeFileSync(statePath, staleStateBytes);
+
+    const dryRun = runNode(
+      [transitionScript, "refresh-registry", "--dry-run", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      dryRun.ok &&
+        dryRun.stdout.includes("TRANSITION: refresh-registry [DRY RUN]") &&
+        dryRun.stdout.includes("RESULT: PASS"),
+      "registry refresh dry-run evaluates a phase-neutral signed maintenance operation",
+    );
+    assert(
+      readText(statePath) === staleStateBytes,
+      "registry refresh dry-run leaves state.json byte-identical",
+    );
+
+    const refreshed = runNode(
+      [transitionScript, "refresh-registry", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    const refreshedState = readJson(statePath);
+    assert(
+      refreshed.ok &&
+        refreshed.stdout.includes("TRANSITION: refresh-registry") &&
+        refreshed.stdout.includes("RESULT: PASS"),
+      "actual registry refresh persists only after a passing verdict",
+    );
+    assert(
+      refreshedState.state === "EXECUTE" &&
+        JSON.stringify(refreshedState.transitions) === JSON.stringify(staleState.transitions) &&
+        refreshedState.registry_hash === expectedHash,
+      "actual registry refresh updates the signed hash without advancing phase or lifecycle history",
+    );
+    const receipt = readJson(join(
+      planDir,
+      "artifacts",
+      "transition_receipts",
+      "latest_refresh-registry.json",
+    ));
+    assert(
+      receipt.status === "PASS" &&
+        receipt.source_state === "EXECUTE" &&
+        receipt.target_state === "EXECUTE" &&
+        receipt.persistence?.state === true,
+      "registry refresh emits a durable same-state transition receipt",
+    );
+    assert(
+      !existsSync(join(planDir, "artifacts", "transition_journal.json")),
+      "successful registry refresh token-cleans its committed journal before releasing the state lock",
+    );
+
+    const stateBeforeNoOp = readText(statePath);
+    const noOp = runNode(
+      [transitionScript, "refresh-registry", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1", PLANNER_VERBOSE_CHECKS: "1" },
+    );
+    assert(
+      noOp.ok &&
+        noOp.stdout.includes("Signed hash already matches") &&
+        readText(statePath) === stateBeforeNoOp,
+      "registry refresh is an idempotent state no-op when the signed hash already matches",
+    );
+
+    writeFileSync(registryPath, `${readText(registryPath)}\n`);
+    let hashBeforeWrongPhaseGate = refreshedState.registry_hash;
+    writeFileSync(join(planDir, "state.json.lock"), String(process.pid));
+    const lockContended = runNode(
+      [transitionScript, "refresh-registry", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    rmSync(join(planDir, "state.json.lock"), { force: true });
+    assert(
+      !lockContended.ok &&
+        lockContended.stdout.includes("GATE-STA-001") &&
+        readJson(statePath).registry_hash === hashBeforeWrongPhaseGate,
+      "registry refresh refuses lock contention without signing the changed registry",
+    );
+
+    const refreshJournalPath = join(planDir, "artifacts", "transition_journal.json");
+    const refreshStateOwner = observeOwnedFile(statePath).token;
+    writeJson(refreshJournalPath, {
+      schema_version: 1,
+      gate: "refresh-registry",
+      phase: "state_published",
+      plan_id: planName,
+      transition_timestamp: "2026-08-01T00:00:00.000Z",
+      state_before: refreshStateOwner,
+      state_after: refreshStateOwner,
+      receipt_paths: [],
+      decision_status: "not_applicable",
+      updated_at: "2026-08-01T00:00:00.000Z",
+    });
+    const interruptedRefresh = runNode(
+      [transitionScript, "refresh-registry", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      !interruptedRefresh.ok &&
+        interruptedRefresh.stdout.includes("Transition journal recovery") &&
+        interruptedRefresh.stdout.includes("GATE-STA-002") &&
+        existsSync(refreshJournalPath) &&
+        readJson(statePath).registry_hash === hashBeforeWrongPhaseGate,
+      "registry refresh preserves a published interrupted journal and refuses to manufacture recovery authority",
+    );
+    rmSync(refreshJournalPath, { force: true });
+
+    writeFileSync(refreshJournalPath, "{ malformed journal\n");
+    const malformedRefreshJournal = runNode(
+      [transitionScript, "refresh-registry", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      !malformedRefreshJournal.ok &&
+        malformedRefreshJournal.stdout.includes("Transition journal recovery") &&
+        existsSync(refreshJournalPath),
+      "registry refresh preserves a malformed journal and reports its explicit recovery reason",
+    );
+    rmSync(refreshJournalPath, { force: true });
+
+    const refreshRaceStateBefore = readText(statePath);
+    const refreshRaceOwnerBefore = observeOwnedFile(statePath).token;
+    const refreshRace = runNode(
+      [transitionScript, "refresh-registry", "--plan", planName],
+      tmp,
+      {
+        NODE_ENV: "test",
+        PLANNER_ALLOW_DIRECT_STATE_SETUP: "1",
+        PLANNER_SKIP_SELF_HEAL: "1",
+        PLANNER_TEST_OWNED_STATE_RACE: "before-displace",
+      },
+    );
+    const refreshRaceOwnerAfter = observeOwnedFile(statePath).token;
+    assert(
+      !refreshRace.ok &&
+        refreshRace.stdout.includes("Canonical state persistence") &&
+        refreshRace.stdout.includes("GATE-STA-002"),
+      "registry refresh reports a coded conflict when a cooperating writer wins before displacement",
+    );
+    assert(
+      readText(statePath) === refreshRaceStateBefore &&
+        refreshRaceOwnerAfter.ino !== refreshRaceOwnerBefore.ino &&
+        !existsSync(refreshJournalPath),
+      "registry refresh preserves the same-bytes replacement owner and token-cleans only its own prepared journal",
+    );
+
+    const preparedRefreshOwner = observeOwnedFile(statePath).token;
+    writeJson(refreshJournalPath, {
+      schema_version: 1,
+      gate: "refresh-registry",
+      phase: "prepared",
+      plan_id: planName,
+      transition_timestamp: "2026-08-01T00:01:00.000Z",
+      state_before: preparedRefreshOwner,
+      state_after: null,
+      receipt_paths: [],
+      decision_status: "not_applicable",
+      updated_at: "2026-08-01T00:01:00.000Z",
+    });
+    const recoveredRefresh = runNode(
+      [transitionScript, "refresh-registry", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      recoveredRefresh.ok &&
+        readJson(statePath).registry_hash === registryHash() &&
+        !existsSync(refreshJournalPath),
+      "registry refresh abort-cleans an owned prepared journal before committing the current refresh",
+    );
+    hashBeforeWrongPhaseGate = readJson(statePath).registry_hash;
+    writeFileSync(registryPath, `${readText(registryPath)}\n`);
+
+    const wrongPhase = runNode(
+      [transitionScript, "validate-to-close", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      !wrongPhase.ok &&
+        readJson(statePath).registry_hash === hashBeforeWrongPhaseGate,
+      "a failed ordinary transition cannot sign a changed story registry",
+    );
+
+    const executableState = readJson(statePath);
+    const closedState = { ...executableState, state: "CLOSE" };
+    writeJson(statePath, closedState);
+    const closedStateBytes = readText(statePath);
+    const postClose = runNode(
+      [transitionScript, "refresh-registry", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      !postClose.ok &&
+        postClose.stdout.includes("GATE-GAR-001") &&
+        readText(statePath) === closedStateBytes,
+      "registry refresh refuses post-close mutation without changing canonical state",
+    );
+    writeJson(statePath, executableState);
+
+    const registryBeforeMissing = readText(registryPath);
+    rmSync(registryPath);
+    const missingRegistry = runNode(
+      [transitionScript, "refresh-registry", "--dry-run", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      !missingRegistry.ok &&
+        missingRegistry.stdout.includes("GATE-SEM-002") &&
+        readJson(statePath).registry_hash === hashBeforeWrongPhaseGate,
+      "registry refresh refuses a missing story registry without changing signed state",
+    );
+    writeFileSync(registryPath, registryBeforeMissing);
+
+    const stateBeforeMalformed = readJson(statePath);
+    writeFileSync(registryPath, "{ malformed registry\n");
+    const malformed = runNode(
+      [transitionScript, "refresh-registry", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      !malformed.ok &&
+        malformed.stdout.includes("GATE-SEM-002") &&
+        readJson(statePath).registry_hash === stateBeforeMalformed.registry_hash,
+      "registry refresh refuses malformed registry content without changing the signed hash",
+    );
+
+    const stateBeforeUnknownFlag = readText(statePath);
+    const unknownFlag = runNode(
+      [transitionScript, "refresh-registry", "--unsupported-refresh-flag", "--plan", planName],
+      tmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      !unknownFlag.ok &&
+        (unknownFlag.stderr.includes("Unknown flag") || unknownFlag.stdout.includes("Unknown flag")) &&
+        readText(statePath) === stateBeforeUnknownFlag,
+      "transition CLI rejects unknown flags instead of silently executing a mutation",
+    );
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -5657,6 +6380,8 @@ function scenarioOpportunityStagnationBlocksValidateToClose() {
 function scenarioTransitionBlocksMissingMistakeHookTarget() {
   const cleanIntegrity = mistakeHookTargetIntegrityResult([]);
   assert(cleanIntegrity.status === "PASS", "hook-target integrity helper accepts an empty missing-target set");
+  const malformedIntegrity = mistakeHookTargetIntegrityResult(null);
+  assert(malformedIntegrity.status === "PASS", "hook-target integrity helper treats malformed optional input as an empty safe set");
   const missingIntegrity = mistakeHookTargetIntegrityResult([{
     mistake_id: "M-DIRECT-MISSING",
     hook: "test_missing_direct",
@@ -5667,6 +6392,17 @@ function scenarioTransitionBlocksMissingMistakeHookTarget() {
     missingIntegrity.detail.includes("mistake_verification_hook_target_missing(M-DIRECT-MISSING, test_missing_direct)"),
     "hook-target integrity helper emits the deterministic diagnostic",
   );
+
+  const missingNotifyPlan = makeTemp("notify-user-missing-state");
+  try {
+    const notification = gateNotifyUser(missingNotifyPlan);
+    assert(
+      notification.some((entry) => entry.code === "GATE-NTF-003" && entry.detail.includes("State: UNKNOWN")),
+      "notify-user diagnostic names an absent canonical state as UNKNOWN",
+    );
+  } finally {
+    rmSync(missingNotifyPlan, { recursive: true, force: true });
+  }
 
   const tmp = makeTemp("missing-mistake-hook-target");
   try {
@@ -5815,11 +6551,53 @@ function scenarioTransitionIntegrityFailureReceipts() {
   const cooldownTmp = makeTemp("transition-cooldown");
   const decisionLogTmp = makeTemp("transition-decision-log-lock");
   const stateLockTmp = makeTemp("transition-state-lock");
+  const journalTmp = makeTemp("transition-published-journal");
+  const stateRaceTmp = makeTemp("transition-state-owner-race");
+  const preparedJournalTmp = makeTemp("transition-prepared-journal");
   try {
     const noPlan = runNode([transitionScript, "explore-to-plan"], noPlanTmp, { PLANNER_SKIP_SELF_HEAL: "1" });
     assert(!noPlan.ok, "transition blocks when no canonical plan target exists");
     assert(noPlan.stdout.includes("GATE-PLAN-001"), "missing-plan verdict publishes the stable failure code");
     assert(noPlan.stdout.includes("NEXT:") && noPlan.stdout.includes("WHY:"), "missing-plan verdict publishes exact NEXT and WHY guidance");
+    const noPlanRefresh = runNode([transitionScript, "refresh-registry"], noPlanTmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(
+      !noPlanRefresh.ok &&
+        noPlanRefresh.stdout.includes("Plan: unknown") &&
+        noPlanRefresh.stdout.includes("GATE-PLAN-001"),
+      "registry refresh without an explicit or active target fails closed on the unknown-target branch",
+    );
+    const planningOnlyNoPlan = runNode([verifyGateScript, "plan-to-execute", "--planning-only"], noPlanTmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(
+      !planningOnlyNoPlan.ok &&
+        planningOnlyNoPlan.stderr.includes("No target plan") &&
+        planningOnlyNoPlan.stderr.includes("planning-only validation now requires a plan spine"),
+      "planning-only verification fails closed with its explicit no-plan contract",
+    );
+    const legacyNoPlan = runNode([verifyGateScript, "reflect-to-close"], noPlanTmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(
+      !legacyNoPlan.ok &&
+        legacyNoPlan.stdout.includes("DIAGNOSTIC ONLY") &&
+        legacyNoPlan.stderr.includes("No target plan"),
+      "legacy diagnostic verification remains explicit and fails closed without a target",
+    );
+    const healthHelp = runNode([projectHealthScript, "--help"], noPlanTmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(healthHelp.ok && healthHelp.stdout.includes("Usage:"), "project-health help exits through the governed read-only branch");
+    const healthList = runNode([projectHealthScript, "--list"], noPlanTmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(healthList.ok && healthList.stdout.includes("Available analyzers"), "project-health lists its analyzer inventory without running a scan");
+    const invalidEscalation = runNode([escalationCheckScript, "log", "not-an-audit"], noPlanTmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(
+      !invalidEscalation.ok && invalidEscalation.stderr.includes("Invalid audit type"),
+      "escalation logging rejects an unknown audit type before mutation",
+    );
+    const invalidCoverageTarget = runNode(
+      [escalationCheckScript, "log", "red-team", "--covers", "NOT_HEAD"],
+      noPlanTmp,
+      { PLANNER_SKIP_SELF_HEAL: "1" },
+    );
+    assert(
+      !invalidCoverageTarget.ok && invalidCoverageTarget.stderr.includes("accepts only \"HEAD\""),
+      "escalation logging rejects an unsupported coverage target before mutation",
+    );
 
     const { planDir: preparePlanDir } = seedCopiedPlannerProject(prepareTmp, "transition preparation unavailable fixture");
     writeFindingsLedger(preparePlanDir);
@@ -5946,8 +6724,109 @@ function scenarioTransitionIntegrityFailureReceipts() {
     const stateLockReceipt = readJson(join(stateLockPlanDir, "artifacts", "transition_receipts", "latest_explore-to-plan.json"));
     assert(stateLockReceipt.hard_blocks.some((row) => row.code === "GATE-STA-001" && row.next && row.why), "state-lock failure receipt persists code, NEXT, and WHY");
     assert(readJson(join(stateLockPlanDir, "state.json")).state === "EXPLORE", "state-lock failure does not advance canonical state");
+
+    const journalPlanDir = seedProject(journalTmp, "transition published journal recovery fixture");
+    writeFindingsLedger(journalPlanDir);
+    const journalStatePath = join(journalPlanDir, "state.json");
+    const journalStateBefore = readText(journalStatePath);
+    const journalStateOwner = observeOwnedFile(journalStatePath).token;
+    const journalPath = join(journalPlanDir, "artifacts", "transition_journal.json");
+    mkdirSync(join(journalPlanDir, "artifacts"), { recursive: true });
+    writeJson(journalPath, {
+      schema_version: 1,
+      gate: "explore-to-plan",
+      phase: "state_published",
+      plan_id: basename(journalPlanDir),
+      transition_timestamp: "2026-08-01T00:00:00.000Z",
+      state_before: journalStateOwner,
+      state_after: journalStateOwner,
+      receipt_paths: [],
+      decision_status: "pending",
+      updated_at: "2026-08-01T00:00:00.000Z",
+    });
+    const publishedJournal = runNode([transitionScript, "explore-to-plan"], journalTmp, {
+      _PLANNER_FAST_TRACK: "1",
+      PLANNER_SKIP_SELF_HEAL: "1",
+    });
+    assert(
+      !publishedJournal.ok &&
+        publishedJournal.stdout.includes("Transition journal recovery") &&
+        publishedJournal.stdout.includes("GATE-STA-002"),
+      "ordinary transition blocks a published interrupted journal for explicit reconciliation",
+    );
+    assert(
+      existsSync(journalPath) && readText(journalStatePath) === journalStateBefore,
+      "ordinary transition preserves the interrupted journal and canonical owner",
+    );
+    writeFileSync(journalPath, "{ malformed journal\n");
+    const malformedJournal = runNode([transitionScript, "explore-to-plan"], journalTmp, {
+      _PLANNER_FAST_TRACK: "1",
+      PLANNER_SKIP_SELF_HEAL: "1",
+    });
+    assert(
+      !malformedJournal.ok &&
+        malformedJournal.stdout.includes("Transition journal recovery") &&
+        existsSync(journalPath) &&
+        readText(journalStatePath) === journalStateBefore,
+      "ordinary transition preserves a malformed journal and reports its explicit recovery reason",
+    );
+
+    const stateRacePlanDir = seedProject(stateRaceTmp, "transition cooperating state owner race fixture");
+    writeFindingsLedger(stateRacePlanDir);
+    const stateRacePath = join(stateRacePlanDir, "state.json");
+    const stateRaceBytesBefore = readText(stateRacePath);
+    const stateRaceOwnerBefore = observeOwnedFile(stateRacePath).token;
+    const stateRace = runNode([transitionScript, "explore-to-plan"], stateRaceTmp, {
+      _PLANNER_FAST_TRACK: "1",
+      NODE_ENV: "test",
+      PLANNER_ALLOW_DIRECT_STATE_SETUP: "1",
+      PLANNER_SKIP_SELF_HEAL: "1",
+      PLANNER_TEST_OWNED_STATE_RACE: "before-displace",
+    });
+    const stateRaceOwnerAfter = observeOwnedFile(stateRacePath).token;
+    assert(
+      !stateRace.ok &&
+        stateRace.stdout.includes("Canonical state persistence") &&
+        stateRace.stdout.includes("GATE-STA-002"),
+      "ordinary transition returns a coded persistence conflict when a cooperating state owner wins",
+    );
+    assert(
+      readText(stateRacePath) === stateRaceBytesBefore &&
+        stateRaceOwnerAfter.ino !== stateRaceOwnerBefore.ino &&
+        existsSync(join(stateRacePlanDir, "artifacts", "transition_journal.json")),
+      "ordinary transition preserves the same-bytes replacement owner and the unresolved prepared journal",
+    );
+
+    const preparedPlanDir = seedProject(preparedJournalTmp, "transition prepared journal abort fixture");
+    writeFindingsLedger(preparedPlanDir);
+    const preparedStatePath = join(preparedPlanDir, "state.json");
+    const preparedStateOwner = observeOwnedFile(preparedStatePath).token;
+    const preparedJournalPath = join(preparedPlanDir, "artifacts", "transition_journal.json");
+    mkdirSync(join(preparedPlanDir, "artifacts"), { recursive: true });
+    writeJson(preparedJournalPath, {
+      schema_version: 1,
+      gate: "explore-to-plan",
+      phase: "prepared",
+      plan_id: basename(preparedPlanDir),
+      transition_timestamp: "2026-08-01T00:01:00.000Z",
+      state_before: preparedStateOwner,
+      state_after: null,
+      receipt_paths: [],
+      decision_status: "pending",
+      updated_at: "2026-08-01T00:01:00.000Z",
+    });
+    const preparedJournal = runNode([transitionScript, "explore-to-plan"], preparedJournalTmp, {
+      _PLANNER_FAST_TRACK: "1",
+      PLANNER_SKIP_SELF_HEAL: "1",
+    });
+    assert(
+      preparedJournal.ok &&
+        readJson(preparedStatePath).state === "PLAN" &&
+        !existsSync(preparedJournalPath),
+      "ordinary transition abort-cleans an owned prepared journal before committing the current gate",
+    );
   } finally {
-    for (const tmp of [noPlanTmp, prepareTmp, thrashTmp, circuitTmp, cooldownTmp, decisionLogTmp, stateLockTmp]) {
+    for (const tmp of [noPlanTmp, prepareTmp, thrashTmp, circuitTmp, cooldownTmp, decisionLogTmp, stateLockTmp, journalTmp, stateRaceTmp, preparedJournalTmp]) {
       try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
     }
   }
@@ -6582,6 +7461,7 @@ scenarioBootstrapCreationPersistsExplicitProofPosture();
 // scenarioVerificationMatrixCoversTableCriteriaAndProseProofRows();
 // scenarioPlanGatePrintsLowLevelAgentPacket();
 scenarioPlanningOnlyGatePassesWithAuditBackedPlan();
+scenarioSafePlanPromotionPreservesForeignPointerInParallelMode();
 // scenarioPlanningOnlyGateBlocksMissingRetros();
 // scenarioPlanningOnlyGateBlocksMissingExactTestInventory();
 // scenarioPlanningOnlyGateBlocksMissingRedTeamReview();
@@ -6595,14 +7475,29 @@ scenarioSemanticDivergencePrecisionContract();
 scenarioUnmappedSourceDivergenceRemainsLoud();
 // scenarioReflectTransitionBlocksMissingActiveMistakeHookEvidence();
 // scenarioReflectTransitionAcceptsMarkdownWrappedActiveMistakeHookEvidence();
-// scenarioResetCircuitBreaker();
-// scenarioHistoryPoisonDiagnosesButAllowsValidTransition();
+function scenarioTransitionCliValidationAndHelp() {
+  const helpResult = runNode([transitionScript, "--help"], repoRoot);
+  assert(helpResult.ok && helpResult.stdout.includes("Usage:"), "transition --help exits cleanly with usage");
+
+  const missingPlanFlag = runNode([transitionScript, "explore-to-plan", "--plan"], repoRoot);
+  assert(!missingPlanFlag.ok && missingPlanFlag.stderr.includes("--plan requires a plan directory value"), "transition --plan without value fails closed");
+
+  const unknownFlag = runNode([transitionScript, "explore-to-plan", "--invalid-flag"], repoRoot);
+  assert(!unknownFlag.ok && unknownFlag.stderr.includes("Unknown flag"), "transition with unknown flag fails closed");
+
+  const unknownGate = runNode([transitionScript, "invalid-gate-name"], repoRoot);
+  assert(!unknownGate.ok && unknownGate.stderr.includes("Unknown gate"), "transition with unknown gate fails closed");
+}
+
+scenarioTransitionCliValidationAndHelp();
 // scenarioRetryDiagnosticTimeoutCoversSlowGateTruth();
 // scenarioReverseDivergenceStaysDiagnostic();
 // scenarioKbUpdateCloseGate();
 // scenarioValidateToCloseIgnoresZeroFailSummaries();
 scenarioValidateCloseScopesAsyncDriftMaintenanceToPlanFiles();
+scenarioValidateCloseEnforcesFreshTruthConvergence();
 scenarioValidateClosePreflightAlignsStatusAndStaysReadOnly();
+scenarioRegistryRefreshIsPhaseNeutralAndVerdictBound();
 // scenarioPlannerCoreCloseNeedsJourneyProof();
 // scenarioCodeChangesNeedTestEvidence();
 // scenarioStaticUiManualObservationSatisfiesClose();
@@ -6627,10 +7522,11 @@ scenarioSemanticChecksReuseSharedRefreshSnapshot();
 // scenarioLearnedObligationCloseBlocksDegradedSourceRegistry();
 scenarioRuleEngineSmokeModeDoesNotWrite();
 // scenarioIntentEvidenceRequiredForClose();
-// scenarioStalePlanReadWarns();
-// scenarioStalePlanEditBlocks();
+scenarioStalePlanReadWarns();
+scenarioStalePlanEditBlocks();
 // scenarioOpportunityStagnationBlocksPlanToExecute();
 // scenarioOpportunityStagnationBlocksValidateToClose();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
+

@@ -3,6 +3,7 @@
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
 import { join, resolve } from "path";
+import { emitJson } from "./lib/emit_json.mjs";
 import { resolveRecipeRequest } from "./lib/recipe_utils.mjs";
 
 const args = process.argv.slice(2);
@@ -612,23 +613,22 @@ const payload = {
 };
 
 if (flags.json) {
-  console.log(JSON.stringify(payload, null, 2));
-  process.exit(0);
-}
-
-console.log("Recipe Bootstrap");
-console.log(`Goal: ${goalText || "(not provided)"}`);
-console.log(`Suggested recipe: ${scaffold.ids.recipeId}`);
-console.log(`Suggested capability: ${scaffold.ids.capabilityId}`);
-if (scaffold.ids.entityId) {
-  console.log(`Suggested entity: ${scaffold.ids.entityId}`);
-}
-if (discovery?.candidate?.id) {
-  console.log(`Discovery candidate: ${discovery.candidate.id}`);
-}
-console.log(`Route: ${scaffold.route}`);
-if (flags.apply) {
-  console.log(`Applied actions: ${(applyResult?.actions || []).join(", ") || "none"}`);
+  emitJson(payload, { exitCode: 0 });
 } else {
-  console.log("Dry preview only. Re-run with --apply to write files.");
+  console.log("Recipe Bootstrap");
+  console.log(`Goal: ${goalText || "(not provided)"}`);
+  console.log(`Suggested recipe: ${scaffold.ids.recipeId}`);
+  console.log(`Suggested capability: ${scaffold.ids.capabilityId}`);
+  if (scaffold.ids.entityId) {
+    console.log(`Suggested entity: ${scaffold.ids.entityId}`);
+  }
+  if (discovery?.candidate?.id) {
+    console.log(`Discovery candidate: ${discovery.candidate.id}`);
+  }
+  console.log(`Route: ${scaffold.route}`);
+  if (flags.apply) {
+    console.log(`Applied actions: ${(applyResult?.actions || []).join(", ") || "none"}`);
+  } else {
+    console.log("Dry preview only. Re-run with --apply to write files.");
+  }
 }

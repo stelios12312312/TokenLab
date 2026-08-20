@@ -43,7 +43,10 @@ assert(!directFixture.has("test_fixture_only.mjs"), "gated-test metric rejects f
 
 // ── dead-load: parsed import graph, NOT regex over-count ──
 const dl = deadLoadLibs();
-assert(dl.dead.includes("audit_freshness.mjs"), "audit_freshness (zero refs) is flagged truly-dead");
+assert(
+  !dl.dead.includes("audit_freshness.mjs") && !(dl.importOrphaned || []).includes("audit_freshness.mjs"),
+  "audit_freshness is live through truth-surface convergence",
+);
 assert(dl.dead.includes("diagnosis_artifact.mjs"), "diagnosis_artifact (zero refs) is flagged truly-dead");
 assert(dl.dead.includes("objective_claims.mjs"), "objective_claims (zero refs) is flagged truly-dead");
 // A heavily-imported core lib must NOT be flagged dead or orphaned — guards against

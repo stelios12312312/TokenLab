@@ -15,6 +15,7 @@
 import { readFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import { emitJson } from "./lib/emit_json.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -246,9 +247,10 @@ if (!specificGate) {
 
 const totalGaps = results.reduce((sum, r) => sum + r.gaps.length, 0);
 const hardGaps = results.reduce((sum, r) => sum + r.gaps.filter(g => g.severity !== "warn").length, 0);
+const exitCode = hardGaps > 0 ? 1 : 0;
 
 if (jsonMode) {
-  console.log(JSON.stringify({ results, summary: { gates: results.length, total_gaps: totalGaps, hard_gaps: hardGaps } }, null, 2));
+  emitJson({ results, summary: { gates: results.length, total_gaps: totalGaps, hard_gaps: hardGaps } }, { exitCode });
 } else {
   console.log("\n  ══ RIPPLE-THROUGH CHECK ══\n");
   for (const r of results) {
@@ -267,6 +269,5 @@ if (jsonMode) {
   } else {
     console.log("  RESULT: ✅ All gates fully documented\n");
   }
+  process.exitCode = exitCode;
 }
-
-process.exit(hardGaps > 0 ? 1 : 0);

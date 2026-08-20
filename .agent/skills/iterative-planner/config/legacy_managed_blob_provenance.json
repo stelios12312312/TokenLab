@@ -21,6 +21,42 @@
         "10.0.0",
         "10.2.0"
       ]
+    },
+    {
+      "path": ".agent/skills/iterative-planner/scripts/snapshot_branch_protection.mjs",
+      "git_blob": "57bd914c0161a09f725c67539a1630d699421e0e",
+      "evidence": "legacy_fleet_release_cohort",
+      "matching_installations": 5,
+      "observed_versions": [
+        "10.0.0"
+      ]
+    },
+    {
+      "path": ".agent/skills/iterative-planner/scripts/hooks/pre-push",
+      "git_blob": "3bbcd8dc7397af071877b662d9a3e798971b279e",
+      "evidence": "legacy_fleet_release_cohort",
+      "matching_installations": 5,
+      "observed_versions": [
+        "10.0.0"
+      ]
+    },
+    {
+      "path": ".agent/skills/iterative-planner/scripts/hooks/pre_push_conformance.mjs",
+      "git_blob": "64a6a17dd032cfb18609b14d1947083f42cb32b1",
+      "evidence": "legacy_fleet_release_cohort",
+      "matching_installations": 5,
+      "observed_versions": [
+        "10.0.0"
+      ]
+    },
+    {
+      "path": ".agent/skills/iterative-planner/tests/test_ci_enforcement_contracts.mjs",
+      "git_blob": "2d9c9c63a9f8cbb6dedbde0769c51fc78ca9d545",
+      "evidence": "legacy_fleet_release_cohort",
+      "matching_installations": 5,
+      "observed_versions": [
+        "10.0.0"
+      ]
     }
   ]
 }

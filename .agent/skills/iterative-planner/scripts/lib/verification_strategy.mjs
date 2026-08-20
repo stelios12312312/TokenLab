@@ -86,6 +86,15 @@ function isMeaningfulString(value) {
   return typeof value === "string" && value.trim() && !PLACEHOLDER_PATTERN.test(value.trim());
 }
 
+function isRecord(value) {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeCriterionIdentity(value) {
+  if (typeof value !== "string") return "";
+  return value.trim().replace(/\s+/g, " ").toUpperCase();
+}
+
 function normalizeStringArray(value) {
   if (!Array.isArray(value)) return [];
   return value
@@ -108,16 +117,45 @@ function loadStoryRegistryDocument(cwd) {
 }
 
 function loadStoryRegistryIds(cwd) {
+  return loadStoryRegistryIndex(cwd).ids;
+}
+
+function buildRegistryCriterionId(storyId, index) {
+  return `AC-${String(storyId).replace(/[^A-Za-z0-9]+/g, "-")}-${String(index).padStart(3, "0")}`;
+}
+
+function loadStoryRegistryIndex(cwd) {
   const registry = loadStoryRegistryDocument(cwd).document;
   const stories = [
     ...(Array.isArray(registry?.stories) ? registry.stories : []),
     ...(Array.isArray(registry?.infrastructure_stories) ? registry.infrastructure_stories : []),
   ];
-  return new Set(
-    stories
-      .map((story) => (typeof story?.id === "string" ? story.id.trim() : ""))
-      .filter(Boolean)
-  );
+  const ids = new Set();
+  const criterionIdsByStory = new Map();
+  const criterionOwners = new Map();
+
+  for (const story of stories) {
+    const storyId = typeof story?.id === "string" ? story.id.trim() : "";
+    if (!storyId) continue;
+    ids.add(storyId);
+    const criterionIds = new Set();
+    const rawCriteria = Array.isArray(story.acceptance_criteria) && story.acceptance_criteria.length > 0
+      ? story.acceptance_criteria
+      : [null];
+    rawCriteria.forEach((criterion, index) => {
+      const explicitId = criterion && typeof criterion === "object" && typeof criterion.id === "string"
+        ? criterion.id.trim()
+        : "";
+      const criterionId = explicitId || buildRegistryCriterionId(storyId, index + 1);
+      criterionIds.add(criterionId);
+      const owners = criterionOwners.get(criterionId) || new Set();
+      owners.add(storyId);
+      criterionOwners.set(criterionId, owners);
+    });
+    criterionIdsByStory.set(storyId, criterionIds);
+  }
+
+  return { ids, criterionIdsByStory, criterionOwners };
 }
 
 function isIsoTimestamp(value) {
@@ -231,7 +269,7 @@ function applyProofWeightDefaultsToCriterion(criterion, proofWeights) {
 }
 
 function normalizeVerificationStrategyDocument({ cwd = process.cwd(), document }) {
-  if (!document || typeof document !== "object" || !document.verification_strategy || typeof document.verification_strategy !== "object") {
+  if (!isRecord(document) || !isRecord(document.verification_strategy)) {
     return document;
   }
 
@@ -241,8 +279,12 @@ function normalizeVerificationStrategyDocument({ cwd = process.cwd(), document }
     verification_strategy: {
       ...strategy,
       criteria: Array.isArray(strategy.criteria)
-        ? strategy.criteria.map((criterion) => applyProofWeightDefaultsToCriterion(criterion, proofWeights))
-        : [],
+        ? strategy.criteria.map((criterion) =>
+            isRecord(criterion)
+              ? applyProofWeightDefaultsToCriterion(criterion, proofWeights)
+              : criterion
+          )
+        : strategy.criteria,
     },
   };
 }
@@ -817,6 +859,69 @@ export function readVerificationStrategyDocument(planDir) {
   }
 }
 
+export function validateSelectedVerificationStrategyDocument({ document, planId } = {}) {
+  const issues = [];
+  if (!isRecord(document) || !isRecord(document.verification_strategy)) {
+    return {
+      ok: false,
+      strategy: null,
+      criteria: [],
+      issues: ["verification_strategy root object missing"],
+    };
+  }
+
+  const strategy = document.verification_strategy;
+  if (strategy.version !== 1) {
+    issues.push("verification_strategy.version must be 1");
+  }
+  if (strategy.plan_id !== planId) {
+    issues.push(`verification_strategy.plan_id must match ${planId}`);
+  }
+  if (!Array.isArray(strategy.criteria)) {
+    issues.push("verification_strategy.criteria must be an array");
+    return {
+      ok: false,
+      strategy,
+      criteria: [],
+      issues,
+    };
+  }
+
+  const identities = new Map();
+  for (const [index, criterion] of strategy.criteria.entries()) {
+    if (!isRecord(criterion)) {
+      issues.push(`verification_strategy.criteria[${index}] must be an object`);
+      continue;
+    }
+
+    const normalizedId = normalizeCriterionIdentity(criterion.id);
+    if (!normalizedId) {
+      issues.push(`verification_strategy.criteria[${index}].id must be a non-empty string`);
+      continue;
+    }
+
+    const identityPlan = typeof planId === "string" && planId.trim()
+      ? planId.trim()
+      : String(strategy.plan_id || "").trim();
+    const identityKey = `${identityPlan.toUpperCase()}:${normalizedId}`;
+    const firstIndex = identities.get(identityKey);
+    if (firstIndex !== undefined) {
+      issues.push(
+        `duplicate verification criterion identity ${identityPlan}:${normalizedId} (criteria[${firstIndex}] and criteria[${index}])`
+      );
+      continue;
+    }
+    identities.set(identityKey, index);
+  }
+
+  return {
+    ok: issues.length === 0,
+    strategy,
+    criteria: strategy.criteria,
+    issues,
+  };
+}
+
 export function readEffectiveVerificationStrategy({ cwd = process.cwd(), planDir, planContent = null } = {}) {
   const resolvedPlanContent = typeof planContent === "string"
     ? planContent
@@ -952,7 +1057,14 @@ export function scaffoldVerificationStrategy({ cwd = process.cwd(), planDir, for
   };
 }
 
-function validateCriterion(criterion, { registryIds, issues, warnings, proofWeights }) {
+function validateCriterion(criterion, {
+  registryIds,
+  registryCriterionIdsByStory,
+  registryCriterionOwners,
+  issues,
+  warnings,
+  proofWeights,
+}) {
   const label = criterion?.id || criterion?.criterion || "<missing criterion>";
 
   if (!isMeaningfulString(criterion?.id)) issues.push(`criterion ${label}: id is required`);
@@ -969,6 +1081,28 @@ function validateCriterion(criterion, { registryIds, issues, warnings, proofWeig
     }
   } else if (storyId && !registryIds.has(storyId)) {
     warnings.push(`criterion ${label}: story_id ${storyId} was provided but no story_registry.json is present to validate it`);
+  }
+
+  const storyCriterionId = typeof criterion?.story_criterion_id === "string"
+    ? criterion.story_criterion_id.trim()
+    : criterion?.story_criterion_id;
+  if (criterion?.story_criterion_id !== undefined && criterion?.story_criterion_id !== null) {
+    if (!isMeaningfulString(storyCriterionId)) {
+      issues.push(`criterion ${label}: story_criterion_id must be a non-empty string when present`);
+    } else if (!storyId) {
+      issues.push(`criterion ${label}: story_criterion_id ${storyCriterionId} requires story_id`);
+    } else if (registryIds.size > 0) {
+      const ownedCriterionIds = registryCriterionIdsByStory.get(storyId) || new Set();
+      if (!ownedCriterionIds.has(storyCriterionId)) {
+        issues.push(`criterion ${label}: story_criterion_id ${storyCriterionId} does not belong to story_id ${storyId}`);
+      }
+      const owners = registryCriterionOwners.get(storyCriterionId) || new Set();
+      if (owners.size > 1) {
+        issues.push(`criterion ${label}: story_criterion_id ${storyCriterionId} is declared by multiple stories (${[...owners].sort().join(", ")})`);
+      }
+    } else {
+      warnings.push(`criterion ${label}: story_criterion_id ${storyCriterionId} was provided but no story_registry.json is present to validate it`);
+    }
   }
 
   if (!criterion?.implementation || typeof criterion.implementation !== "object") {
@@ -1105,7 +1239,8 @@ export function lintVerificationStrategy({ cwd = process.cwd(), planDir, planCon
   const warnings = [...(readResult.warnings || [])];
   const criterionMatches = [];
   const resolvedStoryIds = [];
-  const registryIds = loadStoryRegistryIds(cwd);
+  const registryIndex = loadStoryRegistryIndex(cwd);
+  const registryIds = registryIndex.ids;
   const proofWeights = loadEffectiveProofWeights(cwd);
 
   if (!readResult.ok) {
@@ -1125,11 +1260,12 @@ export function lintVerificationStrategy({ cwd = process.cwd(), planDir, planCon
 
   const strategy = readResult.strategy;
   const planId = basename(planDir);
-  if (!strategy || typeof strategy !== "object") {
-    issues.push("verification_strategy root object missing");
-  } else {
-    if (strategy.version !== 1) issues.push("verification_strategy.version must be 1");
-    if (strategy.plan_id !== planId) issues.push(`verification_strategy.plan_id must match ${planId}`);
+  const structural = validateSelectedVerificationStrategyDocument({
+    document: readResult.document,
+    planId,
+  });
+  issues.push(...structural.issues);
+  if (isRecord(strategy)) {
     if (!isIsoTimestamp(strategy.created_at)) issues.push("verification_strategy.created_at must be an ISO8601 timestamp");
     if (!isIsoTimestamp(strategy.updated_at)) issues.push("verification_strategy.updated_at must be an ISO8601 timestamp");
     if (!isMeaningfulString(strategy.repo_system_context)) issues.push("verification_strategy.repo_system_context is required");
@@ -1148,7 +1284,16 @@ export function lintVerificationStrategy({ cwd = process.cwd(), planDir, planCon
     if (criteria.length === 0) {
       issues.push("verification_strategy.criteria must contain at least one criterion");
     } else {
-      for (const criterion of criteria) validateCriterion(criterion, { registryIds, issues, warnings, proofWeights });
+      for (const criterion of criteria) {
+        validateCriterion(criterion, {
+          registryIds,
+          registryCriterionIdsByStory: registryIndex.criterionIdsByStory,
+          registryCriterionOwners: registryIndex.criterionOwners,
+          issues,
+          warnings,
+          proofWeights,
+        });
+      }
     }
 
     const successCriteria = extractSuccessCriteria(resolvedPlanContent);

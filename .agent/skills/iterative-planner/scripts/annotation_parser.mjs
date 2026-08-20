@@ -27,6 +27,7 @@
 import { readFileSync, existsSync, readdirSync, statSync, realpathSync } from "fs";
 import { join, relative, extname, resolve } from "path";
 import { sanitizeAtom, sanitizeStrictId } from "./lib/sanitize.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -143,16 +144,11 @@ function walkDir(dir, baseDir, files = []) {
 // Annotation parser
 // ---------------------------------------------------------------------------
 
-function parseAnnotations(filePath, baseDir) {
-  const fullPath = join(baseDir, filePath);
+function parseAnnotationsFromContent(filePath, content) {
   const ext = extname(filePath);
   const prefixes = COMMENT_PREFIXES[ext];
   if (!prefixes) return [];
-
-  let content;
-  try {
-    content = readFileSync(fullPath, "utf-8");
-  } catch { return []; }
+  if (typeof content !== "string") return [];
 
   const annotations = [];
   const lines = content.split("\n");
@@ -241,6 +237,15 @@ function parseAnnotations(filePath, baseDir) {
   }
 
   return annotations;
+}
+
+function parseAnnotations(filePath, baseDir) {
+  const fullPath = join(baseDir, filePath);
+  let content;
+  try {
+    content = readFileSync(fullPath, "utf-8");
+  } catch { return []; }
+  return parseAnnotationsFromContent(filePath, content);
 }
 
 // ---------------------------------------------------------------------------
@@ -643,6 +648,11 @@ for (const file of files) {
 }
 
 // Output
+const validationErrors = flags.validate ? validate(allAnnotations, baseDir) : [];
+const parseErrors = flags.validate ? allAnnotations.filter(a => a.error) : [];
+const fails = validationErrors.filter(e => e.severity === "fail");
+const warns = validationErrors.filter(e => e.severity === "warn");
+
 if (flags.prolog) {
   const prologOutput = toPrologFacts(allAnnotations);
   if (prologOutput) {
@@ -662,22 +672,16 @@ if (flags.turtle) {
 if (flags.json) {
   const report = toJSON(allAnnotations, baseDir);
   report.summary.total_files_scanned = files.length;
-  console.log(JSON.stringify(report, null, 2));
+  emitJson(report, { exitCode: flags.validate && fails.length > 0 ? 1 : 0 });
 }
 
 if (flags.validate) {
-  const validationErrors = validate(allAnnotations, baseDir);
-  const parseErrors = allAnnotations.filter(a => a.error);
-
   if (validationErrors.length === 0 && parseErrors.length === 0) {
     if (!flags.json) {
       console.log(`✅ All ${allAnnotations.length} annotations valid (${files.length} files scanned).`);
+      process.exit(0);
     }
-    process.exit(0);
   } else {
-    const fails = validationErrors.filter(e => e.severity === "fail");
-    const warns = validationErrors.filter(e => e.severity === "warn");
-
     for (const e of fails) {
       console.error(`❌ ${e.file}:${e.line} — ${e.error}`);
     }
@@ -690,12 +694,12 @@ if (flags.validate) {
 
     if (!flags.json) {
       console.log(`\n${fails.length} errors, ${warns.length + parseErrors.length} warnings (${allAnnotations.length} annotations, ${files.length} files)`);
+      process.exit(fails.length > 0 ? 1 : 0);
     }
-    process.exit(fails.length > 0 ? 1 : 0);
   }
 }
 
-if (flags.coverage) {
+if (flags.coverage && !flags.validate) {
   const report = coverageReport(allAnnotations, baseDir);
   console.log("Annotation Coverage Report");
   console.log("=========================\n");
@@ -720,4 +724,12 @@ if (flags.coverage) {
 } // end _runCli
 
 // Export for use by packs
-export { parseAnnotations, toPrologFacts, toTurtle, validate, walkDir, groupByFile };
+export {
+  parseAnnotations,
+  parseAnnotationsFromContent,
+  toPrologFacts,
+  toTurtle,
+  validate,
+  walkDir,
+  groupByFile,
+};

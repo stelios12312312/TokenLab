@@ -131,6 +131,31 @@ function getCloseSignals(planDir) {
   return transientCloseSignals || readStateJson(planDir)?.close_signals;
 }
 
+function resolveTruthConvergenceSignal(planDir) {
+  const signal = getCloseSignals(planDir)?.truth_convergence;
+  if (signal && typeof signal.satisfied === "boolean") {
+    const blockers = Array.isArray(signal.blockers) ? signal.blockers : [];
+    return {
+      required: signal.required === true,
+      satisfied: signal.satisfied === true,
+      status: signal.status || "unknown",
+      blockers,
+      detail: signal.required !== true
+        ? "Structured close signal: truth-surface convergence is not required for this plan"
+        : signal.satisfied
+          ? `Structured close signal: ${signal.scope?.kind || "scoped"} truth surfaces converge`
+          : `Truth-surface convergence is ${signal.status || "unsatisfied"}; ${blockers.length} blocker(s): ${blockers.slice(0, 8).join(", ") || "unclassified"}`,
+    };
+  }
+  return {
+    required: false,
+    satisfied: true,
+    status: "not_required",
+    blockers: [],
+    detail: "Legacy/unrelated plan: no truth-surface convergence contract is required",
+  };
+}
+
 function normalizeVerdict(value) {
   const firstLine = String(value || "")
     .split("\n")
@@ -3268,6 +3293,13 @@ function gateValidateToClose(planDir, options = {}) {
     stagnation.satisfied ? PASS : FAIL,
     stagnation.detail
   ), "GATE-VAL-023"));
+
+  const truthConvergence = resolveTruthConvergenceSignal(planDir);
+  results.push(withFailureCode(check(
+    "Scoped truth surfaces converge before close",
+    truthConvergence.required && !truthConvergence.satisfied ? FAIL : PASS,
+    truthConvergence.detail
+  ), "GATE-VAL-024"));
 
   return results;
 }

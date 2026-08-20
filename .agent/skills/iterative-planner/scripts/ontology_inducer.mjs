@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "fs";
+import { spawnSync } from "child_process";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, extname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
+import { emitJson } from "./lib/emit_json.mjs";
 import {
   ONTOLOGY_ENTITY_CLASSES,
   buildEmptyOntologyDocument,
@@ -14,7 +16,11 @@ import {
   validateOntologyDocument,
 } from "./lib/ontology_schema.mjs";
 import { loadRetroRegistry } from "./lib/retro_registry.mjs";
-import { readVerificationStrategyDocument } from "./lib/verification_strategy.mjs";
+import {
+  VERIFICATION_STRATEGY_FILENAME,
+  readVerificationStrategyDocument,
+  validateSelectedVerificationStrategyDocument,
+} from "./lib/verification_strategy.mjs";
 
 const SOURCE_HANDLERS = new Map([
   ["conventions", induceConventions],
@@ -305,6 +311,73 @@ function inferDomainTags({ texts = [], paths = [], tags = [] } = {}) {
   return sortedUniqueList(matched);
 }
 
+function matchingConfiguredDomains({ texts = [], paths = [] } = {}) {
+  const normalizedTexts = normalizeStringList(texts);
+  const normalizedPaths = normalizeStringList(paths);
+  return DOMAIN_RULES
+    .filter((rule) => rule.patterns.some((pattern) =>
+      normalizedTexts.some((text) => pattern.test(text)) ||
+      normalizedPaths.some((filePath) => pattern.test(filePath))
+    ))
+    .map((rule) => rule.domain);
+}
+
+function inferPrimaryStoryDomain(story, codeRefs = []) {
+  const explicitDomain = normalizeToken(story?.domain);
+  if (explicitDomain) {
+    return { domain: explicitDomain, warning: null };
+  }
+
+  const semanticDomains = matchingConfiguredDomains({
+    texts: [
+      story?.title,
+      story?.summary,
+      story?.description,
+      ...normalizeStringList(story?.tags),
+    ],
+  });
+  const codeDomains = matchingConfiguredDomains({ paths: codeRefs });
+
+  if (semanticDomains.length === 1) {
+    return { domain: semanticDomains[0], warning: null };
+  }
+  if (semanticDomains.length > 1) {
+    const sharedCodeDomains = codeDomains.filter((domain) => semanticDomains.includes(domain));
+    if (sharedCodeDomains.length === 1) {
+      return { domain: sharedCodeDomains[0], warning: null };
+    }
+    return {
+      domain: null,
+      warning: `ambiguous semantic domains (${semanticDomains.join(", ")})`,
+    };
+  }
+  if (codeDomains.length === 1) {
+    return { domain: codeDomains[0], warning: null };
+  }
+  if (codeDomains.length > 1) {
+    return {
+      domain: null,
+      warning: `ambiguous code domains (${codeDomains.join(", ")})`,
+    };
+  }
+
+  const configuredDomains = new Set(DOMAIN_RULES.map((rule) => rule.domain));
+  const fallbackDomains = sortedUniqueList(
+    normalizeStringList(codeRefs)
+      .map(deriveFallbackDomainFromPath)
+      .filter((domain) => domain && configuredDomains.has(domain))
+  );
+  if (fallbackDomains.length === 1) {
+    return { domain: fallbackDomains[0], warning: null };
+  }
+  return {
+    domain: null,
+    warning: fallbackDomains.length > 1
+      ? `ambiguous configured code-root domains (${fallbackDomains.join(", ")})`
+      : "no explicit or unambiguous configured code-domain evidence",
+  };
+}
+
 function inferChangeClasses({ texts = [], tags = [] } = {}) {
   const haystack = [...normalizeStringList(texts), ...normalizeStringList(tags)];
   const matched = [];
@@ -332,7 +405,7 @@ function buildAcceptanceCriteria(story) {
           };
         }
         if (criterion && typeof criterion === "object") {
-          const text = firstNonEmptyString(criterion.text, criterion.label, criterion.title);
+          const text = firstNonEmptyString(criterion.text, criterion.description, criterion.label, criterion.title);
           if (!text) return null;
           return {
             id: firstNonEmptyString(criterion.id) || buildAcceptanceCriterionId(story.id, index + 1),
@@ -588,13 +661,20 @@ function createOntologyBuilder() {
     return record;
   }
 
-  function addCriterion(id, { planId, storyCriterionId = null, testRefs = [], artifactRefs = [] } = {}) {
+  function addCriterion(id, {
+    planId,
+    storyId = null,
+    storyCriterionId = null,
+    testRefs = [],
+    artifactRefs = [],
+  } = {}) {
     const criterionId = firstNonEmptyString(id);
     const normalizedPlanId = firstNonEmptyString(planId);
     if (!criterionId || !normalizedPlanId) return null;
     const key = `${normalizedPlanId}:${criterionId}`;
     const existing = indexes.criteria.get(key);
     if (existing) {
+      if (!existing.story_id && storyId) existing.story_id = storyId;
       if (!existing.story_criterion_id && storyCriterionId) existing.story_criterion_id = storyCriterionId;
       existing.test_refs = sortedUniqueList([...(existing.test_refs || []), ...normalizeStringList(testRefs)]);
       existing.artifact_refs = sortedUniqueList([...(existing.artifact_refs || []), ...normalizeStringList(artifactRefs)]);
@@ -605,6 +685,7 @@ function createOntologyBuilder() {
       id: criterionId,
       plan_id: normalizedPlanId,
     };
+    if (storyId) record.story_id = storyId;
     if (storyCriterionId) record.story_criterion_id = storyCriterionId;
     const normalizedTestRefs = sortedUniqueList(testRefs);
     const normalizedArtifactRefs = sortedUniqueList(artifactRefs);
@@ -906,13 +987,230 @@ function createOntologyBuilder() {
   };
 }
 
+function normalizePlanPointer(value) {
+  const planName = firstNonEmptyString(value);
+  return /^plan_[A-Za-z0-9._-]+$/.test(planName || "") ? planName : null;
+}
+
+function readPlanPointer(filePath) {
+  try {
+    return normalizePlanPointer(readFileSync(filePath, "utf-8"));
+  } catch {
+    return null;
+  }
+}
+
+const TERMINAL_PLAN_STATES = new Set(["CLOSE", "CLOSED"]);
+const NONTERMINAL_PLAN_STATES = new Set(["EXPLORE", "PLAN", "EXECUTE", "REFLECT", "VALIDATE"]);
+
+function listActivePlanNames(plansDir, trackedStrategies) {
+  const names = new Set();
+  const warnings = [];
+  const pointers = [{
+    path: join(plansDir, ".current_plan"),
+    reference: "plans/.current_plan",
+  }];
+
+  const threadTargetsDir = join(plansDir, ".thread_targets");
+  if (existsSync(threadTargetsDir)) {
+    for (const fileName of readdirSync(threadTargetsDir).filter((name) => name.endsWith(".txt")).sort()) {
+      pointers.push({
+        path: join(threadTargetsDir, fileName),
+        reference: `plans/.thread_targets/${fileName}`,
+      });
+    }
+  }
+
+  for (const pointer of pointers) {
+    const target = readPlanPointer(pointer.path);
+    if (!target) continue;
+
+    const strategyPath = `plans/${target}/${VERIFICATION_STRATEGY_FILENAME}`;
+    if (trackedStrategies.has(strategyPath)) continue;
+
+    const targetDir = join(plansDir, target);
+    let targetIsDirectory = false;
+    try {
+      targetIsDirectory = existsSync(targetDir) && statSync(targetDir).isDirectory();
+    } catch {
+      targetIsDirectory = false;
+    }
+    if (!targetIsDirectory) {
+      warnings.push(
+        `Excluded pointer target '${target}' from ontology induction: missing plan directory (pointer ${pointer.reference}).`
+      );
+      continue;
+    }
+
+    const stateRead = safeReadJson(join(targetDir, "state.json"));
+    if (!stateRead.usable || !stateRead.value || typeof stateRead.value !== "object" || Array.isArray(stateRead.value)) {
+      warnings.push(
+        `Excluded pointer target '${target}' from ontology induction: unreadable state.json (pointer ${pointer.reference}).`
+      );
+      continue;
+    }
+
+    const lifecycle = String(firstNonEmptyString(stateRead.value.state, stateRead.value.phase) || "").toUpperCase();
+    if (TERMINAL_PLAN_STATES.has(lifecycle)) {
+      warnings.push(
+        `Excluded pointer target '${target}' from ontology induction: terminal lifecycle '${lifecycle}' (pointer ${pointer.reference}).`
+      );
+      continue;
+    }
+    if (!NONTERMINAL_PLAN_STATES.has(lifecycle)) {
+      warnings.push(
+        `Excluded pointer target '${target}' from ontology induction: unknown lifecycle '${lifecycle || "<missing>"}' (pointer ${pointer.reference}).`
+      );
+      continue;
+    }
+
+    names.add(target);
+  }
+
+  return { names, warnings };
+}
+
+function listTrackedPlanStrategies(cwd) {
+  const proc = spawnSync(
+    "git",
+    ["-C", cwd, "ls-files", "-z", "--cached", "--", "plans"],
+    {
+      encoding: "utf-8",
+      timeout: 5000,
+      maxBuffer: 16 * 1024 * 1024,
+    }
+  );
+  if (proc.status !== 0 || proc.error) {
+    let cursor = resolve(cwd);
+    let hasGitMetadata = false;
+    while (true) {
+      if (existsSync(join(cursor, ".git"))) {
+        hasGitMetadata = true;
+        break;
+      }
+      const parent = dirname(cursor);
+      if (parent === cursor) break;
+      cursor = parent;
+    }
+    const detail = proc.error?.message ||
+      firstNonEmptyString(proc.stderr, `git ls-files exited ${proc.status ?? "without status"}`);
+    return {
+      inventory_kind: hasGitMetadata ? "error" : "not_git",
+      strategies: new Set(),
+      detail,
+    };
+  }
+  return {
+    inventory_kind: "ok",
+    strategies: new Set(
+      String(proc.stdout || "")
+        .split("\0")
+        .map((value) => value.trim().replace(/\\/g, "/"))
+        .filter((value) => value.endsWith(`/${VERIFICATION_STRATEGY_FILENAME}`))
+    ),
+    detail: null,
+  };
+}
+
 function listPlanDirectories(cwd) {
   const plansDir = join(cwd, "plans");
-  if (!existsSync(plansDir)) return [];
-  return readdirSync(plansDir)
-    .filter((name) => name.startsWith("plan_"))
-    .map((name) => join(plansDir, name))
-    .filter((path) => existsSync(path));
+  const candidates = existsSync(plansDir)
+    ? readdirSync(plansDir)
+        .filter((name) => name.startsWith("plan_"))
+        .map((name) => join(plansDir, name))
+        .filter((path) => existsSync(path))
+        .sort()
+    : [];
+  const trackedInventory = listTrackedPlanStrategies(cwd);
+  if (trackedInventory.inventory_kind === "not_git") {
+    const selections = candidates.map((planDir) => ({
+      planDir,
+      planId: basename(planDir),
+      strategyPath: join(planDir, VERIFICATION_STRATEGY_FILENAME),
+      authority: "non_git",
+    }));
+    return {
+      directories: candidates,
+      selections,
+      inventory_kind: "not_git",
+      warnings: ["Git tracked-plan inventory unavailable; ontology induction included every plan directory for non-Git compatibility."],
+      issues: [],
+      skippedInactiveUntracked: [],
+    };
+  }
+  if (trackedInventory.inventory_kind === "error") {
+    return {
+      directories: [],
+      selections: [],
+      inventory_kind: "error",
+      warnings: [],
+      issues: [`Git tracked-plan inventory failed in a Git worktree: ${trackedInventory.detail}`],
+      skippedInactiveUntracked: candidates.map((path) => basename(path)),
+    };
+  }
+
+  const trackedStrategies = trackedInventory.strategies;
+  const activePlanSelection = listActivePlanNames(plansDir, trackedStrategies);
+  const activePlanNames = activePlanSelection.names;
+  const selectionByPlan = new Map();
+  for (const strategyPath of [...trackedStrategies].sort()) {
+    const parts = strategyPath.split("/");
+    if (
+      parts.length !== 3 ||
+      parts[0] !== "plans" ||
+      !parts[1].startsWith("plan_") ||
+      parts[2] !== VERIFICATION_STRATEGY_FILENAME
+    ) {
+      continue;
+    }
+    selectionByPlan.set(parts[1], {
+      planDir: join(cwd, "plans", parts[1]),
+      planId: parts[1],
+      strategyPath: join(cwd, strategyPath),
+      authority: "tracked",
+    });
+  }
+  for (const planName of [...activePlanNames].sort()) {
+    if (selectionByPlan.has(planName)) continue;
+    const planDir = join(plansDir, planName);
+    selectionByPlan.set(planName, {
+      planDir,
+      planId: planName,
+      strategyPath: join(planDir, VERIFICATION_STRATEGY_FILENAME),
+      authority: "pointer",
+    });
+  }
+
+  const skippedInactiveUntracked = [];
+  for (const planDir of candidates) {
+    const planName = basename(planDir);
+    if (!selectionByPlan.has(planName)) {
+      skippedInactiveUntracked.push(planName);
+    }
+  }
+  const selections = [...selectionByPlan.values()].sort((left, right) =>
+    left.planId.localeCompare(right.planId)
+  );
+  const directories = selections.map((selection) => selection.planDir);
+
+  const skippedPreview = skippedInactiveUntracked.slice(0, 12);
+  const skippedSuffix = skippedInactiveUntracked.length > skippedPreview.length
+    ? ` (+${skippedInactiveUntracked.length - skippedPreview.length} more)`
+    : "";
+  const warnings = [
+    ...activePlanSelection.warnings,
+    ...(skippedInactiveUntracked.length > 0
+      ? [`Excluded ${skippedInactiveUntracked.length} inactive untracked plan director${skippedInactiveUntracked.length === 1 ? "y" : "ies"} from ontology induction: ${skippedPreview.join(", ")}${skippedSuffix}`]
+      : []),
+  ];
+  return {
+    directories,
+    selections,
+    inventory_kind: "ok",
+    warnings,
+    issues: [],
+    skippedInactiveUntracked,
+  };
 }
 
 function loadPlanState(planDir) {
@@ -1098,6 +1396,7 @@ export function induceStoryRegistry({ cwd = process.cwd(), builder } = {}) {
   ];
 
   let storyCount = 0;
+  const domainWarnings = [];
   for (const story of stories) {
     const storyId = firstNonEmptyString(story?.id);
     if (!storyId) continue;
@@ -1106,10 +1405,11 @@ export function induceStoryRegistry({ cwd = process.cwd(), builder } = {}) {
     const codeRefs = expandReferenceList(story.code_refs);
     const testRefs = expandReferenceList(story.test_refs);
     const validationRefs = expandReferenceList(story.validation_refs);
-    const domain = inferDomainTags({
-      texts: [story.title, story.summary],
-      paths: [...codeRefs, ...testRefs, ...validationRefs, ...expandReferenceList(story.doc_refs)],
-    })[0] || null;
+    const primaryDomain = inferPrimaryStoryDomain(story, codeRefs);
+    const domain = primaryDomain.domain;
+    if (!domain && primaryDomain.warning) {
+      domainWarnings.push(`${storyId}: ${primaryDomain.warning}`);
+    }
     if (domain) builder.addDomain(domain);
 
     const acceptanceCriteria = buildAcceptanceCriteria(story);
@@ -1145,26 +1445,90 @@ export function induceStoryRegistry({ cwd = process.cwd(), builder } = {}) {
     source: "story-registry",
     present: true,
     usable: true,
-    warnings: [],
+    warnings: domainWarnings.length > 0
+      ? [
+          `Omitted primary domains for ${domainWarnings.length} stor${domainWarnings.length === 1 ? "y" : "ies"} without unambiguous canonical/code authority: ${domainWarnings.slice(0, 12).join("; ")}${domainWarnings.length > 12 ? ` (+${domainWarnings.length - 12} more)` : ""}`,
+        ]
+      : [],
     counts: {
       stories: storyCount,
     },
   };
 }
 
-export function induceVerificationStrategies({ cwd = process.cwd(), builder } = {}) {
-  const planDirs = listPlanDirectories(cwd);
+function preflightVerificationStrategies({ cwd = process.cwd() } = {}) {
+  const planSelection = listPlanDirectories(cwd);
+  const selectedStrategies = [];
+  const preflightIssues = [...planSelection.issues];
+
+  for (const selection of planSelection.selections || []) {
+    const { planDir, planId } = selection;
+    const readResult = readVerificationStrategyDocument(planDir);
+    if (!readResult.present) {
+      if (selection.authority === "non_git") continue;
+      preflightIssues.push(
+        ...(readResult.errors || [`Missing ${VERIFICATION_STRATEGY_FILENAME}`])
+          .map((issue) => `${readResult.path}: ${issue}`)
+      );
+      continue;
+    }
+
+    if (!readResult.ok) {
+      preflightIssues.push(
+        ...(readResult.errors || ["selected verification strategy is unreadable"])
+          .map((issue) => `${readResult.path}: ${issue}`)
+      );
+      continue;
+    }
+
+    const structural = validateSelectedVerificationStrategyDocument({
+      document: readResult.document,
+      planId,
+    });
+    if (!structural.ok) {
+      preflightIssues.push(...structural.issues.map((issue) => `${readResult.path}: ${issue}`));
+      continue;
+    }
+    selectedStrategies.push({
+      planDir,
+      planId,
+      strategy: structural.strategy,
+    });
+  }
+
+  return {
+    ok: preflightIssues.length === 0,
+    planSelection,
+    selectedStrategies,
+    result: {
+      source: "verification-strategy",
+      present: (planSelection.selections || []).length > 0,
+      usable: preflightIssues.length === 0,
+      warnings: planSelection.warnings,
+      issues: preflightIssues,
+      counts: {
+        plans: 0,
+        criteria: 0,
+        skipped_inactive_untracked_plans: planSelection.skippedInactiveUntracked.length,
+      },
+    },
+  };
+}
+
+export function induceVerificationStrategies({
+  cwd = process.cwd(),
+  builder,
+  preflight = null,
+} = {}) {
+  const prepared = preflight || preflightVerificationStrategies({ cwd });
+  if (!prepared.ok) return prepared.result;
+
   let planCount = 0;
   let criterionCount = 0;
 
-  for (const planDir of planDirs) {
-    const readResult = readVerificationStrategyDocument(planDir);
-    if (!readResult.present || !readResult.ok) continue;
-
-    const planId = basename(planDir);
-    const strategy = readResult.strategy || {};
+  for (const { planDir, planId, strategy } of prepared.selectedStrategies) {
     const state = loadPlanState(planDir);
-    const criteria = Array.isArray(strategy.criteria) ? strategy.criteria : [];
+    const criteria = strategy.criteria;
     const storyIds = sortedUniqueList(criteria.map((criterion) => firstNonEmptyString(criterion.story_id)).filter(Boolean));
     planCount += 1;
     builder.addPlan(planId, {
@@ -1191,14 +1555,15 @@ export function induceVerificationStrategies({ cwd = process.cwd(), builder } = 
       if (!criterionId) continue;
       criterionCount += 1;
 
-      const storyCriterionId = criterion.story_id
-        ? builder.ensureStoryCriterion(criterion.story_id, {
-            title: criterion.story_id,
-            summary: criterion.criterion,
-            status: "UNKNOWN",
-            paths: [criterion?.implementation?.file].filter(Boolean),
-          })
-        : null;
+      if (criterion.story_id) {
+        builder.ensureStoryCriterion(criterion.story_id, {
+          title: criterion.story_id,
+          summary: criterion.criterion,
+          status: "UNKNOWN",
+          paths: [criterion?.implementation?.file].filter(Boolean),
+        });
+      }
+      const storyCriterionId = firstNonEmptyString(criterion?.story_criterion_id);
 
       const implementationFiles = expandReferenceValue(criterion?.implementation?.file);
       for (const implementationFile of implementationFiles) {
@@ -1215,7 +1580,6 @@ export function induceVerificationStrategies({ cwd = process.cwd(), builder } = 
             name: testName,
             file: testFile,
             type: firstNonEmptyString(test?.type, inferTestType({ name: testName, file: testFile })),
-            criterionIds: [criterionId],
             coveredFiles: implementationFiles,
           });
         }
@@ -1228,7 +1592,6 @@ export function induceVerificationStrategies({ cwd = process.cwd(), builder } = 
         for (const artifactPath of artifactPaths) {
           builder.addArtifact(artifactPath, {
             type: firstNonEmptyString(artifact?.type, inferArtifactType(artifactPath)),
-            criterionIds: [criterionId],
           });
           artifactRefs.push(artifactPath);
         }
@@ -1236,6 +1599,7 @@ export function induceVerificationStrategies({ cwd = process.cwd(), builder } = 
 
       builder.addCriterion(criterionId, {
         planId,
+        storyId: firstNonEmptyString(criterion?.story_id),
         storyCriterionId,
         testRefs,
         artifactRefs,
@@ -1245,12 +1609,14 @@ export function induceVerificationStrategies({ cwd = process.cwd(), builder } = 
 
   return {
     source: "verification-strategy",
-    present: planDirs.length > 0,
+    present: (prepared.planSelection.selections || []).length > 0,
     usable: true,
-    warnings: [],
+    warnings: prepared.planSelection.warnings,
+    issues: [],
     counts: {
       plans: planCount,
       criteria: criterionCount,
+      skipped_inactive_untracked_plans: prepared.planSelection.skippedInactiveUntracked.length,
     },
   };
 }
@@ -1471,12 +1837,37 @@ export function induceAdrs({ cwd = process.cwd(), builder } = {}) {
 }
 
 export function induceOntologyDocuments({ cwd = process.cwd(), sources = ["all"] } = {}) {
-  const builder = createOntologyBuilder();
   const normalizedSources = sources.includes("all")
     ? [...SOURCE_HANDLERS.keys()]
     : sources.filter((source) => SOURCE_HANDLERS.has(source));
+  const verificationPreflight = normalizedSources.includes("verification-strategy")
+    ? preflightVerificationStrategies({ cwd })
+    : null;
 
-  const sourceResults = normalizedSources.map((source) => SOURCE_HANDLERS.get(source)({ cwd, builder }));
+  if (verificationPreflight && !verificationPreflight.ok) {
+    const builder = createOntologyBuilder();
+    const documents = {
+      ...builder.finalize(),
+      proof_weights: buildDefaultProofWeightsDocument().proof_weights,
+      conventions: buildEmptyOntologyDocument("conventions").conventions,
+    };
+    return {
+      ok: false,
+      cwd,
+      sources: [verificationPreflight.result],
+      documents,
+      counts: summarizeDocuments(documents),
+      warnings: verificationPreflight.result.warnings,
+      issues: verificationPreflight.result.issues,
+    };
+  }
+
+  const builder = createOntologyBuilder();
+  const sourceResults = normalizedSources.map((source) => SOURCE_HANDLERS.get(source)({
+    cwd,
+    builder,
+    preflight: source === "verification-strategy" ? verificationPreflight : null,
+  }));
   const conventionResult = sourceResults.find((result) => result.source === "conventions");
   const proofWeightResult = sourceResults.find((result) => result.source === "proof-weights");
   const documents = {
@@ -1608,12 +1999,11 @@ if (_isMain) {
   }
 
   if (options.json) {
-    console.log(JSON.stringify({ ...result, wrote }, null, 2));
+    emitJson({ ...result, wrote }, { exitCode: result.ok ? 0 : 1 });
   } else {
     printHumanSummary(result, wrote);
-  }
-
-  if (!result.ok) {
-    process.exit(1);
+    if (!result.ok) {
+      process.exit(1);
+    }
   }
 }

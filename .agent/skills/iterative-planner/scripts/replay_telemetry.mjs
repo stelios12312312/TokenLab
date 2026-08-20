@@ -28,6 +28,7 @@ import { join, basename, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { tmpdir } from "os";
 import { deriveGateDecision, validateDecisionLogChain } from "./lib/determinism.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const SKILL_DIR = dirname(dirname(__filename));
@@ -90,8 +91,9 @@ if (invokedDirectly) {
   const json = process.argv.includes("--json");
   const pathArg = process.argv.slice(2).find((a) => !a.startsWith("--"));
   const results = pathArg ? [{ fixture: basename(pathArg), ...replayDecisionLog(pathArg) }] : replayFixtures();
+  const exitCode = results.some((r) => r.mismatched > 0 || r.chain_valid === false) ? 1 : 0;
   if (json) {
-    process.stdout.write(JSON.stringify({ schema_version: 1, results }, null, 2) + "\n");
+    emitJson({ schema_version: 1, results }, { exitCode });
   } else {
     console.log("Real-telemetry replay (live gate-decision engine)\n");
     let totalGts = 0, totalMatched = 0, totalMismatch = 0, badChains = 0;
@@ -104,6 +106,6 @@ if (invokedDirectly) {
         ` | chain ${r.chain_valid === false ? "BROKEN: " + r.chain_reason : "intact"}`);
     }
     console.log(`\n  TOTAL: ${totalMatched}/${totalGts} real gate verdicts reproduced by the live rule; ${totalMismatch} mismatch; ${badChains} broken chains`);
+    process.exitCode = exitCode;
   }
-  process.exit(results.some((r) => r.mismatched > 0 || r.chain_valid === false) ? 1 : 0);
 }

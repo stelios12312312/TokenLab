@@ -12,7 +12,6 @@ const testDir = dirname(__filename);
 const repoRoot = resolve(testDir, "..", "..", "..", "..");
 const reviewerCli = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "fresh_context_reviewer.mjs");
 const configPath = join(repoRoot, ".github", "reviewer", "config.json");
-const workflowPath = join(repoRoot, ".github", "workflows", "fresh-context-reviewer.yml");
 const NODE = process.execPath;
 
 let passed = 0;
@@ -109,7 +108,7 @@ const baseArgs = [
 function scenarioRequiredSurfacesExist() {
   assert(existsSync(reviewerCli), "fresh-context reviewer CLI ships");
   assert(existsSync(configPath), "reviewer config lives under .github/reviewer/");
-  assert(existsSync(workflowPath), "fresh-context reviewer workflow ships");
+  assert(!existsSync(join(repoRoot, ".github", "workflows", "fresh-context-reviewer.yml")), "retired hosted reviewer trigger remains absent");
 }
 
 function scenarioPrintsPackDerivedClosedQuestions() {

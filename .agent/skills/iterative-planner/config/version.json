@@ -1,5 +1,5 @@
 {
   "$schema": "https://json-schema.org/draft-07/schema#",
   "description": "Single source of truth for planner version. All scripts read from here.",
-  "version": "10.6.9"
+  "version": "10.9.0"
 }

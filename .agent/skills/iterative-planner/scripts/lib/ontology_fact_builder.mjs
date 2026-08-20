@@ -258,6 +258,12 @@ export function renderOntologyProlog(documents) {
     "% Code entities",
   ];
   const seen = new Set();
+  const storyCriterionIds = new Set(
+    (documents.specification?.stories || [])
+      .flatMap((storyRecord) => Array.isArray(storyRecord.acceptance_criteria) ? storyRecord.acceptance_criteria : [])
+      .map((criterionRecord) => criterionRecord?.id)
+      .filter(Boolean)
+  );
 
   for (const moduleRecord of sortBy(documents.code?.modules, (record) => record.id)) {
     emitFact(lines, seen, "module", [quotedId(moduleRecord.id)]);
@@ -320,7 +326,25 @@ export function renderOntologyProlog(documents) {
   for (const criterionRecord of sortBy(documents.verification?.criteria, (record) => `${record.plan_id}:${record.id}`)) {
     emitFact(lines, seen, "verification_criterion", [quotedId(criterionRecord.id), quotedId(criterionRecord.plan_id)]);
     if (criterionRecord.story_criterion_id) {
-      emitFact(lines, seen, "criterion_verifies_story_criterion", [quotedId(criterionRecord.id), quotedId(criterionRecord.story_criterion_id)]);
+      emitFact(lines, seen, "plan_criterion_verifies_story_criterion", [
+        quotedId(criterionRecord.plan_id),
+        quotedId(criterionRecord.id),
+        quotedId(criterionRecord.story_criterion_id),
+      ]);
+    }
+    for (const testRef of sortBy(criterionRecord.test_refs, (value) => value)) {
+      emitFact(lines, seen, "test_verifies_plan_criterion", [
+        quotedId(testRef),
+        quotedId(criterionRecord.plan_id),
+        quotedId(criterionRecord.id),
+      ]);
+    }
+    for (const artifactRef of sortBy(criterionRecord.artifact_refs, (value) => value)) {
+      emitFact(lines, seen, "artifact_proves_plan_criterion", [
+        quotedId(artifactRef),
+        quotedId(criterionRecord.plan_id),
+        quotedId(criterionRecord.id),
+      ]);
     }
   }
 
@@ -329,7 +353,9 @@ export function renderOntologyProlog(documents) {
     emitFact(lines, seen, "test_in_file", [quotedId(testRecord.name), quotedId(testRecord.file)]);
     emitFact(lines, seen, "test_type", [quotedId(testRecord.name), quotedEnum(testRecord.type)]);
     for (const criterionId of sortBy(testRecord.criterion_ids, (value) => value)) {
-      emitFact(lines, seen, "test_verifies_criterion", [quotedId(testRecord.name), quotedId(criterionId)]);
+      if (storyCriterionIds.has(criterionId)) {
+        emitFact(lines, seen, "test_verifies_criterion", [quotedId(testRecord.name), quotedId(criterionId)]);
+      }
     }
     for (const coveredFile of sortBy(testRecord.covered_files, (value) => value)) {
       emitFact(lines, seen, "test_covers_file", [quotedId(testRecord.name), quotedId(coveredFile)]);
@@ -340,7 +366,9 @@ export function renderOntologyProlog(documents) {
     emitFact(lines, seen, "evidence_artifact", [quotedId(artifactRecord.path)]);
     emitFact(lines, seen, "artifact_type", [quotedId(artifactRecord.path), quotedEnum(artifactRecord.type)]);
     for (const criterionId of sortBy(artifactRecord.criterion_ids, (value) => value)) {
-      emitFact(lines, seen, "artifact_proves_criterion", [quotedId(artifactRecord.path), quotedId(criterionId)]);
+      if (storyCriterionIds.has(criterionId)) {
+        emitFact(lines, seen, "artifact_proves_criterion", [quotedId(artifactRecord.path), quotedId(criterionId)]);
+      }
     }
   }
 

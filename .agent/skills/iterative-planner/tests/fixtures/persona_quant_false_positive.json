@@ -1,0 +1,9 @@
+{
+  "ticket": {
+    "ticket_type": "code_refactor"
+  },
+  "packet": {
+    "id": "pre-migration-simplification"
+  },
+  "sourceText": "This removes some quant logic related to the old model"
+}

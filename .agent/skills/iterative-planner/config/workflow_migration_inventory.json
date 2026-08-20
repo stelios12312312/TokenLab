@@ -273,7 +273,7 @@
       "v6_purpose": "N/A — new in v7",
       "v7_action": "Parked",
       "v7_owner": "N/A — parked by B.2",
-      "notes": "Parked in .agent/_parked/sidekick because the pilot had zero flight evidence. Commit-message help may return only as a focused future tool."
+      "notes": "Parked in .agent/_parked/sidekick.md because the pilot had zero flight evidence. The archive is source-only and excluded from fleet propagation; commit-message help may return only as a focused future tool."
     }
   ]
 }

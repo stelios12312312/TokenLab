@@ -48,13 +48,15 @@ if (args.help || args.unknown) {
 }
 
 const report = scanAppDevTesseractProject({ rootDir: args.rootDir });
+const reportStatus = normalizeVerificationStatus(report.status, "gate");
+const exitCode = !reportStatus.valid || reportStatus.token === "UNKNOWN" || (reportStatus.kind === "fail" && report.error)
+  ? 2
+  : args.strict && reportStatus.kind === "fail"
+    ? 1
+    : 0;
 if (args.json) {
-  emitJson(report);
+  emitJson(report, { exitCode });
 } else {
   printHuman(report);
+  process.exit(exitCode);
 }
-
-const reportStatus = normalizeVerificationStatus(report.status, "gate");
-if (!reportStatus.valid || reportStatus.token === "UNKNOWN" || (reportStatus.kind === "fail" && report.error)) process.exit(2);
-if (args.strict && reportStatus.kind === "fail") process.exit(1);
-process.exit(0);

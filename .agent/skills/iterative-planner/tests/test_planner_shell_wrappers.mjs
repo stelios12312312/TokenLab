@@ -2,7 +2,7 @@
 // test_planner_shell_wrappers.mjs
 // Coverage for bash wrappers that orchestrate planner behavior.
 
-import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { chmodSync, existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
@@ -141,6 +141,16 @@ import { writeFileSync } from "fs";
 const mode = process.env.TEST_IVE_CONFORMANCE_MODE || "pass";
 const passed = mode === "pass" || mode === "large-pass";
 writeFileSync(".ive-args.json", JSON.stringify(process.argv.slice(2)));
+writeFileSync(".ive-git-env.json", JSON.stringify({
+  GIT_ALTERNATE_OBJECT_DIRECTORIES: process.env.GIT_ALTERNATE_OBJECT_DIRECTORIES || null,
+  GIT_COMMON_DIR: process.env.GIT_COMMON_DIR || null,
+  GIT_DIR: process.env.GIT_DIR || null,
+  GIT_INDEX_FILE: process.env.GIT_INDEX_FILE || null,
+  GIT_OBJECT_DIRECTORY: process.env.GIT_OBJECT_DIRECTORY || null,
+  GIT_PREFIX: process.env.GIT_PREFIX || null,
+  GIT_QUARANTINE_PATH: process.env.GIT_QUARANTINE_PATH || null,
+  GIT_WORK_TREE: process.env.GIT_WORK_TREE || null,
+}));
 console.log(JSON.stringify({ status: passed ? "PASS" : "FAIL", results: [{ id: "fake-affected" }], padding: mode === "large-pass" ? "x".repeat(2 * 1024 * 1024) : "" }));
 process.exitCode = passed ? 0 : 1;
 `);
@@ -159,6 +169,10 @@ function scenarioInstalledPreCommitHook() {
     const cleanResult = runBin("sh", [installedPreCommitHookPath], tmp, {
       ...clean.env,
       _PLANNER_PLAN_TARGET: "plan-test-target",
+      GIT_DIR: join(tmp, ".git"),
+      GIT_WORK_TREE: tmp,
+      GIT_INDEX_FILE: join(tmp, ".git", "index"),
+      GIT_PREFIX: "poisoned-parent-prefix/",
     });
     assert(cleanResult.ok, "installed pre-commit hook exits cleanly when ripple check is clean");
     assert(cleanResult.stdout.includes("ripple-through check passed"), "installed pre-commit hook reports a clean pass");
@@ -168,6 +182,11 @@ function scenarioInstalledPreCommitHook() {
     assert(
       affectedArgs.includes("--plan-target") && affectedArgs.includes("plan-test-target"),
       "installed pre-commit hook forwards the explicit plan target to scoped IVE suites",
+    );
+    const affectedGitEnv = JSON.parse(readFileSync(join(tmp, ".ive-git-env.json"), "utf8"));
+    assert(
+      Object.values(affectedGitEnv).every((value) => value === null),
+      "installed pre-commit hook isolates affected suites from parent Git repository environment",
     );
 
     execFileSync("git", ["add", ".agent/skills/iterative-planner/tests/ive/run.mjs"], { cwd: tmp, stdio: ["pipe", "pipe", "pipe"] });
@@ -254,6 +273,14 @@ function scenarioInstalledPrePushHook() {
         ...baseEnv,
         TEST_IVE_CONFORMANCE_MODE: "pass",
         _PLANNER_PLAN_TARGET: "plan-test-target",
+        GIT_ALTERNATE_OBJECT_DIRECTORIES: join(tmp, ".git", "objects", "alternate"),
+        GIT_COMMON_DIR: join(tmp, ".git"),
+        GIT_DIR: join(tmp, ".git"),
+        GIT_INDEX_FILE: join(tmp, ".git", "index"),
+        GIT_OBJECT_DIRECTORY: join(tmp, ".git", "objects"),
+        GIT_PREFIX: "poisoned-parent-prefix/",
+        GIT_QUARANTINE_PATH: join(tmp, ".git", "objects", "quarantine"),
+        GIT_WORK_TREE: tmp,
       },
       "refs/heads/main abc refs/heads/main def\n"
     );
@@ -264,6 +291,33 @@ function scenarioInstalledPrePushHook() {
       prePushArgs.includes("--plan-target") && prePushArgs.includes("plan-test-target"),
       "installed pre-push hook forwards the explicit plan target to IVE",
     );
+    const prePushGitEnv = JSON.parse(readFileSync(join(tmp, ".ive-git-env.json"), "utf8"));
+    assert(
+      Object.values(prePushGitEnv).every((value) => value === null),
+      "installed pre-push hook isolates IVE from parent Git repository environment",
+    );
+    assert(!prePushArgs.includes("--changed-files") && mainPass.stdout.includes("selection=full") && mainPass.stdout.includes("reason=invalid_ref_boundary"), "invalid pre-push ref boundaries fail safe to the full IVE catalog");
+
+    writeFileSync(join(tmp, "tracked-base.txt"), "base\n");
+    execFileSync("git", ["add", "tracked-base.txt"], { cwd: tmp, stdio: ["pipe", "pipe", "pipe"] });
+    execFileSync("git", ["-c", "user.name=Planner Test", "-c", "user.email=planner@example.invalid", "commit", "-qm", "seed pre-push diff"], { cwd: tmp, stdio: ["pipe", "pipe", "pipe"] });
+    const remoteSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: tmp, encoding: "utf8" }).trim();
+    writeFileSync(join(tmp, "tracked-base.txt"), "base\nchanged\n");
+    writeFileSync(join(tmp, "second-change.txt"), "second\n");
+    execFileSync("git", ["add", "tracked-base.txt", "second-change.txt"], { cwd: tmp, stdio: ["pipe", "pipe", "pipe"] });
+    execFileSync("git", ["-c", "user.name=Planner Test", "-c", "user.email=planner@example.invalid", "commit", "-qm", "add scoped pre-push changes"], { cwd: tmp, stdio: ["pipe", "pipe", "pipe"] });
+    const localSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: tmp, encoding: "utf8" }).trim();
+    const scopedPass = runBin(
+      "sh",
+      [installedPrePushHookPath],
+      tmp,
+      { ...baseEnv, TEST_IVE_CONFORMANCE_MODE: "pass" },
+      `refs/heads/main ${localSha} refs/heads/main ${remoteSha}\n`,
+    );
+    const scopedArgs = JSON.parse(readFileSync(join(tmp, ".ive-args.json"), "utf8"));
+    const scopedFiles = scopedArgs.flatMap((value, index) => value === "--changed-files" ? [scopedArgs[index + 1]] : []);
+    assert(scopedPass.ok && scopedPass.stdout.includes("selection=changed_files") && scopedPass.stdout.includes("changed_files=2"), "trustworthy main ref boundaries select changed-file IVE mode");
+    assert(JSON.stringify(scopedFiles) === JSON.stringify(["second-change.txt", "tracked-base.txt"]), "pre-push forwards the exact stable changed-file union to IVE");
 
     const mainFail = runBin(
       "sh",
@@ -276,6 +330,88 @@ function scenarioInstalledPrePushHook() {
     assert((mainFail.stdout + mainFail.stderr).includes("refusing push to main"), "installed pre-push hook reports main-push refusal");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioInstalledPrePushLinkedWorktreeIsolation() {
+  const fixtureRoot = mkdtempSync(join(tmpdir(), "planner-pre-push-worktree-"));
+  const repo = join(fixtureRoot, "repo");
+  const linked = join(fixtureRoot, "linked");
+  try {
+    mkdirSync(repo, { recursive: true });
+    initGitRepo(repo);
+    seedFakeIveConformanceRunner(repo);
+    writeFileSync(join(repo, "fixture.txt"), "linked-worktree integrity fixture\n");
+    execFileSync("git", ["config", "core.bare", "false"], { cwd: repo, stdio: ["pipe", "pipe", "pipe"] });
+    execFileSync("git", ["add", "."], { cwd: repo, stdio: ["pipe", "pipe", "pipe"] });
+    execFileSync(
+      "git",
+      ["-c", "user.name=Planner Test", "-c", "user.email=planner@example.invalid", "commit", "-qm", "seed linked worktree"],
+      { cwd: repo, stdio: ["pipe", "pipe", "pipe"] },
+    );
+    execFileSync("git", ["worktree", "add", "--detach", linked, "HEAD"], { cwd: repo, stdio: ["pipe", "pipe", "pipe"] });
+
+    const commonDir = execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+      cwd: repo,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    const linkedGitDir = execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+      cwd: linked,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    const linkedIndex = join(linkedGitDir, "index");
+    const configBefore = readFileSync(join(commonDir, "config"));
+    const indexBefore = readFileSync(linkedIndex);
+    const trackedBefore = execFileSync("git", ["ls-files"], {
+      cwd: linked,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    const result = runBin(
+      "sh",
+      [installedPrePushHookPath],
+      linked,
+      {
+        ITERATIVE_PLANNER_SKILL_DIR: skillRoot,
+        TEST_IVE_CONFORMANCE_MODE: "pass",
+        GIT_ALTERNATE_OBJECT_DIRECTORIES: join(commonDir, "objects"),
+        GIT_COMMON_DIR: commonDir,
+        GIT_DIR: linkedGitDir,
+        GIT_INDEX_FILE: linkedIndex,
+        GIT_OBJECT_DIRECTORY: join(commonDir, "objects"),
+        GIT_PREFIX: "poisoned-linked-prefix/",
+        GIT_QUARANTINE_PATH: join(commonDir, "objects"),
+        GIT_WORK_TREE: linked,
+      },
+      "refs/heads/main abc refs/heads/main def\n",
+    );
+
+    assert(result.ok, "installed pre-push hook passes from a real linked worktree with hook-owned Git routing");
+    const childGitEnv = JSON.parse(readFileSync(join(linked, ".ive-git-env.json"), "utf8"));
+    assert(
+      Object.values(childGitEnv).every((value) => value === null),
+      "linked-worktree pre-push child receives none of the eight parent Git routing variables",
+    );
+    const topLevel = execFileSync("git", ["rev-parse", "--show-toplevel"], {
+      cwd: linked,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    assert(realpathSync(topLevel) === realpathSync(linked), "linked worktree remains independently discoverable after pre-push proof");
+    assert(readFileSync(join(commonDir, "config")).equals(configBefore), "linked-worktree pre-push proof leaves common Git config byte-identical");
+    assert(readFileSync(linkedIndex).equals(indexBefore), "linked-worktree pre-push proof leaves the linked index byte-identical");
+    const trackedAfter = execFileSync("git", ["ls-files"], {
+      cwd: linked,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+    assert(trackedAfter === trackedBefore, "linked-worktree pre-push proof preserves the complete tracked-file set");
+  } finally {
+    try { execFileSync("git", ["worktree", "remove", "--force", linked], { cwd: repo, stdio: ["pipe", "pipe", "pipe"] }); } catch { /* best effort */ }
+    try { rmSync(fixtureRoot, { recursive: true, force: true }); } catch { /* best effort */ }
   }
 }
 
@@ -369,6 +505,7 @@ console.log("\nPlanner Shell Wrapper Tests\n");
 
 scenarioInstalledPreCommitHook();
 scenarioInstalledPrePushHook();
+scenarioInstalledPrePushLinkedWorktreeIsolation();
 scenarioLegacyPreCommitWrapper();
 scenarioMigrateAllProjectsShell();
 

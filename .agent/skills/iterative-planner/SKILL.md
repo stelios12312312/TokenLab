@@ -1,6 +1,6 @@
 ---
 name: iterative-planner
-planner_version: "10.6.9"
+planner_version: "10.9.0"
 description: >
   State-machine driven iterative planning and execution for complex coding tasks.
   Cycle: Explore → Plan → Execute → Reflect → Validate → Close / Re-plan. Filesystem as persistent memory.
@@ -30,6 +30,18 @@ Deterministic scripts support that loop, mistake registries preserve memory, and
 | 6 | `notify-user` | `node <sp>/scripts/transition.mjs notify-user` | Final handoff audit (available from VALIDATE or CLOSE; reachability audit disabled) |
 
 **`<sp>`** = `.agent/skills/iterative-planner`
+
+### Semantic scientific review
+
+Result-bearing `serious_search` and `promotion_candidate` quant packets must reference a `planner.scientific_review_request.v1` file. The reviewer reads and hashes the referenced preregistration, executed configuration, universe, fold, trial, observation, result, registry, ticket, and plan-identity artifacts; authored summary counts are never sufficient. Its receipt keeps five decisions independent:
+
+- `execution_status`: `not_run | complete | failed`
+- `design_validity`: `valid | invalid | unresolved`
+- `evidence_grade`: `evidence | exploratory | smoke_fixture | underpowered | legacy_unknown`
+- `scientific_verdict`: `supported | falsified | inconclusive | not_evaluated`
+- `promotion_status`: `blocked | research_only | candidate_for_confirmation | eligible_for_integration_review`
+
+Valid, powered negative evidence may be `falsified` and remains blocked from promotion. Invalid, underpowered, fixture, or legacy evidence is `not_evaluated`, never falsified. Implementation validation remains a separate receipt: passing tests do not turn a fixture or invalid design into scientific evidence. Test/synthetic/short-history/bypass/temporary-output runs are stamped `smoke_fixture`, and execution output may not target the declared canonical evidence root.
 
 - **Gate chain (I-015)**: Gates must run in order (1→2→3→4→5). Skipping a gate triggers Prolog invariant I-015.
 - **Runtime integrity boundary**: E8-1 retired transition nonces, approval nonce/envelope checks, tamper fingerprints, state hashes, and `.config_integrity`. Gates now rely on deterministic artifact checks, Prolog semantics, decision-log hash chaining, git history, and fresh-context CI review instead of in-process approval ceremony. `GATE-SEM-003` is the surviving fail-closed JavaScript/Prolog semantic-divergence alarm: it is quiet only when every Prolog-only blocker is a structured `GATE-SEM-002` row fully explained by the closed ordinary-story-invariant family, and receipts record the explaining check IDs. Unknown, mixed, missing-structure, engine-level, and I-035 `unmapped_source_file` differences remain hard; this does not restore any retired fingerprint or approval substrate.
@@ -187,11 +199,14 @@ explicit structural resolution before it writes the schema skeleton:
 
 `--remote-mode local-only` and `--repo` are mutually exclusive during init.
 Remote-read and remote-sync require one canonical repository identity. Existing
-packets with neither a policy nor an unambiguous repository stop on their first
+packets with no explicit policy stop on their first
 `check`, `verify`, or lifecycle `disposition` touch with
 `program_gate_requirement_resolution_required`;
-the CLI never silently converts that absence to an operator-chosen local-only
-decision. Checks remain read-only after the decision is satisfied. Init refuses
+historical ticket refs, packet repository fields, CLI `--repo`, and repository
+environment variables remain identity evidence and never select a mode. The
+`init --repo` constructor is the one explicit shorthand that persists both the
+identity and `remote-sync` choice. The CLI never silently converts policy absence
+to local-only or remote-sync. Checks remain read-only after the decision is satisfied. Init refuses
 accidental overwrite unless `--force` is passed. Conflicting persisted mode or
 repository aliases fail as invalid/ambiguous configuration instead of selecting
 the first field.
@@ -344,6 +359,63 @@ Inspect this state without mutation via
 For current-code L2 gate compatibility, use
 `node .agent/skills/iterative-planner/scripts/dogfood_lifecycle_replay.mjs --json`;
 that replay is deterministic evidence, not a credentialed L3 agent run.
+
+Cross-Program prerequisites must be ticket `external_prerequisites` rows, not
+acceptance prose. A row names either `program_ref + required_status` or
+`program_ref + ticket_ref + required_lifecycle`. Program validation, task
+intake, truth convergence, and Prolog all consume the same structured contract;
+missing, malformed, unknown, or unsatisfied authority blocks ready-or-later
+tickets. Packets without declared cross-Program prerequisites remain compatible.
+
+Deferred work is revived only through an explicit, dry-run-first decision:
+
+```bash
+node <sp>/scripts/program_manager.mjs revive --program <program-id-or-path> --ticket <ticket-id> --decision <accepted-decision-id> --reason "<reason>" --child-plan <plan-dir> --json
+node <sp>/scripts/program_manager.mjs revive --program <program-id-or-path> --ticket <ticket-id> --decision <accepted-decision-id> --reason "<reason>" --child-plan <plan-dir> --write --json
+```
+
+The command requires exactly one deferred ticket, preserves its original
+`deferral_decision_ref`, records `revival_decision_ref`, links the child plan,
+and validates the full candidate packet before writing.
+
+When one active attempt failed, defer it honestly instead of closing it or
+leaving it indefinitely `in_progress`:
+
+```bash
+node <sp>/scripts/program_manager.mjs defer --program <program-id-or-path> --ticket <ticket-id> --decision <accepted-decision-id> --reason "<reason>" --child-plan <plan-dir> --json
+node <sp>/scripts/program_manager.mjs defer --program <program-id-or-path> --ticket <ticket-id> --decision <accepted-decision-id> --reason "<reason>" --child-plan <plan-dir> --write --json
+```
+
+This narrow lane accepts only one exact `in_progress` or `blocked` ticket whose
+linked child plan is terminal CLOSE with `[ABANDONED]`. It records an accepted
+deferral, aligns the Program to `deferred` only when no actionable ticket remains,
+validates the full packet, and makes an exact repeat a no-op. It never turns a
+failed attempt into completion evidence.
+
+### Production Autonomous Ticket Delivery
+
+Use the production lane only for one already-selected, real Program ticket:
+
+```bash
+node <sp>/scripts/autonomous_ticket_delivery.mjs run \
+  --program <program-packet.json> --ticket <ticket-id> \
+  --agent-cmd "codex exec --json -" --json
+```
+
+The runner compiles the canonical ticket into a work order, then performs a
+deterministic preflight over ticket actionability, closed child-plan evidence,
+reachable lifecycle evidence, Program remote policy, and the selected ticket's
+GitHub mirror when remote-sync applies. A blocked preflight writes a receipt but
+creates no worktree and invokes no agent. An admitted run creates an isolated
+Git worktree, invokes the explicit command once with zero automatic retries,
+enforces runtime/path/diff boundaries, applies the token ceiling as a post-run
+acceptance check, and parent-grades Git, tests, Program, plan, and usage evidence.
+The token ceiling is not a provider-side hard spend cap; configure such a cap
+outside this runner when the provider supports it. It writes a content-addressed receipt chain under
+`reports/ive/autonomous_ticket_deliveries/`. Candidate transcript, provider,
+model, arm, fixtures, and self-reported success never determine PASS. The lane
+never merges, pushes, deletes branches, closes GitHub issues, or selects a
+target; those remain explicit parent/operator responsibilities.
 
 ### Commit Message Guard
 
@@ -519,7 +591,7 @@ node <skill-path>/scripts/bootstrap.mjs close --informational # Close from any s
 node <skill-path>/scripts/bootstrap.mjs list                 # Show all plan directories
 ```
 
-**Self-heal + install health:** `bootstrap.mjs` owns the built-in-first install-health preflight before it loads planner-local modules. Transition evaluation never mutates the install implicitly because dry-run and actual execution must inspect identical inputs. `bootstrap.mjs install-health` reports whether the local planner install is aligned, whether repair is needed, whether advisory-only drift exists, and the exact source-pinned recovery or upgrade command. Bootstrap diagnoses drift and pauses for explicit `--commit` consent; it does not write a half-applied payload. Source-driven migration resolves `PLANNER_SOURCE_REF` (default `HEAD`) to one commit, executes from a `git archive` snapshot of that commit, builds the complete candidate in a scratch clone, runs the configured census plus planner-core proof bundle there, commits the candidate, and only then fast-forwards the live consumer. Apply, setup, proof, and candidate-commit failures leave the live target unchanged. A durable journal under target Git metadata and an ignored `config/last_upgrade_receipt.json` distinguish an interrupted final handoff from legacy debris, bind from/tree/source versions to the selected source and resulting commit, and power `recover-upgrade`. Before any candidate is built, upgrade classifies target bytes against target `HEAD`, the selected source ancestry, and all source history. An ignored or otherwise untracked managed file is accepted only when its exact same-path Git blob appears in the selected source ancestry or in that selected snapshot's versioned `config/legacy_managed_blob_provenance.json` ledger. Uncommitted targets, committed divergence, tracked or untracked ahead-of-ref targets, and unclassifiable targets refuse the entire operation and print committed/tree/source stratigraphy, hashes, a bounded diff summary, and a pinned recovery recipe. Project-local `.project_registry.json` entries and unrelated dirty project files are preserved; candidate staging is scoped to the proven upgrade. Use `PLANNER_SOURCE_REPO=/abs/path/to/Iterative Planner` to override the source locator, `PLANNER_SOURCE_REF=<commit-or-tag>` to pin the source, or `PLANNER_SKIP_SELF_HEAL=1` to disable bootstrap diagnosis while debugging.
+**Self-heal + install health:** `bootstrap.mjs` owns the built-in-first install-health preflight before it loads planner-local modules. Transition evaluation never mutates the install implicitly because dry-run and actual execution must inspect identical inputs. `bootstrap.mjs install-health` reports whether the local planner install is aligned, whether repair is needed, whether advisory-only drift exists, and the exact source-pinned recovery or upgrade command. Bootstrap diagnoses drift and pauses for explicit `--commit` consent; it does not write a half-applied payload. Source-driven migration resolves `PLANNER_SOURCE_REF` (default `HEAD`) to one commit, executes from a `git archive` snapshot of that commit, builds the complete candidate in a scratch clone, runs the configured census plus planner-core proof bundle there, commits the candidate, and only then fast-forwards the live consumer. Apply, setup, proof, and candidate-commit failures leave the live target unchanged. A durable journal under target Git metadata and an ignored install-local upgrade receipt under planner config distinguish an interrupted final handoff from legacy debris, bind from/tree/source versions to the selected source and resulting commit, and power `recover-upgrade`. Before any candidate is built, upgrade classifies target bytes against target `HEAD`, the selected source ancestry, and all source history. An ignored or otherwise untracked managed file is accepted only when its exact same-path Git blob appears in the selected source ancestry or in that selected snapshot's versioned `config/legacy_managed_blob_provenance.json` ledger. Uncommitted targets, committed divergence, tracked or untracked ahead-of-ref targets, and unclassifiable targets refuse the entire operation and print committed/tree/source stratigraphy, hashes, a bounded diff summary, and a pinned recovery recipe. Project-local `.project_registry.json` entries and unrelated dirty project files are preserved; candidate staging is scoped to the proven upgrade. Use `PLANNER_SOURCE_REPO=/abs/path/to/Iterative Planner` to override the source locator, `PLANNER_SOURCE_REF=<commit-or-tag>` to pin the source, or `PLANNER_SKIP_SELF_HEAL=1` to disable bootstrap diagnosis while debugging.
 
 **Active-plan alias + stale-context guards (v3.10.3):** `bootstrap.mjs` and `transition.mjs` now keep `plans/ACTIVE_PLAN.md` and `plans/ACTIVE_PLAN.json` in sync with `plans/.current_plan`. `bootstrap.mjs status` and `resume` warn when recent tool traces touched a non-active `plans/plan_*` directory, and `transition.mjs` blocks with `GATE-CTX-001` if recent trace evidence shows edits or writes against a non-active plan. Read-only stale-plan evidence produces `GATE-CTX-002` warnings. If either fires, reopen `plans/ACTIVE_PLAN.md`, switch back to the active plan, and retry.
 
@@ -647,7 +719,7 @@ node <skill-path>/scripts/ontology_serializer.mjs            # emit traceability
 # Pre-commit hook shell wrapper
 # <skill-path>/scripts/pre-commit-hook.sh                    # called by git pre-commit via install.mjs
 # <skill-path>/scripts/pre_commit_policy.mjs                 # shared commit-policy helper for installed and legacy pre-commit hook entrypoints
-# Hard ripple gaps are recorded in a local advisory ledger under plans/ and followed by review recommendations; clean-checkout conformance and envelope CI remain authoritative.
+# Hard ripple gaps are recorded in a local advisory ledger under plans/ and followed by review recommendations; governed clean-checkout conformance and managed local pre-push refusal remain authoritative.
 
 # PostToolUse hook — tool trace capture
 # <skill-path>/scripts/hooks/post_tool_use.mjs               # installed via install.mjs --trace-hook
@@ -667,6 +739,10 @@ bash .agent/scripts/migrate-all-projects.sh                  # update all projec
 # parity-audit — check paired implementation files (e.g. http vs mock clients) for drift
 # see .agent/workflows/parity-audit.md
 ```
+
+`blast_radius.mjs` treats an ancestor `.git` file or directory as authoritative worktree metadata. Successful Git inventory searches only tracked eligible files; a genuine non-Git directory may use the bounded filesystem fallback; an actual bounded child timeout or otherwise clean budget exhaustion returns explicit partial evidence with exit `2`; and an operational Git failure in a detected worktree returns exit `1` with no result payload even when the deadline also expires. MCP `check_adjacency` preserves exits `0` and `2` as normal complete/partial content and maps every other or missing child status to `isError: true`.
+
+Ontology induction preflights every selected canonical `verification_strategy.yaml` before any source handler mutates the builder or any canonical/compiled fact is written. Selected strategies must have version `1`, match their plan, contain an array of object criteria, and use unique nonempty normalized criterion IDs within that plan; empty historical scaffolds remain structurally readable while execution lint remains stricter. Tracked strategies remain durable history regardless of lifecycle. An untracked current/thread pointer contributes only when its plan directory and readable state identify a known nonterminal phase; terminal, missing, unreadable, or unknown targets are excluded with deterministic warnings and the pointer is never modified.
 
 `transition.mjs <gate> --dry-run` is the sole transition predictor. It runs the
 same health, persona, JavaScript, checklist, reachability, and Prolog evaluation
@@ -970,7 +1046,7 @@ For smoke or wiring-proof runs, do not interpret ROI, IC, calibration, or promot
 - For WordPress/CMS "missing content" or "looks empty" incidents, the plan must also record the turbulence question, the raw HTML/DOM probe of the exact broken URL, the render-vs-query branch (`0 bytes`/missing block = render crash; HTML shell with empty collections = backend/query), and the entity-preservation rule before proposing migrations or CPT rewrites.
 - Annotations help coverage and ontology facts, but they do not create `code_refs`, `test_refs`, or `validation_refs`. Evidence refs must be durable artifact paths, not shell commands; run `story_registry.mjs prune --safe` to list stale refs and `story_registry.mjs prune --safe --write` only after reviewing the proposed replacements/removals.
 - **Validation-artifact → source-file mapping reconciliation** — if success criteria generate `validation_artifact/2` facts (e.g., criterion-to-script links or `@planner:proves`), verify the artifact files are also covered by `source_file_mapped/1` through `code_ref`, `test_ref`, `validation_ref`, or an explicit mapping. Do not rely on validation artifacts alone unless the ontology bridge rule is known to be active.
-- **Registry hash refresh contract** — if `story_registry.json` is edited during the plan, do not manually compute or edit `state.json.registry_hash`. Run a planner transition; in write mode the hash is refreshed and `registry_tampered` is retracted automatically.
+- **Registry hash refresh contract** — if `story_registry.json` is edited while the plan must remain in its current phase, do not manually compute or edit `state.json.registry_hash`. Run `transition.mjs refresh-registry --dry-run --plan <plan-dir>`, then the same command without `--dry-run`; it validates and signs the registry without advancing phase or appending lifecycle history. A successful ordinary forward transition also refreshes the hash at its post-verdict state-write boundary. Failed transitions never sign a changed registry.
 - To diagnose a specific evidence-chain gap, run:
   ```bash
   node <skill-path>/scripts/story_registry.mjs evidence <story-id>
@@ -1041,6 +1117,8 @@ If the plan cannot count the dimensions yet, it must include a discovery step th
 - If something breaks → STOP. 2 fix attempts max (Autonomy Leash). Each must follow Revert-First.
 - **Irreversible operations** (DB migrations, external API calls, service config, non-tracked file deletion): mark step `[IRREVERSIBLE]` in `plan.md` during PLAN. Full procedure: `references/code-hygiene.md`.
 - **Surprise discovery** (behaviour contradicts findings, unknown dependency, wrong assumption) → note in `state.md`, finish or revert current step, transition to REFLECT. Do NOT silently update findings during EXECUTE.
+- **Verification Harness Side-Effect Boundary (conditional, mandatory when proof starts a server, build, generator, migration, or package script)** — inventory lifecycle hooks and indirect writers before the first proof run. Snapshot every protected or pre-existing dirty artifact, prefer the narrow runtime entrypoint when setup hooks are not the behavior under test, and compare bytes/status afterward. A behavior-green proof that mutates protected state is a failed battery; preserve the incident, repair the harness, and rerun the same journey before crediting it.
+- **Dependency Resolution Outcome Gate (conditional, mandatory for manifest/lockfile work)** — a resolver command is successful only when its intended durable graph mutation is proven, not merely when the process exits zero. Capture before/after manifest and lock hashes, review the exact diff, assert the requested versions in the lock and installed graph, and run a clean install plus the scoped audit/test. If exit zero leaves the intended durable files or resolved versions unchanged, record a safe no-op/failed approach and do not advance the step.
 - Add `# DECISION D-NNN` comments where needed (`references/decision-anchoring.md`).
 
 #### Irreversible Action Execution Contract (MANDATORY)
@@ -1224,7 +1302,7 @@ The close selector runs every declared-critical row. When none is critical, it s
 
 **Degraded Coverage Contract (mandatory for selected checks):** `config/degraded_coverage_census.json` inventories checks that may encounter missing substrate, fixtures, or configuration. Every entry names its selection predicate and is classified as `report_degraded_coverage`, `already_fail_closed`, `already_visible`, `intentionally_not_applicable`, or `dominated_by_prior_failure`. A reportable check that cannot run emits the existing evidence-validity state `degraded_coverage`; it cannot support full-coverage or result claims. Bootstrap status, direct invariant output, and transition receipts name the check and cause and expose exactly two resolution kinds: `build_substrate` and `record_governed_waiver`.
 
-The optional host registry `.agent/degraded_coverage_waivers.json` has shape `{ "schema_version": 1, "waivers": [...] }`. Each waiver requires `waiver_type: "degraded_coverage"`, a registered `check_id`, substantive `reason`, `approved_by`, `recorded_at`, and future `expires_at`. Unknown, duplicate, malformed, expired, unapproved, future-recorded, or redundant waivers fail under `GATE-COV-002`. A valid waiver changes the resolution to `waived` but the evidence remains `degraded_coverage` with `claim_support_allowed: false`; governance never retroactively makes an unexecuted check valid. Explicitly disabled or unselected checks remain quiet N/A, and existing hard failures retain their authority.
+The optional ignored host-local waiver registry reported by `bootstrap.mjs status` has shape `{ "schema_version": 1, "waivers": [...] }`. Each waiver requires `waiver_type: "degraded_coverage"`, a registered `check_id`, substantive `reason`, `approved_by`, `recorded_at`, and future `expires_at`. Unknown, duplicate, malformed, expired, unapproved, future-recorded, or redundant waivers fail under `GATE-COV-002`. A valid waiver changes the resolution to `waived` but the evidence remains `degraded_coverage` with `claim_support_allowed: false`; governance never retroactively makes an unexecuted check valid. Explicitly disabled or unselected checks remain quiet N/A, and existing hard failures retain their authority.
 
 ### VALIDATE
 
@@ -1258,6 +1336,30 @@ The optional host registry `.agent/degraded_coverage_waivers.json` has shape `{ 
 7. Add or update a regression fixture that exercises the primary failing path and at least one mirror consumer. Prefer the smallest real fixture that satisfies unrelated gates; do not use planner-core file paths or synthetic `close_signals` unless planner-core proof or close-signal serialization is the contract under test.
 
 Treat emitted facts and deterministic gate output as the truth surface. Markdown is presentation until those surfaces show the same root cause.
+
+### Truth-Surface Convergence
+
+Repository-convergence plans and Program-linked plans may require the generated
+`truth_convergence` close signal. The signal compares each surface only through
+its canonical owner: Program Packets for local lifecycle, top-level `state.json`
+for plan state, the story registry for story identity, fresh snapshots for live
+GitHub issue/PR state, Git refs for branches, and `audit_log.json` plus commit
+distance for audit freshness. Ontology verifies the resulting facts; it never
+rewrites an owner.
+
+Use the read-only scanner with injected or plan-local snapshots:
+
+```bash
+node <skill-path>/scripts/truth_surface_reconciler.mjs scan --scope repository --plan <plan-dir> --json
+```
+
+`--write` may write only the deterministic receipt/action manifest under the
+selected plan. It never closes GitHub issues or PRs, deletes branches, advances
+Program status, or changes ticket lifecycle. Required missing, partial, invalid,
+or expired observations are `indeterminate`, not PASS. Confirmation-required
+remote actions must be applied separately after their exact targets, payloads,
+and fresh preconditions are reviewed. Unrelated legacy plans compute
+`required:false`, `satisfied:true`, `status:not_required`.
 
 ### Close-Boundary Evaluator Preflight (MANDATORY, conditional)
 

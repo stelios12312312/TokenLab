@@ -80,7 +80,7 @@ const targetRepairRows = realReport.current.target_hotspot_repairs || [];
 assert(targetRepairRows.length === 4, "real replay exposes four target hotspot repair rows");
 const targetRepairByCode = Object.fromEntries(targetRepairRows.map((row) => [row.code, row]));
 assert(targetRepairByCode["GATE-REF-003"]?.current_active_failure_count === 9, "GATE-REF-003 current target count is reported");
-assert(targetRepairByCode["GATE-PLN-017"]?.current_active_failure_count === 22, "GATE-PLN-017 current target count drops after crawler_extractor false-positive repair");
+assert(targetRepairByCode["GATE-PLN-017"]?.current_active_failure_count === 23, "GATE-PLN-017 current target count includes the real Polymarket planning block after crawler_extractor false-positive repair");
 assert(targetRepairByCode["GATE-REF-004"]?.repair_execution?.status === "repaired_guidance", "GATE-REF-004 target row records repaired guidance status");
 assert(targetRepairByCode["GATE-PLN-016"]?.repair_execution?.strictness === "preserved", "GATE-PLN-016 target row records preserved strictness");
 assert(realReport.current.suppressed_failure_counts_by_code["GATE-EXP-015"] > 0, "real replay suppresses legacy EXP-015 from current counts");

@@ -37,8 +37,8 @@ function parseArgs(argv) {
   return args;
 }
 
-function printJson(result) {
-  emitJson(result);
+function printJson(result, exitCode = 0) {
+  emitJson(result, { exitCode });
 }
 
 function printHelp() {
@@ -77,14 +77,14 @@ function main() {
     result = { ok: false, error: "unknown_command", command: args.command };
   }
 
+  const exitCode = result.ok ? 0 : 1;
   if (args.json || args.command === "audit" || !result.ok) {
-    printJson(result);
+    printJson(result, exitCode);
   } else if (args.command === "project") {
     process.stdout.write(result.markdown || "");
   } else {
     console.log(result.ok ? "PASS" : "FAIL");
   }
-  if (!result.ok) process.exit(1);
 }
 
 main();

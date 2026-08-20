@@ -87,6 +87,15 @@ function runCli(ref, extraEnv = {}, extraArgs = []) {
   };
 }
 
+function runTextCli(ref, extraArgs = []) {
+  return spawnSync(NODE, [CLI, "--repo", fixtureRoot, "--ref", ref, ...extraArgs], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+    timeout: 30000,
+    env: cleanGitEnvironment(),
+  });
+}
+
 function profileManifest(targetSha, overrides = {}) {
   const suite = {
     id: "fixture-proof",
@@ -129,6 +138,15 @@ function runProfileCli(ref, fileName, payload, requiredProfile = "core-release")
   if (typeof payload === "string") write(manifestPath, payload);
   else if (payload !== null) write(manifestPath, `${JSON.stringify(payload, null, 2)}\n`);
   return runCli(ref, {}, [
+    "--profile-manifest", manifestPath,
+    "--require-profile", requiredProfile,
+  ]);
+}
+
+function runProfileTextCli(ref, fileName, payload, requiredProfile = "core-release") {
+  const manifestPath = `reports/${fileName}`;
+  write(manifestPath, `${JSON.stringify(payload, null, 2)}\n`);
+  return runTextCli(ref, [
     "--profile-manifest", manifestPath,
     "--require-profile", requiredProfile,
   ]);
@@ -211,6 +229,7 @@ try {
   const red = runCli(redSha);
   assert(red.status === 1, "seeded red commit exits non-zero");
   assert(red.receipt?.status === "FAIL", "seeded red receipt is FAIL");
+  assert(red.receipt?.release_authority === false, "failed unbound receipt is not release authority");
   assert(red.receipt?.target_sha === redSha, "red receipt binds the exact target SHA");
   assert(red.receipt?.checks?.canonical_story_registry?.error_count === 1, "red receipt preserves canonical error count");
   assert(red.receipt?.checks?.ontology_invariants?.violation_count === 0, "red receipt preserves narrower invariant PASS");
@@ -221,6 +240,7 @@ try {
   const green = runCli(greenSha);
   assert(green.status === 0, "seeded green commit exits zero");
   assert(green.receipt?.status === "PASS", "seeded green receipt is PASS");
+  assert(green.receipt?.release_authority === false, "passing unbound receipt is not release authority");
   assert(green.receipt?.target_sha === greenSha, "green receipt binds the exact target SHA");
   assert(green.receipt?.checks?.canonical_story_registry?.status === "PASS", "green canonical story check passes");
   assert(green.receipt?.checks?.ontology_invariants?.status === "PASS", "green invariant check passes");
@@ -232,6 +252,15 @@ try {
   assert(governedGreen.status === 0, "same-SHA governed profile exits zero");
   assert(governedGreen.receipt?.checks?.governed_profile?.status === "PASS", "same-SHA governed profile check passes");
   assert(governedGreen.receipt?.governed_profile?.manifest_sha256?.length === 64, "receipt records governed profile manifest hash");
+  assert(governedGreen.receipt?.release_authority === true, "passing governed receipt is release authority");
+
+  const unboundText = runTextCli(greenSha);
+  assert(unboundText.status === 0, "unbound text mode preserves conformance exit status");
+  assert(unboundText.stdout.includes("NOT-RELEASE-AUTHORITY"), "unbound text mode prints the non-authority banner");
+
+  const governedText = runProfileTextCli(greenSha, "profile-green-text.json", profileManifest(greenSha));
+  assert(governedText.status === 0, "governed text mode preserves conformance exit status");
+  assert(!governedText.stdout.includes("NOT-RELEASE-AUTHORITY"), "governed text mode does not print the non-authority banner");
 
   const governedFailed = runProfileCli(greenSha, "profile-failed.json", profileManifest(greenSha, {
     overall_status: "fail",

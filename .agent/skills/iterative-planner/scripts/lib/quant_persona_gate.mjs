@@ -252,7 +252,7 @@ function unique(values) {
 
 function normalizeShape(planShape) {
   if (typeof planShape === "string") return planShape.trim().toLowerCase();
-  if (planShape && typeof planShape === "object") return String(planShape.primary || "").trim().toLowerCase();
+  if (planShape && typeof planShape === "object") return String(planShape.primary || planShape.detected_primary || "").trim().toLowerCase();
   return "";
 }
 
@@ -316,18 +316,52 @@ function collectTextBundle({
 export function detectQuantPersonaScope(input = {}) {
   const bundle = collectTextBundle(input);
   const shape = normalizeShape(input.planShape);
+  const ticketType = String(input.ticket?.ticket_type || input.ticket?.type || "").trim().toLowerCase();
+  const programId = String(input.packet?.id || input.packet?.program || "").trim().toLowerCase();
+
   const market = matchedTerms(bundle.combined, MARKET_TERMS);
   const method = matchedTerms(bundle.combined, METHOD_TERMS);
   const support = matchedTerms(bundle.combined, SUPPORT_TERMS);
   const changedFiles = asArray(input.changedFiles);
   const ticketScope = normalizeTicketScope(input.ticketScope || input.ticket?.quant_scope);
 
+  const matchedSignals = unique([
+    ...market.map((term) => `market:${term}`),
+    ...method.map((term) => `method:${term}`),
+    ...support.map((term) => `support:${term}`),
+  ]);
+
   if (NON_QUANT_TICKET_SCOPES.has(ticketScope)) {
     return {
       required: false,
       reason: "planner_core_ticket_scope",
       declared_scope: ticketScope,
-      matched_signals: unique([...market.map((term) => `market:${term}`), ...method.map((term) => `method:${term}`), ...support.map((term) => `support:${term}`)]),
+      matched_signals: matchedSignals,
+    };
+  }
+
+  const isCodeRefactorOrResearch = ticketType === "code_refactor" || ticketType === "refactor" || ticketType === "research";
+  const programDomainIsQuant = programId.includes("quant") || programId.includes("betting") || programId.includes("trading");
+  const isDeclaredNonQuant = isCodeRefactorOrResearch && !programDomainIsQuant;
+
+  const strongSupport = support.filter((term) => term !== "quant" && !WEAK_SUPPORT_TERMS.has(term));
+  const supportQuantPair = support.includes("quant") && strongSupport.length > 0;
+  const vocabSuggestsQuant = market.length > 0 || method.length > 0 || supportQuantPair;
+
+  if (isDeclaredNonQuant && vocabSuggestsQuant) {
+    return {
+      required: false,
+      reason: "conflicting_signals_advisory",
+      advisory: "--quant-scope to override",
+      matched_signals: matchedSignals,
+    };
+  }
+
+  if (isDeclaredNonQuant) {
+    return {
+      required: false,
+      reason: "declared_signals_non_quant",
+      matched_signals: matchedSignals,
     };
   }
 
@@ -335,21 +369,15 @@ export function detectQuantPersonaScope(input = {}) {
     return {
       required: false,
       reason: "non_quant_project_context",
-      matched_signals: unique([...market.map((term) => `market:${term}`), ...method.map((term) => `method:${term}`), ...support.map((term) => `support:${term}`)]),
+      matched_signals: matchedSignals,
     };
   }
 
-  const strongSupport = support.filter((term) => term !== "quant" && !WEAK_SUPPORT_TERMS.has(term));
-  const supportQuantPair = support.includes("quant") && strongSupport.length > 0;
-  const required = market.length > 0 || method.length > 0 || supportQuantPair;
+  const required = vocabSuggestsQuant;
   return {
     required,
     reason: required ? "quant_scope_detected" : "no_quant_scope",
-    matched_signals: unique([
-      ...market.map((term) => `market:${term}`),
-      ...method.map((term) => `method:${term}`),
-      ...support.map((term) => `support:${term}`),
-    ]),
+    matched_signals: matchedSignals,
   };
 }
 

@@ -88,7 +88,7 @@ manifest reports a clean repo-state stamp at the candidate SHA; and the detached
 receipt reports `status: PASS`. Canonical story health, invariant health,
 consistency, project health, target-checkout cleanliness, cleanup, and the
 governed-profile binding must all pass. An active-worktree test, the full
-diagnostic catalog, hosted CI, or an invariant-only PASS is not a substitute.
+diagnostic catalog, a remote status check, or an invariant-only PASS is not a substitute.
 
 The candidate commit and the proof-storage commit are intentionally different:
 the manifest and receipt are generated after the candidate exists. Store those

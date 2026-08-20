@@ -6,13 +6,18 @@
 // All features are gated behind config/determinism.json feature flags.
 // Zero dependencies — Node.js 18+.
 
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, renameSync, appendFileSync, realpathSync, openSync, closeSync, unlinkSync, statSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, appendFileSync, realpathSync, openSync, closeSync, unlinkSync, statSync, renameSync } from "fs";
 import { join, dirname, relative, resolve } from "path";
 import { createHash, randomBytes } from "crypto";
 import { fileURLToPath } from "url";
 import { debugLog } from "./plan_utils.mjs";
 import { buildRepoStateStamp } from "./repo_state_stamp.mjs";
 import { normalizeVerificationStatus } from "./verification_status_vocabulary.mjs";
+import {
+  finalizeOwnedFileReplace,
+  observeOwnedFile,
+  replaceOwnedFile,
+} from "./owned_file_replace.mjs";
 
 // C1-FIX: Synchronous sleep without SharedArrayBuffer.
 // SharedArrayBuffer + Atomics.wait() deadlocks in single-threaded Node.js main loop.
@@ -204,6 +209,24 @@ export function readStateJson(planDir) {
   }
 }
 
+/** Read state.json together with the exact identity/digest required for CAS. */
+export function readStateJsonWithProvenance(planDir) {
+  const statePath = join(planDir, "state.json");
+  const observation = observeOwnedFile(statePath, { maxBytes: 5_242_880 });
+  if (observation.status !== "present") {
+    return { state: null, provenance: null, status: observation.status, reason: observation.reason };
+  }
+  try {
+    const state = JSON.parse(observation.bytes.toString("utf8"));
+    if (state && state.state !== undefined && (state.state === null || typeof state.state !== "string")) {
+      return { state: null, provenance: observation.token, status: "invalid", reason: "invalid_state_field" };
+    }
+    return { state, provenance: observation.token, status: "present", reason: null };
+  } catch (error) {
+    return { state: null, provenance: observation.token, status: "invalid", reason: error.message };
+  }
+}
+
 /**
  * State hash validation is retired. Legacy `_state_hash` fields are ignored so
  * older plans can transition without a migration dance.
@@ -256,13 +279,12 @@ function stampLatestTransitionRecord(stateObj, previousState) {
 }
 
 /**
- * Write state.json to a plan directory (atomic write via tmp + rename).
- * Only writes if the state_json feature is enabled.
+ * Structured state writer. Production callers must pass the provenance returned
+ * by readStateJsonWithProvenance (or null for a proven-absent initial create).
  */
-export function writeStateJson(planDir, stateObj, opts = {}) {
-  if (!isFeatureEnabled("state_json")) return false;
+export function writeStateJsonResult(planDir, stateObj, opts = {}) {
+  if (!isFeatureEnabled("state_json")) return { status: "conflict", reason: "state_json_disabled" };
   const statePath = join(planDir, "state.json");
-  const tmpPath = statePath + ".tmp";
   try {
     const previousState = readPreviousStateForWrite(statePath);
     const phaseDiff = phaseMutationDiff(previousState, stateObj);
@@ -272,20 +294,61 @@ export function writeStateJson(planDir, stateObj, opts = {}) {
       callerLooksLikePlannerFixture();
     if (phaseDiff.length > 0 && !phaseMutationAllowed) {
       debugLog("determinism", `state.json phase/status mutation refused outside funnel (${phaseDiff.join(", ")})`);
-      return false;
+      return { status: "conflict", reason: "phase_mutation_outside_funnel" };
     }
     stampLatestTransitionRecord(stateObj, previousState);
     stateObj.updated_at = nowISO();
     delete stateObj._state_hash;
-    writeFileSync(tmpPath, JSON.stringify(stateObj, null, 2) + "\n");
-    renameSync(tmpPath, statePath);
-    return true;
+    const expected = Object.prototype.hasOwnProperty.call(opts, "expected")
+      ? opts.expected
+      : observeOwnedFile(statePath, { maxBytes: 5_242_880 }).token;
+    const fixtureRaceHooks = (
+      process.env.NODE_ENV === "test"
+      && process.env.PLANNER_ALLOW_DIRECT_STATE_SETUP === "1"
+      && process.env.PLANNER_TEST_OWNED_STATE_RACE === "before-displace"
+      && String(opts.mutationOrigin || "").startsWith("transition:")
+    ) ? {
+        beforeDisplace({ path }) {
+          // Deterministic fixture-only cooperating-writer race: a new inode with
+          // identical bytes becomes canonical after the caller's first read.
+          const priorPath = `${path}.planner-test-prior-owner`;
+          renameSync(path, priorPath);
+          writeFileSync(path, readFileSync(priorPath), { flag: "wx" });
+        },
+      } : {};
+    const replacement = replaceOwnedFile({
+      path: statePath,
+      bytes: JSON.stringify(stateObj, null, 2) + "\n",
+      expected: expected || null,
+      hooks: opts.hooks || fixtureRaceHooks,
+    });
+    if (replacement.status !== "committed" || opts.deferFinalize === true) return replacement;
+    const finalization = finalizeOwnedFileReplace(replacement);
+    return finalization.status === "committed"
+      ? replacement
+      : { ...replacement, status: "cleanup_pending", reason: finalization.reason };
   } catch (e) {
     debugLog("determinism", `state.json write failed: ${e.message}`);
-    // RT6-M7: Clean up temp file on failure
-    try { unlinkSync(tmpPath); } catch { /* best-effort */ }
-    return false;
+    return { status: "cleanup_pending", reason: e.code || e.message };
   }
+}
+
+/** Compatibility adapter for test/setup callers. Production uses writeStateJsonResult. */
+export function writeStateJson(planDir, stateObj, opts = {}) {
+  return writeStateJsonResult(planDir, stateObj, opts).status === "committed";
+}
+
+export function ensureCircuitBreakersState(planDir) {
+  const stateRead = readStateJsonWithProvenance(planDir);
+  const stateJson = stateRead.state;
+  if (!stateJson || stateJson.circuit_breakers) return false;
+  stateJson.circuit_breakers = {};
+  delete stateJson._state_hash;
+  const result = writeStateJsonResult(planDir, stateJson, { expected: stateRead.provenance });
+  if (result.status !== "committed") {
+    throw new Error(`state.json seed ${result.status}: ${result.reason}`);
+  }
+  return true;
 }
 
 /**
@@ -354,12 +417,11 @@ export function validateStateJson(stateObj) {
  * RT-HARDENING-002: Also backs up to plans/.audit-archive/<plan>/ (outside plan working area).
  * LLMs can delete artifacts/ but the archive copy persists for compliance.
  */
-export function appendDecisionLog(planDir, entry) {
-  if (!isFeatureEnabled("decision_logs")) return false;
+export function appendDecisionLogResult(planDir, entry, opts = {}) {
+  if (!isFeatureEnabled("decision_logs")) return { status: "committed", reason: "decision_logs_disabled" };
   const artifactsDir = join(planDir, "artifacts");
   mkdirSync(artifactsDir, { recursive: true });
   const logPath = join(artifactsDir, "decision_log.jsonl");
-  const tmpPath = logPath + ".tmp";
   // RT3-M1-FIX: Advisory lock for decision log writes. Without this, concurrent
   // appends (e.g., from parallel transitions) can lose entries because the
   // read-modify-write cycle is not atomic.
@@ -399,7 +461,7 @@ export function appendDecisionLog(planDir, entry) {
   }
   if (!logLockAcquired) {
     debugLog("determinism", "Could not acquire decision log lock after retries — aborting append");
-    return false;
+    return { status: "conflict", reason: "decision_log_lock_unavailable" };
   }
   const record = {
     timestamp: nowISO(),
@@ -433,11 +495,17 @@ export function appendDecisionLog(planDir, entry) {
     // `_prev_hash` chain), so it added false confidence, not tamper-evidence. The
     // chain integrity (each record hashing the full previous line) is unchanged.
 
-    // Atomic append: read existing content, append new record, write to tmp, rename.
-    // Prevents partial writes on crash.
+    // Ownership-aware append: preserve exact read provenance and publish without overwrite.
     const newContent = existing + JSON.stringify(record) + "\n";
-    writeFileSync(tmpPath, newContent);
-    renameSync(tmpPath, logPath);
+    const observedLog = observeOwnedFile(logPath);
+    const expectedLog = observedLog.status === "present" ? observedLog.token : null;
+    const logReplacement = replaceOwnedFile({ path: logPath, bytes: newContent, expected: expectedLog });
+    if (logReplacement.status !== "committed") return logReplacement;
+    if (opts.deferFinalize === true) return { ...logReplacement, content: newContent };
+    const logFinalization = finalizeOwnedFileReplace(logReplacement);
+    if (logFinalization.status !== "committed") {
+      return { ...logReplacement, status: "cleanup_pending", reason: logFinalization.reason };
+    }
 
     // RT-HARDENING-002: Backup to plans/.audit-archive/<plan-dir-name>/
     // This directory is outside the plan's working area, so deleting artifacts/
@@ -447,23 +515,32 @@ export function appendDecisionLog(planDir, entry) {
       const archiveDir = join(planDir, "..", ".audit-archive", planDirName);
       mkdirSync(archiveDir, { recursive: true });
       const archivePath = join(archiveDir, "decision_log.jsonl");
-      writeFileSync(archivePath, newContent);
+      const observedArchive = observeOwnedFile(archivePath);
+      const archiveReplacement = replaceOwnedFile({
+        path: archivePath,
+        bytes: newContent,
+        expected: observedArchive.status === "present" ? observedArchive.token : null,
+      });
+      if (archiveReplacement.status === "committed") finalizeOwnedFileReplace(archiveReplacement);
     } catch (e) {
       debugLog("determinism", `Audit archive backup failed: ${e.message}`);
     }
 
-    return true;
+    return logReplacement;
   } catch (e) {
     debugLog("determinism", `Decision log append failed: ${e.message}`);
-    // RT6-M7: Clean up temp file on failure to prevent stale .tmp files
-    try { unlinkSync(tmpPath); } catch { /* best-effort */ }
-    return false;
+    return { status: "cleanup_pending", reason: e.code || e.message };
   } finally {
     // RT3-M1-FIX: Release decision log lock
     if (logLockAcquired) {
       try { unlinkSync(lockPath); } catch { /* best-effort */ }
     }
   }
+}
+
+/** Compatibility adapter for legacy tests. Production uses appendDecisionLogResult. */
+export function appendDecisionLog(planDir, entry) {
+  return appendDecisionLogResult(planDir, entry).status === "committed";
 }
 
 /**

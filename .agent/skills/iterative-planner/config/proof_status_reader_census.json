@@ -6,6 +6,18 @@
   "baseline": {"javascript_files": 506, "prolog_files": 20, "repair_javascript_readers": 49, "repair_prolog_readers": 8},
   "protocol_exemptions": [
     {
+      "id": ".agent/skills/iterative-planner/scripts/lib/autonomous_ticket_delivery.mjs:direct_status_comparison:fc3ad6d4ae180a18",
+      "path": ".agent/skills/iterative-planner/scripts/lib/autonomous_ticket_delivery.mjs",
+      "reason": "Lifecycle-reconciler Git commit evidence state, not an authored or executed verification outcome.",
+      "proof_boundary": "Preflight also requires an exact target finding, a declared closed child plan, a proposed closed lifecycle, and a non-empty reachable commit reference; the state comparison can only block admission and cannot satisfy Program verification rows."
+    },
+    {
+      "id": ".agent/skills/iterative-planner/scripts/lib/autonomous_ticket_delivery.mjs:direct_status_comparison:0d02fb7fa004363b",
+      "path": ".agent/skills/iterative-planner/scripts/lib/autonomous_ticket_delivery.mjs",
+      "reason": "Production-delivery receipt outcome used to recognize a zero-invocation preflight block during idempotent replay.",
+      "proof_boundary": "The comparison accepts only a countersigned BLOCKED receipt with invocation_count zero and null candidate topology; it cannot produce PASS, close a ticket, or satisfy verification evidence."
+    },
+    {
       "id": ".agent/skills/quant-researcher/scripts/quant_researcher_contracts.mjs:direct_status_comparison:ad0f918f56affd19",
       "path": ".agent/skills/quant-researcher/scripts/quant_researcher_contracts.mjs",
       "reason": "Agent-review verdict is a countersign protocol enum, not authored or executed verification proof.",
@@ -533,6 +545,7 @@
     {"id":"JS-R47","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/session_obligations.mjs","symbol":"assumption evidence reader","classification":"repaired","anchor":"assumption","reason":"Use a configured evidence context."},
     {"id":"JS-R48","language":"javascript","path":".agent/skills/iterative-planner/scripts/lib/ontology_schema.mjs","symbol":"schema verifier parity","classification":"repaired","anchor":"verificationStatusAcceptedForms","reason":"Schema verification statuses are derived from the canonical execution forms."},
     {"id":"JS-R49","language":"javascript","path":".agent/skills/iterative-planner/scripts/verify_gate.mjs","symbol":"legacy reflect-to-close reader","classification":"repaired","anchor":"reflect-to-close","reason":"Delete raw PASS/FAIL presence fallback."},
+    {"id":"JS-R50","language":"javascript","path":".agent/skills/iterative-planner/scripts/hooks/pre_push_conformance.mjs","symbol":"collectFailingSuiteIds","classification":"repaired","anchor":"verificationStatusIsHardFailure(status, \"execution\")","reason":"Completed IVE result/check statuses use canonical execution hard-failure truth; unknown values fail closed while configured advisory statuses do not become failing-suite diagnostics."},
     {"id":"PL-R01","language":"javascript-prolog-bridge","path":".agent/skills/iterative-planner/scripts/ontology_serializer.mjs","symbol":"Active Mistake Evidence satisfaction","classification":"repaired","anchor":"verificationStatusIsPass(status, \"presentation\")","reason":"Only explicit canonical PASS emits mistake_hook_satisfied/2; FAIL, unknown, waiver, and N/A do not."},
     {"id":"PL-R02","language":"javascript-prolog-bridge","path":".agent/skills/iterative-planner/scripts/ontology_serializer.mjs","symbol":"anti-recurrence status bridge","classification":"repaired","anchor":"extractAntiRecurrenceMarkdownEvidence","reason":"Canonical structured PASS is required before emitting Prolog anti-recurrence evidence."},
     {"id":"PL-R03","language":"javascript-prolog-bridge","path":".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs","symbol":"reachability audit proof","classification":"repaired","anchor":"reachability_audit","reason":"Require explicit canonical PASS."},

@@ -5,8 +5,8 @@
   "transition_gate": "reflect-to-close",
   "source": {
     "fixture_dir": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry",
-    "fixture_count": 27,
-    "corpus_digest": "5fbe9a5aeeb17eaf3299a2d2b3684be8e1e76fcbc606e7ec4e6bd8f726e9c12a",
+    "fixture_count": 28,
+    "corpus_digest": "a6786abce7e9d66e4991a95b5354c87500d6468207c0e0fb86e08fcdd5d7fed1",
     "self_clear_window_sec": 120
   },
   "gate_summary": {

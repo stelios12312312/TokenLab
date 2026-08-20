@@ -155,4 +155,4 @@ The default minimum is **3 stories**. To adjust per-project, add to `audit.confi
 
 **"0 persona candidates"**: No `audit.config.json`, or all persona findings are `info` severity. Add an audit config with a relevant role, or lower the `fail_on` threshold to `["MEDIUM"]`.
 
-**"Registry tampered" warning after manual edits**: Update `registry_hash` in `state.json` — see gotchas.md G-010.
+**"Registry tampered" warning after intentional registry edits**: Never hand-edit `state.json`. Run `node .agent/skills/iterative-planner/scripts/transition.mjs refresh-registry --dry-run --plan <plan-dir>`, then repeat without `--dry-run` after the preflight passes.

@@ -13,6 +13,16 @@ program_ticket(Program, Ticket) :-
 invariant_violated(program_gate_requirement_unsatisfied, Requirement) :-
     program_gate_requirement_unsatisfied(_, Requirement).
 
+external_prerequisite_gate_context :- program_gate_context('ready_to_execution').
+external_prerequisite_gate_context :- program_gate_context('execution_to_program_validate').
+external_prerequisite_gate_context :- program_gate_context('validate_to_program_close').
+
+ticket_external_prerequisite_unsatisfied(_, _, _) :- fail.
+
+invariant_violated('program_ticket_external_prerequisite_unsatisfied', Ticket) :-
+    external_prerequisite_gate_context,
+    ticket_external_prerequisite_unsatisfied(Ticket, _, _).
+
 ticket_github_issue_mirror_required(Ticket) :-
     program_ticket(Program, Ticket),
     program_github_issue_mirror_required(Program).

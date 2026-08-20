@@ -4,6 +4,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { dirname, isAbsolute, join, resolve } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
+import { emitJson } from "./lib/emit_json.mjs";
 import { validateRecipeSurface } from "./lib/recipe_utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -409,8 +410,8 @@ function main() {
   const report = buildRecipeFleetAudit({ cwd: process.cwd(), configPath, migrate });
 
   if (json) {
-    console.log(JSON.stringify(report, null, 2));
-    process.exit(0);
+    emitJson(report, { exitCode: 0 });
+    return;
   }
 
   const resolvedOutputPath = resolve(process.cwd(), outputPath);

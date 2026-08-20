@@ -8,6 +8,7 @@ import { spawnSync } from "child_process";
 import { isDeepStrictEqual } from "util";
 import { fileURLToPath } from "url";
 import { resolve } from "path";
+import { emitJson } from "./lib/emit_json.mjs";
 
 export const ADVERSARIAL_EVIDENCE_RECEIPT_SCHEMA = "planner.adversarial_evidence_rerun.v1";
 export const DEFAULT_ADVERSARIAL_EVIDENCE_TIMEOUT_MS = 120_000;
@@ -274,21 +275,25 @@ export function executeAdversarialEvidenceJob(jobInput, options = {}) {
 
 function readStdin() {
   let input = "";
+  let emitted = false;
   process.stdin.setEncoding("utf-8");
   process.stdin.on("data", (chunk) => {
+    if (emitted) return;
     input += chunk;
     if (Buffer.byteLength(input, "utf-8") > MAX_INPUT_BYTES) {
-      process.stdout.write(`${JSON.stringify({
+      emitted = true;
+      emitJson({
         schema_version: ADVERSARIAL_EVIDENCE_RECEIPT_SCHEMA,
         status: "invalid_contract",
         satisfied: false,
         performed: false,
         blockers: ["adversarial_evidence_job_too_large"],
-      })}\n`);
-      process.exit(0);
+      }, { space: 0, exitCode: 0 });
+      process.stdin.destroy();
     }
   });
   process.stdin.on("end", () => {
+    if (emitted) return;
     let job = {};
     try {
       job = JSON.parse(input);

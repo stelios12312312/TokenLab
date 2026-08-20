@@ -5,6 +5,7 @@ import { basename, dirname, extname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 
 import { allocateConventionIds } from "./lib/convention_registry.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 import { loadOntologyFactDocument, renderOntologyDocument } from "./lib/ontology_schema.mjs";
 
 const DEFAULT_THRESHOLDS = Object.freeze({
@@ -688,10 +689,9 @@ if (_isMain) {
   });
 
   if (options.json) {
-    console.log(JSON.stringify(result, null, 2));
+    emitJson(result, { exitCode: result.ok ? 0 : 1 });
   } else {
     printHumanSummary(result);
+    process.exit(result.ok ? 0 : 1);
   }
-
-  process.exit(result.ok ? 0 : 1);
 }

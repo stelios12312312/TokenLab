@@ -323,3 +323,31 @@ Mandatory rules for every AI session on this project. These rules prevent common
 - If the user request is a simple bug fix, diagnostic, question, or administrative chore, you do not need to elicit a user story.
 
 **Why**: Keeping the user story registry synchronized with actual user requests in real-time ensures that we maintain perfect traceability from user requirements to code and verification matrix checks.
+
+---
+
+## 18. Verification Proof Must Preserve Protected State (Retro 2026-08-01)
+
+**Goal**: Prevent a green test journey from silently overwriting operator-owned or pre-existing dirty artifacts through setup hooks.
+
+**Protocol**:
+- Before a proof command starts a server, build, generator, migration, or package script, expand its `pre*`/`post*` hooks and inventory indirect writers.
+- Snapshot the bytes and Git status of protected or pre-existing dirty artifacts before the run; compare both after the run.
+- When setup/generation is not the behavior under test, invoke the narrow runtime directly. When it is required, redirect outputs to a run-local directory.
+- Any behavior-green run that mutates protected state is a failed battery. Preserve the incident and rerun after repairing the harness.
+
+**Why**: The T-INTAKE-768F6D66 Playwright proof passed all 26 browser checks while `npm run dev` invoked `predev` and overwrote an uncommitted canonical payload. Direct Vite startup plus byte-preservation assertions made the journey truthful.
+
+---
+
+## 19. Metered Execution Requires Deterministic Admission (Retro 2026-08-17)
+
+**Goal**: Prevent paid or limited external execution from being spent on work that the parent can already prove cannot finish within the executor's authority.
+
+**Protocol**:
+- Before launching an agent, remote job, or paid API, evaluate every deterministic prerequisite available from local state, declared remote policy, credentials/capabilities, lifecycle evidence, and the executor's allowed mutation boundary.
+- A deterministic blocker must produce a durable, idempotent zero-invocation receipt before any branch, worktree, candidate directory, or process is created.
+- Label budget controls by enforcement point. Values available only after completion are post-run acceptance limits, not provider-side hard caps.
+- If execution is ephemeral, preserve sanitized structural diagnostics sufficient to explain transport, exit, timing, usage, and stable error classes without persisting transcript content or secrets.
+
+**Why**: The first production autonomous ticket seat consumed 1,508,341 reported tokens before discovering that the remote-synced target lacked its own GitHub issue mirror—a blocker deterministically visible before launch. The run produced no commit or diff, so admission order, not candidate coding, was the controlling defect.

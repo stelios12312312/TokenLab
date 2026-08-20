@@ -11,6 +11,7 @@ import {
 } from "fs";
 import { basename, join, resolve } from "path";
 import { pathToFileURL } from "url";
+import { emitJson } from "./lib/emit_json.mjs";
 
 const PLANNER_PREFIXES = [
   ".agent/skills/iterative-planner/",
@@ -229,16 +230,19 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
       process.exit(0);
     }
     const payload = runSourceParityGuard(args);
-    if (args.json) console.log(JSON.stringify(payload, null, 2));
-    else printHuman(payload);
-    process.exit(payload.ok ? 0 : 1);
+    const exitCode = payload.ok ? 0 : 1;
+    if (args.json) emitJson(payload, { exitCode });
+    else {
+      printHuman(payload);
+      process.exitCode = exitCode;
+    }
   } catch (error) {
     const payload = { ok: false, status: "error", error: error?.message || String(error) };
-    if (process.argv.includes("--json")) console.log(JSON.stringify(payload, null, 2));
+    if (process.argv.includes("--json")) emitJson(payload, { exitCode: 2 });
     else {
       console.error(payload.error);
       console.error(usage());
+      process.exitCode = 2;
     }
-    process.exit(2);
   }
 }

@@ -27,6 +27,7 @@ import {
   evaluateKillClaimEvidence,
   isKillClaimRoute,
 } from "./kill_claim_evidence.mjs";
+import { legacyScientificReviewReceipt, reviewScientificEvidence } from "./scientific_review.mjs";
 
 // Retrofit (DoD: capabilities must be CONSUMED by the live gate, not shelf-ware).
 // e03 calibration bands + e04 forecastability pre-gates run here, the REFLECT/VALIDATE
@@ -1078,6 +1079,25 @@ function computeBaseQuantResultsValidationSignal({
     issues.push(...killClaimEvidence.blockers);
   }
 
+  // Implementation validity and scientific validity are intentionally separate.
+  // A passing runner-bound packet can still fail scientific close when its
+  // referenced design is invalid, underpowered, fixture-grade, or inconsistent.
+  const implementationValidation = {
+    satisfied: issues.length === 0,
+    status: issues.length === 0 ? "pass" : "fail",
+    blocking_issues: [...new Set(issues)],
+  };
+  const scientificReviewRequired = strictPromotion || runClass === "serious_search" || Boolean(doc.scientific_review_request);
+  const scientificReview = scientificReviewRequired
+    ? doc.scientific_review_request
+      ? reviewScientificEvidence(doc.scientific_review_request, { qrvPath: artifact.path, projectRoot: projectRoot || planDir })
+      : legacyScientificReviewReceipt("strict result-bearing quant artifact predates the scientific review request contract")
+    : null;
+  if (scientificReviewRequired && scientificReview?.satisfied !== true) {
+    const scientificCodes = (scientificReview?.blockers || []).map((row) => `scientific_review:${row.code}`);
+    issues.push(...(scientificCodes.length ? scientificCodes : ["scientific_review:close_blocked"]));
+  }
+
   const dedupedIssues = [...new Set(issues)];
   const dedupedWarnings = [...new Set(warnings)];
   const dedupedSemanticGateResults = [...new Map(semanticGateResults.map((gate) => [gate.id, gate])).values()];
@@ -1128,6 +1148,8 @@ function computeBaseQuantResultsValidationSignal({
     measured_quant_gates: measuredQuantGates,
     research_memory_packet: researchMemoryPacket,
     kill_claim_evidence: killClaimEvidence,
+    implementation_validation: implementationValidation,
+    scientific_review: scientificReview,
     detail: dedupedIssues.length === 0
       ? status === "diagnostic_only"
         ? "Quant results validation satisfied as diagnostic-only evidence"

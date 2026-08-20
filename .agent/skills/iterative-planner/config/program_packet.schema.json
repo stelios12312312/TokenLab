@@ -203,6 +203,36 @@
           "defect_refs": { "type": "array", "items": { "type": "string" } },
           "gap_refs": { "type": "array", "items": { "type": "string" } },
           "depends_on": { "type": "array", "items": { "type": "string" } },
+          "external_prerequisites": {
+            "type": "array",
+            "description": "Structured cross-Program prerequisites. A row targets either one exact Program status or a minimum forward ticket lifecycle; blocked/deferred remain exact-only and prose dependencies are never treated as authority.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "program_ref": { "type": "string", "minLength": 1 },
+                "ticket_ref": { "type": "string", "minLength": 1 },
+                "required_status": {
+                  "type": "string",
+                  "enum": ["design", "ready", "executing", "validating", "closed", "deferred"]
+                },
+                "required_lifecycle": {
+                  "type": "string",
+                  "enum": ["proposed", "ready", "in_progress", "blocked", "done", "verified", "closed", "deferred"]
+                }
+              },
+              "oneOf": [
+                {
+                  "required": ["program_ref", "required_status"],
+                  "not": { "anyOf": [{ "required": ["ticket_ref"] }, { "required": ["required_lifecycle"] }] }
+                },
+                {
+                  "required": ["program_ref", "ticket_ref", "required_lifecycle"],
+                  "not": { "required": ["required_status"] }
+                }
+              ],
+              "additionalProperties": false
+            }
+          },
           "acceptance_criteria": { "type": "array", "items": { "type": "string" } },
           "child_plan": {
             "type": "object",
@@ -217,6 +247,11 @@
             "additionalProperties": true
           },
           "compatibility_contract_refs": { "type": "array", "items": { "type": "string" } },
+          "revival_decision_ref": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Accepted decision that explicitly revived a previously deferred ticket; deferral_decision_ref remains preserved as history."
+          },
           "migration_boundary_refs": { "type": "array", "items": { "type": "string" } },
           "deletion_move_census_refs": { "type": "array", "items": { "type": "string" } },
           "verification_refs": { "type": "array", "items": { "type": "string" } },

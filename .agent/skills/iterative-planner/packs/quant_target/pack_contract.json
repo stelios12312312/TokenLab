@@ -27,6 +27,12 @@
       "deterministic": true,
       "module": ".agent/skills/iterative-planner/tests/test_quant_results_validation.mjs",
       "seeded_defect_ids": ["quant-target-seeded-hyperparameter-surface"]
+    },
+    {
+      "id": "quant_target_scientific_choice_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/scripts/lib/scientific_parameter_choices.mjs",
+      "seeded_defect_ids": ["quant-target-seeded-hyperparameter-surface"]
     }
   ],
   "calibration_ref": ".agent/skills/iterative-planner/packs/quant/calibration.json",

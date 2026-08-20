@@ -16,7 +16,7 @@ const cli = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "
 const NODE = process.execPath;
 const replayScoreboard = "reports/ive/scoreboard/scoreboard-2026-07-07T17-40-11-369Z/scoreboard.json";
 const replayManifest = "reports/ive/test_runs/scoreboard-2026-07-07T17-40-11-369Z-conformance/manifest.json";
-const replayStdout = "reports/ive/test_runs/scoreboard-2026-07-07T17-40-11-369Z-conformance/logs/cli-determinism.stdout.log";
+const replayStdout = ".agent/skills/iterative-planner/tests/fixtures/findings_triage/cli-determinism.failure-excerpt.txt";
 
 let passed = 0;
 let failed = 0;
@@ -123,7 +123,7 @@ console.log("\nProgram Manager Findings Triage Replay\n");
 
 ok(existsSync(join(repoRoot, replayScoreboard)), "committed 2026-07-07 scoreboard replay receipt exists");
 ok(existsSync(join(repoRoot, replayManifest)), "committed nested conformance manifest exists");
-ok(existsSync(join(repoRoot, replayStdout)), "committed cli-determinism stdout log exists");
+ok(existsSync(join(repoRoot, replayStdout)), "committed cli-determinism failure excerpt exists");
 
 const tmp = mkdtempSync(join(tmpdir(), "program-manager-findings-triage-"));
 try {

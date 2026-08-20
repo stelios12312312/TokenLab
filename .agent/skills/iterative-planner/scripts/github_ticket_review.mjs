@@ -765,6 +765,30 @@ function collectDeterministicBlockers({ validation, gateResults, commandResults 
   return blockers;
 }
 
+function collectPublishBlockers({ validation, ticket, ticketEvidence }) {
+  const blockers = collectDeterministicBlockers({
+    validation,
+    gateResults: [],
+    commandResults: [],
+  });
+  const selfResolving = [];
+  const blocking = [];
+  for (const blocker of blockers) {
+    const targetMirrorWillBeCreated = blocker.source === "program_packet"
+      && blocker.code === "ready_ticket_missing_github_issue"
+      && targetOwnsValidationError(blocker, ticket, ticketEvidence);
+    if (targetMirrorWillBeCreated) {
+      selfResolving.push({
+        ...blocker,
+        resolution: "create_github_issue_then_persist_target_external_ref",
+      });
+    } else {
+      blocking.push(blocker);
+    }
+  }
+  return { blockers: blocking, selfResolving };
+}
+
 function targetReferenceIds(ticket, ticketEvidence) {
   return uniqueStrings([
     ticket?.id,
@@ -1711,16 +1735,21 @@ export async function runPublish(inputArgs, options = {}) {
     cwd,
     storyIds: collectStoryIds(cwd),
     programPacketPath: target.path,
+    remoteMode,
+    repo: args.repo,
+    env,
   });
-  const publishBlockers = collectDeterministicBlockers({
+  const publishPreflight = collectPublishBlockers({
     validation,
-    gateResults: [],
-    commandResults: [],
+    ticket,
+    ticketEvidence: evidence,
   });
+  const publishBlockers = publishPreflight.blockers;
   const programContext = {
     status: publishBlockers.length > 0 ? "blocked" : "pass",
     blockers: publishBlockers,
-    authority: "authoritative_at_publish",
+    self_resolving_preconditions: publishPreflight.selfResolving,
+    authority: "authoritative_at_publish_except_target_mirror_created_by_publish",
   };
 
   let issue = existing ? issueFromPublishedRef(existing, args.repo) : null;
@@ -1755,6 +1784,10 @@ export async function runPublish(inputArgs, options = {}) {
     repo: args.repo,
     program_packet_path: programPacketPath,
     program_packet_validation: validation,
+    publish_preflight: {
+      blockers: publishBlockers,
+      self_resolving_preconditions: publishPreflight.selfResolving,
+    },
     program_context: programContext,
     ticket_id: args.ticket,
     issue: issue ? {

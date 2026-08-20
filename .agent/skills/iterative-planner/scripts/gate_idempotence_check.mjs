@@ -21,6 +21,7 @@
 
 import { join } from "path";
 import { existsSync } from "fs";
+import { emitJson } from "./lib/emit_json.mjs";
 import { resolvePlanTarget } from "./lib/plan_utils.mjs";
 import { GATES, evaluateGateResults } from "./verify_gate.mjs";
 
@@ -105,8 +106,11 @@ function main() {
   const target = resolvePlanTarget(plansDir, { plan: opts.plan, exitOnMissing: false });
   if (!target.planDir || !existsSync(target.planDir)) {
     const msg = "No target plan to check (create one with bootstrap.mjs, or pass --plan).";
-    if (opts.json) console.log(JSON.stringify({ ok: false, error: msg }, null, 2));
-    else console.error(msg);
+    if (opts.json) {
+      emitJson({ ok: false, error: msg }, { exitCode: 1 });
+      return;
+    }
+    console.error(msg);
     process.exit(1);
   }
 
@@ -123,7 +127,7 @@ function main() {
   };
 
   if (opts.json) {
-    console.log(JSON.stringify(out, null, 2));
+    emitJson(out, { exitCode: out.ok ? 0 : 1 });
   } else {
     console.log(`Gate idempotence — plan ${out.plan}, ${opts.runs} runs each`);
     for (const r of results) {
@@ -140,8 +144,8 @@ function main() {
       console.log("");
       console.log(`⚠️  ${flipped.length} gate(s) are non-idempotent — same inputs, different verdict. A verifier that flips cannot be trusted; fix the check before relying on it.`);
     }
+    process.exit(out.ok ? 0 : 1);
   }
-  process.exit(out.ok ? 0 : 1);
 }
 
 // Only run the CLI when executed directly (keep import side-effect free).

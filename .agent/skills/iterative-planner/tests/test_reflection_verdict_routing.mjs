@@ -14,7 +14,9 @@ import {
   computeAntiRecurrenceSignal,
   extractAntiRecurrenceMarkdownEvidence,
   looksLikeConfigPath,
+  looksLikeDocumentationPath,
   looksLikeOntologyDslPath,
+  looksLikeTestPath,
   parseMarkdownTable,
   refreshPlanArtifacts,
   requiresTestEvidence,
@@ -249,6 +251,14 @@ try {
     "ontology-path classification requires both a governed DSL extension and ontology directory");
   assert(requiresTestEvidence("src/app.mjs") === true && requiresTestEvidence("prolog/rules.pl") === false,
     "test-evidence classification separates executable code from governed ontology DSL");
+  assert(looksLikeTestPath(null) === false && looksLikeTestPath("") === false,
+    "test-path classification rejects nullish and blank planned-file entries");
+  assert(looksLikeDocumentationPath(null) === false && looksLikeDocumentationPath("") === false,
+    "documentation-path classification rejects nullish and blank planned-file entries");
+  assert(looksLikeConfigPath(null) === false && looksLikeConfigPath("") === false,
+    "config-path classification rejects nullish and blank planned-file entries");
+  assert(looksLikeOntologyDslPath(null) === false && looksLikeOntologyDslPath("") === false,
+    "ontology-path classification rejects nullish and blank planned-file entries");
 
   assert(verificationShowsPassingCommand("", "node fixture.mjs") === false,
     "command proof rejects missing verification content");

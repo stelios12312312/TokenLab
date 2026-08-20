@@ -2,6 +2,7 @@
 
 import { resolve } from "path";
 
+import { emitJson } from "./lib/emit_json.mjs";
 import { isDirectInvocation } from "./lib/script_entrypoint.mjs";
 import {
   appendActiveOntologyDelta,
@@ -199,7 +200,10 @@ if (isDirectInvocation(import.meta.url)) {
   }
 
   const result = resultForCommand(options);
-  if (options.json) console.log(JSON.stringify(result, null, 2));
-  else console.log(humanSummary(result));
-  process.exit(result.ok ? 0 : 1);
+  if (options.json) {
+    emitJson(result, { exitCode: result.ok ? 0 : 1 });
+  } else {
+    console.log(humanSummary(result));
+    process.exit(result.ok ? 0 : 1);
+  }
 }

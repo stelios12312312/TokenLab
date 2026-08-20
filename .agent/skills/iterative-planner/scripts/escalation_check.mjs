@@ -24,6 +24,7 @@ import { join, dirname, relative, resolve } from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { createHash } from "crypto";
+import { emitJson } from "./lib/emit_json.mjs";
 
 // Validate that a value is a safe git commit hash (7–40 hex chars).
 function safeCommitHash(value) {
@@ -1467,7 +1468,7 @@ async function enrichWithSupervisorVerdict(result) {
     const jsonMode = args.includes("--json");
     const execution = executeRequiredEscalations({ jsonMode, syntheticLabel });
     if (jsonMode) {
-      console.log(JSON.stringify(execution, null, 2));
+      emitJson(execution, { exitCode: execution.ok ? 0 : 1 });
     } else {
       console.log("Gate-fired audit execution");
       console.log(`  Required: ${execution.required_count}`);
@@ -1480,8 +1481,8 @@ async function enrichWithSupervisorVerdict(result) {
       for (const skipped of execution.skipped_escalations) {
         console.log(`  - SKIP ${skipped.type}: ${skipped.reason}`);
       }
+      process.exit(execution.ok ? 0 : 1);
     }
-    process.exit(execution.ok ? 0 : 1);
   } else if (args[0] === "log-workflow" && args[1] && args[2]) {
     logWorkflowEvent(args[1], args[2], args[3] || null);
   } else if (args[0] === "log-recommendation" && args[1]) {

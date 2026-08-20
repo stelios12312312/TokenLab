@@ -31,11 +31,11 @@ if (isDirectInvocation(import.meta.url)) {
     }
     const result = runScoreboard(process.argv.slice(2));
     if (process.argv.includes("--json")) {
-      emitJson(result.report);
+      emitJson(result.report, { exitCode: result.ok ? 0 : 1 });
     } else {
       console.log(renderScoreboardText(result.report));
+      process.exit(result.ok ? 0 : 1);
     }
-    process.exit(result.ok ? 0 : 1);
   } catch (error) {
     const failure = {
       schema_version: 1,
@@ -45,10 +45,10 @@ if (isDirectInvocation(import.meta.url)) {
       error: error.message,
     };
     if (process.argv.includes("--json")) {
-      emitJson(failure);
+      emitJson(failure, { exitCode: 1 });
     } else {
       console.error(`ERROR: ${error.message}`);
+      process.exit(1);
     }
-    process.exit(1);
   }
 }

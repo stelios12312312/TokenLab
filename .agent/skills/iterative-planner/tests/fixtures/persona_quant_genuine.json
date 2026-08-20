@@ -1,0 +1,9 @@
+{
+  "ticket": {
+    "ticket_type": "research"
+  },
+  "packet": {
+    "id": "quant-research-program"
+  },
+  "sourceText": "This is a model backtest for trading"
+}

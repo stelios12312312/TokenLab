@@ -32,6 +32,7 @@ import {
 
 const CLOSED_STATES = new Set(["close", "closed"]);
 const TERMINAL_LIFECYCLES = new Set(["closed", "verified", "deferred"]);
+const OPEN_DEFERRAL_LIFECYCLES = new Set(["proposed", "blocked"]);
 const SHIPPED_OPEN_ACTIONS = new Set(["pending_apply_closed", "would_apply_closed", "applied_closed"]);
 const DEFERRED_ADMIN_CLOSE_ACTIONS = new Set(["pending_admin_close", "would_admin_close", "admin_closed"]);
 const MAX_EXPECTED_EVIDENCE_BYTES = 512 * 1024;
@@ -119,9 +120,10 @@ function hashReceiptIdentity(parts) {
   return createHash("sha256").update(normalized).digest("hex").slice(0, 12);
 }
 
-function dispositionOutputIdentity({ cwd, fromRepairPacket, fromResolutionRequest, deferredPrograms }) {
+function dispositionOutputIdentity({ cwd, fromRepairPacket, findingId, fromResolutionRequest, deferredPrograms }) {
   const parts = [];
   if (fromRepairPacket) parts.push(`repair:${relPath(cwd, fromRepairPacket)}`);
+  if (findingId) parts.push(`finding:${findingId}`);
   if (fromResolutionRequest) parts.push(`resolution:${relPath(cwd, fromResolutionRequest)}`);
   for (const packetArg of deferredPrograms) {
     let packetPath = null;
@@ -627,6 +629,104 @@ function resolveDeferredProgramPath(cwd, programArg) {
   throw new Error(`Deferred Program Packet not found: ${programArg}`);
 }
 
+function parseExpectedDeferredCount(value) {
+  const raw = value === null || value === undefined ? "" : String(value).trim();
+  if (!/^\d+$/.test(raw)) {
+    throw new Error("disposition --defer-open requires --expect-deferred-count with a non-negative integer");
+  }
+  const parsed = Number(raw);
+  if (!Number.isSafeInteger(parsed)) {
+    throw new Error("disposition --expect-deferred-count must be a safe non-negative integer");
+  }
+  return parsed;
+}
+
+function prepareOpenDeferral({ cwd, deferredPrograms, keepTickets, expectedDeferredCount, packetCaches }) {
+  const requestedKeepTickets = asArray(keepTickets).map(asString).filter(Boolean);
+  const uniqueKeepTickets = uniqueStrings(requestedKeepTickets);
+  if (requestedKeepTickets.length !== uniqueKeepTickets.length) {
+    throw new Error("disposition --defer-open received the same --keep-ticket id more than once");
+  }
+
+  const selected = deferredPrograms.map((packetArg) => {
+    const packetPath = resolveDeferredProgramPath(cwd, packetArg);
+    const canonicalPath = realpathSync(packetPath);
+    const cache = ensurePacketCache({ cwd, packetCaches, packetPath: canonicalPath });
+    return { packetArg, packetPath: canonicalPath, cache };
+  });
+  const selectedPaths = selected.map((entry) => entry.packetPath);
+  const duplicatePath = selectedPaths.find((path, index) => selectedPaths.indexOf(path) !== index);
+  if (duplicatePath) {
+    throw new Error(`Program Packet selected more than once: ${relPath(cwd, duplicatePath)}`);
+  }
+
+  const keepLocations = new Map(uniqueKeepTickets.map((id) => [id, []]));
+  const candidateLocations = new Map();
+  const unprotected = [];
+  const deferredByProgram = [];
+  let candidateCount = 0;
+
+  for (const { cache } of selected) {
+    let programCandidateCount = 0;
+    let actionableOpenCount = 0;
+    let existingDeferredCount = 0;
+    const programKeepTickets = [];
+    for (const ticket of asArray(cache.draft?.tickets)) {
+      const ticketId = asString(ticket?.id);
+      const lifecycle = effectiveTicketLifecycle(ticket?.lifecycle);
+      if (keepLocations.has(ticketId)) {
+        keepLocations.get(ticketId).push(cache.rel);
+        programKeepTickets.push(ticketId);
+      }
+      if (lifecycle === "deferred") existingDeferredCount += 1;
+      if (TERMINAL_LIFECYCLES.has(lifecycle)) continue;
+      actionableOpenCount += 1;
+      if (keepLocations.has(ticketId)) continue;
+      if (!OPEN_DEFERRAL_LIFECYCLES.has(lifecycle)) {
+        unprotected.push({ ticket_id: ticketId, lifecycle: lifecycle || "missing", packet_path: cache.rel });
+        continue;
+      }
+      const locations = candidateLocations.get(ticketId) || [];
+      locations.push(cache.rel);
+      candidateLocations.set(ticketId, locations);
+      candidateCount += 1;
+      programCandidateCount += 1;
+    }
+    deferredByProgram.push({
+      program_id: asString(cache.draft?.id),
+      packet_path: cache.rel,
+      actionable_open_count: actionableOpenCount,
+      candidate_count: programCandidateCount,
+      keep_ticket_ids: uniqueStrings(programKeepTickets),
+      existing_deferred_count: existingDeferredCount,
+    });
+  }
+
+  for (const [ticketId, locations] of keepLocations) {
+    if (locations.length !== 1) {
+      throw new Error(`KEEP ticket ${ticketId} must resolve exactly once across selected Program Packets; found ${locations.length}`);
+    }
+  }
+  const duplicateCandidate = [...candidateLocations.entries()].find(([, locations]) => locations.length !== 1);
+  if (duplicateCandidate) {
+    throw new Error(`Open deferral candidate ${duplicateCandidate[0]} resolves in multiple selected Program Packets: ${duplicateCandidate[1].join(", ")}`);
+  }
+  if (unprotected.length > 0) {
+    const details = unprotected.map((entry) => `${entry.ticket_id} (${entry.lifecycle}) in ${entry.packet_path}`).join(", ");
+    throw new Error(`Open deferral found unprotected actionable tickets outside proposed/blocked: ${details}`);
+  }
+  if (candidateCount !== expectedDeferredCount) {
+    throw new Error(`Open deferral candidate count mismatch: expected ${expectedDeferredCount}, found ${candidateCount}`);
+  }
+
+  return {
+    expected_deferred_count: expectedDeferredCount,
+    candidate_count: candidateCount,
+    keep_ticket_ids: uniqueKeepTickets,
+    programs: deferredByProgram,
+  };
+}
+
 function validationErrorKey(error) {
   return `${error?.code || ""}\u0000${error?.path || ""}\u0000${error?.message || ""}`;
 }
@@ -834,12 +934,69 @@ function processDuplicateScope(finding) {
   };
 }
 
-function processDeferredProgram({ cwd, packetArg, packetCaches, write, close, timestamp, receiptRel }) {
+function mutateOpenDeferredTicket({ packet, ticket, timestamp, receiptRel }) {
+  const ticketId = asString(ticket?.id);
+  const decisionId = `D-DEFER-${ticketId}`;
+  const decisions = asArray(packet?.decisions);
+  const collision = decisions.find((decision) => asString(decision?.id) === decisionId);
+  if (collision) {
+    throw new Error(`Open deferral decision id collision for ${ticketId}: ${decisionId}`);
+  }
+  if (!Array.isArray(packet.decisions)) packet.decisions = [];
+  const rationale = `2026-08-06 Day 2 operator-authorized reversible backlog deferral; re-entry requires an explicit revival decision. Receipt: ${receiptRel}.`;
+  packet.decisions.push({
+    id: decisionId,
+    type: "deferral",
+    subject_ref: ticketId,
+    status: "accepted",
+    rationale,
+    decision: rationale,
+  });
+  ticket.lifecycle = "deferred";
+  ticket.deferral_decision_ref = decisionId;
+  ticket.backlog_disposition = {
+    classification: "revive",
+    decision_ref: decisionId,
+    receipt_ref: receiptRel,
+    source: "program_manager_disposition",
+    updated_at: timestamp,
+  };
+  return decisionId;
+}
+
+function processDeferredProgram({ cwd, packetArg, packetCaches, write, close, deferOpen, keepTickets, timestamp, receiptRel }) {
   const packetPath = resolveDeferredProgramPath(cwd, packetArg);
   const cache = ensurePacketCache({ cwd, packetCaches, packetPath });
+  const keepTicketSet = new Set(asArray(keepTickets).map(asString).filter(Boolean));
   const entries = [];
   for (const ticket of asArray(cache.draft?.tickets)) {
     const lifecycle = effectiveTicketLifecycle(ticket?.lifecycle);
+    const ticketId = asString(ticket?.id);
+    if (deferOpen && keepTicketSet.has(ticketId)) continue;
+    if (deferOpen && OPEN_DEFERRAL_LIFECYCLES.has(lifecycle)) {
+      const decisionRef = mutateOpenDeferredTicket({
+        packet: cache.draft,
+        ticket,
+        timestamp,
+        receiptRel,
+      });
+      cache.changed = true;
+      cache.changed_ticket_ids.add(ticketId);
+      entries.push({
+        ticket_id: ticketId,
+        ticket_title: asString(ticket?.title),
+        program_id: asString(cache.draft?.id),
+        packet_path: cache.rel,
+        classification: "revive",
+        decision_ref: decisionRef,
+        close_reason: "",
+        previous_lifecycle: lifecycle,
+        proposed_lifecycle: "deferred",
+        action: write ? "pending_defer_open" : "would_defer_open",
+        blockers: [],
+      });
+      continue;
+    }
     if (!close && lifecycle !== "deferred") continue;
     if (close && !["deferred", "closed"].includes(lifecycle)) continue;
     if (close && lifecycle === "closed" && !ticket?.backlog_disposition) continue;
@@ -1028,6 +1185,7 @@ function markBlockedPacketActions(receipt) {
     }
     for (const entry of receipt.deferred) {
       if (entry.action === "pending_admin_close") entry.action = "admin_closed";
+      if (entry.action === "pending_defer_open") entry.action = "deferred_written";
     }
     for (const entry of receipt.proposed_resolutions) {
       if (entry.action === "pending_admin_resolve") entry.action = "admin_resolved";
@@ -1046,8 +1204,9 @@ function markBlockedPacketActions(receipt) {
   }
   for (const entry of receipt.deferred) {
     const packet = blockedPackets.get(entry.packet_path);
-    if (!packet || entry.action !== "pending_admin_close") continue;
-    entry.action = "keep_deferred";
+    if (!packet || !["pending_admin_close", "pending_defer_open", "would_defer_open"].includes(entry.action)) continue;
+    const wasOpenDeferral = ["pending_defer_open", "would_defer_open"].includes(entry.action);
+    entry.action = wasOpenDeferral ? "keep_open" : "keep_deferred";
     const blocker = asArray(packet.introduced_errors).some((error) => /^program_gate_requirement_/.test(asString(error?.code)))
       ? "packet_gate_requirement_unresolved"
       : "packet_validation_introduced_errors";
@@ -1122,11 +1281,15 @@ export function buildProgramDisposition(options = {}) {
   const cwd = resolve(options.cwd || process.cwd());
   const write = options.write === true;
   const close = options.close === true;
+  const deferOpen = options.deferOpen === true;
+  const keepTickets = asArray(options.keepTickets).map(asString).filter(Boolean);
   const timestamp = nowIso(options.clock);
   const fromRepairPacket = options.fromRepairPacket ? resolvePath(cwd, options.fromRepairPacket) : null;
+  const findingIdRequested = options.findingId !== undefined && options.findingId !== null;
+  const findingId = asString(options.findingId);
   const fromResolutionRequest = options.fromResolutionRequest ? resolvePath(cwd, options.fromResolutionRequest) : null;
   const deferredPrograms = asArray(options.deferredPrograms).map(asString).filter(Boolean);
-  const identityParts = dispositionOutputIdentity({ cwd, fromRepairPacket, fromResolutionRequest, deferredPrograms });
+  const identityParts = dispositionOutputIdentity({ cwd, fromRepairPacket, findingId, fromResolutionRequest, deferredPrograms });
   const outputPath = resolvePath(cwd, options.output || defaultOutputPath(cwd, timestamp, { identityParts, avoidExisting: write }));
   const outputRel = relPath(cwd, outputPath);
   const gitRunner = options.gitRunner || defaultGitRunner;
@@ -1137,13 +1300,49 @@ export function buildProgramDisposition(options = {}) {
   if (fromRepairPacket && !existsSync(fromRepairPacket)) {
     throw new Error(`Repair packet not found: ${relPath(cwd, fromRepairPacket)}`);
   }
+  if (findingIdRequested && !fromRepairPacket) {
+    throw new Error("disposition --finding requires --from-repair-packet");
+  }
+  if (findingIdRequested && !findingId) {
+    throw new Error("disposition --finding requires a non-empty finding id");
+  }
+  if (!deferOpen && (keepTickets.length > 0 || options.expectedDeferredCount !== null && options.expectedDeferredCount !== undefined)) {
+    throw new Error("disposition --keep-ticket and --expect-deferred-count require --defer-open");
+  }
+  if (deferOpen && close) {
+    throw new Error("disposition --defer-open is incompatible with --close");
+  }
+  if (deferOpen && (fromRepairPacket || fromResolutionRequest || findingIdRequested)) {
+    throw new Error("disposition --defer-open is incompatible with repair-packet, finding, and proposed-resolution inputs");
+  }
+  if (deferOpen && deferredPrograms.length === 0) {
+    throw new Error("disposition --defer-open requires at least one --deferred-program");
+  }
+  const expectedDeferredCount = deferOpen ? parseExpectedDeferredCount(options.expectedDeferredCount) : null;
 
   const repairPacket = fromRepairPacket ? readJsonFile(fromRepairPacket) : null;
+  const repairShippedOpen = asArray(repairPacket?.findings?.shipped_open);
+  const repairDuplicateScope = asArray(repairPacket?.findings?.duplicate_scope);
+  let selectedShippedOpen = repairShippedOpen;
+  let selectedDuplicateScope = repairDuplicateScope;
+  if (findingIdRequested) {
+    const matches = [
+      ...repairShippedOpen.map((finding) => ({ bucket: "shipped_open", finding })),
+      ...repairDuplicateScope.map((finding) => ({ bucket: "duplicate_scope", finding })),
+    ].filter((entry) => asString(entry.finding?.id) === findingId);
+    if (matches.length === 0) throw new Error(`Repair finding not found: ${findingId}`);
+    if (matches.length > 1) throw new Error(`Repair finding id is ambiguous: ${findingId}`);
+    selectedShippedOpen = matches[0].bucket === "shipped_open" ? [matches[0].finding] : [];
+    selectedDuplicateScope = matches[0].bucket === "duplicate_scope" ? [matches[0].finding] : [];
+  }
   const resolutionRequest = fromResolutionRequest
     ? loadProposedResolutionRequest({ cwd, requestPath: fromResolutionRequest, gitRunner })
     : null;
   if (resolutionRequest && !resolutionRequest.ok) throw new Error(`${resolutionRequest.blocker}: ${relPath(cwd, fromResolutionRequest)}`);
   const packetCaches = new Map();
+  const openDeferral = deferOpen
+    ? prepareOpenDeferral({ cwd, deferredPrograms, keepTickets, expectedDeferredCount, packetCaches })
+    : null;
   const receipt = {
     schema_version: "program_disposition_receipt.v1",
     command: "disposition",
@@ -1151,8 +1350,13 @@ export function buildProgramDisposition(options = {}) {
     dry_run: !write,
     write_requested: write,
     close_requested: close,
+    defer_open_requested: deferOpen,
+    expected_deferred_count: expectedDeferredCount,
+    keep_ticket_ids: openDeferral?.keep_ticket_ids || [],
+    deferred_by_program: openDeferral?.programs || [],
     generated_at: timestamp,
     repair_packet_path: fromRepairPacket ? relPath(cwd, fromRepairPacket) : null,
+    finding_id: findingId || null,
     resolution_request_path: resolutionRequest?.path || null,
     output_path: outputRel,
     receipt_written: false,
@@ -1166,7 +1370,7 @@ export function buildProgramDisposition(options = {}) {
     repo_state_stamp: null,
   };
 
-  for (const finding of asArray(repairPacket?.findings?.shipped_open)) {
+  for (const finding of selectedShippedOpen) {
     receipt.shipped_open.push(processShippedOpenFinding({
       cwd,
       finding,
@@ -1178,7 +1382,7 @@ export function buildProgramDisposition(options = {}) {
       repairPacketRel: receipt.repair_packet_path,
     }));
   }
-  for (const finding of asArray(repairPacket?.findings?.duplicate_scope)) {
+  for (const finding of selectedDuplicateScope) {
     receipt.duplicate_scope.push(processDuplicateScope(finding));
   }
   for (const packetArg of deferredPrograms) {
@@ -1188,6 +1392,8 @@ export function buildProgramDisposition(options = {}) {
       packetCaches,
       write,
       close,
+      deferOpen,
+      keepTickets,
       timestamp,
       receiptRel: outputRel,
     }));
@@ -1216,6 +1422,8 @@ export function buildProgramDisposition(options = {}) {
     deferred: receipt.deferred.length,
     deferred_by_classification: countBy(receipt.deferred, "classification"),
     deferred_by_action: countBy(receipt.deferred, "action"),
+    open_deferral_candidates: openDeferral?.candidate_count || 0,
+    open_deferred: receipt.deferred.filter((entry) => ["would_defer_open", "deferred_written"].includes(entry.action)).length,
     administrative_closed: receipt.deferred.filter((entry) => entry.action === "admin_closed").length,
     proposed_resolutions: receipt.proposed_resolutions.length,
     proposed_resolution_by_action: countBy(receipt.proposed_resolutions, "action"),
@@ -1237,10 +1445,14 @@ export function buildProgramDisposition(options = {}) {
       command: "program_manager.mjs",
       subcommand: "disposition",
       repair_packet_path: receipt.repair_packet_path,
+      finding_id: receipt.finding_id,
       resolution_request_path: receipt.resolution_request_path,
       output_path: outputRel,
       write,
       close,
+      defer_open: deferOpen,
+      keep_ticket_ids: openDeferral?.keep_ticket_ids || [],
+      expected_deferred_count: expectedDeferredCount,
     },
   });
 
@@ -1260,6 +1472,7 @@ export function renderProgramDispositionText(receipt) {
     `Shipped-open: ${receipt?.counts?.shipped_open || 0}`,
     `Duplicate-scope: ${receipt?.counts?.duplicate_scope || 0}`,
     `Deferred: ${receipt?.counts?.deferred || 0}`,
+    `Open deferred: ${receipt?.counts?.open_deferred || 0}`,
     `Proposed resolutions: ${receipt?.counts?.proposed_resolutions || 0}`,
     `Packets written: ${receipt?.counts?.packets_written || 0}`,
     `Blockers: ${blockers.length}`,

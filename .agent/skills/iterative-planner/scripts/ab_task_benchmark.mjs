@@ -89,10 +89,10 @@ if (isDirectInvocation(import.meta.url)) {
       error: error.message,
     };
     if (process.argv.includes("--json")) {
-      emitJson(failure);
+      emitJson(failure, { exitCode: 1 });
     } else {
       console.error(`ERROR: ${error.message}`);
+      process.exit(1);
     }
-    process.exit(1);
   }
 }

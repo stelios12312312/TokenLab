@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "planner.scientific_review_request.v1",
+  "title": "Scientific review request",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "canonical_evidence_root", "artifacts", "minimums", "expected_identity", "claim_direction", "confirmation_stage", "run_metadata", "provenance"],
+  "properties": {
+    "schema_version": { "const": "planner.scientific_review_request.v1" },
+    "canonical_evidence_root": { "type": "string", "minLength": 1 },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["preregistration", "executed_config", "universe", "folds", "trials", "observations", "result", "registry", "ticket", "plan_identity"],
+      "properties": {
+        "preregistration": { "$ref": "#/$defs/reference" },
+        "executed_config": { "$ref": "#/$defs/reference" },
+        "universe": { "$ref": "#/$defs/reference" },
+        "folds": { "$ref": "#/$defs/reference" },
+        "trials": { "$ref": "#/$defs/reference" },
+        "observations": { "$ref": "#/$defs/reference" },
+        "result": { "$ref": "#/$defs/reference" },
+        "registry": { "$ref": "#/$defs/reference" },
+        "ticket": { "$ref": "#/$defs/reference" },
+        "plan_identity": { "$ref": "#/$defs/reference" }
+      }
+    },
+    "minimums": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["assets", "completed_folds", "completed_trials", "eligible_observations", "effective_groups"],
+      "properties": {
+        "assets": { "type": "integer", "minimum": 1 },
+        "completed_folds": { "type": "integer", "minimum": 1 },
+        "completed_trials": { "type": "integer", "minimum": 1 },
+        "eligible_observations": { "type": "integer", "minimum": 1 },
+        "effective_groups": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "expected_identity": { "$ref": "#/$defs/identity" },
+    "claim_direction": { "enum": ["positive", "negative", "mixed"] },
+    "confirmation_stage": { "type": "boolean" },
+    "run_metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["run_class", "is_test", "is_synthetic", "short_history", "bypass_used", "output_root"],
+      "properties": {
+        "run_class": { "enum": ["exploratory", "serious_search", "promotion_candidate", "confirmation"] },
+        "is_test": { "type": "boolean" },
+        "is_synthetic": { "type": "boolean" },
+        "short_history": { "type": "boolean" },
+        "bypass_used": { "type": "boolean" },
+        "output_root": { "type": "string", "minLength": 1 }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["code_revision", "run_started_at", "run_completed_at"],
+      "properties": {
+        "code_revision": { "type": "string", "pattern": "^[A-Fa-f0-9]{7,64}$" },
+        "run_started_at": { "type": "string", "format": "date-time" },
+        "run_completed_at": { "type": "string", "format": "date-time" }
+      }
+    }
+  },
+  "$defs": {
+    "reference": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["experiment_id", "title", "hypothesis_id", "ticket_id", "story_id", "plan_id"],
+      "properties": {
+        "experiment_id": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "hypothesis_id": { "type": "string", "minLength": 1 },
+        "ticket_id": { "type": "string", "minLength": 1 },
+        "story_id": { "type": "string", "minLength": 1 },
+        "plan_id": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

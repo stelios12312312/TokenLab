@@ -27,6 +27,12 @@
       "deterministic": true,
       "module": ".agent/skills/iterative-planner/scripts/lib/quant_results_validation.mjs",
       "seeded_defect_ids": ["quant-seeded-calibration-missing"]
+    },
+    {
+      "id": "quant_scientific_artifact_checker",
+      "deterministic": true,
+      "module": ".agent/skills/iterative-planner/scripts/lib/scientific_review.mjs",
+      "seeded_defect_ids": ["quant-seeded-leakage-missing-temporal-split"]
     }
   ],
   "calibration_ref": ".agent/skills/iterative-planner/packs/quant/calibration.json",

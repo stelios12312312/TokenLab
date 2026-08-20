@@ -5,27 +5,27 @@
   "transition_gate": "plan-to-execute",
   "source": {
     "fixture_dir": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry",
-    "fixture_count": 27,
-    "corpus_digest": "5fbe9a5aeeb17eaf3299a2d2b3684be8e1e76fcbc606e7ec4e6bd8f726e9c12a",
+    "fixture_count": 28,
+    "corpus_digest": "a6786abce7e9d66e4991a95b5354c87500d6468207c0e0fb86e08fcdd5d7fed1",
     "self_clear_window_sec": 120
   },
   "gate_summary": {
-    "attempts": 101,
-    "blocked": 78,
-    "allowed": 23,
-    "self_clearing_unblocks": 2,
-    "self_clear_rate": 0.026,
+    "attempts": 103,
+    "blocked": 79,
+    "allowed": 24,
+    "self_clearing_unblocks": 3,
+    "self_clear_rate": 0.038,
     "verdict": "some_self_clearing",
     "top_failure_codes": [
       {
         "code": "GATE-PLN-017",
-        "count": 28,
-        "self_cleared": 0
+        "count": 29,
+        "self_cleared": 1
       },
       {
         "code": "GATE-PLN-018",
-        "count": 22,
-        "self_cleared": 0
+        "count": 23,
+        "self_cleared": 1
       },
       {
         "code": "GATE-PLN-016",
@@ -51,6 +51,20 @@
       "self_cleared": 7,
       "self_clear_rate": 0.318,
       "systemic_suspect": true
+    },
+    {
+      "code": "GATE-PLN-017",
+      "blocked_on": 29,
+      "self_cleared": 1,
+      "self_clear_rate": 0.034,
+      "systemic_suspect": false
+    },
+    {
+      "code": "GATE-PLN-018",
+      "blocked_on": 23,
+      "self_cleared": 1,
+      "self_clear_rate": 0.043,
+      "systemic_suspect": false
     },
     {
       "code": "GATE-PLN-016",
@@ -81,24 +95,17 @@
       "systemic_suspect": false
     },
     {
+      "code": "GATE-PLN-014",
+      "blocked_on": 4,
+      "self_cleared": 1,
+      "self_clear_rate": 0.25,
+      "systemic_suspect": false
+    },
+    {
       "code": "GATE-PLN-001",
       "blocked_on": 3,
       "self_cleared": 1,
       "self_clear_rate": 0.333,
-      "systemic_suspect": false
-    },
-    {
-      "code": "GATE-PLN-017",
-      "blocked_on": 28,
-      "self_cleared": 0,
-      "self_clear_rate": 0,
-      "systemic_suspect": false
-    },
-    {
-      "code": "GATE-PLN-018",
-      "blocked_on": 22,
-      "self_cleared": 0,
-      "self_clear_rate": 0,
       "systemic_suspect": false
     },
     {
@@ -125,13 +132,6 @@
     {
       "code": "GATE-PLN-019",
       "blocked_on": 5,
-      "self_cleared": 0,
-      "self_clear_rate": 0,
-      "systemic_suspect": false
-    },
-    {
-      "code": "GATE-PLN-014",
-      "blocked_on": 3,
       "self_cleared": 0,
       "self_clear_rate": 0,
       "systemic_suspect": false
@@ -416,6 +416,48 @@
         "matched": 14,
         "mismatched": 0,
         "gate_transitions": 14,
+        "not_check_derived": 0,
+        "chain_valid": false,
+        "chain_reason": "genesis record has wrong _prev_hash"
+      }
+    },
+    {
+      "fixture": "polymarket_alpha_GATE-PLN-017.jsonl",
+      "path": ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/polymarket_alpha_GATE-PLN-017.jsonl",
+      "sha256": "9c4d7e6c9057d3fdc7729c291491d6f504468a83a96557eed691feece12eb2c6",
+      "provenance": {
+        "source_project": "polymarket-alpha",
+        "plan_id": "plan_2026-05-22_05f77a843fdc4c6d",
+        "source_path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Investment/polymarket-alpha/plans/plan_2026-05-22_05f77a843fdc4c6d/artifacts/decision_log.jsonl",
+        "gate_code": "GATE-PLN-017",
+        "record_count": 11,
+        "match_count": 2,
+        "source_chain": "broken",
+        "harvested_at": "2026-05-22T18:32:04.167Z",
+        "harvester": "harvest_real_telemetry.mjs"
+      },
+      "gate_transitions": 2,
+      "blocked": 1,
+      "allowed": 1,
+      "unknown": 0,
+      "failure_codes": [
+        {
+          "code": "GATE-PLN-014",
+          "count": 1
+        },
+        {
+          "code": "GATE-PLN-017",
+          "count": 1
+        },
+        {
+          "code": "GATE-PLN-018",
+          "count": 1
+        }
+      ],
+      "replay": {
+        "matched": 11,
+        "mismatched": 0,
+        "gate_transitions": 11,
         "not_check_derived": 0,
         "chain_valid": false,
         "chain_reason": "genesis record has wrong _prev_hash"

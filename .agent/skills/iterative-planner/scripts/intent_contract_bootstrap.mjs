@@ -34,6 +34,7 @@ import {
   resolveFindingsTruth,
   resolvePlanTarget,
 } from "./lib/plan_utils.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 
 const args = process.argv.slice(2);
 const flags = {
@@ -428,8 +429,8 @@ function main() {
       message: "No active plan. Create or resume a plan before bootstrapping an intent contract.",
     };
     if (flags.json) {
-      console.log(JSON.stringify(result, null, 2));
-      process.exit(0);
+      emitJson(result, { exitCode: 0 });
+      return;
     }
     console.error(result.message);
     process.exit(1);

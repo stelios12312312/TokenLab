@@ -152,5 +152,23 @@ console.log("\nReal-Telemetry False-Failure Fixtures\n");
   assert(val015 && val015.blocked_on >= 1 && val015.self_cleared === 0, "GATE-VAL-015 is observed but not overclaimed as self-clearing after a delayed unblock");
 }
 
+// 9. polymarket-alpha (prediction markets, NEW Mac-mini domain) — one real
+//    quant-shaped plan blocks plan-to-execute on ambient-scope acknowledgement,
+//    deliverable mapping, and context-sensitive verification, then clears the
+//    full streak 49 seconds later. This closes the review corpus's missing
+//    prediction-market coverage and locks streak-union attribution across three
+//    co-occurring planning checks.
+{
+  const d = ledgerFor("polymarket_alpha_GATE-PLN-017");
+  assert(!!d, "polymarket fixture loads (NEW prediction-market domain)");
+  if (d) {
+    const pte = gate(d, "plan-to-execute");
+    assert(pte?.blocked === 1 && pte?.allowed === 1 && pte?.self_clearing_unblocks === 1, "polymarket plan-to-execute has one real BLOCKED→ALLOWED self-clear");
+    assert(!!selfClearedCode(d, "GATE-PLN-018"), "polymarket GATE-PLN-018 is credited from the self-cleared streak");
+    assert(!!selfClearedCode(d, "GATE-PLN-014"), "polymarket GATE-PLN-014 is credited from the self-cleared streak");
+    assert(!!selfClearedCode(d, "GATE-PLN-017"), "polymarket GATE-PLN-017 is credited from the self-cleared streak");
+  }
+}
+
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

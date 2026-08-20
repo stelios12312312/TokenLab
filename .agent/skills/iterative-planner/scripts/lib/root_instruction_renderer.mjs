@@ -90,6 +90,46 @@ function normalizeSnapshot(content) {
   return normalizeNewlines(content).trim().replace(/[ \t]+$/gm, "");
 }
 
+function stripNamedLevelTwoSections(content, headings, { startAfterHeading = null } = {}) {
+  const lines = normalizeNewlines(content).split("\n");
+  const removable = new Set(headings);
+  const startIndex = startAfterHeading
+    ? lines.findIndex((line) => line.trim() === startAfterHeading)
+    : -1;
+  if (startAfterHeading && startIndex === -1) return normalizeNewlines(content);
+
+  const output = [];
+  let skipping = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    const heading = line.trim();
+    const eligible = !startAfterHeading || index > startIndex;
+    if (eligible && removable.has(heading)) {
+      skipping = true;
+      continue;
+    }
+    if (skipping && /^##\s+/.test(heading)) skipping = false;
+    if (!skipping) output.push(line);
+  }
+  return output.join("\n");
+}
+
+function stripLegacyManagedSectionDuplicates(content) {
+  return stripNamedLevelTwoSections(content, ROOT_INSTRUCTION_SECTION_HEADINGS, {
+    startAfterHeading: "## Session Reference",
+  });
+}
+
+function stripCanonicalSectionsFromTemplate(content) {
+  return stripNamedLevelTwoSections(content, ROOT_INSTRUCTION_SECTION_HEADINGS);
+}
+
+function finalizeRenderedRootInstruction(content) {
+  return stripLegacyManagedSectionDuplicates(content)
+    .replace(/\n{3,}/g, "\n\n")
+    .trimEnd() + "\n";
+}
+
 export function extractMarkdownSection(content, heading) {
   const text = normalizeNewlines(content);
   const start = text.indexOf(heading);
@@ -165,13 +205,13 @@ export function applyManagedRootInstructionSnapshot(content, canonicalSections) 
   if (start !== -1 && end !== -1 && end > start) {
     const before = text.slice(0, start).replace(/\s*$/, "");
     const after = text.slice(end + ROOT_INSTRUCTION_SNAPSHOT_END.length).replace(/^\s*/, "");
-    return `${before}\n\n${snapshot}\n\n${after}`.replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+    return finalizeRenderedRootInstruction(`${before}\n\n${snapshot}\n\n${after}`);
   }
 
   const prefixMatch = text.match(/^((?:#.*\n)?(?:<!--[\s\S]*?-->\n)?\n*)/);
   const prefix = prefixMatch?.[1] || "";
   const remainder = text.slice(prefix.length).replace(/^\s*/, "");
-  return `${prefix}${snapshot}\n\n${remainder}`.replace(/\n{3,}/g, "\n\n").trimEnd() + "\n";
+  return finalizeRenderedRootInstruction(`${prefix}${snapshot}\n\n${remainder}`);
 }
 
 export function rootInstructionTargetForPath(relativePath) {
@@ -203,7 +243,10 @@ export function shouldManageRootInstructionTarget({ target, exists, content }) {
 
 export function defaultRootInstructionContent({ target, templateContent, canonicalSections }) {
   if (target?.default_from_template && String(templateContent || "").trim()) {
-    return applyManagedRootInstructionSnapshot(templateContent, canonicalSections);
+    return applyManagedRootInstructionSnapshot(
+      stripCanonicalSectionsFromTemplate(templateContent),
+      canonicalSections,
+    );
   }
   return `${target?.default_prefix || ""}${buildManagedRootInstructionSnapshot(canonicalSections)}\n`;
 }

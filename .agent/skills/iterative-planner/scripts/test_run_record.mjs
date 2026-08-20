@@ -8,6 +8,7 @@ import {
   parseRawTestOutput,
   writeStructuredTestRunDocument,
 } from "./lib/evidence_verifier.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 import { getPaths, resolvePlanTarget } from "./lib/plan_utils.mjs";
 
 const args = process.argv.slice(2);
@@ -153,13 +154,12 @@ const payload = {
 };
 
 if (flags.json) {
-  console.log(JSON.stringify(payload, null, 2));
+  emitJson(payload, { exitCode: childStatus });
 } else {
   console.log(`Recorded structured test run for ${target.planDirName}`);
   console.log(`  Framework: ${framework}`);
   console.log(`  Parsed tests: ${tests.length}`);
   console.log(`  Path: ${result.path}`);
   console.log(`  Latest: ${result.latest_path}`);
+  process.exitCode = childStatus;
 }
-
-process.exit(childStatus);

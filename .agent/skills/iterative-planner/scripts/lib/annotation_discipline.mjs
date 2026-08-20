@@ -16,13 +16,13 @@
 //         `capability`)
 //       - PASS if plan.md declares a non-placeholder waiver of shape
 //         `[KB_NOT_APPLICABLE: annotation: <path>: <reason>]`
-//       - PASS (EXEMPT) if the file already exists in git HEAD — it is a
-//         pre-existing/legacy file, not introduced by this plan. The gate
-//         enforces the annotation contract on NET-NEW worthy files only; it
-//         does not retroactively condemn the (largely un-annotated) existing
-//         tree, which would false-red essentially every real plan. A genuinely
-//         new owned worthy file still has no HEAD entry and is enforced (this
-//         is what closes the AV-7 "add an un-annotated new owned file" bypass).
+//       - PASS (EXEMPT) if the file exists in git HEAD and that committed
+//         baseline had no valid identity annotation. This preserves the
+//         legacy-unannotated exception without allowing an established
+//         identity annotation to be silently removed or downgraded.
+//       - FAIL if git HEAD established a valid identity annotation and the
+//         working tree no longer has one.
+//       - FAIL as net-new if git cannot positively read the HEAD path.
 //       - FAIL otherwise (a NET-NEW file exists, is unannotated, and unwaived)
 //   - Files in the plan that don't yet exist on disk are SKIPPED (the
 //     plan hasn't been executed yet; no annotation can exist for a file
@@ -38,7 +38,10 @@ import { extname } from "path";
 import { execFileSync } from "child_process";
 
 import { extractFilesToModify } from "./plan_utils.mjs";
-import { parseAnnotations } from "../annotation_parser.mjs";
+import {
+  parseAnnotations,
+  parseAnnotationsFromContent,
+} from "../annotation_parser.mjs";
 
 const DEFAULT_WORTHY_PREFIXES = [
   "scripts/",
@@ -103,19 +106,21 @@ function hasMinimumIdentityAnnotation(annotations) {
   );
 }
 
-// A worthy file is EXEMPT from the annotation contract if it already exists in
-// git HEAD — i.e. it is pre-existing/legacy code being modified, not introduced
-// by this plan. Net-new files (no HEAD entry) are NOT exempt, so the AV-7 bypass
-// (add an un-annotated new owned file) stays closed. Returns true ONLY when git
-// positively confirms HEAD membership; any failure (not a git repo, git absent,
-// path not in HEAD) yields false so the file is treated as net-new and enforced.
-function existsInGitHead(relPath, cwd) {
-  if (!relPath || !cwd) return false;
+// Read committed bytes so the canonical parser can distinguish a genuinely
+// legacy-unannotated file from an identity regression. Any failure (not a git
+// repo, git absent, path not in HEAD) returns exists=false and keeps net-new
+// enforcement fail-closed.
+function readFromGitHead(relPath, cwd) {
+  if (!relPath || !cwd) return { exists: false, content: null };
   try {
-    execFileSync("git", ["cat-file", "-e", `HEAD:${relPath}`], { cwd, stdio: "ignore" });
-    return true;
+    const content = execFileSync("git", ["show", `HEAD:${relPath}`], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return { exists: true, content };
   } catch {
-    return false;
+    return { exists: false, content: null };
   }
 }
 
@@ -205,13 +210,22 @@ export function analyzeAnnotationDiscipline({
     if (Array.isArray(annotations) && annotations.length > 0 && hasMinimumIdentityAnnotation(annotations)) {
       continue;
     }
-    // File exists on disk but is not adequately annotated. Enforce the contract
-    // ONLY for net-new files (introduced by this plan). A worthy file already in
-    // git HEAD is pre-existing/legacy — exempt — because retroactively demanding
-    // annotations on the existing tree false-reds essentially every real plan
-    // (only a handful of worthy files are annotated today). Net-new worthy files
-    // have no HEAD entry and remain enforced, which is what closes AV-7.
-    if (existsInGitHead(relPath, cwd)) {
+    // File exists on disk but is not adequately annotated. A committed path is
+    // exempt only when its HEAD baseline was also legacy-unannotated. If HEAD
+    // had a valid identity, losing it is a regression. Missing HEAD content is
+    // treated as net-new so AV-7 stays closed.
+    const baseline = readFromGitHead(relPath, cwd);
+    if (baseline.exists) {
+      const baselineAnnotations = parseAnnotationsFromContent(relPath, baseline.content)
+        .filter((annotation) => annotation && !annotation.error);
+      if (!hasMinimumIdentityAnnotation(baselineAnnotations)) {
+        continue;
+      }
+      violations.push({
+        path: relPath,
+        kind: "identity_annotation_regression",
+        detail: `${relPath} had @planner:module or @planner:capability in git HEAD but the working tree no longer has a valid identity annotation`,
+      });
       continue;
     }
     if (Array.isArray(annotations) && annotations.length > 0) {

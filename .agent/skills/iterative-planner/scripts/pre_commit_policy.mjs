@@ -49,6 +49,16 @@ const GOVERNED_RELEASE_PROFILE_SURFACES = new Set([
   `${SKILL_PREFIX}tests/ive/test_run.mjs`,
   `${SKILL_PREFIX}tests/test_ive_conformance_runner.mjs`,
 ]);
+const PARENT_GIT_ENV_KEYS = Object.freeze([
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+  "GIT_COMMON_DIR",
+  "GIT_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_PREFIX",
+  "GIT_QUARANTINE_PATH",
+  "GIT_WORK_TREE",
+]);
 
 function normalizePath(value) {
   return String(value || "").replace(/\\/g, "/").replace(/^\.\//, "");
@@ -64,6 +74,12 @@ function readJson(path, fallback) {
   } catch {
     return fallback;
   }
+}
+
+function isolatedChildEnv(baseEnv = process.env) {
+  const env = { ...(baseEnv || {}) };
+  for (const key of PARENT_GIT_ENV_KEYS) delete env[key];
+  return env;
 }
 
 function getPlannerCoreProofBundle() {
@@ -86,6 +102,7 @@ function runJsonScript(scriptPath, args = []) {
     cwd,
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
+    env: isolatedChildEnv(),
   });
 
   let parsed = null;
@@ -128,6 +145,7 @@ function runAffectedIveTests(stagedFiles) {
     cwd,
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
+    env: isolatedChildEnv(),
     timeout: AFFECTED_TEST_TIMEOUT_MS,
     maxBuffer: AFFECTED_TEST_MAX_BUFFER_BYTES,
   });
@@ -447,7 +465,7 @@ function cmdPreCommit() {
   }
 
   console.log(`  ⚠️  pre-commit: deferred ${hardGaps.length} hard ripple gap(s) to plans/commit_advisories.json`);
-  console.log("  Local pre-commit enforcement is advisory; clean-checkout conformance and envelope CI remain authoritative.");
+  console.log("  Local pre-commit enforcement is advisory; governed clean-checkout conformance and managed pre-push refusal remain authoritative.");
   console.log(`  Advisory id: ${advisoryId}`);
   console.log("  Follow up:");
   for (const command of FOLLOW_UP_COMMANDS) {

@@ -11,6 +11,7 @@
 //   node transition.mjs reflect-to-validate  Run all checks for REFLECT → VALIDATE
 //   node transition.mjs validate-to-close    Run all checks for VALIDATE → CLOSE
 //   node transition.mjs notify-user          Run all checks before presenting results
+//   node transition.mjs refresh-registry     Re-sign an intentional registry change without changing phase
 // Add --dry-run to execute the identical evaluator with persistence disabled.
 //
 // Exit codes: 0 = all pass (transition allowed), 1 = semantic FAIL, 3 = planner tool error.
@@ -47,8 +48,8 @@ const {
   loadFindingsLedger, syncFindingsMarkdownFromLedger,
 } = await import("./lib/plan_utils.mjs");
 const {
-  isFeatureEnabled, loadConfig, readStateJson, writeStateJson,
-  appendDecisionLog, buildDecisionEntry, deriveGateDecision, writeProofTrace,
+  isFeatureEnabled, loadConfig, readStateJson, readStateJsonWithProvenance, writeStateJsonResult, validateStateJson,
+  appendDecisionLogResult, buildDecisionEntry, deriveGateDecision, writeProofTrace,
   hashAllScripts, nowISO, getReplayDir, loadReplayArtifacts,
   withFailureCode, getRuleBundleVersion, sortResults, KB_SALT_BYTES,
   validateDecisionLogChain, acquireStateLock,
@@ -56,6 +57,12 @@ const {
 const { runPersonaAuditGate, persistPersonaAuditArtifacts } = await import("./audit_runner.mjs");
 const { runChecklist } = await import("./lib/checklist_runner.mjs");
 const { recordGateMetrics } = await import("./lib/plan_metrics.mjs");
+const { finalizeOwnedFileReplace, rollbackOwnedFileReplace } = await import("./lib/owned_file_replace.mjs");
+const {
+  recoverTransitionJournal,
+  removeTransitionJournal,
+  writeTransitionJournal,
+} = await import("./lib/transition_journal.mjs");
 const {
   buildTransitionReceipt,
   finalizeToolErrorTransition,
@@ -74,6 +81,7 @@ const { loadAgentOrchestrationConfig, validateAgentWhitelist } = await import(".
 const { readHealthDeltaAcknowledgement } = await import("./lib/health_delta_ack.mjs");
 const { verificationStatusIsHardFailure, verificationStatusIsPass } = await import("./lib/verification_status_vocabulary.mjs");
 const { classifySemanticDivergence } = await import("./lib/semantic_divergence.mjs");
+const { validateCoverageContract } = await import("./story_registry.mjs");
 const { plansDir, knowledgeDir } = getPaths(cwd);
 const ACTIVE_PLAN_ALIAS_LABEL = "plans/ACTIVE_PLAN.md";
 const RITUAL_TOOL_ERROR_CODE = "TOOL-RIT-001";
@@ -389,9 +397,8 @@ async function runHealthScan(planDir, mode, { persist = true } = {}) {
     if (persist && mode === "quick") {
       const md = formatMarkdown(report);
       writeFileSync(join(planDir, "health_report.md"), md);
-    } else if (persist) {
-      writeFileSync(join(planDir, "health_final.json"), JSON.stringify(report, null, 2));
     }
+
 
     return report;
   } catch (e) {
@@ -411,8 +418,6 @@ async function persistHealthScan(planDir, mode, report) {
   if (mode === "quick") {
     const { formatMarkdown } = await import(join(skillPath, "scripts", "project_health.mjs"));
     writeFileSync(join(planDir, "health_report.md"), formatMarkdown(report));
-  } else {
-    writeFileSync(join(planDir, "health_final.json"), JSON.stringify(report, null, 2));
   }
   return true;
 }
@@ -485,6 +490,338 @@ async function prepareAttemptedGate({ gate, planDirName, results }) {
   }
 }
 
+function readStoryRegistrySnapshot(projectRoot = cwd) {
+  const path = join(projectRoot, "reports", "user_story_audit", "story_registry.json");
+  if (!existsSync(path)) {
+    return {
+      present: false,
+      ok: true,
+      path,
+      hash: null,
+      coverageMode: "absent",
+      error: null,
+    };
+  }
+  try {
+    const raw = readFileSync(path, "utf-8");
+    const registry = JSON.parse(raw);
+    if (!registry || typeof registry !== "object" || Array.isArray(registry)) {
+      throw new Error("story_registry.json must contain a JSON object");
+    }
+    if (!Array.isArray(registry.stories) && !Array.isArray(registry.infrastructure_stories)) {
+      throw new Error("story_registry.json must declare stories or infrastructure_stories");
+    }
+    const coverage = validateCoverageContract(registry);
+    if (coverage.errors.length > 0) {
+      throw new Error(coverage.errors.join("; "));
+    }
+    return {
+      present: true,
+      ok: true,
+      path,
+      hash: createHash("sha256").update(raw).digest("hex").slice(0, 32),
+      coverageMode: coverage.mode,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      present: true,
+      ok: false,
+      path,
+      hash: null,
+      coverageMode: "invalid",
+      error: error.message,
+    };
+  }
+}
+
+function normalizeRegistryRefreshResults(results, planDirName) {
+  return normalizeGateResultsForTransition(results, {
+    gate: "refresh-registry",
+    planId: planDirName,
+  });
+}
+
+export async function runRegistryRefresh(opts = {}) {
+  const dryRun = opts.dryRun === true;
+  const { planDirName, planDir, source } = resolvePlanTarget(plansDir, {
+    exitOnMissing: false,
+    plan: opts.plan,
+  });
+  const generatedAt = nowISO();
+  const results = [];
+
+  printHeader(
+    `TRANSITION: refresh-registry${dryRun ? " [DRY RUN]" : ""}`,
+    `Plan: ${planDirName || opts.plan || "unknown"}`,
+  );
+  if (source && source !== "pointer") {
+    console.log(`  Target source: ${source}`);
+    console.log();
+  }
+
+  if (!planDirName || !planDir) {
+    const result = withFailureCode(check(
+      "Active plan resolution",
+      FAIL,
+      "No active or explicit plan could be resolved.",
+    ), "GATE-PLAN-001");
+    results.push(result);
+    printResults(results);
+    const receipt = buildTransitionReceipt({
+      projectRoot: cwd,
+      planId: opts.plan || "unknown",
+      gate: "refresh-registry",
+      sourceState: null,
+      targetState: null,
+      results,
+      generatedAt,
+    });
+    console.log();
+    console.log(renderTransitionVerdict(receipt));
+    return 1;
+  }
+
+  const stateJson = readStateJson(planDir);
+  const stateValidation = validateStateJson(stateJson);
+  const stateResult = stateValidation.valid
+    ? check("Canonical plan state", PASS, `State is ${stateJson.state}`)
+    : withFailureCode(check(
+        "Canonical plan state",
+        FAIL,
+        stateValidation.errors.join("; ") || "state.json is missing or invalid",
+      ), "GATE-RUN-001");
+  results.push(stateResult);
+
+  if (stateValidation.valid) {
+    results.push(
+      stateJson.state === "CLOSE"
+        ? withFailureCode(check(
+            "Post-close mutation guard",
+            FAIL,
+            "Plan is already CLOSED — registry signing is immutable after close.",
+          ), "GATE-GAR-001")
+        : check(
+            "Phase-neutral scope",
+            PASS,
+            `${stateJson.state} will be preserved and lifecycle transition history will not be appended.`,
+          ),
+    );
+  }
+
+  const registrySnapshot = readStoryRegistrySnapshot(cwd);
+  if (!registrySnapshot.present) {
+    results.push(withFailureCode(check(
+      "Story registry integrity",
+      FAIL,
+      "reports/user_story_audit/story_registry.json is missing.",
+    ), "GATE-SEM-002"));
+  } else if (!registrySnapshot.ok) {
+    results.push(withFailureCode(check(
+      "Story registry integrity",
+      FAIL,
+      registrySnapshot.error,
+    ), "GATE-SEM-002"));
+  } else {
+    results.push(check(
+      "Story registry integrity",
+      PASS,
+      `Valid ${registrySnapshot.coverageMode} registry; candidate hash ${registrySnapshot.hash}.`,
+    ));
+    results.push(check(
+      "Registry hash candidate",
+      PASS,
+      stateJson?.registry_hash === registrySnapshot.hash
+        ? `Signed hash already matches ${registrySnapshot.hash}; write mode is a no-op.`
+        : `Would replace ${stateJson?.registry_hash || "(unsigned)"} with ${registrySnapshot.hash}.`,
+    ));
+  }
+
+  let normalized = normalizeRegistryRefreshResults(results, planDirName);
+  const hasFailure = normalized.some(gateResultBlocks);
+  printSection("Registry Hash Refresh");
+  printResults(normalized);
+  console.log();
+
+  const buildReceipt = (persistence = {}) => buildTransitionReceipt({
+    projectRoot: cwd,
+    planId: planDirName,
+    gate: "refresh-registry",
+    sourceState: stateJson?.state || null,
+    targetState: stateJson?.state || null,
+    results: normalized,
+    generatedAt,
+    persistence,
+  });
+
+  if (dryRun || hasFailure) {
+    let receipt = buildReceipt();
+    if (!dryRun) {
+      receipt = writeTransitionReceipt(planDir, receipt, { projectRoot: cwd }).receipt;
+    }
+    console.log(renderTransitionVerdict(receipt));
+    return hasFailure ? 1 : 0;
+  }
+
+  if (stateJson.registry_hash === registrySnapshot.hash) {
+    const receipt = writeTransitionReceipt(planDir, buildReceipt(), { projectRoot: cwd }).receipt;
+    console.log(renderTransitionVerdict(receipt));
+    return 0;
+  }
+
+  const releaseLock = acquireStateLock(planDir);
+  if (!releaseLock) {
+    normalized = normalizeRegistryRefreshResults([
+      ...normalized,
+      withFailureCode(check(
+        "Canonical state lock",
+        FAIL,
+        "Could not acquire state.json lock — concurrent transition detected.",
+      ), "GATE-STA-001"),
+    ], planDirName);
+    const receipt = writeTransitionReceipt(planDir, buildReceipt(), { projectRoot: cwd }).receipt;
+    console.log(renderTransitionVerdict(receipt));
+    return 1;
+  }
+
+  let statePersisted = false;
+  let receipt = null;
+  let journalWrite = null;
+  try {
+    const recovered = recoverTransitionJournal(planDir);
+    if (!["no_transaction", "aborted_clean"].includes(recovered.status)) {
+      normalized = normalizeRegistryRefreshResults([
+        ...normalized,
+        withFailureCode(check(
+          "Transition journal recovery",
+          FAIL,
+          `An interrupted registry refresh requires reconciliation (${recovered.action}: ${recovered.reason || recovered.phase || "unknown"}).`,
+        ), "GATE-STA-002"),
+      ], planDirName);
+      receipt = writeTransitionReceipt(planDir, buildReceipt(), { projectRoot: cwd }).receipt;
+      console.log(renderTransitionVerdict(receipt));
+      return 1;
+    }
+
+    const lockedStateRead = readStateJsonWithProvenance(planDir);
+    const lockedState = lockedStateRead.state;
+    const lockedRegistry = readStoryRegistrySnapshot(cwd);
+    const lockedValidation = validateStateJson(lockedState);
+    const inputChanged = !lockedValidation.valid ||
+      lockedState.state !== stateJson.state ||
+      JSON.stringify(lockedState.transitions) !== JSON.stringify(stateJson.transitions) ||
+      !lockedRegistry.present ||
+      !lockedRegistry.ok ||
+      lockedRegistry.hash !== registrySnapshot.hash;
+    if (inputChanged) {
+      normalized = normalizeRegistryRefreshResults([
+        ...normalized,
+        withFailureCode(check(
+          "Registry refresh input stability",
+          FAIL,
+          "Plan state or story registry changed after evaluation; rerun the dry-run against the current bytes.",
+        ), "GATE-STA-002"),
+      ], planDirName);
+    } else {
+      journalWrite = writeTransitionJournal(planDir, {
+        gate: "refresh-registry",
+        phase: "prepared",
+        plan_id: planDirName,
+        transition_timestamp: generatedAt,
+        state_before: lockedStateRead.provenance,
+        state_after: null,
+        receipt_paths: [],
+        decision_status: "not_applicable",
+      }, { expected: null });
+      if (journalWrite.status !== "committed") {
+        normalized = normalizeRegistryRefreshResults([
+          ...normalized,
+          withFailureCode(check(
+            "Transition journal persistence",
+            FAIL,
+            `Registry refresh journal ${journalWrite.status} (${journalWrite.reason}).`,
+          ), "GATE-STA-002"),
+        ], planDirName);
+        receipt = writeTransitionReceipt(planDir, buildReceipt(), { projectRoot: cwd }).receipt;
+        console.log(renderTransitionVerdict(receipt));
+        return 1;
+      }
+
+      lockedState.registry_hash = lockedRegistry.hash;
+      lockedState.registry_hash_refreshed_at = generatedAt;
+      lockedState.registry_hash_refresh_count =
+        Number(lockedState.registry_hash_refresh_count || 0) + 1;
+      const stateWrite = writeStateJsonResult(planDir, lockedState, {
+        expected: lockedStateRead.provenance,
+        deferFinalize: true,
+        mutationOrigin: "transition:refresh-registry",
+      });
+      if (stateWrite.status !== "committed") {
+        normalized = normalizeRegistryRefreshResults([
+          ...normalized,
+          withFailureCode(check(
+            "Canonical state persistence",
+            FAIL,
+            `state.json publication ${stateWrite.status} (${stateWrite.reason}); the registry refresh cannot claim success.`,
+          ), "GATE-STA-002"),
+        ], planDirName);
+        removeTransitionJournal(journalWrite);
+      } else {
+        const publishedJournal = writeTransitionJournal(planDir, {
+          ...journalWrite.journal,
+          phase: "state_published",
+          state_after: stateWrite.published,
+        }, { expected: journalWrite.token });
+        if (publishedJournal.status !== "committed") {
+          rollbackOwnedFileReplace(stateWrite);
+          throw new Error(`registry refresh journal publication ${publishedJournal.status}: ${publishedJournal.reason}`);
+        }
+        journalWrite = publishedJournal;
+
+        const provisionalReceipt = writeTransitionReceipt(
+          planDir,
+          buildReceipt({ state: true }),
+          { projectRoot: cwd },
+        );
+        const stateFinalization = finalizeOwnedFileReplace(stateWrite);
+        if (stateFinalization.status !== "committed") {
+          throw new Error(`registry refresh state finalization ${stateFinalization.status}: ${stateFinalization.reason}`);
+        }
+        statePersisted = true;
+        receipt = provisionalReceipt.receipt;
+
+        const committedJournal = writeTransitionJournal(planDir, {
+          ...journalWrite.journal,
+          phase: "committed",
+          receipt_paths: [provisionalReceipt.immutable_path, provisionalReceipt.latest_path],
+          decision_status: "not_applicable",
+        }, { expected: journalWrite.token });
+        if (committedJournal.status !== "committed") {
+          throw new Error(`registry refresh journal finalization ${committedJournal.status}: ${committedJournal.reason}`);
+        }
+        journalWrite = committedJournal;
+        const journalCleanup = removeTransitionJournal(journalWrite);
+        if (journalCleanup.status !== "committed") {
+          throw new Error(`registry refresh journal cleanup ${journalCleanup.status}: ${journalCleanup.reason}`);
+        }
+      }
+    }
+
+    if (!receipt) {
+      receipt = writeTransitionReceipt(
+        planDir,
+        buildReceipt({ state: statePersisted }),
+        { projectRoot: cwd },
+      ).receipt;
+    }
+  } finally {
+    releaseLock();
+  }
+
+  console.log(renderTransitionVerdict(receipt));
+  return normalized.some(gateResultBlocks) ? 1 : 0;
+}
+
 // ---------------------------------------------------------------------------
 // Gate transitions
 // ---------------------------------------------------------------------------
@@ -536,6 +873,7 @@ async function runTransition(gate, opts = {}) {
   }
   const allResults = [];
   let sharedPlanRefresh = null;
+  let evaluatedRegistrySnapshot = null;
   const pendingPersistence = {
     health: [],
     persona: null,
@@ -1345,6 +1683,22 @@ async function runTransition(gate, opts = {}) {
     }
   }
 
+  // Registry signing is verdict-bound. The semantic evaluator may transiently
+  // model an intentional registry change, but only a successful transition may
+  // persist its hash below at the canonical state-write boundary.
+  evaluatedRegistrySnapshot = readStoryRegistrySnapshot(cwd);
+  if (evaluatedRegistrySnapshot.present && !evaluatedRegistrySnapshot.ok) {
+    printSection("Story Registry Integrity");
+    const result = withFailureCode(check(
+      "Story registry integrity",
+      FAIL,
+      evaluatedRegistrySnapshot.error,
+    ), "GATE-SEM-002");
+    printResults([result]);
+    allResults.push(result);
+    console.log();
+  }
+
   // Final guide-first normalization. Any uncoded FAIL is a planner contract
   // defect, never an ordinary blocker with an empty failure-code list.
   const normalizedGateResults = normalizeGateResultsForTransition(allResults, { gate, planId: planDirName });
@@ -1458,6 +1812,83 @@ async function runTransition(gate, opts = {}) {
     debugLog("transition", `post-verdict artifact persistence failed: ${error.message}`);
   }
 
+  // The canonical state lock owns the complete publication/finalization window.
+  // A leftover journal is either safely aborted while state still matches its
+  // before-token, or it blocks this invocation for explicit reconciliation.
+  let releaseLock = null;
+  let lockedStateRead = null;
+  let transitionJournalWrite = null;
+  if (!isAuditOnlyGate) {
+    releaseLock = acquireStateLock(planDir);
+    if (!releaseLock) {
+      const row = withFailureCode(check(
+        "Canonical state lock",
+        FAIL,
+        "Could not acquire state.json lock — concurrent transition detected."
+      ), "GATE-STA-001");
+      allResults.push(row);
+      const normalized = normalizeGateResults(allResults, { gate, planId: planDirName });
+      allResults.splice(0, allResults.length, ...normalized);
+      receipt = buildTransitionReceipt({
+        projectRoot: cwd,
+        planId: planDirName,
+        gate,
+        sourceState: sourceStateForReceipt,
+        targetState: targetStateForReceipt,
+        results: allResults,
+        preparation: preparationReport,
+        generatedAt: transitionTimestamp,
+        persistence: { decision_log: false, state: false, metrics: false },
+      });
+      receipt = writeTransitionReceipt(planDir, receipt, { projectRoot: cwd }).receipt;
+      console.log();
+      console.log(renderTransitionVerdict(receipt));
+      return 1;
+    }
+
+    const recovered = recoverTransitionJournal(planDir);
+    if (recovered.status === "recovery_required") {
+      releaseLock();
+      const row = withFailureCode(check(
+        "Transition journal recovery",
+        FAIL,
+        `An interrupted transition requires reconciliation (${recovered.action}: ${recovered.reason || recovered.phase || "unknown"}).`,
+      ), "GATE-STA-002");
+      allResults.push(row);
+      const normalized = normalizeGateResults(allResults, { gate, planId: planDirName });
+      allResults.splice(0, allResults.length, ...normalized);
+      receipt = writeTransitionReceipt(planDir, buildTransitionReceipt({
+        projectRoot: cwd,
+        planId: planDirName,
+        gate,
+        sourceState: sourceStateForReceipt,
+        targetState: targetStateForReceipt,
+        results: allResults,
+        preparation: preparationReport,
+        generatedAt: transitionTimestamp,
+      }), { projectRoot: cwd }).receipt;
+      console.log();
+      console.log(renderTransitionVerdict(receipt));
+      return 1;
+    }
+
+    lockedStateRead = readStateJsonWithProvenance(planDir);
+    transitionJournalWrite = writeTransitionJournal(planDir, {
+      gate,
+      phase: "prepared",
+      plan_id: planDirName,
+      transition_timestamp: transitionTimestamp,
+      state_before: lockedStateRead.provenance,
+      state_after: null,
+      receipt_paths: [],
+      decision_status: "pending",
+    }, { expected: null });
+    if (transitionJournalWrite.status !== "committed") {
+      releaseLock();
+      throw new Error(`transition journal ${transitionJournalWrite.status}: ${transitionJournalWrite.reason}`);
+    }
+  }
+
   if (totalFail === 0 && pendingGateInputSnapshot) {
     try {
       persistedGateInputSnapshot = persistGateInputSnapshot(pendingGateInputSnapshot);
@@ -1492,87 +1923,21 @@ async function runTransition(gate, opts = {}) {
     receiptWrite = writeTransitionReceipt(planDir, receipt, { projectRoot: cwd });
   } catch (error) {
     if (persistedGateInputSnapshot) removeGateInputSnapshot(persistedGateInputSnapshot);
+    if (releaseLock) releaseLock();
     throw error;
   }
   receipt = receiptWrite.receipt;
 
-  // Decision log
-  // RT6-H1: Decision log write failure must block the transition.
-  // Without this, audit trail entries are silently lost during lock contention.
-  const logWritten = appendDecisionLog(planDir, buildDecisionEntry(
-    gate,
-    { plan: planDirName, source_state: expectedSources.join("|") },
-    allResults,
-    deriveGateDecision(allResults),
-    totalFail > 0 ? null : (gateDef?.to ? gateDef.to.toUpperCase() : null)
-  ));
-  if (!logWritten && isFeatureEnabled("decision_logs")) {
-    if (persistedGateInputSnapshot) removeGateInputSnapshot(persistedGateInputSnapshot);
-    const row = withFailureCode(check(
-      "Decision log persistence",
-      FAIL,
-      "Decision log write failed — audit trail incomplete."
-    ), "GATE-AUD-001");
-    allResults.push(row);
-    const normalized = normalizeGateResults(allResults, { gate, planId: planDirName });
-    allResults.splice(0, allResults.length, ...normalized);
-    totalFail = allResults.filter((result) => result.status === FAIL).length;
-    totalWarn = allResults.filter((result) => result.status === WARN).length;
-    failureCodes = [...new Set(allResults.filter(gateResultBlocks).map((result) => result.code))];
-    receipt = buildTransitionReceipt({
-      projectRoot: cwd,
-      planId: planDirName,
-      gate,
-      sourceState: sourceStateForReceipt,
-      targetState: targetStateForReceipt,
-      results: allResults,
-      preparation: preparationReport,
-      generatedAt: transitionTimestamp,
-    });
-    receipt = writeTransitionReceipt(planDir, receipt, { projectRoot: cwd }).receipt;
-    console.log();
-    console.log(renderTransitionVerdict(receipt));
-    return 1;
-  }
+  let logWriteResult = null;
+  let logWritten = false;
 
   // State.json update
-  let releaseLock = null;
   let statePersisted = isAuditOnlyGate;
+  let stateWriteResult = null;
   let metricsPersisted = false;
   if (!isAuditOnlyGate) {
-    // RT-REDTEAM-H3: Acquire file lock to prevent TOCTOU race on state.json
-    // RT3-H1-FIX: Lock failure is a hard block, not a warning.
-    // Failing open defeats the purpose of the lock — concurrent transitions
-    // could corrupt state.json by overwriting each other's transition records.
-    releaseLock = acquireStateLock(planDir);
-    if (!releaseLock) {
-      if (persistedGateInputSnapshot) removeGateInputSnapshot(persistedGateInputSnapshot);
-      const row = withFailureCode(check(
-        "Canonical state lock",
-        FAIL,
-        "Could not acquire state.json lock — concurrent transition detected."
-      ), "GATE-STA-001");
-      allResults.push(row);
-      const normalized = normalizeGateResults(allResults, { gate, planId: planDirName });
-      allResults.splice(0, allResults.length, ...normalized);
-      receipt = buildTransitionReceipt({
-        projectRoot: cwd,
-        planId: planDirName,
-        gate,
-        sourceState: sourceStateForReceipt,
-        targetState: targetStateForReceipt,
-        results: allResults,
-        preparation: preparationReport,
-        generatedAt: transitionTimestamp,
-        persistence: { decision_log: logWritten, state: false, metrics: false },
-      });
-      receipt = writeTransitionReceipt(planDir, receipt, { projectRoot: cwd }).receipt;
-      console.log();
-      console.log(renderTransitionVerdict(receipt));
-      return 1;
-    }
-
-    const stateJson = readStateJson(planDir);
+    const stateRead = lockedStateRead;
+    const stateJson = stateRead.state;
     if (stateJson) {
       if (sharedPlanRefresh?.closeSignals) {
         stateJson.close_signals = {
@@ -1626,6 +1991,10 @@ async function runTransition(gate, opts = {}) {
       // object so the field is always defined.
       if (!stateJson.circuit_breakers) {
         stateJson.circuit_breakers = {};
+      }
+
+      if (totalFail === 0 && evaluatedRegistrySnapshot?.ok && evaluatedRegistrySnapshot.present) {
+        stateJson.registry_hash = evaluatedRegistrySnapshot.hash;
       }
 
       const previousState = stateJson.state; // capture BEFORE mutation
@@ -1723,24 +2092,31 @@ async function runTransition(gate, opts = {}) {
           advisoryConversions: allResults.filter((r) => r && r.status === WARN && r.advisory_conversion === true).length,
           resultingState: totalFail === 0 ? stateJson.state : null,
         });
-        metricsPersisted = Boolean(recordedMetrics);
+        metricsPersisted = recordedMetrics?.persistence?.status === "committed";
       } catch (e) {
         debugLog("transition", `plan metrics record failed: ${e.message}`);
       }
 
-      const stateWritten = writeStateJson(planDir, stateJson, {
+      stateWriteResult = writeStateJsonResult(planDir, stateJson, {
+        expected: stateRead.provenance,
         allowPhaseMutation: true,
         mutationOrigin: `transition:${gate}`,
+        deferFinalize: true,
       });
-      if (stateWritten) {
-        statePersisted = true;
-        syncStateMarkdown(planDir, stateJson);
-        syncActivePlanAlias(plansDir, { planDirName, planDir, stateJson });
+      if (stateWriteResult.status === "committed") {
+        const publishedJournal = writeTransitionJournal(planDir, {
+          ...transitionJournalWrite.journal,
+          phase: "state_published",
+          state_after: stateWriteResult.published,
+          receipt_paths: [receiptWrite.immutable_path, receiptWrite.latest_path],
+        }, { expected: transitionJournalWrite.token });
+        if (publishedJournal.status !== "committed") {
+          rollbackOwnedFileReplace(stateWriteResult);
+          throw new Error(`transition journal publication ${publishedJournal.status}: ${publishedJournal.reason}`);
+        }
+        transitionJournalWrite = publishedJournal;
       }
     }
-
-    // RT-REDTEAM-H3: Release file lock
-    if (releaseLock) releaseLock();
   } else {
     console.log("  Audit-only gate: canonical planner state/history left unchanged.");
     try {
@@ -1756,13 +2132,99 @@ async function runTransition(gate, opts = {}) {
         advisoryConversions: allResults.filter((r) => r && r.status === WARN && r.advisory_conversion === true).length,
         resultingState: sourceStateForReceipt,
       });
-      metricsPersisted = Boolean(recordedMetrics);
+      metricsPersisted = recordedMetrics?.persistence?.status === "committed";
     } catch (error) {
       debugLog("transition", `audit-only plan metrics record failed: ${error.message}`);
     }
   }
 
-  if (!statePersisted) {
+  let statePersistenceFailureAdded = false;
+  if (!isAuditOnlyGate && stateWriteResult?.status !== "committed") {
+    if (persistedGateInputSnapshot) removeGateInputSnapshot(persistedGateInputSnapshot);
+    const row = withFailureCode(check(
+      "Canonical state persistence",
+      FAIL,
+      `state.json publication ${stateWriteResult?.status || "missing"} (${stateWriteResult?.reason || "no structured result"}); the transition cannot claim a state change.`,
+    ), "GATE-STA-002");
+    allResults.push(row);
+    const normalized = normalizeGateResults(allResults, { gate, planId: planDirName });
+    allResults.splice(0, allResults.length, ...normalized);
+    totalFail = allResults.filter((result) => result.status === FAIL).length;
+    totalWarn = allResults.filter((result) => result.status === WARN).length;
+    failureCodes = [...new Set(allResults.filter(gateResultBlocks).map((result) => result.code))];
+    statePersistenceFailureAdded = true;
+  }
+
+  // Decision publication follows canonical state publication but precedes owned
+  // finalization. A decision failure can therefore roll state back by token.
+  logWriteResult = appendDecisionLogResult(planDir, buildDecisionEntry(
+    gate,
+    { plan: planDirName, source_state: expectedSources.join("|") },
+    allResults,
+    deriveGateDecision(allResults),
+    totalFail > 0 ? null : (gateDef?.to ? gateDef.to.toUpperCase() : null)
+  ), { deferFinalize: !isAuditOnlyGate });
+  logWritten = logWriteResult.status === "committed";
+  if (!logWritten && isFeatureEnabled("decision_logs")) {
+    if (stateWriteResult?.status === "committed") {
+      const rollback = rollbackOwnedFileReplace(stateWriteResult);
+      if (rollback.status === "committed" && transitionJournalWrite?.token) {
+        removeTransitionJournal(transitionJournalWrite);
+      }
+    }
+    if (persistedGateInputSnapshot) removeGateInputSnapshot(persistedGateInputSnapshot);
+    const row = withFailureCode(check(
+      "Decision log persistence",
+      FAIL,
+      `Decision log write ${logWriteResult.status} (${logWriteResult.reason}) — audit trail incomplete.`
+    ), "GATE-AUD-001");
+    allResults.push(row);
+    const normalized = normalizeGateResults(allResults, { gate, planId: planDirName });
+    allResults.splice(0, allResults.length, ...normalized);
+    totalFail = allResults.filter((result) => result.status === FAIL).length;
+    totalWarn = allResults.filter((result) => result.status === WARN).length;
+    failureCodes = [...new Set(allResults.filter(gateResultBlocks).map((result) => result.code))];
+    receipt = buildTransitionReceipt({
+      projectRoot: cwd,
+      planId: planDirName,
+      gate,
+      sourceState: sourceStateForReceipt,
+      targetState: targetStateForReceipt,
+      results: allResults,
+      preparation: preparationReport,
+      generatedAt: transitionTimestamp,
+    });
+    receipt = writeTransitionReceipt(planDir, receipt, { projectRoot: cwd }).receipt;
+    if (releaseLock) releaseLock();
+    console.log();
+    console.log(renderTransitionVerdict(receipt));
+    return 1;
+  }
+
+  if (stateWriteResult?.status === "committed") {
+    const decisionFinalization = isFeatureEnabled("decision_logs")
+      ? finalizeOwnedFileReplace(logWriteResult)
+      : { status: "committed", reason: "decision_logs_disabled" };
+    if (decisionFinalization.status !== "committed") {
+      rollbackOwnedFileReplace(stateWriteResult);
+      logWritten = false;
+    } else {
+      const finalization = finalizeOwnedFileReplace(stateWriteResult);
+      if (finalization.status === "committed") {
+      statePersisted = true;
+      const persistedState = readStateJson(planDir);
+      if (persistedState) {
+        syncStateMarkdown(planDir, persistedState);
+        syncActivePlanAlias(plansDir, { planDirName, planDir, stateJson: persistedState });
+      }
+      }
+    }
+  } else if (!isAuditOnlyGate && logWriteResult?.status === "committed" && isFeatureEnabled("decision_logs")) {
+    const decisionFinalization = finalizeOwnedFileReplace(logWriteResult);
+    if (decisionFinalization.status !== "committed") logWritten = false;
+  }
+
+  if (!statePersisted && !statePersistenceFailureAdded) {
     if (persistedGateInputSnapshot) removeGateInputSnapshot(persistedGateInputSnapshot);
     const row = withFailureCode(check(
       "Canonical state persistence",
@@ -1790,7 +2252,33 @@ async function runTransition(gate, opts = {}) {
     generatedAt: transitionTimestamp,
     persistence: { decision_log: logWritten, state: statePersisted, metrics: metricsPersisted },
   });
-  receipt = writeTransitionReceipt(planDir, receipt, { projectRoot: cwd }).receipt;
+  let finalReceiptWrite;
+  try {
+    finalReceiptWrite = writeTransitionReceipt(planDir, receipt, { projectRoot: cwd });
+    receipt = finalReceiptWrite.receipt;
+    if (!isAuditOnlyGate && transitionJournalWrite?.token) {
+      if (statePersisted) {
+        const committedJournal = writeTransitionJournal(planDir, {
+          ...transitionJournalWrite.journal,
+          phase: "committed",
+          decision_status: logWritten ? "committed" : "conflict",
+          receipt_paths: [finalReceiptWrite.immutable_path, finalReceiptWrite.latest_path],
+        }, { expected: transitionJournalWrite.token });
+        if (committedJournal.status !== "committed") {
+          throw new Error(`transition journal finalization ${committedJournal.status}: ${committedJournal.reason}`);
+        }
+        transitionJournalWrite = committedJournal;
+        const journalCleanup = removeTransitionJournal(transitionJournalWrite);
+        if (journalCleanup.status !== "committed") {
+          throw new Error(`transition journal cleanup ${journalCleanup.status}: ${journalCleanup.reason}`);
+        }
+      } else {
+        recoverTransitionJournal(planDir);
+      }
+    }
+  } finally {
+    if (releaseLock) releaseLock();
+  }
 
   if (totalFail > 0 && failureCodes?.length > 0) {
     console.log(`  Failure codes: ${failureCodes.join(", ")}`);
@@ -1868,12 +2356,19 @@ export async function transitionCli(cliArgs = process.argv.slice(2)) {
 const gate = cliArgs[0];
 let planOverride = null;
 let dryRun = false;
+let cliError = null;
 for (let i = 1; i < cliArgs.length; i++) {
-  if (cliArgs[i] === "--plan" && cliArgs[i + 1]) {
-    planOverride = cliArgs[i + 1];
-    i++;
+  if (cliArgs[i] === "--plan") {
+    if (!cliArgs[i + 1] || cliArgs[i + 1].startsWith("--")) {
+      cliError = "--plan requires a plan directory value";
+      break;
+    }
+    planOverride = cliArgs[++i];
   } else if (cliArgs[i] === "--dry-run") {
     dryRun = true;
+  } else {
+    cliError = `Unknown flag '${cliArgs[i]}'`;
+    break;
   }
 }
 
@@ -1887,6 +2382,7 @@ Usage:
   node transition.mjs reflect-to-validate [--dry-run] [--plan <plan-dir>]  REFLECT → VALIDATE gate
   node transition.mjs validate-to-close [--dry-run] [--plan <plan-dir>]    VALIDATE → CLOSE gate
   node transition.mjs notify-user [--dry-run] [--plan <plan-dir>]          KB Notification Gate
+  node transition.mjs refresh-registry [--dry-run] [--plan <plan-dir>]     Phase-neutral story-registry signer
 
 This single command runs health checks, gate verification, and checklists.
 --dry-run runs the identical evaluator but writes no planner or project files.
@@ -1894,10 +2390,26 @@ If it outputs FAIL, you may NOT proceed.`);
   process.exit(0);
 }
 
-const validGates = Object.keys(GATE_REGISTRY);
-if (!validGates.includes(gate)) {
-  console.error(`ERROR: Unknown gate '${gate}'. Valid gates: ${validGates.join(", ")}`);
+if (cliError) {
+  console.error(`ERROR: ${cliError}`);
   process.exit(1);
+}
+
+const validGates = Object.keys(GATE_REGISTRY);
+const validOperations = [...validGates, "refresh-registry"];
+if (!validOperations.includes(gate)) {
+  console.error(`ERROR: Unknown gate '${gate}'. Valid gates/operations: ${validOperations.join(", ")}`);
+  process.exit(1);
+}
+
+if (gate === "refresh-registry") {
+  try {
+    process.exitCode = await runRegistryRefresh({ plan: planOverride, dryRun });
+  } catch (error) {
+    console.error(error.stack || error.message);
+    process.exitCode = 2;
+  }
+  return;
 }
 
 // Replay mode: re-evaluate a historical plan using saved artifacts

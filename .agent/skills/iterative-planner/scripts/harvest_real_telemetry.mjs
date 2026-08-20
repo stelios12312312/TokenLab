@@ -26,6 +26,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
+import { emitJson } from "./lib/emit_json.mjs";
 
 const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
 const SKILL_ROOT = resolve(SCRIPT_DIR, "..");
@@ -135,7 +136,7 @@ function readPlanTelemetry(planDir) {
       firstHashed = false;
     }
     if (entry?.type !== "gate_transition") { skipped++; continue; }
-    records.push({ line: trimmed, entry });
+    records.push({ line, entry });
   }
   if (records.length === 0) return null;
   const sourceChain = hashedRecords === 0 ? "absent" : chainBreaks === 0 ? "intact" : "broken";
@@ -236,7 +237,7 @@ function cmdList(args) {
     });
   }
   if (args.json) {
-    console.log(JSON.stringify({ registry: args.registry, projects: rows }, null, 2));
+    emitJson({ registry: args.registry, projects: rows }, { exitCode: 0 });
   } else {
     for (const r of rows) {
       const status = r.present ? `${String(r.plans).padStart(4)} plans ${String(r.records).padStart(6)} records` : `ABSENT (${r.reason})`;
@@ -301,18 +302,18 @@ function cmdHarvest(args) {
 
   const results = [];
   for (const project of targets) harvestOne(project, args, results);
+  const staged = results.filter((r) => r.status !== "no_match");
+  const exitCode = !args.allProjects && staged.length === 0 ? 1 : 0;
 
   if (args.json) {
-    console.log(JSON.stringify({ gate: args.gate, dry_run: args.dryRun, results }, null, 2));
+    emitJson({ gate: args.gate, dry_run: args.dryRun, results }, { exitCode });
   } else {
     for (const r of results) {
       if (r.status === "no_match") console.log(`  ${r.project}: NO MATCH — ${r.detail}`);
       else console.log(`  ${r.project}: ${r.status} ${r.plan_id} (${r.records} records, ${r.matches} matching) -> ${r.out}`);
     }
   }
-  const staged = results.filter((r) => r.status !== "no_match");
-  if (!args.allProjects && staged.length === 0) return 1;
-  return 0;
+  return exitCode;
 }
 
 // ---------------------------------------------------------------------------
@@ -323,7 +324,8 @@ if (args.help || (!args.list && !args.gate && !args.project && !args.allProjects
   process.exit(args.help ? 0 : 2);
 }
 try {
-  process.exit(args.list ? cmdList(args) : cmdHarvest(args));
+  const exitCode = args.list ? cmdList(args) : cmdHarvest(args);
+  if (!args.json || process.exitCode === undefined) process.exit(exitCode);
 } catch (err) {
   console.error(`ERROR: ${err.message}`);
   process.exit(1);

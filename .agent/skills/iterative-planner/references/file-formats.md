@@ -66,7 +66,8 @@ Older plans may contain `_state_hash`, approval nonce fields, transition nonces,
 approval envelopes, or tamper fingerprints. E8-1 retired those in-process
 integrity artifacts. Current runtime gates ignore the legacy fields and rely on
 deterministic artifact checks, Prolog semantics, decision-log hash chaining, git
-history, and fresh-context review/CI instead.
+history, governed local replay, exact-commit clean-checkout conformance, and
+operator-invoked fresh-context review instead.
 
 **Fix Attempts**: tracks autonomous fixes on current step. After 2 fails → STOP. Resets on: user direction, new step, RE-PLAN. Leash hit example:
 
@@ -964,6 +965,36 @@ Minimum shape:
 }
 ```
 
+For `serious_search` and `promotion_candidate` results, add
+`"scientific_review_request": {"path": "...", "sha256": "..."}` (a string
+path is accepted as a compatibility shorthand). The referenced request uses
+`config/scientific_review_request.schema.json`; every referenced artifact uses
+`config/scientific_evidence_artifact.schema.json`; the deterministic receipt
+uses `config/scientific_review_receipt.schema.json`.
+
+The request must content-address actual preregistration, executed configuration,
+universe, fold, trial, observation, result, registry, ticket, and plan-identity
+files. It also declares minimum assets/folds/trials/eligible observations/
+independent groups, expected cross-artifact identity, run class and fixture
+flags, canonical evidence root, output root, code revision, and run times.
+Window arrays use semantic `role`, `start`, and `end` fields; reviewers match
+roles rather than array positions and reject chronology, overlap, duplicate
+holdout, purge, or preregistration/execution differences.
+
+The receipt keeps implementation validation separate from these exact axes:
+
+- `execution_status`: `not_run | complete | failed`
+- `design_validity`: `valid | invalid | unresolved`
+- `evidence_grade`: `evidence | exploratory | smoke_fixture | underpowered | legacy_unknown`
+- `scientific_verdict`: `supported | falsified | inconclusive | not_evaluated`
+- `promotion_status`: `blocked | research_only | candidate_for_confirmation | eligible_for_integration_review`
+
+Passing implementation tests are not scientific evidence. A valid, powered
+negative may be `falsified` and remains blocked from promotion. Invalid,
+underpowered, test/synthetic/short-history/bypass/temporary-output, and legacy
+packets cannot be falsified or promoted. Test writers must snapshot and compare
+the canonical evidence tree and keep all fixture outputs outside it.
+
 ## close_signals
 
 Structured close-readiness state recorded in `state.json` and refreshed by planner tooling.
@@ -971,7 +1002,7 @@ Structured close-readiness state recorded in `state.json` and refreshed by plann
 - `close_signals.test_evidence.satisfied` is `true` when the plan does not modify code-like paths, when matching test files are listed in `## Files To Modify` and test execution is recorded in `verification.md`, when static UI deliverables whose intent contract uses `manual_observation` defer close proof to intent/manual evidence instead of test-file coverage, or when `verification_ledger.json` contains an approved waiver for subject `plan:test-evidence` or `plan:test-coverage`.
 - `close_signals.mistake_registry` is advisory state: it records which structured mistakes from `config/mistake_registry.json` are active for the current plan, plus their linked guards, annotations, hooks, and obligation ids.
 - `close_signals.learned_obligations.satisfied` is `true` when every active learned obligation from `config/learned_obligations.json` has passing evidence or approved waiver, with `verification_ledger.json` preferred and `verification.md` `## Learned Obligations` available as fallback.
-- `close_signals.quant_results_validation` records whether `quant_results_validation.json` is required, present, valid, and satisfied. Status values are `missing_artifact`, `diagnostic_only`, `blocked_alarm`, `promotion_blocked`, `satisfied`, and `not_required`; blocking issues are surfaced directly at `reflect-to-validate` and close.
+- `close_signals.quant_results_validation` records whether `quant_results_validation.json` is required, present, valid, and satisfied. Status values are `missing_artifact`, `diagnostic_only`, `blocked_alarm`, `promotion_blocked`, `satisfied`, and `not_required`; blocking issues are surfaced directly at `reflect-to-validate` and close. Its additive `implementation_validation` and `scientific_review` members preserve the independent software-proof and scientific-evidence decisions.
 - `close_signals.semantic_substrate` is the compact deterministic semantic-substrate summary used by gates and Prolog. It records `required`, `satisfied`, `status`, `scan_scope`, `scan_scope_used`, `scope_degraded`, `scope_degraded_reason`, `relevant_domains`, `relevance_evidence`, `advisory_gap_ids`, `blocking_gap_ids`, `sources_present`, and `detail`.
 - `close_signals.semantic_substrate.scan_scope` is the active-plan policy and is currently `planned_plus_nearby`: planner tooling scans `## Files To Modify` plus bounded nearby real-code adjacency.
 - `close_signals.semantic_substrate.scan_scope_used` records whether refresh stayed within the trusted scoped policy or had to fall back repo-wide. Repo-wide fallback remains discovery-only for active-plan close decisions and must not satisfy blocking annotation-derived gaps by itself.

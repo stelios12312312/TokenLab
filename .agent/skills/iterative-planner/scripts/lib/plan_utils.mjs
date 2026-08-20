@@ -5,11 +5,12 @@
 //
 // Zero dependencies — Node.js 18+.
 
-import { readFileSync, writeFileSync, renameSync, realpathSync, existsSync, statSync, lstatSync, readdirSync, mkdirSync, unlinkSync } from "fs";
+import { readFileSync, writeFileSync, realpathSync, existsSync, statSync, lstatSync, readdirSync, mkdirSync, unlinkSync } from "fs";
 import { join, dirname, resolve, basename, extname } from "path";
 import { fileURLToPath } from "url";
 import { getIntentContractProjection, loadPlanWorkOrder } from "./work_order_contract.mjs";
 import { normalizeVerificationStatus } from "./verification_status_vocabulary.mjs";
+import { cleanupOwnedFile, finalizeOwnedFileReplace, observeOwnedFile, replaceOwnedFile } from "./owned_file_replace.mjs";
 
 // ---------------------------------------------------------------------------
 // Path resolution
@@ -103,14 +104,15 @@ export function readThreadPlanTarget(plansDir, opts = {}) {
   const threadId = opts.threadId || getPlannerThreadId(opts.env);
   const targetPath = getThreadTargetPath(plansDir, threadId);
   if (!targetPath) return null;
-  try {
-    const planDirName = normalizePlanDirName(readFileSync(targetPath, "utf-8"), plansDir);
-    if (planDirName && existsSync(join(plansDir, planDirName))) return planDirName;
-    try { unlinkSync(targetPath); } catch { /* stale best-effort cleanup */ }
-    return null;
-  } catch {
-    return null;
+  const observed = observeOwnedFile(targetPath, { maxBytes: 4096 });
+  if (observed.status !== "present") return null;
+  const planDirName = normalizePlanDirName(observed.bytes.toString("utf8"), plansDir);
+  if (planDirName && existsSync(join(plansDir, planDirName))) return planDirName;
+  if (typeof opts.hooks?.beforeStaleCleanup === "function") {
+    opts.hooks.beforeStaleCleanup({ targetPath, token: observed.token });
   }
+  cleanupOwnedFile(observed.token);
+  return null;
 }
 
 export function writeThreadPlanTarget(plansDir, planDirName, opts = {}) {
@@ -121,29 +123,47 @@ export function writeThreadPlanTarget(plansDir, planDirName, opts = {}) {
   if (!existsSync(join(plansDir, normalizedPlanDirName))) return { written: false, reason: "missing_plan_dir" };
 
   mkdirSync(join(plansDir, THREAD_TARGETS_DIR), { recursive: true });
-  writeAtomicText(targetPath, `${normalizedPlanDirName}\n`);
-  return { written: true, threadId, targetPath, planDirName: normalizedPlanDirName };
+  const observed = observeOwnedFile(targetPath, { maxBytes: 4096 });
+  const replacement = replaceOwnedFile({
+    path: targetPath,
+    bytes: `${normalizedPlanDirName}\n`,
+    expected: observed.status === "present" ? observed.token : null,
+    hooks: opts.hooks || {},
+  });
+  if (replacement.status !== "committed") {
+    return { written: false, reason: replacement.reason, status: replacement.status, replacement };
+  }
+  const finalization = finalizeOwnedFileReplace(replacement);
+  if (finalization.status !== "committed") {
+    return { written: false, reason: finalization.reason, status: "cleanup_pending", replacement };
+  }
+  return { written: true, threadId, targetPath, planDirName: normalizedPlanDirName, replacement };
 }
 
 export function clearThreadPlanTarget(plansDir, opts = {}) {
   const threadId = opts.threadId || getPlannerThreadId(opts.env);
   const targetPath = getThreadTargetPath(plansDir, threadId);
-  if (!targetPath || !existsSync(targetPath)) return { cleared: false, reason: "missing_target" };
+  if (!targetPath) return { cleared: false, reason: "missing_target" };
+
+  const observed = observeOwnedFile(targetPath, { maxBytes: 4096 });
+  if (observed.status === "absent") return { cleared: false, reason: "missing_target" };
+  if (observed.status !== "present") return { cleared: false, reason: "unsafe_target" };
 
   if (opts.planDirName) {
-    const existing = readThreadPlanTarget(plansDir, { threadId });
+    const existing = normalizePlanDirName(observed.bytes.toString("utf8"), plansDir);
     const normalizedPlanDirName = normalizePlanDirName(opts.planDirName, plansDir);
     if (!existing || existing !== normalizedPlanDirName) {
       return { cleared: false, reason: "plan_mismatch", existing };
     }
   }
 
-  try {
-    unlinkSync(targetPath);
-    return { cleared: true, threadId, targetPath };
-  } catch (error) {
-    return { cleared: false, reason: error.message };
+  if (typeof opts.hooks?.beforeCleanup === "function") {
+    opts.hooks.beforeCleanup({ targetPath, token: observed.token });
   }
+  const cleanup = cleanupOwnedFile(observed.token);
+  return cleanup.status === "committed"
+    ? { cleared: true, threadId, targetPath }
+    : { cleared: false, reason: "target_changed", status: cleanup.status };
 }
 
 export function resolvePlanTarget(plansDir, opts = {}) {
@@ -1409,9 +1429,20 @@ export function analyzeIntentContract(contract, { goalText = "" } = {}) {
 }
 
 function writeAtomicText(path, content) {
-  const tmpPath = `${path}.tmp`;
-  writeFileSync(tmpPath, content);
-  renameSync(tmpPath, path);
+  const observed = observeOwnedFile(path);
+  const replacement = replaceOwnedFile({
+    path,
+    bytes: content,
+    expected: observed.status === "present" ? observed.token : null,
+  });
+  if (replacement.status !== "committed") {
+    throw new Error(`owned text write ${replacement.status}: ${replacement.reason}`);
+  }
+  const finalization = finalizeOwnedFileReplace(replacement);
+  if (finalization.status !== "committed") {
+    throw new Error(`owned text write cleanup_pending: ${finalization.reason}`);
+  }
+  return replacement;
 }
 
 function canonicalizePath(path) {

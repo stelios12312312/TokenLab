@@ -8,7 +8,7 @@ import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 
 import { createSession } from "../scripts/lib/prolog.mjs";
-import { loadRules, loadStateFacts, loadStoryFacts } from "../scripts/lib/fact_loader.mjs";
+import { loadProjectMetaFacts, loadRules, loadStateFacts, loadStoryFacts } from "../scripts/lib/fact_loader.mjs";
 import { refreshPlanArtifacts } from "../scripts/lib/plan_refresh.mjs";
 import { createInitialStateJson, writeStateJson } from "../scripts/lib/determinism.mjs";
 import {
@@ -30,8 +30,15 @@ import {
   migratePlanVerificationStrategy,
   scaffoldVerificationStrategy,
 } from "../scripts/lib/verification_strategy.mjs";
+import {
+  deriveLowRiskVerificationMatrixPolicy,
+  getVerificationObligationFamily,
+  loadPersonaArtifactSummary,
+  obligationFamilyAllowedForShape,
+} from "../scripts/lib/verification_obligations.mjs";
 import { serializeToFacts } from "../scripts/ontology_serializer.mjs";
 import { scanProofStatusRepository, scanProofStatusSource } from "../scripts/proof_status_census.mjs";
+import { evaluateGateResults } from "../scripts/verify_gate.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -147,6 +154,100 @@ check("strict presentation result tokens reject residual-warning prose", () => {
   assert.equal(normalizePresentationResult("PASS AT CLOSE ENTRY").valid, false);
 });
 
+check("truth convergence has aligned JavaScript and Prolog close authority", () => {
+  const fixture = makeRuntimeFixture("truth-convergence-close", "PASS");
+  try {
+    const failingSignal = {
+      required: true,
+      satisfied: false,
+      status: "drift",
+      scope: { kind: "program", program_id: "PGM-FIXTURE" },
+      blockers: ["finding_fixture_drift"],
+    };
+    const jsFail = evaluateGateResults(fixture.planDir, "validate-to-close", {
+      refreshSnapshot: { closeSignals: { truth_convergence: failingSignal } },
+    }).results.find((result) => result.code === "GATE-VAL-024");
+    assert.equal(jsFail?.status, "FAIL", "required drift blocks the JavaScript close gate");
+
+    const prologFail = createSession();
+    loadRules(prologFail, { cwd: fixture.root, skillPath: skillDir });
+    loadStateFacts(prologFail, {
+      cwd: fixture.root,
+      skillPath: skillDir,
+      transientCloseSignals: { truth_convergence: failingSignal },
+    });
+    assert(prologFail.check("truth_convergence_required(true)"));
+    assert(prologFail.check("truth_convergence_satisfied(false)"));
+    assert(prologFail.check("truth_convergence_blocker(finding_fixture_drift)"));
+    assert(prologFail.check("missing_guard(validate, close, truth_surface_nonconvergent)"));
+    assert(prologFail.check("invariant_violated(truth_surface_nonconvergent, finding_fixture_drift)"));
+
+    const passingSignal = {
+      required: true,
+      satisfied: true,
+      status: "converged",
+      scope: { kind: "program", program_id: "PGM-FIXTURE" },
+      blockers: [],
+    };
+    const jsPass = evaluateGateResults(fixture.planDir, "validate-to-close", {
+      refreshSnapshot: { closeSignals: { truth_convergence: passingSignal } },
+    }).results.find((result) => result.code === "GATE-VAL-024");
+    assert.equal(jsPass?.status, "PASS", "converged scope passes the JavaScript close gate");
+
+    const optional = evaluateGateResults(fixture.planDir, "validate-to-close", {
+      refreshSnapshot: { closeSignals: { truth_convergence: { required: false, satisfied: true, blockers: null } } },
+    }).results.find((result) => result.code === "GATE-VAL-024");
+    assert.equal(optional?.status, "PASS");
+    assert.match(optional?.detail || "", /not required/i, "structured optional scope exercises migration-safe close compatibility");
+
+    const prologPass = createSession();
+    loadRules(prologPass, { cwd: fixture.root, skillPath: skillDir });
+    loadStateFacts(prologPass, {
+      cwd: fixture.root,
+      skillPath: skillDir,
+      transientCloseSignals: { truth_convergence: passingSignal },
+    });
+    assert(prologPass.check("truth_convergence_required(true)"));
+    assert(prologPass.check("truth_convergence_satisfied(true)"));
+    assert(prologPass.check("truth_convergence_ready"));
+
+    const legacy = createSession();
+    loadRules(legacy, { cwd: fixture.root, skillPath: skillDir });
+    loadStateFacts(legacy, { cwd: fixture.root, skillPath: skillDir, transientCloseSignals: {} });
+    assert(legacy.check("truth_convergence_required(false)"));
+    assert(legacy.check("truth_convergence_satisfied(not_required)"));
+    assert(legacy.check("truth_convergence_ready"), "legacy/unrelated plans retain not-required compatibility");
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+check("project Prolog cannot forge truth-convergence or transition authority", () => {
+  const root = mkdtempSync(join(tmpdir(), "verification-truth-project-policy-"));
+  try {
+    mkdirSync(join(root, "prolog"), { recursive: true });
+    writeFileSync(join(root, "prolog", "project.pl"), [
+      "% Safe ground policy facts remain available to host projects.",
+      "forbidden_path(close, plan).",
+      "",
+      "% Unsafe policy clauses and truth writers must be filtered.",
+      "forbidden_path(_, _).",
+      "truth_convergence_required(true).",
+      ":- assert(truth_convergence_satisfied(true)).",
+      ":- truth_convergence_status(converged).",
+    ].join("\n"));
+    const session = createSession();
+    const loaded = loadRules(session, { cwd: root, skillPath: skillDir });
+    assert(loaded.includes("project.pl (project-specific, reserved predicates filtered)"));
+    assert(session.check("forbidden_path(close, plan)"), "safe ground host policy is retained");
+    assert.equal(session.check("truth_convergence_required(true)"), false, "host project cannot forge required truth");
+    assert.equal(session.check("truth_convergence_satisfied(true)"), false, "dangerous assert directive is filtered");
+    assert.equal(session.check("truth_convergence_status(converged)"), false, "reserved-predicate directive is filtered");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 check("configured verification vocabulary has exact JavaScript and Prolog parity", () => {
   const vocabulary = getVerificationStatusVocabulary();
   const session = createSession();
@@ -258,13 +359,13 @@ check("proof-status repository census is exhaustive and fully classified", () =>
     result.denominators.javascript_files + result.denominators.prolog_files,
     "the production denominator equals the complete scanned JavaScript and Prolog boundary",
   );
-  assert.equal(result.denominators.excluded_nonproduction_javascript_files, 145);
-  assert.equal(result.denominators.registered_readers, 96);
+  assert.equal(result.denominators.excluded_nonproduction_javascript_files, 157);
+  assert.equal(result.denominators.registered_readers, 97);
   assert.equal(result.denominators.canonical_derived_readers, 9);
-  assert.equal(result.denominators.repaired_readers, 87);
-  assert.equal(result.denominators.discovered_candidates, 76);
-  assert.equal(result.denominators.live_exemptions, 73);
-  assert.equal(result.denominators.protocol_exemptions, 73);
+  assert.equal(result.denominators.repaired_readers, 88);
+  assert.equal(result.denominators.discovered_candidates, 78);
+  assert.equal(result.denominators.live_exemptions, 75);
+  assert.equal(result.denominators.protocol_exemptions, 75);
   for (const exemption of result.protocol_exemptions) {
     const candidate = result.candidates.find((entry) => entry.id === exemption.id);
     assert.equal(candidate?.exemption?.valid, true, `${exemption.id} has a live inline annotation`);
@@ -565,6 +666,15 @@ check("fact loader uses shared truth for ambiguous markdown result tokens", () =
 check("fact loader projects valid evidence and environment-preflight receipt truth", () => {
   const fixture = makeRuntimeFixture("fact-loader-environment-receipt", "PASS");
   try {
+    writeJson(join(fixture.planDir, "findings_ledger.json"), {
+      assumptions: [{
+        id: "A-SCIENTIFIC-001",
+        status: "VALIDATED",
+        statement: "Scientific evidence is content-addressed.",
+        load_bearing: true,
+        cited_as_support: true,
+      }],
+    });
     const session = createSession();
     loadStateFacts(session, {
       cwd: fixture.root,
@@ -582,6 +692,17 @@ check("fact loader projects valid evidence and environment-preflight receipt tru
             performed: true,
             probe_count: 1,
           },
+          run_class: "serious_search",
+          promotion_verdict: "not_promotable",
+          blocking_issues: ["scientific_review_blocked"],
+          scientific_review: {
+            satisfied: true,
+            execution_status: "complete",
+            design_validity: "valid",
+            evidence_grade: "evidence",
+            scientific_verdict: "supported",
+            promotion_status: "candidate_for_confirmation",
+          },
         },
       },
     });
@@ -592,6 +713,56 @@ check("fact loader projects valid evidence and environment-preflight receipt tru
     assert(session.check("quant_results_environment_preflight_status(valid)"), "receipt status reaches runtime Prolog");
     assert(session.check("quant_results_environment_preflight_performed(true)"), "performed receipt reaches runtime Prolog");
     assert(session.check("quant_results_environment_preflight_probe_count(1)"), "integer probe count reaches runtime Prolog");
+    assert(session.check("quant_results_run_class(serious_search)"), "run class reaches runtime Prolog");
+    assert(session.check("quant_results_promotion_verdict(not_promotable)"), "promotion verdict reaches runtime Prolog");
+    assert(session.check("quant_results_blocking_issue(scientific_review_blocked)"), "blocking issue reaches runtime Prolog");
+    assert(session.check("session_assumption_tracking_enabled(true)"), "structured assumptions reach runtime Prolog");
+    assert(session.check("scientific_review_present(true)"), "scientific receipt presence reaches runtime Prolog");
+    assert(session.check("scientific_review_satisfied(true)"), "scientific receipt satisfaction reaches runtime Prolog");
+    assert(session.check("scientific_execution_status(complete)"), "scientific execution status reaches runtime Prolog");
+    assert(session.check("scientific_design_validity(valid)"), "scientific design validity reaches runtime Prolog");
+    assert(session.check("scientific_evidence_grade(evidence)"), "scientific evidence grade reaches runtime Prolog");
+    assert(session.check("scientific_verdict(supported)"), "scientific verdict reaches runtime Prolog");
+    assert(session.check("scientific_promotion_status(candidate_for_confirmation)"), "scientific promotion status reaches runtime Prolog");
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+check("fact loader fails closed when IVE ideation extraction crashes", () => {
+  const fixture = makeRuntimeFixture("fact-loader-ideation-crash", "PASS");
+  const previous = process.env.PLANNER_TEST_THROW_IVE_IDEATION;
+  process.env.PLANNER_TEST_THROW_IVE_IDEATION = "1";
+  try {
+    const session = createSession();
+    loadStateFacts(session, { cwd: fixture.root, skillPath: skillDir });
+    assert(session.check("ive_ideation_status('error')"), "the runtime exposes the extraction error");
+    assert(session.check("ive_ideation_anchor_count(0)"), "the runtime does not retain stale ideation anchors");
+    assert(session.check("ive_ideation_imperative_count(0)"), "the runtime does not retain stale imperatives");
+    assert(session.check("ive_ideation_operator_count(0)"), "the runtime does not retain stale operators");
+  } finally {
+    if (previous === undefined) delete process.env.PLANNER_TEST_THROW_IVE_IDEATION;
+    else process.env.PLANNER_TEST_THROW_IVE_IDEATION = previous;
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+check("fact loader fails closed when canonical plan artifacts are absent", () => {
+  const fixture = makeRuntimeFixture("fact-loader-missing-plan-artifacts", "PASS");
+  try {
+    for (const name of ["state.json", "plan.md", "verification.md", "progress.md"]) {
+      rmSync(join(fixture.planDir, name), { force: true });
+    }
+    const session = createSession();
+    loadStateFacts(session, { cwd: fixture.root, skillPath: skillDir });
+    assert(session.check("current_state(unknown)"), "missing state cannot retain a prior lifecycle state");
+    assert(session.check("state_source_degraded(true)"), "missing state is explicitly degraded");
+    assert(session.check("problem_statement(false)"), "missing plan cannot satisfy the problem statement");
+    assert(session.check("files_listed(false)"), "missing plan cannot satisfy the file inventory");
+    assert(session.check("verification_strategy(false)"), "missing plan cannot satisfy the verification strategy");
+    assert(session.check("all_verification_pass(false)"), "missing verification cannot satisfy proof");
+    assert(session.check("proof_of_work(false)"), "missing verification cannot satisfy proof of work");
+    assert(session.check("progress_complete(false)"), "missing progress cannot satisfy completion");
   } finally {
     rmSync(fixture.root, { recursive: true, force: true });
   }
@@ -631,6 +802,30 @@ check("plan refresh fails closed for missing plans and malformed optional story 
     assert.equal(refreshed.refreshed, true, "malformed optional registry does not block refresh");
     assert.equal(refreshed.stateWritten, false, "read-only refresh does not persist state");
     assert.equal(readFileSync(statePath, "utf-8"), stateBefore, "read-only refresh leaves state.json byte-identical");
+
+    const persisted = refreshPlanArtifacts({
+      cwd: fixture.root,
+      skillPath: skillDir,
+      planDirName: fixture.planName,
+      refreshOntology: false,
+      persistState: true,
+      syncFindings: false,
+    });
+    assert.equal(persisted.stateWritten, true, "stateful refresh reports a committed owned state publication");
+    assert.equal(persisted.stateWriteResult?.status, "committed", "stateful refresh returns its structured ownership result");
+
+    mkdirSync(join(fixture.planDir, "ontology_facts.pl"), { recursive: true });
+    const persistenceFailure = refreshPlanArtifacts({
+      cwd: fixture.root,
+      skillPath: skillDir,
+      planDirName: fixture.planName,
+      refreshOntology: true,
+      persistOntology: true,
+      persistState: false,
+      syncFindings: false,
+    });
+    assert.equal(persistenceFailure.ontology.persisted, undefined, "failed ontology publication never claims persistence");
+    assert.equal(typeof persistenceFailure.ontology.error, "string", "ontology publication failure remains explicit in the refresh result");
   } finally {
     rmSync(fixture.root, { recursive: true, force: true });
   }
@@ -736,6 +931,212 @@ check("fact loader emits rich story and infrastructure traceability facts", () =
   }
 });
 
+check("fact loader exposes invalid versioned coverage contracts without hiding current-story policy", () => {
+  const fixture = makeRuntimeFixture("registry-versioned-contract", "PASS");
+  const registryDir = join(fixture.root, "reports", "user_story_audit");
+  try {
+    mkdirSync(registryDir, { recursive: true });
+    writeJson(join(registryDir, "story_registry.json"), {
+      version: 1,
+      coverage_contract: {
+        legacy_version: 0,
+        current_version: 2,
+        effective_at: "not-an-iso-timestamp",
+        legacy_population: {
+          story_count: -1,
+          story_ids_sha256: "not-a-sha256-digest",
+        },
+      },
+      stories: [{
+        id: "US-902",
+        title: "Current story retains fail-closed coverage policy",
+        priority: "HIGH",
+        status: "ACTIVE",
+        coverage_contract_version: 2,
+      }],
+    });
+
+    const session = createSession();
+    const result = loadStoryFacts(session, { cwd: fixture.root });
+    assert.equal(result.loaded, true);
+    assert.equal(result.count, 1);
+    assert(
+      session.check("story_coverage_contract_valid(false)"),
+      "invalid versioned contracts remain explicit facts instead of silently falling back",
+    );
+    assert(
+      session.check("validation_executed_tracking_enabled"),
+      "the declared current version keeps executed-proof tracking enabled even when another contract field is invalid",
+    );
+    assert(
+      session.check("story_coverage_contract('US-902', current)"),
+      "current stories retain their stronger coverage classification",
+    );
+    assert(
+      !session.check("story_validation_satisfied('US-902')"),
+      "a current story without executed proof is not promoted by contract parse errors",
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+check("fact loader derives reachability evidence and rejects malformed substitutes", () => {
+  const fixture = makeRuntimeFixture("reachability-audit-defensive-inputs", "PASS");
+  const auditLogPath = join(fixture.root, "plans", "audit_log.json");
+  try {
+    writeJson(auditLogPath, { audits: [{ type: "reachability_audit", status: "PASS" }] });
+    const logged = createSession();
+    loadProjectMetaFacts(logged, { cwd: fixture.root, skillPath: skillDir });
+    assert(logged.check("reachability_audit_done(true)"), "a passing typed audit-log entry satisfies reachability proof");
+
+    writeJson(auditLogPath, { audits: [] });
+    const statePath = join(fixture.planDir, "state.json");
+    const state = JSON.parse(readFileSync(statePath, "utf-8"));
+    state.transitions = [{ from: "EXECUTE", to: "REFLECT", gate_result: "PASS", failure_codes: [] }];
+    writeStateJson(fixture.planDir, state);
+    const transitioned = createSession();
+    loadProjectMetaFacts(transitioned, { cwd: fixture.root, skillPath: skillDir });
+    assert(transitioned.check("reachability_audit_done(true)"), "a passing semantic transition satisfies reachability proof");
+
+    state.transitions = [];
+    writeStateJson(fixture.planDir, state);
+    writeFileSync(auditLogPath, "x".repeat(1_048_577));
+    const oversized = createSession();
+    loadProjectMetaFacts(oversized, { cwd: fixture.root, skillPath: skillDir });
+    assert(
+      oversized.check("reachability_audit_done(false)"),
+      "an oversized audit log cannot satisfy reachability proof",
+    );
+
+    writeFileSync(auditLogPath, "{ malformed audit log\n");
+    const malformed = createSession();
+    loadProjectMetaFacts(malformed, { cwd: fixture.root, skillPath: skillDir });
+    assert(
+      malformed.check("reachability_audit_done(false)"),
+      "an unreadable audit log cannot satisfy reachability proof",
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+check("fact loader falls back to canonical reachability gates and honors explicit transition evidence", () => {
+  const fixture = makeRuntimeFixture("reachability-gate-registry-fallback", "PASS");
+  try {
+    const statePath = join(fixture.planDir, "state.json");
+    const state = JSON.parse(readFileSync(statePath, "utf-8"));
+    state.transitions = [
+      "malformed-legacy-transition",
+      { result: "FAIL" },
+      { from: "EXPLORE", to: "PLAN", result: "PASS", failure_codes: [] },
+    ];
+    writeJson(statePath, state);
+
+    const fallbackSession = createSession();
+    loadProjectMetaFacts(fallbackSession, {
+      cwd: fixture.root,
+      skillPath: join(fixture.root, "missing-skill-registry"),
+    });
+    assert(
+      fallbackSession.check("reachability_audit_done(true)"),
+      "the canonical explore-to-plan gate remains recognized when the configured registry is unavailable",
+    );
+
+    state.transitions = [
+      {
+        gate: "custom-reachability-probe",
+        result: "PASS",
+        failure_codes: [],
+        reachability_audit: true,
+      },
+    ];
+    writeJson(statePath, state);
+
+    const explicitSession = createSession();
+    loadProjectMetaFacts(explicitSession, {
+      cwd: fixture.root,
+      skillPath: join(fixture.root, "missing-skill-registry"),
+    });
+    assert(
+      explicitSession.check("reachability_audit_done(true)"),
+      "an explicitly marked passing custom transition also supplies reachability proof",
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+check("ontology serializer emits traceable story, validation, annotation, and red-team facts", () => {
+  const fixture = makeRuntimeFixture("ontology-traceability-surfaces", "PASS");
+  try {
+    const validationDir = join(fixture.root, "validation");
+    mkdirSync(validationDir, { recursive: true });
+    writeJson(join(validationDir, "baseline-proof.json"), { status: "PASS" });
+    writeFileSync(join(fixture.planDir, "red_team_notes.md"), "# Red Team Notes\n\n## Connectivity\nVerified wiring.\n\n## Security edge cases\nVerified hostile inputs.\n");
+    const planContent = `${readFileSync(join(fixture.planDir, "plan.md"), "utf-8")}\n## Success Criteria\n1. Strict close result parsing is shared.\n`;
+    const facts = serializeToFacts({
+      cwd: fixture.root,
+      planDir: fixture.planDir,
+      planContent,
+      storyRegistry: {
+        stories: [{
+          id: "US-077",
+          code_refs: [".agent/skills/iterative-planner/scripts/lib/verification_truth.mjs"],
+          validation_refs: ["validation/baseline-proof.json"],
+        }],
+      },
+      annotations: [
+        { key: "proves", value: "crit:sc_1", file: "tests/traceability.mjs" },
+        { key: "story", value: "US-077", file: "tests/traceability.mjs" },
+        { key: "validation_module", value: "true", file: "validation/baseline-proof.json" },
+      ],
+    }).facts;
+    assert(facts.includes("criterion_story('sc_1', 'US-077')."), "verification strategy links criterion to story");
+    assert(facts.includes("annotation_proves_criterion('tests/traceability.mjs', 'sc_1')."), "proves annotation is serialized");
+    assert(facts.includes("annotation_story_link('tests/traceability.mjs', 'US-077')."), "story annotation is serialized");
+    assert(facts.includes("validation_ref('US-077', 'validation/baseline-proof.json')."), "story validation reference is serialized");
+    assert(facts.includes("validation_artifact_unlinked('validation/baseline-proof.json')."), "generic validation artifact remains visible for reconciliation");
+    assert(facts.includes("validation_module_declared('validation/baseline-proof.json')."), "validation module annotation is serialized");
+    assert(facts.includes("audit_pass('rt_pass_1', 'connectivity')."), "red-team connectivity pass is serialized");
+    assert(facts.includes("audit_pass('rt_pass_2', 'security')."), "red-team security pass is serialized");
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+check("ontology serializer distinguishes incomplete and explicitly optional quant close signals", () => {
+  const root = mkdtempSync(join(tmpdir(), "planner-ontology-quant-close-signal-"));
+  const planContent = "# Plan\n\n## Goal\nPreserve quant close-signal truth.\n";
+  try {
+    const incompleteFacts = serializeToFacts({
+      cwd: root,
+      planDir: null,
+      planContent,
+      storyRegistry: null,
+      annotations: [],
+      quantResultsValidationOverride: {},
+    }).facts;
+    assert(incompleteFacts.includes("quant_results_validation_required(unknown)."));
+    assert(incompleteFacts.includes("quant_results_validation_satisfied(unknown)."));
+    assert(incompleteFacts.includes("quant_results_validation_status('not_required')."));
+
+    const optionalFacts = serializeToFacts({
+      cwd: root,
+      planDir: null,
+      planContent,
+      storyRegistry: null,
+      annotations: [],
+      quantResultsValidationOverride: { required: false },
+    }).facts;
+    assert(optionalFacts.includes("quant_results_validation_required(false)."));
+    assert(optionalFacts.includes("quant_results_validation_satisfied(not_required)."));
+    assert(optionalFacts.includes("quant_results_validation_status('not_required')."));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 check("ontology serializer preserves status tokens and Prolog derives strict verification truth", () => {
   const bad = makeRuntimeFixture("ontology-partial", "PARTIAL PASS");
   const waived = makeRuntimeFixture("ontology-waived", "WAIVED");
@@ -747,8 +1148,92 @@ check("ontology serializer preserves status tokens and Prolog derives strict ver
       planContent: readFileSync(join(bad.planDir, "plan.md"), "utf-8"),
       storyRegistry: null,
       annotations: [],
+      quantResultsValidationOverride: {
+        required: true,
+        satisfied: true,
+        run_class: "serious_search",
+        promotion_verdict: "not_promotable",
+        blocking_issues: ["scientific_review_blocked"],
+        semantic_gates: [{
+          id: "scientific_design",
+          satisfied: true,
+          measured: { valid: true },
+          threshold: { op: "eq", value: true },
+          per_criterion: [{
+            id: "content_addressed",
+            satisfied: true,
+            measured: true,
+            threshold: { op: "eq", value: true },
+          }],
+        }],
+        scientific_review: {
+          satisfied: true,
+          execution_status: "complete",
+          design_validity: "valid",
+          evidence_grade: "evidence",
+          scientific_verdict: "supported",
+          promotion_status: "candidate_for_confirmation",
+        },
+      },
     }).facts;
     assert(/verification_result_status\([^)]*, 'PARTIAL PASS',/.test(badFacts), "PARTIAL PASS remains visible as a status fact");
+    assert(badFacts.includes("quant_results_run_class('serious_search')."), "run class is serialized");
+    assert(badFacts.includes("quant_results_promotion_verdict('not_promotable')."), "promotion verdict is serialized");
+    assert(badFacts.includes("quant_results_blocking_issue('scientific_review_blocked')."), "blocking issue is serialized");
+    assert(badFacts.includes("quant_semantic_gate_count(1)."), "semantic gate count is serialized");
+    assert(badFacts.includes("quant_semantic_gate('scientific_design', true)."), "semantic gate result is serialized");
+    assert(badFacts.includes("quant_semantic_gate_criterion('scientific_design', 'content_addressed', true)."), "semantic criterion is serialized");
+    const sparseFacts = serializeToFacts({
+      cwd: bad.root,
+      planDir: bad.planDir,
+      planContent: readFileSync(join(bad.planDir, "plan.md"), "utf-8"),
+      storyRegistry: null,
+      annotations: [],
+      quantResultsValidationOverride: {
+        required: true,
+        satisfied: false,
+        semantic_gates: [{ per_criterion: [{}] }],
+        claim_ledgers: [{ evidence: [{}] }],
+      },
+    }).facts;
+    assert(sparseFacts.includes("quant_semantic_gate_count(1)."), "sparse semantic gates retain an explicit count");
+    assert(sparseFacts.includes("quant_claim_ledger_count(1)."), "sparse claim ledgers retain an explicit count");
+    const completeBranchFacts = serializeToFacts({
+      cwd: bad.root,
+      planDir: bad.planDir,
+      planContent: readFileSync(join(bad.planDir, "plan.md"), "utf-8"),
+      storyRegistry: null,
+      annotations: [],
+      quantResultsValidationOverride: {
+        required: true,
+        satisfied: false,
+        semantic_gates: [{ id: "no_criteria", satisfied: false }],
+        claim_ledgers: [{
+          id: "complete_claim",
+          audit: [],
+          evidence_count: 1,
+          disconfirming_count: 0,
+          evidence: [{
+            id: "held_out_evidence",
+            provenance: "held_out",
+            likelihood_ratio: 1,
+            lr_cap_applied: true,
+          }],
+        }],
+      },
+    }).facts;
+    assert(completeBranchFacts.includes("quant_semantic_gate('no_criteria', false)."), "semantic gates without criterion rows remain explicit");
+    assert(completeBranchFacts.includes("quant_claim_evidence_count('complete_claim', 1)."), "integer claim evidence counts are serialized");
+    assert(completeBranchFacts.includes("quant_claim_evidence_cap_applied('complete_claim', 'held_out_evidence', true)."), "claim evidence records applied likelihood-ratio caps");
+    for (const expected of [
+      "scientific_review_present(true).",
+      "scientific_review_satisfied(true).",
+      "scientific_execution_status('complete').",
+      "scientific_design_validity('valid').",
+      "scientific_evidence_grade('evidence').",
+      "scientific_verdict('supported').",
+      "scientific_promotion_status('candidate_for_confirmation').",
+    ]) assert(badFacts.includes(expected), `${expected} is serialized from the scientific receipt`);
     const badSession = createSession();
     badSession.consultFile(join(skillDir, "prolog", "verification_statuses.pl"));
     badSession.consult(compileVerificationStatusFacts());
@@ -1125,6 +1610,51 @@ check("migration-managed planner paths are distinct from ordinary app code", () 
   );
 });
 
+check("verification obligation shape and compact-risk fallbacks remain fail-safe", () => {
+  assert.equal(getVerificationObligationFamily("api_integration")?.id, "api_integration");
+  assert.equal(getVerificationObligationFamily("not-a-family"), null);
+  assert.equal(obligationFamilyAllowedForShape("api_integration", "custom-shape"), true);
+  const { root: personaRoot, planDir: personaPlanDir } = makePlanDir("persisted-persona-artifacts");
+  try {
+    writeJson(join(personaPlanDir, "persona_guidance.json"), {});
+    writeJson(join(personaPlanDir, "persona_constraints.json"), {});
+    writeJson(join(personaPlanDir, "persona_findings.json"), {});
+    const personaSummary = loadPersonaArtifactSummary(personaPlanDir);
+    assert.equal(personaSummary.issues.length, 0);
+    writeFileSync(join(personaPlanDir, "persona_findings.json"), "{\n");
+    const malformedPersonaSummary = loadPersonaArtifactSummary(personaPlanDir);
+    assert.equal(malformedPersonaSummary.issues.length, 1);
+    assert.equal(malformedPersonaSummary.issues[0].artifact, "persona_findings.json");
+    assert.equal(malformedPersonaSummary.issues[0].code, "parse_error");
+  } finally {
+    rmSync(personaRoot, { recursive: true, force: true });
+  }
+  const policy = deriveLowRiskVerificationMatrixPolicy({
+    shapePrimary: "analysis",
+    planMatchContext: {
+      goalText: "Review an API migration without changing code.",
+      plannedFiles: [],
+      effectiveFiles: ["docs/review.md"],
+    },
+    obligations: [{ id: "api_integration", blocking: true }],
+  });
+  assert.equal(policy.eligible, false);
+  assert.equal(policy.reason, "high_risk_signal");
+  assert(policy.blocking_risks.some((entry) => entry.startsWith("goal:api")));
+  const eligiblePolicy = deriveLowRiskVerificationMatrixPolicy({
+    shapePrimary: "docs",
+    planMatchContext: {
+      goalText: "Clarify the glossary wording.",
+      plannedFiles: ["docs/glossary.md"],
+      effectiveFiles: [],
+    },
+    obligations: [],
+  });
+  assert.equal(eligiblePolicy.eligible, true);
+  assert.equal(eligiblePolicy.reason, "shape:docs");
+  assert.deepEqual(normalizeVerificationMode(""), "");
+});
+
 check("verification ledger reader normalizes declared mode entry shapes and fails closed on malformed JSON", () => {
   const { root, planDir } = makePlanDir("declared-mode-shapes");
   const ledgerPath = join(planDir, "verification_ledger.json");
@@ -1147,16 +1677,86 @@ check("verification ledger reader normalizes declared mode entry shapes and fail
         { id: "integration_smoke", source_id: "fixture-source" },
         null,
       ],
+      subjects: [{ subject_id: "crit:sc_2", type: "criterion", aliases: ["crit:legacy_2"] }],
+      obligations: [{ obligation_id: "vo_2", subject_id: "crit:sc_2", mode: "integration_smoke", severity: "required" }],
+      evidence: [{ evidence_id: "ev_2", subject_id: "crit:sc_2", mode: "integration_smoke", status: "PASS", command: "node fixture-2.mjs" }],
+      waivers: [{ waiver_id: "wv_1", subject_id: "crit:sc_2", mode: "integration_smoke", status: "APPROVED" }],
       entries: [
         { kind: "subject", id: "crit:sc_1" },
         { kind: "obligation", id: "vo_1", subject: "crit:sc_1", mode: "unit_test", severity: "required" },
         { subject: "crit:sc_1", mode: "unit_test", status: "PASS", command: "node fixture.mjs" },
+        { kind: "subject", subject_id: "crit:sc_2", type: "criterion" },
+        { kind: "obligation", obligation_id: "vo_2", subject_id: "crit:sc_2", verification_mode: "integration", severity: "required" },
+        { kind: "evidence", subject_id: "crit:sc_2", guard_type: "integration_smoke", result: "PASS", evidence: "fixture output" },
+        { kind: "waiver", waiver_id: "wv_1", subject_id: "crit:sc_2", verification_mode: "integration_smoke", status: "APPROVED" },
+        { kind: "subject" },
+        { kind: "obligation", id: "invalid-obligation" },
+        { kind: "evidence", id: "invalid-evidence" },
+        { kind: "waiver", id: "invalid-waiver" },
       ],
     });
     const ledger = readVerificationLedger(planDir);
-    assert.deepEqual(ledger.declaredModes.map((entry) => entry.mode), ["unit_test", "migration_smoke", "integration_smoke"]);
-    assert.equal(ledger.evidence.length, 1);
+    assert.deepEqual(
+      ledger.declaredModes.map((entry) => entry.mode),
+      ["unit_test", "migration_smoke", "integration_smoke", "integration_smoke"],
+    );
+    assert.equal(ledger.subjects.length, 3);
+    assert.equal(ledger.obligations.length, 3);
+    assert.equal(ledger.evidence.length, 3);
+    assert.equal(ledger.waivers.length, 2);
     assert.equal(ledger.evidence[0].status_satisfies, true);
+    assert(ledger.evidence.some((entry) => entry.mode === "integration_smoke" && entry.status_satisfies));
+    mkdirSync(join(root, "recipes", "daily-runner"), { recursive: true });
+    writeJson(join(root, "recipes", "entity_registry.json"), {
+      version: 1,
+      entities: [{
+        id: "portfolio",
+        name: "Portfolio",
+        aliases: ["book"],
+        recipe_ids: ["daily-runner"],
+        systems: { broker: { account: "paper" } },
+      }],
+    });
+    writeJson(join(root, "recipes", "capability_registry.json"), {
+      version: 1,
+      capabilities: [{
+        id: "daily_run",
+        name: "Daily Run",
+        triggers: ["weekday"],
+        recipes: ["daily-runner"],
+        required_params: ["portfolio_id"],
+        skills: ["planner"],
+        supported_entities: ["portfolio"],
+      }],
+    });
+    writeJson(join(root, "recipes", "daily-runner", "recipe.json"), {
+      id: "daily-runner",
+      title: "Daily Runner",
+      capability_id: "daily_run",
+      entity_ids: ["portfolio"],
+      required_params: ["portfolio_id"],
+      skills: ["planner"],
+      systems: ["broker"],
+      runner: {
+        type: "node",
+        cwd: ".",
+        command: ["node", "scripts/daily-runner.mjs"],
+        dry_run_flags: ["--dry-run"],
+        live_flags: ["--execute"],
+      },
+    });
+    const serialized = serializeToFacts({
+      cwd: root,
+      planDir,
+      planContent: "# Plan\n\n## Goal\nExercise legacy ledger normalization.\n",
+      storyRegistry: null,
+      annotations: [],
+    }).facts;
+    assert(serialized.includes("verification_subject('crit:sc_2', 'criterion')."));
+    assert(serialized.includes("verification_obligation('vo_2', 'crit:sc_2', 'integration_smoke', 'required')."));
+    assert(serialized.includes("verification_evidence("));
+    assert(serialized.includes("recipe_runner_type('daily-runner', 'node')."));
+    assert(serialized.includes("recipe_runner_dry_flag('daily-runner', '--dry-run')."));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -1203,6 +1803,33 @@ Preserve traceability without a materialized plan directory.
     assert(tracedFacts.includes("annotation_proves_criterion('src/traceability.mjs', 'SC-1')."));
     assert(tracedFacts.includes("annotation_story_link('src/traceability.mjs', 'US-TRACE-1')."));
     assert(tracedFacts.includes("validation_module_declared('tests/traceability.mjs')."));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+check("ontology serializer rejects an incomplete Active Mistake Response table", () => {
+  const root = mkdtempSync(join(tmpdir(), "planner-ontology-malformed-mistake-table-"));
+  const planContent = `# Plan
+
+## Goal
+Reject incomplete mistake response evidence.
+
+## Active Mistake Response
+
+| Mistake | Guard | Planned handling |
+|---|---|---|
+| M-001 | ripple_through | Run focused proof |
+`;
+  try {
+    const facts = serializeToFacts({
+      cwd: root,
+      planDir: null,
+      planContent,
+      storyRegistry: null,
+      annotations: [],
+    }).facts;
+    assert(!facts.includes("mistake_guard_declared('M-001'"));
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

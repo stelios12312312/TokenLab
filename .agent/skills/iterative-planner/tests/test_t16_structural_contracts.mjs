@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // test_t16_structural_contracts.mjs — t16 structural debt contracts.
 
-import { readFileSync } from "fs";
+import { existsSync, readFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -9,6 +9,10 @@ import {
   loadGateRegistry,
 } from "../scripts/lib/gate_registry.mjs";
 import {
+  ROOT_INSTRUCTION_SECTION_HEADINGS,
+  ROOT_INSTRUCTION_TARGETS,
+  collectCanonicalRootInstructionSections,
+  renderRootInstructionTarget,
   rootInstructionPortabilityMatrix,
 } from "../scripts/lib/root_instruction_renderer.mjs";
 
@@ -73,6 +77,12 @@ function expectedInstructionFileBySurface(matrix) {
     }
   }
   return expected;
+}
+
+function headingCount(markdown, heading) {
+  return String(markdown || "")
+    .split("\n")
+    .filter((line) => line.trim() === heading).length;
 }
 
 function comparePortabilityDocToRenderer({ docText, matrix }) {
@@ -180,14 +190,91 @@ const namespaceModule = await import("../scripts/ontology_namespace_check.mjs").
     !/^##\s+Portability Matrix\s*$/im.test(historicalDoc),
     "historical doc 15 no longer presents a normative portability matrix"
   );
+
+  const templateContent = readFileSync(
+    join(skillDir, "references", "CLAUDE.template.md"),
+    "utf-8",
+  );
+  const canonicalSections = collectCanonicalRootInstructionSections(templateContent);
+  const claudeTarget = ROOT_INSTRUCTION_TARGETS.find((target) => target.path === "CLAUDE.md");
+  const fresh = renderRootInstructionTarget({
+    target: claudeTarget,
+    exists: false,
+    content: "",
+    templateContent,
+    canonicalSections,
+  }).content;
+  assert(
+    ROOT_INSTRUCTION_SECTION_HEADINGS.every((heading) => headingCount(fresh, heading) === 1),
+    "fresh root instruction rendering contains each managed section exactly once",
+  );
+  assert(
+    ["## Advisor Autorun", "## Planning Mode Override", "## Ticket Intake Compliance", "## Ontology & Invariant Verification"]
+      .every((heading) => fresh.includes(heading)),
+    "fresh root instruction rendering preserves unique template guidance",
+  );
+
+  for (const rootInstruction of ["CLAUDE.md", "GEMINI.md", "AGENTS.md"]) {
+    const current = readFileSync(join(repoRoot, rootInstruction), "utf-8");
+    const target = ROOT_INSTRUCTION_TARGETS.find((entry) => entry.path === rootInstruction);
+    const rendered = renderRootInstructionTarget({
+      target,
+      exists: true,
+      content: current,
+      templateContent,
+      canonicalSections,
+    }).content;
+    assert(
+      ROOT_INSTRUCTION_SECTION_HEADINGS.every((heading) => headingCount(rendered, heading) === 1),
+      `${rootInstruction} renderer removes duplicated legacy managed sections`,
+    );
+    assert(
+      ["## Advisor Autorun", "## Planning Mode Override", "## Ticket Intake Compliance", "## Ontology & Invariant Verification"]
+        .every((heading) => rendered.includes(heading)),
+      `${rootInstruction} renderer preserves unique legacy guidance`,
+    );
+  }
 }
 
 {
   const versionJsonText = readFileSync(join(skillDir, "config", "version.json"), "utf-8");
   const skillText = readFileSync(join(skillDir, "SKILL.md"), "utf-8");
   const migrationText = readFileSync(join(skillDir, "MIGRATION.md"), "utf-8");
+  const migrationHistoryPath = join(skillDir, "MIGRATION_HISTORY.md");
+  const migrationHistoryText = existsSync(migrationHistoryPath)
+    ? readFileSync(migrationHistoryPath, "utf-8")
+    : "";
   const agreement = checkVersionAgreement({ versionJsonText, skillText, migrationText });
   assert(agreement.ok, "version surfaces agree and skipped major is explained", agreement.issues.join("; "));
+
+  assert(
+    migrationText.includes("[Historical release notes](MIGRATION_HISTORY.md)")
+      && existsSync(migrationHistoryPath),
+    "MIGRATION links to the installed historical release notes",
+  );
+  assert(
+    !/^## 10\.6\.9\b/m.test(migrationText)
+      && /^## 10\.6\.9\b/m.test(migrationHistoryText),
+    "historical release prose is archived outside the operational migration guide",
+  );
+  assert(
+    [
+      "## 10.7.0",
+      "## 10.6.10",
+      "## Migration Procedure",
+      "## Quick Version Check",
+      "## Automatic Upgrade",
+      "## Version History",
+      "## Breaking Changes (v10.6.9 -> v10.6.10)",
+    ].every((heading) => migrationText.includes(heading)),
+    "MIGRATION retains current releases, operator procedures, version table, and breaking-change tables",
+  );
+  assert(
+    ![migrationText, migrationHistoryText, skillText]
+      .some((text) => text.includes(".agent/skills/iterative-planner/config/last_upgrade_receipt.json")
+        || text.includes(".agent/degraded_coverage_waivers.json")),
+    "planner docs do not present ignored host-local artifacts as installed managed files",
+  );
 
   const configVersion = JSON.parse(versionJsonText).version;
   const drift = checkVersionAgreement({

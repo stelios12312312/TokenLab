@@ -27,6 +27,7 @@ import {
   matchGlob, debugLog,
 } from "./lib/plan_utils.mjs";
 import { isFeatureEnabled, withFailureCode, readStateJson, nowISO } from "./lib/determinism.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 import { verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -502,9 +503,8 @@ if (process.argv[1] && resolve(process.argv[1]) === __filename) {
   // Handle Antigravity import
   if (antigravityImport) {
     const converted = importAntigravityTrace(antigravityImport);
-    console.log(JSON.stringify(converted, null, 2));
-    process.exit(0);
-  }
+    emitJson(converted, { exitCode: 0 });
+  } else {
 
   // Resolve plan directory
   const { plansDir } = getPaths();
@@ -542,4 +542,5 @@ if (process.argv[1] && resolve(process.argv[1]) === __filename) {
 
   printSummaryWithCodes(counts);
   process.exit(counts.hasFail ? 1 : 0);
+  }
 }

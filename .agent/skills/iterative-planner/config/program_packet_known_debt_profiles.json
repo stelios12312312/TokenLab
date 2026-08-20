@@ -1,16 +1,7 @@
 {
   "schema_version": 1,
-  "reason": "Exact fail-closed profiles surfaced when Program remote-policy resolution became mandatory. These entries acknowledge detected debt only; they do not alter Program validation or satisfy any gate.",
+  "reason": "Exact fail-closed profiles for unresolved GitHub issue-mirror debt. These entries acknowledge detected debt only; they do not alter Program validation or satisfy any gate.",
   "profiles": {
-    "gate-forward-scaffold-fixes": {
-      "status": "FAIL",
-      "total": 4,
-      "codes": {
-        "mistake_mitigation_pass_without_hook_evidence": 2,
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
     "incident-rectification-orchestration": {
       "status": "FAIL",
       "total": 10,
@@ -27,22 +18,6 @@
         "ready_ticket_missing_github_issue": 61
       }
     },
-    "ive-autonomous-coder-remediation": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
-    "ive-behavior-report": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
     "ive-ceremony-reduction": {
       "status": "FAIL",
       "total": 6,
@@ -51,84 +26,12 @@
         "ready_ticket_missing_github_issue": 3
       }
     },
-    "ive-contract-reliability-generalization": {
+    "ive-consolidation-rectification": {
       "status": "FAIL",
       "total": 2,
       "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
-    "ive-migration-streamlining": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
-    "ive-multi-agent-routing": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
-    "ive-real-episode-autocode-replay": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
-    "ive-runtime-build": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
-    "ive-self-improving-tests": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
-    "ive-verification-coverage": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
-    "ive-visualizer-intro": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
-    "planner-dogfood-false-green-remediation": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
-      }
-    },
-    "program-manager-hardening": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_gate_requirement_resolution_required": 1,
-        "program_gate_requirement_unsatisfied": 1
+        "program_ready_ticket_missing_github_issue": 1,
+        "ready_ticket_missing_github_issue": 1
       }
     }
   }

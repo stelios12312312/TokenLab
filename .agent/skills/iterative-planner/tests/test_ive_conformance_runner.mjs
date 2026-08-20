@@ -1,17 +1,25 @@
 #!/usr/bin/env node
 // test_ive_conformance_runner.mjs — IVE conformance runner contracts.
 
-import { execFileSync } from "child_process";
-import { existsSync, mkdtempSync, readFileSync } from "fs";
+import { execFileSync, spawn as spawnChild } from "child_process";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import {
+  classifyHarvestRealTelemetryHostResult,
   DEFAULT_SUITES,
+  DIRECT_SUITE_WAVE_IDS,
+  executeDirectSuiteWave,
   listSuites,
   parseArgs,
+  prepareDirectConformanceResults,
+  resolveDirectSuiteWaves,
+  resolveReleaseProfile,
+  runVisualizerBrowserProof,
   runConformance,
   selectSuites,
+  visualizerProofPortCandidates,
 } from "./ive/run.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -34,12 +42,28 @@ function assert(condition, label) {
 }
 
 function sameIds(selected, expected) {
-  // The E4 census guard intentionally overlays every top-level test-file
-  // change. Exact surface assertions below compare the domain suites while
-  // dedicated assertions prove the cross-cutting guard itself is selected.
-  const got = selected.map((suite) => suite.id).filter((id) => id !== "gate-or-delete-census").sort();
+  // Cross-cutting guards intentionally overlay broad changed-file surfaces.
+  // Exact assertions below compare domain suites while dedicated assertions
+  // prove each overlay; retain cli-determinism when a case names it explicitly.
+  const ignoredOverlays = new Set(["gate-or-delete-census"]);
+  if (!expected.includes("cli-determinism")) ignoredOverlays.add("cli-determinism");
+  const got = selected.map((suite) => suite.id).filter((id) => !ignoredOverlays.has(id)).sort();
   const want = [...expected].sort();
   return got.length === want.length && got.every((id, index) => id === want[index]);
+}
+
+function isCommittedFixture(repoPath) {
+  if (!existsSync(join(repoRoot, repoPath))) return false;
+  try {
+    const tracked = execFileSync(
+      "git",
+      ["ls-files", "--error-unmatch", "--", repoPath],
+      { cwd: repoRoot, encoding: "utf-8", stdio: ["ignore", "pipe", "pipe"] }
+    );
+    return tracked.trim().length > 0;
+  } catch {
+    return false;
+  }
 }
 
 function fakeExecutor(failIds = new Set()) {
@@ -59,6 +83,27 @@ function fakeExecutor(failIds = new Set()) {
   });
 }
 
+const wait = (milliseconds) => new Promise((resolveWait) => setTimeout(resolveWait, milliseconds));
+
+async function waitFor(predicate, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (predicate()) return true;
+    await wait(20);
+  }
+  return !!predicate();
+}
+
+function pidExists(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error?.code !== "ESRCH";
+  }
+}
+
 console.log("\nIVE Conformance Runner Tests\n");
 
 const categories = new Set(DEFAULT_SUITES.map((suite) => suite.category));
@@ -69,6 +114,21 @@ for (const category of ["loop_guard", "escalation", "structured_plan", "ontology
 assert(DEFAULT_SUITES.every((suite) => suite.id && suite.category && suite.display_command && typeof suite.required === "boolean"), "default suites have stable required/advisory metadata");
 assert(DEFAULT_SUITES.every((suite) => Array.isArray(suite.fixtures) && Array.isArray(suite.changed_file_patterns)), "default suites declare fixtures and changed-file patterns");
 assert(DEFAULT_SUITES.every((suite) => ["functional_proof_test", "quality_score_evaluation"].includes(suite.test_class)), "default suites classify functional proof tests vs quality-score evaluations");
+const cliDeterminismSuite = DEFAULT_SUITES.find((suite) => suite.id === "cli-determinism");
+assert(
+  (cliDeterminismSuite?.changed_file_patterns || []).some((pattern) => pattern.test(".agent/skills/iterative-planner/scripts/example_json_cli.mjs")),
+  "cli-determinism overlays every direct scripts/*.mjs change",
+);
+assert(
+  (cliDeterminismSuite?.changed_file_patterns || []).some((pattern) => pattern.test(".agent/skills/iterative-planner/scripts/lib/example_json.mjs")),
+  "cli-determinism overlays every direct scripts/lib/*.mjs change",
+);
+const uncommittedFixtures = [...new Set(DEFAULT_SUITES.flatMap((suite) => suite.fixtures))]
+  .filter((fixture) => !isCommittedFixture(fixture));
+assert(
+  uncommittedFixtures.length === 0,
+  `default suite fixtures survive a committed checkout${uncommittedFixtures.length > 0 ? ` - ${uncommittedFixtures.join(", ")}` : ""}`
+);
 const coverageRatchetSuite = DEFAULT_SUITES.find((suite) => suite.id === "planner-core-coverage-ratchet");
 assert(coverageRatchetSuite?.required === true, "planner-core coverage ratchet is required by default");
 assert(coverageRatchetSuite?.display_command.includes("test_coverage_baseline.mjs"), "planner-core coverage ratchet directly executes its conformance test");
@@ -88,9 +148,15 @@ assert(researchMemorySuite?.display_command.includes("test_research_memory_packe
 const transitionGateSuite = DEFAULT_SUITES.find((suite) => suite.id === "transition-gate-flows");
 assert(transitionGateSuite?.required === true, "transition gate flow suite is required by default");
 assert(transitionGateSuite?.display_command.includes("test_transition_gate_flows.mjs"), "transition gate flow suite drives the real lifecycle test");
-assert(transitionGateSuite?.timeout_ms === 180000, "transition gate flow suite has CI-safe timeout override");
+assert(transitionGateSuite?.timeout_ms === 300000, "transition gate flow suite has a reliable CI-safe timeout override");
 assert(transitionGateSuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/lib/gate_verdict.mjs"), "transition gate flow suite owns the authoritative receipt and verdict helper");
 assert(transitionGateSuite?.fixtures.includes(".agent/skills/iterative-planner/config/failure-codes.json"), "transition gate flow suite owns failure classification policy");
+const truthSurfaceSuite = DEFAULT_SUITES.find((suite) => suite.id === "truth-surface-convergence");
+assert(truthSurfaceSuite?.required === true, "truth surface convergence suite is required by default");
+assert(truthSurfaceSuite?.display_command.includes("test_truth_surface_convergence.mjs"), "truth surface convergence suite drives the focused evaluator test");
+assert(truthSurfaceSuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/truth_surface_reconciler.mjs"), "truth surface convergence suite owns the read-only CLI");
+assert(truthSurfaceSuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/lib/truth_surface_convergence.mjs"), "truth surface convergence suite owns the pure evaluator");
+assert(truthSurfaceSuite?.surfaces.includes("ontology") && truthSurfaceSuite?.surfaces.includes("github_mirror"), "truth surface convergence suite declares ontology and remote mirror boundaries");
 const lifecycleJourneySuite = DEFAULT_SUITES.find((suite) => suite.id === "lifecycle-journey-proof");
 assert(lifecycleJourneySuite?.required === true, "lifecycle journey proof suite is required by default");
 assert(lifecycleJourneySuite?.display_command.includes("test_lifecycle_journey_proof.mjs"), "lifecycle journey proof suite drives the deterministic full-lifecycle test");
@@ -111,8 +177,7 @@ assert(committedLifecycleReplaySuite?.surfaces.includes("committed_artifacts"), 
 const autonomousDogfoodSuite = DEFAULT_SUITES.find((suite) => suite.id === "l3-autonomous-dogfood-harness");
 assert(autonomousDogfoodSuite?.required === true, "L3 autonomous dogfood harness self-test is required by default");
 assert(autonomousDogfoodSuite?.display_command.includes("test_autonomous_dogfood_run.mjs"), "L3 harness suite runs deterministic countersign self-tests without an LLM");
-assert(autonomousDogfoodSuite?.phases.includes("tier3") && autonomousDogfoodSuite?.phases.includes("l3"), "L3 harness suite declares Tier 3/L3 phases");
-assert(autonomousDogfoodSuite?.fixtures.includes(".github/workflows/l3-autonomous-dogfood.yml"), "L3 harness suite owns the separate real-run workflow contract");
+assert(!autonomousDogfoodSuite?.fixtures.includes(".github/workflows/l3-autonomous-dogfood.yml"), "L3 harness suite does not depend on deleted GitHub CI workflow");
 const weeklyL3LaunchdSuite = DEFAULT_SUITES.find((suite) => suite.id === "weekly-l3-launchd-seat");
 assert(weeklyL3LaunchdSuite?.required === true, "weekly L3 launchd seat contract is required by default");
 assert(weeklyL3LaunchdSuite?.display_command.includes("test_weekly_l3_launchd.mjs"), "weekly L3 launchd suite directly executes its deterministic contract");
@@ -140,6 +205,45 @@ assert(findingsTriageSuite?.test_class === "functional_proof_test", "findings tr
 assert(findingsTriageSuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/program_manager.mjs"), "findings triage suite owns Program Manager CLI fixture");
 assert(findingsTriageSuite?.fixtures.includes("reports/ive/scoreboard/scoreboard-2026-07-07T17-40-11-369Z/scoreboard.json"), "findings triage suite owns the committed replay scoreboard receipt");
 assert(findingsTriageSuite?.surfaces.includes("findings_bridge") && findingsTriageSuite?.surfaces.includes("program_manager"), "findings triage suite declares bridge and Program Manager surfaces");
+const visualizerPlaywrightConfig = readFileSync(join(repoRoot, "apps/ive-visualizer/playwright.config.mjs"), "utf-8");
+const visualizerViteConfig = readFileSync(join(repoRoot, "apps/ive-visualizer/vite.config.mjs"), "utf-8");
+const visualizerSmokeSource = readFileSync(join(repoRoot, "apps/ive-visualizer/tests/visualizer-smoke.spec.mjs"), "utf-8");
+const iveRunnerSource = readFileSync(join(testDir, "ive", "run.mjs"), "utf-8");
+assert(visualizerPlaywrightConfig.includes("IVE_VISUALIZER_PORT"), "visualizer browser proof accepts an isolated port");
+assert(visualizerPlaywrightConfig.includes("reuseExistingServer: false"), "visualizer browser proof never reuses an unverified server");
+assert(visualizerPlaywrightConfig.includes("--strictPort"), "visualizer browser proof fails instead of drifting to another port");
+assert(visualizerPlaywrightConfig.includes("node ./node_modules/vite/bin/vite.js") && !visualizerPlaywrightConfig.includes("npm run dev"), "visualizer browser proof starts Vite directly without running payload-generating npm lifecycle hooks");
+assert(iveRunnerSource.includes("IVE_VISUALIZER_PORT"), "IVE runner assigns an isolated visualizer proof port");
+const visualizerPorts = visualizerProofPortCandidates(64551);
+assert(visualizerPorts.length === 5 && new Set(visualizerPorts).size === 5 && visualizerPorts[0] === 49551, "visualizer browser proof derives deterministic distinct fallback ports");
+const visualizerAttempts = [];
+const visualizerRetryResult = runVisualizerBrowserProof([], {
+  repoRoot,
+  env: {},
+  pid: 64551,
+  execute: (_command, options) => {
+    const port = Number(options.envOverrides.IVE_VISUALIZER_PORT);
+    visualizerAttempts.push(port);
+    return visualizerAttempts.length === 1
+      ? { status: "FAIL", exit_code: 1, raw_stdout: `http://127.0.0.1:${port} is already used` }
+      : { status: "PASS", exit_code: 0, raw_stdout: "ok" };
+  },
+});
+assert(visualizerRetryResult.status === "PASS" && visualizerAttempts.length === 2 && visualizerAttempts[0] !== visualizerAttempts[1], "visualizer browser proof retries only a default-port collision");
+const explicitVisualizerAttempts = [];
+const explicitVisualizerResult = runVisualizerBrowserProof([], {
+  repoRoot,
+  env: { IVE_VISUALIZER_PORT: "50123" },
+  execute: (_command, options) => {
+    explicitVisualizerAttempts.push(Number(options.envOverrides.IVE_VISUALIZER_PORT));
+    return { status: "FAIL", exit_code: 1, raw_stderr: "EADDRINUSE" };
+  },
+});
+assert(explicitVisualizerResult.status === "FAIL" && explicitVisualizerAttempts.length === 1 && explicitVisualizerAttempts[0] === 50123, "visualizer browser proof preserves exact operator-supplied port failure");
+assert(visualizerViteConfig.includes("BRIDGE_COMMAND_TIMEOUT_MS = 25_000"), "visualizer bridge keeps a bounded deadline with enough margin for governed Program checks");
+assert(visualizerSmokeSource.includes("BRIDGE_RESPONSE_TIMEOUT_MS = 30_000"), "browser proof waits beyond the bridge terminal deadline");
+assert(visualizerSmokeSource.includes("page.request.get(\"/ive-graph-payload.json\")"), "browser proof binds candidates to the payload served after isolated-server startup");
+assert(!visualizerSmokeSource.includes("regenerates the live payload during predev"), "browser proof documentation does not claim the non-mutating Vite harness runs payload-generating lifecycle hooks");
 const transitionEnvSuite = DEFAULT_SUITES.find((suite) => suite.id === "transition-env-cleanup");
 assert(transitionEnvSuite?.required === true, "transition env cleanup suite is required by default");
 assert(transitionEnvSuite?.display_command.includes("test_transition_env_cleanup.mjs"), "transition env cleanup suite drives the focused env restoration test");
@@ -152,6 +256,11 @@ assert(reflectionVerdictSuite?.fixtures.includes(".agent/skills/iterative-planne
 const programManagerSuite = DEFAULT_SUITES.find((suite) => suite.id === "program-manager-tests");
 assert(programManagerSuite?.test_class === "functional_proof_test", "program manager suite is classified as a functional proof test");
 assert(programManagerSuite?.timeout_ms === 300000, "program manager suite has a reliable clean-checkout timeout budget");
+const productionAutonomySuite = DEFAULT_SUITES.find((suite) => suite.id === "production-autonomous-ticket-delivery");
+assert(productionAutonomySuite?.required === true, "production autonomous ticket delivery is a required governed suite");
+assert(productionAutonomySuite?.display_command.includes("test_autonomous_ticket_delivery.mjs"), "production autonomy suite drives the parent grader and worktree contract test");
+assert(productionAutonomySuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/autonomous_ticket_delivery.mjs"), "production autonomy suite owns the public CLI fixture");
+assert(productionAutonomySuite?.surfaces.includes("git_worktree") && productionAutonomySuite?.surfaces.includes("receipt"), "production autonomy suite declares execution and proof boundaries");
 const storyRegistryMergeGuardSuite = DEFAULT_SUITES.find((suite) => suite.id === "story-registry-merge-guard");
 assert(storyRegistryMergeGuardSuite?.required === true, "story registry merge guard suite is required by default");
 assert(storyRegistryMergeGuardSuite?.display_command.includes("test_story_registry_merge_guard.mjs"), "story registry merge guard suite drives the seeded collision test");
@@ -213,6 +322,38 @@ assert(workspaceInventorySuite?.fixtures.includes(".agent/skills/iterative-plann
 assert(workspaceInventorySuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/lib/workspace_artifact_inventory.mjs"), "workspace artifact inventory suite owns the library fixture");
 assert(workspaceInventorySuite?.fixtures.includes(".agent/skills/iterative-planner/config/.project_registry.json"), "workspace artifact inventory suite owns the project registry fixture");
 assert(workspaceInventorySuite?.surfaces.includes("workspace_inventory"), "workspace artifact inventory suite declares the workspace inventory surface");
+const harvestRealTelemetrySuite = DEFAULT_SUITES.find((suite) => suite.id === "harvest-real-telemetry");
+const harvestRealTelemetryHostSuite = DEFAULT_SUITES.find((suite) => suite.id === "harvest-real-telemetry-host");
+assert(harvestRealTelemetrySuite?.required === true, "portable real-telemetry contract suite is required by default");
+assert(harvestRealTelemetrySuite?.test_class === "functional_proof_test", "portable real-telemetry contract is classified as deterministic functional proof");
+assert(harvestRealTelemetrySuite?.surfaces.includes("planner_core"), "portable real-telemetry contract participates in the planner-core release profile");
+assert(harvestRealTelemetrySuite?.command.includes("--portable-only"), "portable real-telemetry contract excludes mutable host integration");
+assert(harvestRealTelemetrySuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/bootstrap.mjs"), "portable real-telemetry contract owns the bootstrap diagnostic fixture");
+assert(harvestRealTelemetrySuite?.fixtures.includes(".agent/skills/iterative-planner/config/.project_registry.json"), "portable real-telemetry contract owns the project registry fixture");
+assert((harvestRealTelemetrySuite?.changed_file_patterns || []).some((pattern) => pattern.test(".agent/skills/iterative-planner/scripts/bootstrap.mjs")), "portable real-telemetry contract selects bootstrap diagnostic changes");
+assert((harvestRealTelemetrySuite?.changed_file_patterns || []).some((pattern) => pattern.test(".agent/skills/iterative-planner/config/.project_registry.json")), "portable real-telemetry contract selects project registry changes");
+assert(harvestRealTelemetryHostSuite?.required === true, "host real-telemetry proof suite is required by default");
+assert(harvestRealTelemetryHostSuite?.test_class === "functional_proof_test", "host real-telemetry proof is classified as functional proof");
+assert(harvestRealTelemetryHostSuite?.command.includes("--require-real"), "host real-telemetry proof requires an exercised sibling");
+assert(!harvestRealTelemetryHostSuite?.surfaces.includes("planner_core"), "host real-telemetry proof stays outside deterministic planner-core release coverage");
+const coreReleaseProfile = resolveReleaseProfile({ profileId: "core-release", suites: DEFAULT_SUITES });
+assert(!coreReleaseProfile.selected_suite_ids.includes("harvest-real-telemetry-host"), "core-release profile excludes mutable host real-telemetry proof");
+const hostSkipResult = classifyHarvestRealTelemetryHostResult({
+  status: "FAIL",
+  exit_code: 78,
+  timed_out: false,
+  raw_stdout: "Results: 10 passed, 0 failed, 1 skipped\nIVE_HOST_PROOF_SKIP: registry absent on this machine\n",
+  raw_stderr: "",
+});
+assert(hostSkipResult.status === "SKIPPED" && hostSkipResult.status_reason.includes("registry absent on this machine"), "host real-telemetry exit 78 maps to a reasoned SKIPPED result");
+const hostFailureResult = classifyHarvestRealTelemetryHostResult({
+  status: "FAIL",
+  exit_code: 1,
+  timed_out: false,
+  raw_stdout: "Results: 9 passed, 1 failed, 0 skipped\n",
+  raw_stderr: "",
+});
+assert(hostFailureResult.status === "FAIL", "ordinary host real-telemetry failures remain FAIL");
 const knowledgeTriggerSuite = DEFAULT_SUITES.find((suite) => suite.id === "knowledge-triggers");
 assert(knowledgeTriggerSuite?.required === true, "knowledge trigger suite is required by default");
 assert(knowledgeTriggerSuite?.display_command.includes("test_knowledge_triggers.mjs"), "knowledge trigger suite drives the real trigger test");
@@ -264,6 +405,7 @@ assert(scoreboardSuite?.fixtures.includes(".agent/skills/iterative-planner/scrip
 assert(scoreboardSuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/lib/reuse_before_create_gate.mjs"), "scoreboard CLI suite owns the reuse discipline gate fixture");
 assert(scoreboardSuite?.fixtures.includes(".agent/skills/iterative-planner/references/convergence-metrics.md"), "scoreboard CLI suite owns the convergence metrics reference fixture");
 assert(scoreboardSuite?.fixtures.includes(".agent/skills/iterative-planner/references/planning-rigor.md"), "scoreboard CLI suite owns the planning-rigor reference fixture");
+assert(scoreboardSuite?.fixtures.includes("plans/programs/ive-autocoder-v2/baselines"), "scoreboard CLI suite owns the complete dated-baseline directory");
 assert(!scoreboardSuite?.display_command.includes("scripts/scoreboard.mjs"), "scoreboard suite does not recursively run the production scoreboard");
 const seededDefectSuite = DEFAULT_SUITES.find((suite) => suite.id === "seeded-defect-harness");
 assert(seededDefectSuite?.required === true, "seeded defect harness suite is required by default");
@@ -303,6 +445,7 @@ assert(verificationTruthSuite?.fixtures.includes(".agent/skills/iterative-planne
 assert(verificationTruthSuite?.fixtures.includes(".agent/skills/iterative-planner/config/proof_status_reader_census.json"), "verification truth suite owns the reviewed proof-status reader census fixture");
 assert(verificationTruthSuite?.fixtures.includes(".agent/skills/iterative-planner/config/mcp_tools.json"), "verification truth suite owns the MCP verification-writer schema fixture");
 assert(verificationTruthSuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/proof_status_census.mjs"), "verification truth suite owns the proof-status structural guard fixture");
+assert(verificationTruthSuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/hooks/pre_push_conformance.mjs"), "verification truth suite owns the managed pre-push status reader fixture");
 assert(verificationTruthSuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs"), "verification truth suite owns the Prolog fact-loader fixture");
 assert(verificationTruthSuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/ontology_serializer.mjs"), "verification truth suite owns the ontology serializer fixture");
 assert(verificationTruthSuite?.fixtures.includes(".agent/skills/iterative-planner/prolog/invariants.pl"), "verification truth suite owns mode-sensitive Prolog invariant matching");
@@ -421,7 +564,7 @@ selected = selectSuites(DEFAULT_SUITES, [], "l3-freshness");
 assert(selected.length === 1 && selected[0].id === "l3-autonomous-dogfood-receipt-freshness", "--phase l3-freshness selects only the receipt advisory");
 
 selected = selectSuites(DEFAULT_SUITES, [], "l3");
-assert(sameIds(selected, ["l3-autonomous-dogfood-harness", "l3-autonomous-dogfood-receipt-freshness"]), "--phase l3 selects deterministic harness and advisory freshness without invoking an LLM");
+assert(sameIds(selected, ["l3-autonomous-dogfood-harness", "l3-autonomous-dogfood-receipt-freshness", "production-autonomous-ticket-delivery"]), "--phase l3 selects deterministic harness, production delivery contract, and advisory freshness without invoking an LLM");
 
 selected = selectSuites(DEFAULT_SUITES, [], "findings-to-intake");
 assert(sameIds(selected, ["deterministic-findings-schema", "findings-triage-intake"]), "--phase findings-to-intake selects FI1 and FI2 findings suites");
@@ -515,7 +658,7 @@ assert(selected.length === 1 && selected[0].id === "presentation-contract", "--p
 selected = selectSuites(DEFAULT_SUITES, [], "core.verification-truth");
 assert(selected.length === 1 && selected[0].id === "verification-truth", "--phase core.verification-truth selects verification truth suite");
 selected = selectSuites(DEFAULT_SUITES, [], "close-truth");
-assert(selected.length === 1 && selected[0].id === "verification-truth", "--phase close-truth selects verification truth suite");
+assert(sameIds(selected, ["truth-surface-convergence", "verification-truth"]), "--phase close-truth selects truth convergence and verification truth suites");
 
 selected = selectSuites(DEFAULT_SUITES, [], "convergence-metrics");
 assert(selected.length === 1 && selected[0].id === "scoreboard-cli", "--phase convergence-metrics selects scoreboard CLI suite");
@@ -599,6 +742,7 @@ assert(
 const docsContractsSuite = DEFAULT_SUITES.find((suite) => suite.id === "docs-contracts");
 assert(docsContractsSuite?.display_command.includes("doc-contract-mvp"), "docs-contracts still includes the visualizer doc contract");
 assert(docsContractsSuite?.display_command.includes("doc-contract-multi-ide"), "docs-contracts still includes the multi-IDE doc contract");
+assert(docsContractsSuite?.display_command.includes("workflow-disposition-contract"), "docs-contracts includes the workflow disposition contract");
 assert(!docsContractsSuite?.display_command.includes("autocoder-charter-doc-contract"), "docs-contracts no longer includes the deleted autocoder prose suite");
 assert(!(docsContractsSuite?.fixtures || []).some((fixture) => fixture.includes("docs/autocoder-charter.md") || fixture.includes("docs/adr/ADR-")), "docs-contracts no longer owns autocoder charter or ADR prose fixtures");
 
@@ -669,6 +813,9 @@ assert(selected.length === 2 && selected.some((suite) => suite.id === "visualize
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/knowledge_packs/product_management/pack.json"]);
 assert(selected.length === 2 && selected.some((suite) => suite.id === "profile-knowledge-packs") && selected.some((suite) => suite.id === "ripple-check"), "--changed-files selects profile/knowledge-pack and ripple suites for sibling pack files");
 
+selected = selectSuites(DEFAULT_SUITES, [], "all", ["public/ive-graph-payload.json"]);
+assert(sameIds(selected, ["visualizer-contract-bridge-guard"]), "--changed-files selects exactly the visualizer contract guard for forbidden root payload residue");
+
 selected = selectSuites(DEFAULT_SUITES, [], "all", ["docs/ive-redesign/08_visualizer_ui.md"]);
 assert(selected.some((suite) => suite.id === "doc-contract-mvp"), "--changed-files selects the visualizer doc contract");
 assert(selected.some((suite) => suite.id === "docs-contracts"), "--changed-files includes the aggregate docs contract");
@@ -678,6 +825,12 @@ assert(!selected.some((suite) => suite.id === "core-routing"), "--changed-files 
 selected = selectSuites(DEFAULT_SUITES, [], "all", ["docs/ive-redesign/16_multi_ide_portability.md"]);
 assert(selected.some((suite) => suite.id === "doc-contract-multi-ide"), "--changed-files selects the canonical multi-IDE doc contract");
 assert(selected.some((suite) => suite.id === "docs-contracts"), "--changed-files includes aggregate docs contract for canonical multi-IDE docs");
+
+selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/config/workflow_migration_inventory.json"]);
+assert(sameIds(selected, ["docs-contracts", "ripple-check", "workflow-disposition-contract"]), "--changed-files selects exactly workflow disposition, docs aggregate, and ripple for the migration inventory");
+
+selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/workflows/sidekick.md"]);
+assert(sameIds(selected, ["docs-contracts", "workflow-disposition-contract"]), "--changed-files selects exactly workflow disposition and docs aggregate for an active workflow file");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", ["docs/autocoder-charter.md"]);
 assert(sameIds(selected, []), "--changed-files no longer selects deleted autocoder charter prose docs gate");
@@ -712,6 +865,12 @@ assert(sameIds(selected, ["capability-connectivity", "planner-core-coverage-ratc
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/tests/test_verification_truth.mjs"]);
 assert(sameIds(selected, ["ripple-check", "verification-truth"]), "--changed-files selects exactly verification truth and ripple for its test");
 
+selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/hooks/pre_push_conformance.mjs"]);
+assert(
+  sameIds(selected, ["ci-enforcement-contracts", "planner-shell-wrapper-hooks", "ripple-check", "verification-truth"]),
+  "--changed-files selects exactly CI enforcement, shell-wrapper, ripple, and verification truth for the managed pre-push status reader"
+);
+
 for (const vocabularyFixture of [
   ".agent/skills/iterative-planner/config/verification_status_vocabulary.json",
   ".agent/skills/iterative-planner/config/proof_status_reader_census.json",
@@ -725,7 +884,7 @@ for (const vocabularyFixture of [
 }
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/tests/helpers/env.mjs"]);
-assert(sameIds(selected, ["local-ci-parity", "ripple-check", "transition-env-cleanup"]), "--changed-files selects exactly local/CI parity, transition env cleanup, and ripple for the subprocess env helper");
+assert(sameIds(selected, ["harvest-real-telemetry", "harvest-real-telemetry-host", "local-ci-parity", "ripple-check", "transition-env-cleanup"]), "--changed-files selects both telemetry proof layers, local/CI parity, transition env cleanup, and ripple for the subprocess env helper");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/tests/test_local_ci_parity_helpers.mjs"]);
 assert(sameIds(selected, ["local-ci-parity", "ripple-check"]), "--changed-files selects exactly local/CI parity and ripple for the parity guard test");
@@ -734,7 +893,7 @@ selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-pla
 assert(sameIds(selected, ["annotation-discipline-gate", "capability-connectivity", "ripple-check"]), "--changed-files selects exactly annotation discipline, connectivity, and ripple suites");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/plan_utils.mjs"]);
-assert(sameIds(selected, ["capability-connectivity", "preplanning-scaffolding", "red-team-depth-gate", "ripple-check", "seeded-defect-harness", "transition-dry-run-equivalence"]), "--changed-files selects exactly preplanning, red-team depth, seeded-defect harness, dry-run equivalence, connectivity, and ripple suites for plan_utils");
+assert(sameIds(selected, ["capability-connectivity", "plan-target-ownership", "preplanning-scaffolding", "red-team-depth-gate", "ripple-check", "seeded-defect-harness", "transition-dry-run-equivalence"]), "--changed-files selects exactly plan-target ownership, preplanning, red-team depth, seeded-defect harness, dry-run equivalence, connectivity, and ripple suites for plan_utils");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/plan_artifact_renderer.mjs"]);
 assert(sameIds(selected, ["capability-connectivity", "plan-artifact-renderer", "ripple-check"]), "--changed-files selects exactly plan artifact renderer, connectivity, and ripple for renderer library");
@@ -766,6 +925,9 @@ assert(sameIds(selected, ["evidence-preflight", "ripple-check"]), "--changed-fil
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/tests/test_lifecycle_journey_proof.mjs"]);
 assert(sameIds(selected, ["lifecycle-journey-proof", "ripple-check"]), "--changed-files selects exactly lifecycle journey proof and ripple for the journey test");
 
+selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/semantic_hygiene.mjs"]);
+assert(sameIds(selected, ["capability-connectivity", "cli-determinism", "lifecycle-journey-proof", "ripple-check"]), "--changed-files selects connectivity, CLI transport, and the copied-consumer lifecycle proof for semantic hygiene changes");
+
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/tests/test_deterministic_findings.mjs"]);
 assert(sameIds(selected, ["deterministic-findings-schema", "ripple-check"]), "--changed-files selects exactly deterministic findings and ripple for the FI1 test");
 
@@ -776,16 +938,37 @@ selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-pla
 assert(sameIds(selected, ["capability-connectivity", "deterministic-findings-schema", "findings-triage-intake", "ripple-check"]), "--changed-files selects deterministic findings, findings triage, connectivity, and ripple for the bridge helper");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/config/.project_registry.json"]);
-assert(sameIds(selected, ["ripple-check", "workspace-artifact-inventory"]), "--changed-files selects exactly workspace inventory and ripple for registered project inventory config");
+assert(sameIds(selected, ["harvest-real-telemetry", "harvest-real-telemetry-host", "ripple-check", "workspace-artifact-inventory"]), "--changed-files selects both telemetry proof layers, workspace inventory, and ripple for registered project inventory config");
+
+selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/bootstrap.mjs"]);
+assert(sameIds(selected, ["harvest-real-telemetry", "harvest-real-telemetry-host", "lifecycle-journey-proof", "lifecycle-reconciler", "migration-bootstrap", "owned-file-replacement", "persona-authority-project-health", "planner-core-coverage-ratchet", "quant-archetype-accomplices", "ripple-check", "transition-gate-flows"]), "--changed-files selects exactly the bootstrap consumers, owned replacement proof, and both telemetry proof layers");
+
+selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/truth_surface_reconciler.mjs"]);
+assert(sameIds(selected, ["cli-determinism", "ripple-check", "truth-surface-convergence"]), "--changed-files selects truth convergence, CLI transport, and ripple for the reconciler CLI");
+
+selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/truth_surface_convergence.mjs"]);
+assert(sameIds(selected, ["capability-connectivity", "cli-determinism", "ripple-check", "truth-surface-convergence"]), "--changed-files selects truth convergence, connectivity, CLI transport, and ripple for the evaluator library");
+
+selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/autonomous_ticket_delivery.mjs"]);
+assert(sameIds(selected, ["cli-determinism", "production-autonomous-ticket-delivery", "ripple-check"]), "--changed-files selects production autonomy, CLI transport, and ripple for the production runner CLI");
+
+selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/autonomous_ticket_delivery.mjs"]);
+assert(sameIds(selected, ["capability-connectivity", "cli-determinism", "production-autonomous-ticket-delivery", "ripple-check"]), "--changed-files selects production autonomy, connectivity, CLI transport, and ripple for the production runner library");
+
+selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/task_rubric_grader.mjs"]);
+assert(sameIds(selected, ["capability-connectivity", "cli-determinism", "production-autonomous-ticket-delivery", "ripple-check"]), "--changed-files selects production autonomy, connectivity, CLI transport, and ripple for the parent grader");
+
+selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/tests/test_autonomous_ticket_delivery.mjs"]);
+assert(sameIds(selected, ["production-autonomous-ticket-delivery", "ripple-check"]), "--changed-files selects production autonomy and ripple for its focused test");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/verify_gate.mjs"]);
-assert(sameIds(selected, ["adversarial-idea-barrenness", "annotation-discipline-gate", "autonomous-driver", "autonomous-verification-agents", "committed-dogfood-lifecycle-replay", "incident-contract", "lifecycle-journey-proof", "planner-core-coverage-ratchet", "quant-gate-hardening", "recipe-promotion", "red-team-depth-gate", "reflection-verdict-routing", "repo-state-stamps", "reuse-before-create-gate", "ripple-check", "transition-dry-run-equivalence", "transition-env-cleanup", "transition-gate-flows"]), "--changed-files selects exactly coverage ratchet, dry-run equivalence, live gate consumers, lifecycle journey proofs, quant gate hardening, incident contract, env cleanup, recipe promotion, transition flows, reuse gate, repo-state stamps, reflection close-signals, and ripple suites");
+assert(sameIds(selected, ["adversarial-idea-barrenness", "annotation-discipline-gate", "autonomous-driver", "autonomous-verification-agents", "committed-dogfood-lifecycle-replay", "incident-contract", "lifecycle-journey-proof", "planner-core-coverage-ratchet", "quant-gate-hardening", "recipe-promotion", "red-team-depth-gate", "reflection-verdict-routing", "repo-state-stamps", "reuse-before-create-gate", "ripple-check", "transition-dry-run-equivalence", "transition-env-cleanup", "transition-gate-flows", "truth-surface-convergence"]), "--changed-files selects exactly coverage ratchet, dry-run equivalence, live gate consumers, lifecycle journey proofs, quant gate hardening, incident contract, env cleanup, recipe promotion, transition flows, reuse gate, repo-state stamps, reflection close-signals, truth convergence, and ripple suites");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/tests/test_reflection_verdict_routing.mjs"]);
 assert(sameIds(selected, ["reflection-verdict-routing", "ripple-check"]), "--changed-files selects exactly reflection verdict routing and ripple for its focused test");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/transition.mjs"]);
-assert(sameIds(selected, ["autonomous-driver", "lifecycle-journey-proof", "plan-artifact-renderer", "planner-core-coverage-ratchet", "preplanning-scaffolding", "ripple-check", "transition-dry-run-equivalence", "transition-env-cleanup", "transition-gate-flows"]), "--changed-files selects exactly coverage ratchet, preplanning, lifecycle journey proof, dry-run equivalence, transition env cleanup, transition gate flows, autonomous driver, plan artifact renderer, and ripple for transition.mjs");
+assert(sameIds(selected, ["autonomous-driver", "lifecycle-journey-proof", "owned-file-replacement", "plan-artifact-renderer", "planner-core-coverage-ratchet", "preplanning-scaffolding", "ripple-check", "transition-dry-run-equivalence", "transition-env-cleanup", "transition-gate-flows"]), "--changed-files selects exactly owned replacement, coverage ratchet, preplanning, lifecycle journey proof, dry-run equivalence, transition env cleanup, transition gate flows, autonomous driver, plan artifact renderer, and ripple for transition.mjs");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/knowledge_triggers.mjs"]);
 assert(sameIds(selected, ["knowledge-triggers", "ripple-check"]), "--changed-files selects exactly knowledge triggers and ripple for the Knowledge Trigger CLI");
@@ -824,7 +1007,7 @@ selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-pla
 assert(sameIds(selected, ["capability-connectivity", "quant-results-validation", "ripple-check"]), "--changed-files selects exactly quant results validation, connectivity, and ripple for measured gate helper");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/quant_results_validation.mjs"]);
-assert(sameIds(selected, ["capability-connectivity", "quant-archetype-accomplices", "quant-betting-market", "quant-crypto-execution", "quant-leakage-artifact", "quant-results-validation", "quant-validation-retrofit", "research-memory-packet-e2e", "ripple-check"]), "--changed-files selects exactly the quant validation consumer family, research memory packet e2e, connectivity, and ripple for the quant parser");
+assert(sameIds(selected, ["capability-connectivity", "quant-archetype-accomplices", "quant-betting-market", "quant-crypto-execution", "quant-leakage-artifact", "quant-results-validation", "quant-validation-retrofit", "research-memory-packet-e2e", "ripple-check", "scientific-transition-gate"]), "--changed-files selects exactly the quant and scientific validation consumer family, research memory packet e2e, connectivity, and ripple for the quant parser");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/research_validity_binding.mjs"]);
 assert(sameIds(selected, ["capability-connectivity", "research-memory-packet-e2e", "ripple-check"]), "--changed-files selects exactly research packet e2e, connectivity, and ripple for the validity binding seam");
@@ -1000,6 +1183,25 @@ assert(sameIds(selected, ["ripple-check", "scoreboard-cli"]), "--changed-files s
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/references/planning-rigor.md"]);
 assert(sameIds(selected, ["ripple-check", "scoreboard-cli"]), "--changed-files selects exactly scoreboard and ripple for planning-rigor reference doc");
 
+const baselineConsumerSuites = [
+  "autocoder-metrics",
+  "context-packet",
+  "core-program-intake",
+  "deterministic-findings-schema",
+  "lifecycle-reconciler",
+  "program-manager-tests",
+  "program-packet-design-to-ready",
+  "scoreboard-cli",
+];
+for (const baselinePath of [
+  "plans/programs/ive-autocoder-v2/baselines/baseline-2026-06-12.json",
+  "plans/programs/ive-autocoder-v2/baselines/baseline-2026-08-07.json",
+  "plans/programs/ive-autocoder-v2/baselines/README.md",
+]) {
+  selected = selectSuites(DEFAULT_SUITES, [], "all", [baselinePath]);
+  assert(sameIds(selected, baselineConsumerSuites), `--changed-files routes every dated-baseline surface to all direct consumers: ${baselinePath}`);
+}
+
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/references/ab-task-benchmark.md"]);
 assert(sameIds(selected, ["ab-task-benchmark", "ripple-check"]), "--changed-files selects exactly A/B benchmark and ripple for benchmark reference doc");
 
@@ -1041,7 +1243,7 @@ report = runConformance({
     return fakeExecutor()(suite);
   },
 });
-assert(report.ok && observedTimeoutMs === 180000, "per-suite timeout override is passed to executor");
+assert(report.ok && observedTimeoutMs === 300000, "per-suite timeout override is passed to executor");
 
 report = runConformance({
   suites: DEFAULT_SUITES,
@@ -1154,6 +1356,52 @@ assert(manifest.overall_status === "pass" && manifest.suites?.[0]?.status === "p
 assert(manifest.suites?.[0]?.test_class === "functional_proof_test", "manifest records suite test_class");
 assert(existsSync(join(tmp, "reports", "ive", "test_runs", "unit-manifest", "logs", "core-routing.stdout.log")), "writeManifest preserves stdout log");
 
+const unsafeRunReportRoot = join(tmp, "unsafe-run-id", "test_runs");
+for (const unsafeRunId of [".", ".."]) {
+  let executionCount = 0;
+  let rejection = null;
+  try {
+    runConformance({
+      suites: [DEFAULT_SUITES[0]],
+      executeCommand: (suite, options) => {
+        executionCount += 1;
+        return fakeExecutor()(suite, options);
+      },
+      writeManifest: true,
+      runId: unsafeRunId,
+      repoRoot: tmp,
+      reportRoot: unsafeRunReportRoot,
+    });
+  } catch (error) {
+    rejection = error;
+  }
+  assert(rejection?.code === "invalid_run_id" && executionCount === 0, `unsafe run ID ${unsafeRunId} fails before suite execution`);
+}
+assert(!existsSync(join(tmp, "unsafe-run-id", "manifest.json")) && !existsSync(join(unsafeRunReportRoot, "manifest.json")), "unsafe run IDs cannot write at or above reportRoot");
+
+const dottedRunIdReport = runConformance({
+  suites: [DEFAULT_SUITES[0]],
+  executeCommand: fakeExecutor(),
+  writeManifest: false,
+  runId: "release.v1",
+  repoRoot: tmp,
+  reportRoot: unsafeRunReportRoot,
+});
+assert(dottedRunIdReport.run_id === "release.v1" && dottedRunIdReport.status === "PASS", "ordinary dotted run IDs remain compatible");
+
+for (const unsafeRunId of [".", ".."]) {
+  let cliFailure = null;
+  try {
+    execFileSync(NODE, [runnerCli, "--json", "--changed-files", "outside/irrelevant.txt", "--no-manifest", "--run-id", unsafeRunId], {
+      cwd: repoRoot,
+      encoding: "utf-8",
+    });
+  } catch (error) {
+    cliFailure = JSON.parse(String(error.stdout || "{}"));
+  }
+  assert(cliFailure?.status === "FAIL" && cliFailure?.issues?.[0]?.code === "invalid_run_id" && cliFailure?.summary?.total === 0, `CLI rejects run ID ${unsafeRunId} before execution`);
+}
+
 const list = listSuites(DEFAULT_SUITES);
 assert(list.ok && list.status === "LIST" && list.suite_count === DEFAULT_SUITES.length, "listSuites emits machine-readable suite inventory");
 assert(Array.isArray(list.suites?.[0]?.fixtures), "listSuites includes fixture metadata");
@@ -1175,6 +1423,431 @@ const cliList = execFileSync(NODE, [runnerCli, "--list", "--json"], {
 });
 const cliJson = JSON.parse(cliList);
 assert(cliJson.status === "LIST" && cliJson.suites?.length === DEFAULT_SUITES.length, "CLI list mode emits parseable JSON");
+
+console.log("\nExact default direct-wave contracts");
+const expectedDirectSuiteWaveIds = [
+  ["transition-gate-flows", "cli-determinism"],
+  ["transition-dry-run-equivalence", "lifecycle-reconciler"],
+  ["lifecycle-journey-proof", "ive-conformance-runner-meta"],
+  ["committed-dogfood-lifecycle-replay", "visualizer-contract-bridge-guard"],
+  ["l3-autonomous-dogfood-harness", "reflection-invariants"],
+  ["transition-env-cleanup", "gate-idempotence"],
+  ["reflection-verdict-routing", "program-packet-design-to-ready"],
+  ["program-manager-tests", "migration-bootstrap"],
+  ["advisor-task-intake-routing", "adversarial-idea-barrenness"],
+  ["verification-truth", "planner-shell-wrapper-hooks"],
+];
+const directWavePlan = resolveDirectSuiteWaves(DEFAULT_SUITES, repoRoot);
+assert(
+  JSON.stringify(DIRECT_SUITE_WAVE_IDS) === JSON.stringify(expectedDirectSuiteWaveIds),
+  "direct full-run concurrency uses only the measured explicit pair allowlist",
+);
+assert(
+  directWavePlan.healthy
+    && directWavePlan.wave_count === expectedDirectSuiteWaveIds.length
+    && directWavePlan.suite_count === expectedDirectSuiteWaveIds.length * 2
+    && Object.values(directWavePlan.checks).every(Boolean),
+  "direct wave plan requires unique ordered required commands with present and pair-isolated fixtures",
+);
+assert(
+  directWavePlan.waves.every((wave) => (
+    wave.items.length === 2
+    && wave.items.every((item) => DEFAULT_SUITES.filter((candidate) => candidate.id === item.id).length === 1)
+  )),
+  "every allowlisted wave member resolves to exactly one canonical catalog suite",
+);
+assert(
+  !resolveDirectSuiteWaves([...DEFAULT_SUITES, { ...DEFAULT_SUITES[0] }], repoRoot).healthy,
+  "a duplicate catalog ID fails direct-wave planning before execution",
+);
+const reversedWaveCatalog = [...DEFAULT_SUITES];
+const firstWaveLeftIndex = reversedWaveCatalog.findIndex((item) => item.id === expectedDirectSuiteWaveIds[0][0]);
+const firstWaveRightIndex = reversedWaveCatalog.findIndex((item) => item.id === expectedDirectSuiteWaveIds[0][1]);
+[reversedWaveCatalog[firstWaveLeftIndex], reversedWaveCatalog[firstWaveRightIndex]] = [
+  reversedWaveCatalog[firstWaveRightIndex],
+  reversedWaveCatalog[firstWaveLeftIndex],
+];
+assert(
+  !resolveDirectSuiteWaves(reversedWaveCatalog, repoRoot).healthy,
+  "a wave whose trigger follows its sibling fails planning before execution",
+);
+const sharedFixtureCatalog = DEFAULT_SUITES.map((item) => ({ ...item, fixtures: [...item.fixtures] }));
+for (const id of expectedDirectSuiteWaveIds[1]) {
+  const item = sharedFixtureCatalog.find((candidate) => candidate.id === id);
+  item.fixtures.push(".agent/skills/iterative-planner/tests/fixtures/shared-wave-state.json");
+}
+const sharedFixturePlan = resolveDirectSuiteWaves(sharedFixtureCatalog, repoRoot);
+assert(
+  !sharedFixturePlan.healthy && sharedFixturePlan.checks.pair_fixture_isolation === false,
+  "a pair with shared declared fixture state fails planning before execution",
+);
+const optionalWaveCatalog = DEFAULT_SUITES.map((item) => item.id === expectedDirectSuiteWaveIds[2][1]
+  ? { ...item, required: false }
+  : item);
+assert(
+  !resolveDirectSuiteWaves(optionalWaveCatalog, repoRoot).healthy,
+  "optional suites cannot enter the direct required-suite wave allowlist",
+);
+const missingWaveFixtureCatalog = DEFAULT_SUITES.map((item) => item.id === expectedDirectSuiteWaveIds[3][1]
+  ? { ...item, fixtures: [...item.fixtures, ".agent/skills/iterative-planner/tests/fixtures/missing-wave-proof.json"] }
+  : item);
+assert(
+  !resolveDirectSuiteWaves(missingWaveFixtureCatalog, repoRoot).healthy,
+  "a wave member with a missing required fixture fails planning before execution",
+);
+
+const schedulerTimestamp = "2026-08-07T00:00:00.000Z";
+const schedulerPassResult = (item) => ({
+  id: item.id,
+  status: "PASS",
+  manifest_status: "pass",
+  exit_code: 0,
+  timed_out: false,
+  duration_ms: 0,
+  started_at: schedulerTimestamp,
+  finished_at: schedulerTimestamp,
+});
+const schedulerExecutionCounts = new Map();
+const countSchedulerItem = (item) => {
+  schedulerExecutionCounts.set(item.id, (schedulerExecutionCounts.get(item.id) || 0) + 1);
+  return schedulerPassResult(item);
+};
+const schedulerWaveTriggers = [];
+const preparedResults = await prepareDirectConformanceResults({
+  suites: DEFAULT_SUITES,
+  directWavePlan,
+  executeWave: async (items) => {
+    schedulerWaveTriggers.push(items[0].id);
+    return new Map([...items].reverse().map((item) => [item.id, countSchedulerItem(item)]));
+  },
+  executeCommand: countSchedulerItem,
+  repoRoot,
+  runStartedAt: schedulerTimestamp,
+});
+const scheduledReport = runConformance({
+  suites: DEFAULT_SUITES,
+  executeCommand: (item) => preparedResults.get(item.id),
+});
+assert(
+  preparedResults.size === DEFAULT_SUITES.length
+    && schedulerExecutionCounts.size === DEFAULT_SUITES.length
+    && [...schedulerExecutionCounts.values()].every((count) => count === 1),
+  "multi-wave scheduler prepares every canonical suite exactly once despite reverse wave completion order",
+);
+assert(
+  JSON.stringify(schedulerWaveTriggers) === JSON.stringify(expectedDirectSuiteWaveIds.map(([trigger]) => trigger)),
+  "multi-wave scheduler triggers every explicit wave once in canonical trigger order",
+);
+assert(
+  scheduledReport.status === "PASS"
+    && scheduledReport.results.map((result) => result.id).join("\n") === DEFAULT_SUITES.map((item) => item.id).join("\n"),
+  "precomputed reverse-completion results aggregate in canonical catalog order",
+);
+
+const failingWaveIndex = Math.max(1, expectedDirectSuiteWaveIds.length - 2);
+const failingWaveIds = expectedDirectSuiteWaveIds[failingWaveIndex];
+const failureExecutionCounts = new Map();
+let failureWaveCallCount = 0;
+const countFailureItem = (item) => {
+  failureExecutionCounts.set(item.id, (failureExecutionCounts.get(item.id) || 0) + 1);
+  return schedulerPassResult(item);
+};
+const preparedFailureResults = await prepareDirectConformanceResults({
+  suites: DEFAULT_SUITES,
+  directWavePlan,
+  executeWave: async (items) => {
+    const currentWaveIndex = failureWaveCallCount;
+    failureWaveCallCount += 1;
+    const rows = items.map(countFailureItem);
+    if (currentWaveIndex === failingWaveIndex) throw new Error("synthetic later-wave failure");
+    return new Map([...rows].reverse().map((row) => [row.id, row]));
+  },
+  executeCommand: countFailureItem,
+  repoRoot,
+  runStartedAt: schedulerTimestamp,
+});
+const scheduledFailureReport = runConformance({
+  suites: DEFAULT_SUITES,
+  executeCommand: (item) => preparedFailureResults.get(item.id),
+});
+assert(
+  failureWaveCallCount === expectedDirectSuiteWaveIds.length
+    && failureExecutionCounts.size === DEFAULT_SUITES.length
+    && [...failureExecutionCounts.values()].every((count) => count === 1),
+  "a later wave failure neither retries nor falls back and does not suppress later exact-once preparation",
+);
+assert(
+  scheduledFailureReport.status === "FAIL"
+    && failingWaveIds.every((id) => scheduledFailureReport.results.find((result) => result.id === id)?.status === "FAIL")
+    && scheduledFailureReport.results.map((result) => result.id).join("\n") === DEFAULT_SUITES.map((item) => item.id).join("\n"),
+  "a later invalid wave fails both members closed while preserving final catalog order",
+);
+const programManagerIndex = DEFAULT_SUITES.findIndex((suite) => suite.id === "program-manager-tests");
+const migrationBootstrapIndex = DEFAULT_SUITES.findIndex((suite) => suite.id === "migration-bootstrap");
+const transitionGateIndex = DEFAULT_SUITES.findIndex((suite) => suite.id === "transition-gate-flows");
+const programManagerWaveSuite = DEFAULT_SUITES[programManagerIndex];
+const migrationBootstrapWaveSuite = DEFAULT_SUITES[migrationBootstrapIndex];
+assert(
+  DEFAULT_SUITES.length === 140
+    && DEFAULT_SUITES.filter((suite) => suite.required).length === 139
+    && programManagerIndex === 27 && migrationBootstrapIndex === 116 && transitionGateIndex === 9
+    && programManagerWaveSuite?.timeout_ms === 300000 && migrationBootstrapWaveSuite?.timeout_ms === 900000,
+  "live catalog denominator, required count, wave positions, serial control, and declared timeouts remain canonical",
+);
+
+const importedCallOrder = [];
+const passExecutor = fakeExecutor();
+const importedReport = runConformance({
+  suites: [programManagerWaveSuite, migrationBootstrapWaveSuite],
+  executeCommand: (item) => {
+    importedCallOrder.push(item.id);
+    return passExecutor(item);
+  },
+});
+assert(importedReport.ok && importedCallOrder.join(",") === "program-manager-tests,migration-bootstrap" && importedCallOrder.length === 2, "imported runConformance stays synchronous, serial, ordered, and exact-once");
+
+for (const invalidCase of [
+  {
+    label: "unknown status",
+    result: {
+      id: programManagerWaveSuite.id,
+      status: "CORRUPT",
+      exit_code: 0,
+      timed_out: false,
+      started_at: "2026-08-06T00:00:00.000Z",
+      finished_at: "2026-08-06T00:00:00.001Z",
+    },
+  },
+  {
+    label: "nonzero PASS",
+    result: {
+      id: programManagerWaveSuite.id,
+      status: "PASS",
+      exit_code: 23,
+      timed_out: false,
+      started_at: "2026-08-06T00:00:00.000Z",
+      finished_at: "2026-08-06T00:00:00.001Z",
+    },
+  },
+  {
+    label: "timed-out PASS",
+    result: {
+      id: programManagerWaveSuite.id,
+      status: "PASS",
+      exit_code: -1,
+      timed_out: true,
+      started_at: "2026-08-06T00:00:00.000Z",
+      finished_at: "2026-08-06T00:00:00.001Z",
+    },
+  },
+  {
+    label: "nonzero WARN",
+    result: {
+      id: programManagerWaveSuite.id,
+      status: "WARN",
+      exit_code: 23,
+      timed_out: false,
+      started_at: "2026-08-06T00:00:00.000Z",
+      finished_at: "2026-08-06T00:00:00.001Z",
+    },
+  },
+  {
+    label: "incomplete PASS",
+    result: { id: programManagerWaveSuite.id, status: "PASS" },
+  },
+]) {
+  const invalidReport = runConformance({
+    suites: [programManagerWaveSuite],
+    executeCommand: () => invalidCase.result,
+  });
+  const invalidResult = invalidReport.results?.[0];
+  assert(
+    invalidReport.status === "FAIL"
+      && invalidReport.overall_status === "fail"
+      && invalidReport.ok === false
+      && invalidReport.failed_required_count === 1
+      && invalidResult?.status === "FAIL"
+      && invalidResult?.manifest_status === "fail"
+      && invalidResult?.status_reason === "invalid_suite_result",
+    `${invalidCase.label} result fails closed at canonical aggregation`,
+  );
+}
+
+const invalidAdvisoryReport = runConformance({
+  suites: [{ ...programManagerWaveSuite, required: false }],
+  executeCommand: () => ({
+    id: programManagerWaveSuite.id,
+    status: "CORRUPT",
+    exit_code: 0,
+    timed_out: false,
+    started_at: "2026-08-06T00:00:00.000Z",
+    finished_at: "2026-08-06T00:00:00.001Z",
+  }),
+});
+assert(
+  invalidAdvisoryReport.status === "FAIL"
+    && invalidAdvisoryReport.issues?.some((issue) => issue.code === "invalid_suite_result"),
+  "malformed advisory result also fails the aggregate",
+);
+
+const requiredDowngradeReport = runConformance({
+  suites: [programManagerWaveSuite],
+  executeCommand: () => ({
+    id: programManagerWaveSuite.id,
+    required: false,
+    status: "FAIL",
+    exit_code: 23,
+    timed_out: false,
+    started_at: "2026-08-06T00:00:00.000Z",
+    finished_at: "2026-08-06T00:00:00.001Z",
+  }),
+});
+assert(
+  requiredDowngradeReport.status === "FAIL"
+    && requiredDowngradeReport.failed_required_count === 1
+    && requiredDowngradeReport.results?.[0]?.required === true,
+  "result metadata cannot downgrade catalog-required authority",
+);
+
+const directFixtureRoot = mkdtempSync(join(tmpdir(), "ive-direct-wave-"));
+const directFixture = join(directFixtureRoot, "suite-fixture.mjs");
+writeFileSync(directFixture, [
+  "import { appendFileSync, writeFileSync } from 'fs';",
+  "import { spawn } from 'child_process';",
+  "import { join } from 'path';",
+  "const [mode, id, stateDir, delayRaw] = process.argv.slice(2);",
+  "const delay = Number.parseInt(delayRaw || '0', 10);",
+  "const stamp = (kind) => appendFileSync(join(stateDir, `${id}.${kind}`), `${Date.now()}\\n`);",
+  "writeFileSync(join(stateDir, `${id}.pid`), `${process.pid}\\n`);",
+  "stamp('start');",
+  "if (process.env._PLANNER_PLAN_TARGET) writeFileSync(join(stateDir, `${id}.target`), `${process.env._PLANNER_PLAN_TARGET}\\n`);",
+  "console.log(`stdout:${id}`);",
+  "console.error(`stderr:${id}`);",
+  "if (mode === 'pass') setTimeout(() => { stamp('end'); process.exit(0); }, delay);",
+  "else if (mode === 'nonzero') setTimeout(() => { stamp('end'); process.exit(23); }, delay);",
+  "else if (mode === 'signal') setTimeout(() => { stamp('end'); process.kill(process.pid, 'SIGTERM'); }, delay);",
+  "else if (mode === 'overflow') { process.stdout.write('x'.repeat(1024 * 1024 + 65536)); setInterval(() => {}, 1000); }",
+  "else if (mode === 'stderr-overflow') { process.stderr.write('x'.repeat(1024 * 1024 + 65536)); setInterval(() => {}, 1000); }",
+  "else if (mode === 'mixed-overflow') { process.stdout.write('o'.repeat(600 * 1024)); process.stderr.write('e'.repeat(600 * 1024)); setInterval(() => {}, 1000); }",
+  "else if (mode === 'grandchild') setInterval(() => {}, 1000);",
+  "else if (mode === 'hang' || mode === 'hang-grandchild') {",
+  "  if (mode === 'hang-grandchild') {",
+  "    const grandchild = spawn(process.execPath, [process.argv[1], 'grandchild', `${id}-grandchild`, stateDir, '0'], { detached: false, stdio: 'ignore' });",
+  "    writeFileSync(join(stateDir, `${id}-grandchild.pid`), `${grandchild.pid}\\n`);",
+  "  }",
+  "  setInterval(() => {}, 1000);",
+  "} else process.exit(2);",
+].join("\n") + "\n");
+
+function syntheticDirectSuite(id, mode, stateDir, {
+  delay = 0, timeout = 1000, acceptsPlanTarget = false, command = null,
+} = {}) {
+  const suiteCommand = command || [NODE, directFixture, mode, id, stateDir, String(delay)];
+  return {
+    id, category: "synthetic", label: id, command: suiteCommand,
+    display_command: suiteCommand.join(" "),
+    required: true, fixtures: [], timeout_ms: timeout,
+    accepts_plan_target: acceptsPlanTarget,
+  };
+}
+
+try {
+  const overlapDir = mkdtempSync(join(directFixtureRoot, "overlap-"));
+  const listenerNames = ["SIGINT", "SIGTERM", "exit"];
+  const listenersBefore = listenerNames.map((name) => process.listenerCount(name));
+  const overlapResults = await executeDirectSuiteWave([
+    syntheticDirectSuite("program-manager-tests", "pass", overlapDir, { delay: 180, acceptsPlanTarget: true }),
+    syntheticDirectSuite("migration-bootstrap", "pass", overlapDir, { delay: 60, acceptsPlanTarget: true }),
+  ], { repoRoot, planTarget: "plan_2026-08-05_96da7a4b00acc789" });
+  const [programStart, migrationStart, programEnd, migrationEnd] = ["program-manager-tests.start", "migration-bootstrap.start", "program-manager-tests.end", "migration-bootstrap.end"]
+    .map((name) => Number.parseInt(readFileSync(join(overlapDir, name), "utf-8"), 10));
+  assert(Math.max(programStart, migrationStart) < Math.min(programEnd, migrationEnd) && migrationEnd < programEnd, "direct children overlap and may complete in reverse order");
+  const programResult = overlapResults.get("program-manager-tests");
+  assert([...overlapResults.values()].every((result) => result.status === "PASS") && programResult.raw_stdout.includes("stdout:program-manager-tests") && programResult.raw_stderr === "" && programResult.stderr_excerpt === "", "direct transport matches serial success evidence by publishing stdout without a stderr diagnostic surface");
+  assert(readFileSync(join(overlapDir, "program-manager-tests.target"), "utf-8").trim() === "plan_2026-08-05_96da7a4b00acc789", "direct transport preserves accepted plan-target environment");
+  assert(listenerNames.every((name, index) => process.listenerCount(name) === listenersBefore[index]), "direct wave removes temporary signal and exit listeners");
+
+  let malformedRejected = false;
+  try {
+    await executeDirectSuiteWave([
+      syntheticDirectSuite("duplicate", "pass", directFixtureRoot),
+      syntheticDirectSuite("duplicate", "pass", directFixtureRoot),
+    ], { repoRoot });
+  } catch (error) {
+    malformedRejected = /exactly two unique suite IDs/.test(error.message);
+  }
+  assert(malformedRejected && !existsSync(join(directFixtureRoot, "duplicate.start")), "malformed wave membership fails before spawn without retry or fallback");
+
+  for (const failureCase of [
+    { name: "spawn", mode: "pass", expected: (result) => result.status_reason === "direct_process_spawn_failed", missingExecutable: true },
+    { name: "nonzero", mode: "nonzero", expected: (result) => result.status === "FAIL" && result.exit_code === 23 && result.raw_stderr.includes("stderr:program-manager-tests") },
+    { name: "signal", mode: "signal", expected: (result) => result.status_reason === "direct_process_signal_SIGTERM" },
+    { name: "output-limit", mode: "overflow", expected: (result) => result.status_reason === "direct_process_output_limit" && Buffer.byteLength(result.raw_stdout) <= 1024 * 1024 },
+    { name: "stderr-output-limit", mode: "stderr-overflow", expected: (result) => result.status_reason === "direct_process_output_limit" && Buffer.byteLength(result.raw_stderr) <= 1024 * 1024 },
+    { name: "mixed-output-limit", mode: "mixed-overflow", expected: (result) => result.status_reason === "direct_process_output_limit" && Buffer.byteLength(result.raw_stdout) + Buffer.byteLength(result.raw_stderr) <= 1024 * 1024 },
+  ]) {
+    const caseDir = mkdtempSync(join(directFixtureRoot, `${failureCase.name}-`));
+    const command = failureCase.missingExecutable ? [join(caseDir, "missing-executable")] : null;
+    const caseResults = await executeDirectSuiteWave([
+      syntheticDirectSuite("program-manager-tests", failureCase.mode, caseDir, { delay: 40, command }),
+      syntheticDirectSuite("migration-bootstrap", "hang", caseDir),
+    ], { repoRoot });
+    const failedResult = caseResults.get("program-manager-tests");
+    assert(failureCase.expected(failedResult) && caseResults.get("migration-bootstrap")?.status === "FAIL", `${failureCase.name} failure is explicit and terminates its sibling without fallback (reason=${failedResult?.status_reason}, bytes=${Buffer.byteLength(failedResult?.raw_stdout || "")}, stderr=${failedResult?.stderr_excerpt || "none"})`);
+    if (["nonzero", "output-limit", "stderr-output-limit", "mixed-output-limit"].includes(failureCase.name)) assert(readFileSync(join(caseDir, "program-manager-tests.start"), "utf-8").trim().split(/\r?\n/).length === 1, `${failureCase.name} child is launched exactly once with no retry`);
+  }
+
+  const passThenFailDir = mkdtempSync(join(directFixtureRoot, "pass-then-fail-"));
+  const passThenFailResults = await executeDirectSuiteWave([
+    syntheticDirectSuite("program-manager-tests", "pass", passThenFailDir, { delay: 30 }),
+    syntheticDirectSuite("migration-bootstrap", "nonzero", passThenFailDir, { delay: 120 }),
+  ], { repoRoot });
+  assert(passThenFailResults.get("program-manager-tests")?.status === "PASS" && passThenFailResults.get("migration-bootstrap")?.status === "FAIL", "a later sibling failure never re-signals an already-cleaned successful process group");
+
+  const timeoutDir = mkdtempSync(join(directFixtureRoot, "timeout-"));
+  const timeoutResults = await executeDirectSuiteWave([
+    syntheticDirectSuite("program-manager-tests", "hang-grandchild", timeoutDir, { timeout: 120 }),
+    syntheticDirectSuite("migration-bootstrap", "hang", timeoutDir),
+  ], { repoRoot });
+  const timeoutPids = ["program-manager-tests.pid", "program-manager-tests-grandchild.pid"].map((name) => Number.parseInt(readFileSync(join(timeoutDir, name), "utf-8"), 10));
+  assert(timeoutResults.get("program-manager-tests")?.status === "TIMEOUT" && timeoutResults.get("program-manager-tests")?.timed_out && timeoutResults.get("migration-bootstrap")?.status === "FAIL", "declared timeout is explicit and terminates its sibling without retry");
+  assert(await waitFor(() => timeoutPids.every((pid) => !pidExists(pid)), 2000), "timeout cleanup leaves no owned parent or grandchild process");
+
+  const signalDriverDir = mkdtempSync(join(directFixtureRoot, "parent-signal-"));
+  const signalDriverSource = [
+    `import { executeDirectSuiteWave } from ${JSON.stringify(pathToFileURL(runnerCli).href)};`,
+    `const node = ${JSON.stringify(NODE)};`,
+    `const fixture = ${JSON.stringify(directFixture)};`,
+    `const stateDir = ${JSON.stringify(signalDriverDir)};`,
+    "const make = (id) => ({ id, category: 'synthetic', command: [node, fixture, 'hang-grandchild', id, stateDir, '0'], fixtures: [], timeout_ms: 5000 });",
+    "await executeDirectSuiteWave([make('program-manager-tests'), make('migration-bootstrap')]);",
+  ].join("\n");
+  const driver = spawnChild(NODE, ["--input-type=module", "--eval", signalDriverSource], { stdio: ["ignore", "pipe", "pipe"] });
+  const ownedPidFiles = [
+    "program-manager-tests.pid",
+    "migration-bootstrap.pid",
+    "program-manager-tests-grandchild.pid",
+    "migration-bootstrap-grandchild.pid",
+  ];
+  const driverChildrenReady = await waitFor(() => ownedPidFiles.every((name) => existsSync(join(signalDriverDir, name))), 3000);
+  assert(driverChildrenReady, "parent-signal fixture launches both owned child trees");
+  const ownedPids = driverChildrenReady ? ownedPidFiles.map((name) => Number.parseInt(readFileSync(join(signalDriverDir, name), "utf-8"), 10)) : [];
+  driver.kill("SIGTERM");
+  const driverClose = await new Promise((resolveClose) => {
+    const timer = setTimeout(() => {
+      driver.kill("SIGKILL");
+      resolveClose({ code: null, signal: "TEST_TIMEOUT" });
+    }, 5000);
+    driver.once("close", (code, signal) => {
+      clearTimeout(timer);
+      resolveClose({ code, signal });
+    });
+  });
+  assert(driverClose.signal === "SIGTERM", "parent SIGTERM is re-raised only after owned process cleanup");
+  assert(await waitFor(() => ownedPids.every((pid) => !pidExists(pid)), 2000), "external wrapper-style termination leaves zero owned descendants");
+} finally {
+  rmSync(directFixtureRoot, { recursive: true, force: true });
+}
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

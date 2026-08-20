@@ -335,7 +335,11 @@ function scenarioSuccessorThreeControl() {
     const pair = pairedTransition({ projectRoot, planName: oldSuccessorName, planDir: cloneDir, gate: "explore-to-plan" });
     assert(pair.before === pair.afterDry, "successor #3 cloned dry-run writes nothing", pair.dryDelta);
     assert(pair.dryProjection === pair.actualProjection, "successor #3 dry-run/actual stable truth is byte-equivalent");
-    assert(pair.dryProjection?.includes("GATE-PER-003"), "successor #3 control reproduces GATE-PER-003 persona resolution failure");
+    assert(
+      JSON.parse(readFileSync(join(oldSuccessorDir, "state.json"), "utf-8")).state === "CLOSE"
+        && pair.dryProjection?.includes("GATE-GAR-001"),
+      "successor #3 control preserves its governed terminal disposition",
+    );
     const originalAfter = Object.fromEntries(protectedPaths.map((path) => [path, hashTree(join(oldSuccessorDir, path))]));
     assert(JSON.stringify(originalBefore) === JSON.stringify(originalAfter), "successor #3 original state/findings/receipts/metrics remain immutable");
   } finally {

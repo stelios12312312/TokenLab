@@ -66,6 +66,12 @@ import {
   findingsFromRuleEngineReport,
   findingsFromScoreboardReport,
 } from "./lib/deterministic_findings.mjs";
+import {
+  resolveGithubMirrorConfig,
+  mirrorTicketPublish,
+  mirrorTicketClose,
+  mirrorTicketDefer,
+} from "./lib/github_mirror.mjs";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const skillPath = join(__dirname, "..");
@@ -77,6 +83,9 @@ function parseArgs(argv) {
     gate: null,
     program: null,
     ticket: null,
+    decision: null,
+    reason: null,
+    childPlan: null,
     title: null,
     goal: null,
     fromText: null,
@@ -86,7 +95,11 @@ function parseArgs(argv) {
     fromResolutionRequest: null,
     fromArtifacts: [],
     findingId: null,
+    findingValueMissing: false,
     deferredPrograms: [],
+    deferOpen: false,
+    keepTickets: [],
+    expectedDeferredCount: null,
     output: null,
     issue: null,
     projectItem: null,
@@ -104,6 +117,7 @@ function parseArgs(argv) {
     remediate: false,
     force: false,
     write: false,
+    githubMirror: null,
     json: false,
     facts: false,
   };
@@ -115,7 +129,13 @@ function parseArgs(argv) {
     const arg = args[i];
     if (arg === "--json") parsed.json = true;
     else if (arg === "--facts") parsed.facts = true;
+    else if (arg === "--github-mirror") parsed.githubMirror = true;
+    else if (arg === "--no-github-mirror") parsed.githubMirror = false;
     else if (arg === "--program") parsed.program = args[++i] || null;
+    else if (arg === "--ticket") parsed.ticket = args[++i] || null;
+    else if (arg === "--decision") parsed.decision = args[++i] || null;
+    else if (arg === "--reason") parsed.reason = args[++i] || null;
+    else if (arg === "--child-plan") parsed.childPlan = args[++i] || null;
     else if (arg === "--title") parsed.title = args[++i] || "";
     else if (arg === "--goal") parsed.goal = args[++i] || "";
     else if (arg === "--from-text") parsed.fromText = args[++i] || "";
@@ -124,8 +144,18 @@ function parseArgs(argv) {
     else if (arg === "--from-repair-packet") parsed.fromRepairPacket = args[++i] || null;
     else if (arg === "--from-resolution-request") parsed.fromResolutionRequest = args[++i] || null;
     else if (arg === "--from-artifact" || arg === "--from-findings") parsed.fromArtifacts.push(args[++i] || "");
-    else if (arg === "--finding" || arg === "--finding-id") parsed.findingId = args[++i] || null;
+    else if (arg === "--finding" || arg === "--finding-id") {
+      const value = args[i + 1];
+      if (!value || value.startsWith("--")) parsed.findingValueMissing = true;
+      else {
+        parsed.findingId = value;
+        i += 1;
+      }
+    }
     else if (arg === "--deferred-program") parsed.deferredPrograms.push(args[++i] || "");
+    else if (arg === "--defer-open") parsed.deferOpen = true;
+    else if (arg === "--keep-ticket") parsed.keepTickets.push(args[++i] || "");
+    else if (arg === "--expect-deferred-count") parsed.expectedDeferredCount = args[++i] || null;
     else if (arg === "--output") parsed.output = args[++i] || null;
     else if (arg === "--issue") parsed.issue = args[++i] || null;
     else if (arg === "--project-item") parsed.projectItem = args[++i] || null;
@@ -161,7 +191,9 @@ Usage:
   node program_manager.mjs intake --program <path-or-id> (--from-text "<idea>"|--from-file <path>|--from-json-array '[{"title":"...","text":"..."}]'|--issue <n>|--project-item <id/url>) [--title "<short title>"] [--ticket-type <type>] [--persona-review] [--persona-packs <csv>] [--quant-scope planner_core|meta|tooling] [--repo owner/name] [--remote-mode local-only|remote-read|remote-sync] [--write] [--allow-duplicate] [--json]
   node program_manager.mjs intake --program <path-or-id> --from-text "<idea>" [--auto-story] [--write] [--allow-duplicate] [--json]
   node program_manager.mjs triage-findings --program <path-or-id> --from-artifact <path> [--from-artifact <path> ...] [--finding <id>] [--accept] [--write] [--allow-duplicate] [--json]
-  node program_manager.mjs disposition [--from-repair-packet <path>] [--from-resolution-request <path>] [--deferred-program <path-or-id> ...] [--output <path>] [--close] [--write] [--json]
+  node program_manager.mjs disposition [--from-repair-packet <path>] [--finding <id>] [--from-resolution-request <path>] [--deferred-program <path-or-id> ...] [--defer-open --keep-ticket <id> ... --expect-deferred-count <n>] [--output <path>] [--close] [--write] [--json]
+  node program_manager.mjs defer --program <path-or-id> --ticket <id> --decision <id> --reason "<reason>" --child-plan <path> [--write] [--json]
+  node program_manager.mjs revive --program <path-or-id> --ticket <id> --decision <id> --reason "<reason>" --child-plan <path> [--write] [--json]
   node program_manager.mjs check [--program <path-or-id>] [--remediate] [--write] [--json]
   node program_manager.mjs verify <gate> [--program <path-or-id>] [--remediate] [--write] [--json]
   node program_manager.mjs facts [--program <path-or-id>] [--remote-mode local-only|remote-read|remote-sync]
@@ -205,6 +237,8 @@ github_ticket_review.mjs publish/review --write.
 
 disposition consumes lifecycle reconciler repair packets, clean committed proposed-
 resolution requests, and explicit deferred Program Packets. It is dry-run by default.
+With --from-repair-packet, --finding selects exactly one finding.id across shipped-open
+and duplicate-scope findings; missing or ambiguous ids fail before any mutation.
 --from-resolution-request closes only exact proposed/no-child tickets whose committed
 decision section names the ticket and whose typed commit/receipt refs all pass when
 recomputed from HEAD; it records review_status:unavailable and re-verifiable digests.
@@ -213,10 +247,23 @@ tickets and preserves their lifecycle. Add --close for the explicit second step
 that promotes already-dispositioned deferred tickets to administrative closed;
 the close lane requires a supported backlog_disposition classification plus a
 valid decision_ref and records review_status:unavailable rather than review_ready.
+Add --defer-open for the separate opt-in reversible backlog lane. It defers only
+proposed or blocked tickets across the explicitly selected --deferred-program
+packets, requires an exact --expect-deferred-count, preserves every repeatable
+--keep-ticket id, and fails before mutation if a KEEP id is missing/ambiguous or
+another actionable lifecycle remains unprotected. --defer-open is incompatible
+with --close and with repair- or proposed-resolution inputs.
 Evidence-verified shipped-open tickets close only when commit, closed child-plan
 scope, and GitHub issue mirror checks pass; failed evidence is recorded as
 keep_open in the receipt. GitHub mirrors are still published separately through
 github_ticket_review.mjs publish --remote-mode remote-sync --write.
+
+defer is the narrow failed-active-work lane. It requires one exact in_progress
+or blocked ticket, a substantive accepted decision, and that ticket's exact
+child plan in terminal CLOSE with an [ABANDONED] transition marker. It changes
+only that ticket (and the Program to deferred when no actionable tickets remain),
+validates the full candidate packet, is dry-run by default, and treats an exact
+repeat as an idempotent no-op. It never closes the ticket or claims delivery.
 
 Duplicate scan: intake deterministically compares the candidate title against
 every ticket in the target packet AND every sibling Program Packet under
@@ -1564,11 +1611,6 @@ function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPat
       ...asArray(verificationRows).map((entry) => entry?.id),
     ],
     remainingUnverifiedRisk: [
-      hasGithubIssue ? null : {
-        id: "github_issue_required_before_ready",
-        status: "pending",
-        reason: "GitHub mirror publication is still required before ticket-ready handoff.",
-      },
       deterministicStatus === "proposed" ? {
         id: "implementation_proof_pending",
         status: "pending",
@@ -1626,8 +1668,7 @@ function buildTicketIntakeReceipt({ source, programPacketPath, intakeArtifactPat
     duplicate_scan_status: duplicateScan?.status || "not_run",
     duplicate_scan_matches: asArray(duplicateScan?.matches).map((match) => match.id),
     direct_github_creation_allowed: false,
-    github_publication: hasGithubIssue ? "github_issue_linked" : "required_before_ready",
-    github_issue_required_before_ready: !hasGithubIssue,
+    github_publication: hasGithubIssue ? "github_issue_linked" : "opt_in",
     next_required_command: hasGithubIssue
       ? `node .agent/skills/iterative-planner/scripts/program_manager.mjs check --program ${programPacketPath} --json`
       : publishCommand,
@@ -1944,7 +1985,7 @@ export function runInit(inputArgs, options = {}) {
   if (configuredMode) packet.remote_mode = normalizeRemoteMode(configuredMode);
   if (configuredRepository) {
     packet.remote_policy = { repository_slug: normalizeProgramRepositorySlug(configuredRepository) || configuredRepository };
-    if (!configuredMode) packet.remote_mode = "remote-sync";
+    if (!configuredMode) packet.remote_mode = "local-only";
   }
   if (waiverCount === waiverValues.length && waiverCount > 0) {
     const [requirementId, decisionId, reason] = waiverValues;
@@ -2039,6 +2080,30 @@ export async function runIntake(inputArgs, options = {}) {
   }
 
   if (args.write) {
+    const mirrorConfig = resolveGithubMirrorConfig({
+      projectRoot: cwd,
+      explicitRepo: args.repo,
+      explicitMirror: args.githubMirror,
+      policy: workingPacket?.policy || null,
+      packet: workingPacket,
+      env,
+    });
+    if (mirrorConfig.enabled && mirrorConfig.repo) {
+      for (const res of results) {
+        if (res.candidate_ticket) {
+          const packetTicket = workingPacket.tickets?.find((t) => t.id === res.candidate_ticket.id) || res.candidate_ticket;
+          mirrorTicketPublish({
+            projectRoot: cwd,
+            packet: workingPacket,
+            ticket: packetTicket,
+            repo: mirrorConfig.repo,
+            ghRunner,
+            env,
+          });
+          res.candidate_ticket.github_sync = packetTicket.github_sync;
+        }
+      }
+    }
     writeFileSync(target.resolved.path, `${JSON.stringify(redactObject(workingPacket, env), null, 2)}\n`, "utf-8");
   }
 
@@ -2468,12 +2533,251 @@ export function runDisposition(inputArgs, options = {}) {
   return buildProgramDisposition({
     cwd: options.cwd || process.cwd(),
     fromRepairPacket: args.fromRepairPacket,
+    findingId: args.findingId,
     fromResolutionRequest: args.fromResolutionRequest,
     deferredPrograms: args.deferredPrograms,
+    deferOpen: args.deferOpen === true,
+    keepTickets: args.keepTickets,
+    expectedDeferredCount: args.expectedDeferredCount,
     output: args.output,
     close: args.close === true,
     write: args.write === true,
   });
+}
+
+// @planner:proves = US-PM-AUTO-221, US-079
+export function runDeferral(inputArgs, options = {}) {
+  const cwd = resolve(options.cwd || process.cwd());
+  const args = { ...inputArgs };
+  const ticketId = asString(args.ticket);
+  const decisionId = asString(args.decision);
+  const reason = asString(args.reason);
+  const childPlan = asString(args.childPlan).replace(/\\/g, "/");
+  if (!args.program || !ticketId || !decisionId || !reason || !childPlan) {
+    throw new Error("defer requires --program, --ticket, --decision, --reason, and --child-plan");
+  }
+  if (reason.length < 20) throw new Error("defer requires a substantive --reason of at least 20 characters");
+  if (isAbsolute(childPlan) || childPlan.split("/").includes("..") || !childPlan.startsWith("plans/plan_")) {
+    throw new Error("--child-plan must be a repository-relative plans/plan_* path without '..'");
+  }
+  const target = loadTarget(cwd, args.program);
+  if (target.resolved.status !== "FOUND" || target.loadError) {
+    throw new Error(target.loadError?.message || target.resolved.message || `Program Packet not found: ${args.program}`);
+  }
+  const matches = asArray(target.packet?.tickets).filter((entry) => asString(entry?.id) === ticketId);
+  if (matches.length !== 1) throw new Error(`defer requires ticket ${ticketId} to resolve exactly once; found ${matches.length}`);
+  const sourceTicket = matches[0];
+  const lifecycle = asString(sourceTicket.lifecycle).toLowerCase();
+  const existingDecision = asArray(target.packet?.decisions).find((entry) => asString(entry?.id) === decisionId);
+  if (lifecycle === "deferred") {
+    const exactRepeat = asString(sourceTicket.deferral_decision_ref) === decisionId
+      && asString(sourceTicket.child_plan?.plan_dir).replace(/\\/g, "/") === childPlan
+      && asString(existingDecision?.type).toLowerCase() === "deferral"
+      && asString(existingDecision?.subject_ref) === ticketId
+      && asString(existingDecision?.status).toLowerCase() === "accepted"
+      && asString(existingDecision?.rationale) === reason;
+    if (!exactRepeat) throw new Error(`defer found ticket ${ticketId} already deferred under a different contract`);
+    return {
+      command: "defer",
+      status: "PASS",
+      action: "already_deferred",
+      write: args.write === true,
+      packet_path: relativePath(cwd, target.resolved.path),
+      program_id: asString(target.packet?.id),
+      ticket_id: ticketId,
+      previous_lifecycle: "deferred",
+      new_lifecycle: "deferred",
+      previous_program_status: asString(target.packet?.status),
+      new_program_status: asString(target.packet?.status),
+      decision_id: decisionId,
+      child_plan: childPlan,
+      errors: [],
+      warnings: [],
+    };
+  }
+  if (!new Set(["in_progress", "blocked"]).has(lifecycle)) {
+    throw new Error(`defer requires ticket ${ticketId} lifecycle=in_progress or blocked; observed ${sourceTicket.lifecycle || "unknown"}`);
+  }
+  if (existingDecision) throw new Error(`deferral decision id collision: ${decisionId}`);
+  const linkedChildPlan = asString(sourceTicket.child_plan?.plan_dir).replace(/\\/g, "/");
+  if (linkedChildPlan !== childPlan) {
+    throw new Error(`defer requires --child-plan to match ticket ${ticketId} child_plan.plan_dir=${linkedChildPlan || "missing"}`);
+  }
+  const childPlanPath = resolve(cwd, childPlan);
+  const childPlanRel = relative(cwd, childPlanPath);
+  if (childPlanRel === ".." || childPlanRel.startsWith(`..${sep}`)) throw new Error("--child-plan resolves outside the repository");
+  const childStatePath = join(childPlanPath, "state.json");
+  if (!existsSync(childStatePath)) throw new Error(`defer child plan state not found: ${childPlan}/state.json`);
+  let childState;
+  try {
+    childState = JSON.parse(readFileSync(childStatePath, "utf-8"));
+  } catch (error) {
+    throw new Error(`defer child plan state is invalid JSON: ${error.message}`);
+  }
+  const lastTransition = asArray(childState?.transitions).at(-1);
+  if (asString(childState?.state).toUpperCase() !== "CLOSE" || asString(lastTransition?.marker).toUpperCase() !== "[ABANDONED]") {
+    throw new Error(`defer requires child plan ${childPlan} to be terminal CLOSE with [ABANDONED] marker`);
+  }
+
+  const next = clone(target.packet);
+  const ticket = next.tickets.find((entry) => asString(entry?.id) === ticketId);
+  ticket.lifecycle = "deferred";
+  ticket.deferral_decision_ref = decisionId;
+  next.decisions = asArray(next.decisions);
+  next.decisions.push({
+    id: decisionId,
+    type: "deferral",
+    subject_ref: ticketId,
+    status: "accepted",
+    rationale: reason,
+    decision: reason,
+    previous_lifecycle: lifecycle,
+    child_plan_ref: childPlan,
+    child_plan_terminal_state: "abandoned",
+  });
+  const previousProgramStatus = asString(next.status);
+  const hasActionableTicket = asArray(next.tickets).some((entry) => !new Set(["closed", "deferred"]).has(asString(entry?.lifecycle).toLowerCase()));
+  if (!hasActionableTicket && previousProgramStatus !== "closed") next.status = "deferred";
+
+  const validation = validateProgramPacket(next, {
+    cwd,
+    storyIds: collectStoryIds(cwd),
+    programPacketPath: target.resolved.path,
+  });
+  if (!validation.ok) {
+    const error = new Error(`defer candidate failed Program validation: ${validation.errors.map((entry) => `${entry.code}: ${entry.message}`).join("; ")}`);
+    error.validation = validation;
+    throw error;
+  }
+  if (args.write === true) {
+    const mirrorConfig = resolveGithubMirrorConfig({
+      projectRoot: cwd,
+      explicitRepo: args.repo,
+      explicitMirror: args.githubMirror,
+      policy: next?.policy || null,
+      packet: next,
+      env: options.env || process.env,
+    });
+    if (mirrorConfig.enabled && mirrorConfig.repo) {
+      mirrorTicketDefer({
+        projectRoot: cwd,
+        packet: next,
+        ticket,
+        repo: mirrorConfig.repo,
+        ghRunner: options?.ghRunner || defaultGhRunner,
+      });
+    }
+    writeFileSync(target.resolved.path, `${JSON.stringify(redactObject(next, options.env || process.env), null, 2)}\n`, "utf-8");
+  }
+  return {
+    command: "defer",
+    status: "PASS",
+    action: args.write === true ? "deferred" : "would_defer",
+    write: args.write === true,
+    packet_path: relativePath(cwd, target.resolved.path),
+    program_id: asString(next.id),
+    ticket_id: ticketId,
+    previous_lifecycle: lifecycle,
+    new_lifecycle: "deferred",
+    previous_program_status: previousProgramStatus,
+    new_program_status: next.status,
+    decision_id: decisionId,
+    child_plan: childPlan,
+    errors: [],
+    warnings: validation.warnings,
+  };
+}
+
+// @planner:proves = US-PM-AUTO-221, US-079
+export function runRevival(inputArgs, options = {}) {
+  const cwd = options.cwd || process.cwd();
+  const args = { ...inputArgs };
+  const ticketId = asString(args.ticket);
+  const decisionId = asString(args.decision);
+  const reason = asString(args.reason);
+  const childPlan = asString(args.childPlan).replace(/\\/g, "/");
+  if (!args.program || !ticketId || !decisionId || !reason || !childPlan) {
+    throw new Error("revive requires --program, --ticket, --decision, --reason, and --child-plan");
+  }
+  if (isAbsolute(childPlan) || childPlan.split("/").includes("..")) {
+    throw new Error("--child-plan must be a repository-relative path without '..'");
+  }
+  const target = loadTarget(cwd, args.program);
+  if (target.resolved.status !== "FOUND" || target.loadError) {
+    throw new Error(target.loadError?.message || target.resolved.message || `Program Packet not found: ${args.program}`);
+  }
+  const matches = asArray(target.packet?.tickets).filter((entry) => asString(entry?.id) === ticketId);
+  if (matches.length !== 1) throw new Error(`revive requires ticket ${ticketId} to resolve exactly once; found ${matches.length}`);
+  const sourceTicket = matches[0];
+  if (String(sourceTicket.lifecycle || "").toLowerCase() !== "deferred") {
+    throw new Error(`revive requires ticket ${ticketId} lifecycle=deferred; observed ${sourceTicket.lifecycle || "unknown"}`);
+  }
+  if (!asString(sourceTicket.deferral_decision_ref)) {
+    throw new Error(`revive requires ticket ${ticketId} to preserve an explicit deferral_decision_ref`);
+  }
+  if (asArray(target.packet?.decisions).some((entry) => asString(entry?.id) === decisionId)) {
+    throw new Error(`revival decision already exists: ${decisionId}`);
+  }
+
+  const next = clone(target.packet);
+  const ticket = next.tickets.find((entry) => asString(entry?.id) === ticketId);
+  ticket.lifecycle = "in_progress";
+  ticket.revival_decision_ref = decisionId;
+  ticket.child_plan = {
+    ...(ticket.child_plan || {}),
+    policy: "required",
+    plan_dir: childPlan,
+    reason: `Revived by accepted decision ${decisionId}: ${reason}`,
+  };
+  ticket.backlog_disposition = {
+    ...(ticket.backlog_disposition || {}),
+    revived_by_decision_ref: decisionId,
+  };
+  next.decisions = asArray(next.decisions);
+  next.decisions.push({
+    id: decisionId,
+    type: "revival",
+    subject_ref: ticketId,
+    status: "accepted",
+    rationale: reason,
+    previous_decision_ref: ticket.deferral_decision_ref,
+    previous_lifecycle: "deferred",
+    child_plan_ref: childPlan,
+  });
+  const previousProgramStatus = asString(next.status);
+  if (previousProgramStatus === "deferred") next.status = "executing";
+
+  const validation = validateProgramPacket(next, {
+    cwd,
+    storyIds: collectStoryIds(cwd),
+    programPacketPath: target.resolved.path,
+  });
+  if (!validation.ok) {
+    const error = new Error(`revive candidate failed Program validation: ${validation.errors.map((entry) => `${entry.code}: ${entry.message}`).join("; ")}`);
+    error.validation = validation;
+    throw error;
+  }
+  if (args.write === true) {
+    writeFileSync(target.resolved.path, `${JSON.stringify(redactObject(next, options.env || process.env), null, 2)}\n`, "utf-8");
+  }
+  return {
+    command: "revive",
+    status: "PASS",
+    action: args.write === true ? "revived" : "would_revive",
+    write: args.write === true,
+    packet_path: relativePath(cwd, target.resolved.path),
+    program_id: asString(next.id),
+    ticket_id: ticketId,
+    previous_lifecycle: "deferred",
+    new_lifecycle: "in_progress",
+    previous_program_status: previousProgramStatus,
+    new_program_status: next.status,
+    decision_id: decisionId,
+    previous_decision_ref: ticket.deferral_decision_ref,
+    child_plan: childPlan,
+    errors: [],
+    warnings: validation.warnings,
+  };
 }
 
 function runForwardReasoning(packet, cwd, query, options = {}) {
@@ -3083,9 +3387,19 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
     console.log(usage());
     return 0;
   }
+  if (args.findingValueMissing) {
+    const payload = {
+      command: args.command,
+      status: "FAIL",
+      error: "--finding requires a non-empty value.",
+    };
+    if (args.json) console.log(JSON.stringify(payload, null, 2));
+    else console.error(`${payload.error}\n\n${usage()}`);
+    return 2;
+  }
 
   const FORWARD_COMMANDS = new Set(["next-ready", "dispatch-order", "blockers", "unlocks-if-closed"]);
-  const KNOWN_COMMANDS = new Set(["init", "intake", "triage-findings", "disposition", "check", "verify", "facts", ...FORWARD_COMMANDS]);
+  const KNOWN_COMMANDS = new Set(["init", "intake", "triage-findings", "disposition", "defer", "revive", "check", "verify", "facts", ...FORWARD_COMMANDS]);
   if (!KNOWN_COMMANDS.has(args.command)) {
     console.error(`Unknown command: ${args.command}\n\n${usage()}`);
     return 2;
@@ -3160,6 +3474,42 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
       return verificationStatusIsPass(result.status, "execution") ? 0 : 1;
     } catch (error) {
       const payload = { command: "disposition", status: "FAIL", error: error?.message || String(error) };
+      if (args.json) console.log(JSON.stringify(payload, null, 2));
+      else console.error(`${payload.error}\n\n${usage()}`);
+      return 1;
+    }
+  }
+  if (args.command === "defer") {
+    try {
+      const result = runDeferral(args, { cwd, env });
+      console.log(args.json ? JSON.stringify(result, null, 2) : renderText(result));
+      return 0;
+    } catch (error) {
+      const payload = {
+        command: "defer",
+        status: "FAIL",
+        error: error?.message || String(error),
+        errors: error?.validation?.errors || [],
+        warnings: error?.validation?.warnings || [],
+      };
+      if (args.json) console.log(JSON.stringify(payload, null, 2));
+      else console.error(`${payload.error}\n\n${usage()}`);
+      return 1;
+    }
+  }
+  if (args.command === "revive") {
+    try {
+      const result = runRevival(args, { cwd, env });
+      console.log(args.json ? JSON.stringify(result, null, 2) : renderText(result));
+      return 0;
+    } catch (error) {
+      const payload = {
+        command: "revive",
+        status: "FAIL",
+        error: error?.message || String(error),
+        errors: error?.validation?.errors || [],
+        warnings: error?.validation?.warnings || [],
+      };
       if (args.json) console.log(JSON.stringify(payload, null, 2));
       else console.error(`${payload.error}\n\n${usage()}`);
       return 1;

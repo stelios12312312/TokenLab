@@ -30,6 +30,7 @@ const testDir = dirname(__filename);
 const skillDir = resolve(testDir, "..");
 const repoRoot = resolve(skillDir, "..", "..", "..");
 const agentDir = join(repoRoot, ".agent");
+const storyRegistryScript = join(skillDir, "scripts", "story_registry.mjs");
 const transitionScript = join(skillDir, "scripts", "transition.mjs");
 const NODE = process.execPath;
 
@@ -288,6 +289,77 @@ function runNode(args, cwd, extraEnv = {}) {
   }
 }
 
+function probeStoryRegistryJson(root, args, label, expectedStatus) {
+  const result = runNode([storyRegistryScript, ...args, "--json"], root);
+  assert(result.status === expectedStatus, `${label} exits ${expectedStatus}`);
+  let parsed = null;
+  let parseError = null;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch (error) {
+    parseError = error.message;
+  }
+  assert(
+    result.stdout.trim().length > 0 && parseError === null && parsed !== null,
+    `${label} emits exactly one parseable JSON document`,
+  );
+  return parsed;
+}
+
+function scenarioStoryRegistryJsonExitPaths() {
+  const tmp = makeTemp("planner-story-registry-json-");
+  try {
+    const missingRoot = join(tmp, "missing");
+    const invalidRoot = join(tmp, "invalid");
+    const incompleteRoot = join(tmp, "incomplete");
+    mkdirSync(missingRoot, { recursive: true });
+    const invalidRegistryPath = join(invalidRoot, "reports", "user_story_audit", "story_registry.json");
+    mkdirSync(dirname(invalidRegistryPath), { recursive: true });
+    writeFileSync(invalidRegistryPath, "{not-json\n");
+    seedStoryRegistry(incompleteRoot, [{
+      id: "US-INCOMPLETE-001",
+      title: "Incomplete evidence fixture",
+      status: "PARTIALLY_COVERED",
+      code_refs: [],
+      test_refs: [],
+      validation_refs: [],
+    }]);
+
+    const invalidCheck = probeStoryRegistryJson(invalidRoot, ["check"], "invalid JSON registry check", 1);
+    assert(invalidCheck?.status === "FAIL", "invalid JSON registry check reports FAIL");
+
+    const missingCheck = probeStoryRegistryJson(missingRoot, ["check"], "missing-registry check", 0);
+    assert(missingCheck?.status === "SKIP", "missing-registry check reports SKIP");
+
+    const missingEvidence = probeStoryRegistryJson(missingRoot, ["evidence"], "missing-registry evidence", 0);
+    assert(missingEvidence?.status === "SKIP", "missing-registry evidence reports SKIP");
+
+    const missingDiff = probeStoryRegistryJson(missingRoot, ["diff", "src/changed.mjs"], "missing-registry diff", 0);
+    assert(missingDiff?.count === 0 && Array.isArray(missingDiff?.affected), "missing-registry diff reports no affected stories");
+
+    const unsafePrune = probeStoryRegistryJson(incompleteRoot, ["prune"], "prune without --safe", 1);
+    assert(unsafePrune?.required_flag === "--safe", "prune without --safe reports the required flag");
+
+    const missingPrune = probeStoryRegistryJson(missingRoot, ["prune", "--safe"], "missing-registry prune", 0);
+    assert(missingPrune?.status === "SKIP", "missing-registry prune reports SKIP");
+
+    const invalidPrune = probeStoryRegistryJson(invalidRoot, ["prune", "--safe"], "invalid JSON registry prune", 1);
+    assert(invalidPrune?.status === "FAIL", "invalid JSON registry prune reports FAIL");
+
+    const invalidEvidence = probeStoryRegistryJson(invalidRoot, ["evidence"], "invalid JSON registry evidence", 1);
+    assert(invalidEvidence?.status === "FAIL", "invalid JSON registry evidence reports FAIL");
+
+    const missingStory = probeStoryRegistryJson(incompleteRoot, ["evidence", "US-NOT-PRESENT"], "missing-story evidence", 1);
+    assert(missingStory?.status === "FAIL", "missing-story evidence reports FAIL");
+
+    const aggregateIncomplete = probeStoryRegistryJson(incompleteRoot, ["evidence"], "aggregate incomplete evidence", 1);
+    assert(aggregateIncomplete?.status === "WARN", "aggregate incomplete evidence reports WARN");
+    assert(aggregateIncomplete?.incomplete_count === 1, "aggregate incomplete evidence reports its incomplete story");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
 function scenarioTransitionRunsScaffoldSection() {
   const tmp = makeTemp();
   try {
@@ -352,6 +424,123 @@ Keep config flags coherent
   }
 }
 
+function scenarioBootstrapContractAndTriageCli() {
+  const bootstrapScript = join(skillDir, "scripts", "bootstrap.mjs");
+  const contractJson = execFileSync(NODE, [bootstrapScript, "contract", "Fix config flags", "--files=config/runtime.ts", "--json"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: plannerSubprocessEnv(),
+  });
+  const parsedContract = JSON.parse(contractJson);
+  assert(parsedContract.goal === "Fix config flags", "bootstrap contract CLI outputs valid json");
+
+  const contractText = execFileSync(NODE, [bootstrapScript, "contract", "Fix config flags", "--files=config/runtime.ts"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: plannerSubprocessEnv(),
+  });
+  assert(contractText.includes("Goal: Fix config flags"), "bootstrap contract CLI outputs formatted text");
+
+  const triageJson = execFileSync(NODE, [bootstrapScript, "triage", "Fix config flags", "--json"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: plannerSubprocessEnv(),
+  });
+  const parsedTriage = JSON.parse(triageJson);
+  assert(parsedTriage.goal === "Fix config flags", "bootstrap triage CLI outputs valid json");
+
+  const triageText = execFileSync(NODE, [bootstrapScript, "triage", "Fix config flags"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: plannerSubprocessEnv(),
+  });
+  assert(triageText.includes("Goal: Fix config flags"), "bootstrap triage CLI outputs formatted text");
+
+  const helpText = execFileSync(NODE, [bootstrapScript, "help"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: plannerSubprocessEnv(),
+  });
+  assert(helpText.includes("Usage:"), "bootstrap help CLI outputs usage");
+
+  const listText = execFileSync(NODE, [bootstrapScript, "list"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+    env: plannerSubprocessEnv(),
+  });
+  assert(typeof listText === "string", "bootstrap list CLI executes cleanly");
+
+  try {
+    execFileSync(NODE, [bootstrapScript, "triage"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: plannerSubprocessEnv(),
+    });
+    assert(false, "bootstrap triage without goal should exit non-zero");
+  } catch (error) {
+    assert(error.status === 2, "bootstrap triage without goal exits 2");
+  }
+
+  try {
+    execFileSync(NODE, [bootstrapScript, "contract"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+      env: plannerSubprocessEnv(),
+    });
+    assert(false, "bootstrap contract without goal or files should exit non-zero");
+  } catch (error) {
+    assert(error.status === 2, "bootstrap contract without goal or files exits 2");
+  }
+}
+
+function scenarioBootstrapStatusDoesNotSelfDirtyCleanConsumer() {
+  const tmp = makeTemp("planner-clean-status-");
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: tmp });
+    execFileSync("git", ["config", "user.email", "test@example.com"], { cwd: tmp });
+    execFileSync("git", ["config", "user.name", "Test"], { cwd: tmp });
+    writeFileSync(join(tmp, "README.md"), "# Consumer\n");
+    writeFileSync(join(tmp, ".gitignore"), "plans/.current_plan*\nplans/ACTIVE_PLAN.*\nplans/.thread_targets/\nplans/.audit-archive/\n");
+    mkdirSync(join(tmp, "plans", "knowledge", "retros", "cases"), { recursive: true });
+    writeFileSync(join(tmp, "plans", "knowledge", "index.md"), "# Knowledge\n");
+    writeFileSync(join(tmp, "plans", "knowledge", "mistakes.md"), "# Mistakes\n");
+    writeFileSync(join(tmp, "plans", "knowledge", "patterns.md"), "# Patterns\n");
+    writeFileSync(join(tmp, "plans", "knowledge", "gotchas.md"), "# Gotchas\n");
+    writeFileSync(join(tmp, "plans", "knowledge", "retros", "retro_ledger.json"), JSON.stringify({ entries: [] }, null, 2));
+    writeFileSync(join(tmp, "audit.config.json"), JSON.stringify({ roles: ["core"], fail_on: ["HIGH"] }, null, 2));
+    writeFileSync(join(tmp, "planner.policy.yaml"), "version: 1\n");
+    mkdirSync(join(tmp, ".agent", "skills", "iterative-planner"), { recursive: true });
+    execFileSync("cp", ["-r", `${skillDir}/.`, join(tmp, ".agent", "skills", "iterative-planner")]);
+    mkdirSync(join(tmp, ".agent", "workflows"), { recursive: true });
+    writeFileSync(join(tmp, ".agent", "workflows", "safe-change.md"), "# safe-change\n");
+
+    execFileSync("git", ["add", "-A"], { cwd: tmp });
+    execFileSync("git", ["commit", "-m", "clean initial state"], { cwd: tmp });
+
+    const statusBefore = execFileSync("git", ["status", "--porcelain"], { cwd: tmp, encoding: "utf8" });
+    assert(statusBefore.trim() === "", "fixture starts clean");
+
+    const bootstrapScript = join(tmp, ".agent", "skills", "iterative-planner", "scripts", "bootstrap.mjs");
+    execFileSync(NODE, [bootstrapScript, "status"], {
+      cwd: tmp,
+      encoding: "utf8",
+      env: plannerSubprocessEnv(),
+    });
+    const statusAfter1 = execFileSync("git", ["status", "--porcelain"], { cwd: tmp, encoding: "utf8" });
+    assert(statusAfter1.trim() === "", "git status remains clean after first bootstrap status");
+
+    execFileSync(NODE, [bootstrapScript, "status"], {
+      cwd: tmp,
+      encoding: "utf8",
+      env: plannerSubprocessEnv(),
+    });
+    const statusAfter2 = execFileSync("git", ["status", "--porcelain"], { cwd: tmp, encoding: "utf8" });
+    assert(statusAfter2.trim() === "", "git status remains clean after second bootstrap status");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 console.log("\nPre-Planning Scaffolding\n");
 
 scenarioAllScaffoldInputsPass();
@@ -359,8 +548,11 @@ scenarioProgramPacketPrefersDirectTicketMatch();
 scenarioMissingScaffoldBlocksNormalPlannerWork();
 scenarioSkipPlannerShapesWarnOnly();
 scenarioStoryRegistryMinimumUsesPolicyOverride();
+scenarioStoryRegistryJsonExitPaths();
 scenarioTransitionRunsScaffoldSection();
 scenarioPlanRefreshDefersSemanticSubstrateBeforeReflect();
+scenarioBootstrapContractAndTriageCli();
+scenarioBootstrapStatusDoesNotSelfDirtyCleanConsumer();
 
 if (!existsSync(transitionScript)) {
   assert(false, "transition.mjs exists for scaffold transition smoke");
@@ -368,3 +560,4 @@ if (!existsSync(transitionScript)) {
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
+

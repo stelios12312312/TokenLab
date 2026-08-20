@@ -16,7 +16,7 @@ import { join } from "path";
 import { createHash } from "crypto";
 import { execSync } from "child_process";
 import { sanitizeAtom, sanitizeStrictId, sanitizeEnumAtom } from "./sanitize.mjs";
-import { readStateJson, writeStateJson, isFeatureEnabled, nowISO, KB_SALT_HEX_LEN } from "./determinism.mjs";
+import { readStateJson, isFeatureEnabled, nowISO, KB_SALT_HEX_LEN } from "./determinism.mjs";
 import { analyzeRedTeamNotes, debugLog, extractFilesToModify, loadIntentContract, resolveFindingsTruth, resolvePlanTarget } from "./plan_utils.mjs";
 import { detectPlanShape, shapeMinFindings } from "./plan_shape.mjs";
 import { buildNorthStarFacts, loadPlannerManifesto } from "./planner_manifesto.mjs";
@@ -221,6 +221,7 @@ const RUNTIME_CLOSE_SIGNAL_FACT_PREDICATES = new Set([
   "quant_results_run_class",
   "quant_results_promotion_verdict",
   "quant_results_blocking_issue",
+  "scientific_review_present", "scientific_review_satisfied", "scientific_execution_status", "scientific_design_validity", "scientific_evidence_grade", "scientific_verdict", "scientific_promotion_status",
   "quant_optimization_scale_required",
   "quant_optimization_scale_status",
   "quant_optimization_scale_section_present",
@@ -239,7 +240,7 @@ const RUNTIME_CLOSE_SIGNAL_FACT_PREDICATES = new Set([
   "quant_leakage_proof_artifact_issue",
   "review_intake_required",
   "review_intake_satisfied",
-  "review_intake_unresolved_required_count",
+  "review_intake_unresolved_required_count", "truth_convergence_required", "truth_convergence_satisfied", "truth_convergence_status", "truth_convergence_blocker",
 ]);
 
 function filterRuntimeCloseSignalFacts(rawFacts) {
@@ -378,10 +379,9 @@ export function loadStoryFacts(session, { cwd, transientRegistryRefresh = false 
   }
   session.consult("story_coverage_tracking_enabled.");
 
-  // RT-HARDENING-004: Compute registry hash and store in state.json for tamper detection.
-  // RT3-M4-FIX: Only WRITE registry hash when explicitly in write mode (transition.mjs).
-  // CLI commands (rule_engine.mjs verify-stories, --self-test) should be read-only.
-  // The caller signals write intent via env var set by transition.mjs.
+  // RT-HARDENING-004: Compute the registry hash for tamper detection.
+  // Fact loading is always read-only. transition.mjs transiently authorizes the
+  // candidate hash during evaluation, then owns any post-verdict persistence.
   // RT10-C2: Full 32-char hash for registry tamper detection
   const registryHash = createHash("sha256").update(registryRaw).digest("hex").slice(0, 32);
   const plannerPlan = resolvePlannerPlanContext(cwd);
@@ -396,15 +396,10 @@ export function loadStoryFacts(session, { cwd, transientRegistryRefresh = false 
       } else {
         session.consult("registry_tampered(false).");
       }
-      // RT3-M4-FIX: Only persist hash during transition (write mode)
-      if (process.env._PLANNER_GATE_TRANSITION === "1" && process.env._PLANNER_DRY_RUN !== "1") {
-        stateJson.registry_hash = registryHash;
-        writeStateJson(planDir, stateJson);
-        // RT-2026-07-02: The transition that refreshes the hash must not be
-        // blocked by the stale hash it is replacing. Retract the tamper signal
-        // for the same session after the refresh is persisted.
-        session.consult("registry_tampered(false).");
-      }
+      // Transition evaluation may model an intentional refresh, but fact loading
+      // is pre-verdict and must stay read-only. transition.mjs persists the hash
+      // only after the complete gate (or the phase-neutral refresh operation)
+      // has produced a passing verdict.
     }
   }
 
@@ -815,23 +810,15 @@ export function loadStateFacts(session, { cwd, skillPath, transientCloseSignals 
   if (quantResultsValidation?.promotion_verdict) {
     session.consult(`quant_results_promotion_verdict(${sanitizeEnumAtom(quantResultsValidation.promotion_verdict)}).`);
   }
-  for (const issue of Array.isArray(quantResultsValidation?.blocking_issues) ? quantResultsValidation.blocking_issues : []) {
-    session.consult(`quant_results_blocking_issue(${sanitizeEnumAtom(issue)}).`);
-  }
+  const scientificReview = quantResultsValidation?.scientific_review || null, resultFacts = [...(Array.isArray(quantResultsValidation?.blocking_issues) ? quantResultsValidation.blocking_issues : []).map((issue) => `quant_results_blocking_issue(${sanitizeEnumAtom(issue)}).`), `scientific_review_present(${scientificReview ? "true" : "false"}).`, `scientific_review_satisfied(${scientificReview?.satisfied === true ? "true" : "false"}).`, `scientific_execution_status(${sanitizeEnumAtom(scientificReview?.execution_status || "not_available")}).`, `scientific_design_validity(${sanitizeEnumAtom(scientificReview?.design_validity || "not_available")}).`, `scientific_evidence_grade(${sanitizeEnumAtom(scientificReview?.evidence_grade || "not_available")}).`, `scientific_verdict(${sanitizeEnumAtom(scientificReview?.scientific_verdict || "not_available")}).`, `scientific_promotion_status(${sanitizeEnumAtom(scientificReview?.promotion_status || "not_available")}).`];
+  for (const fact of resultFacts) session.consult(fact);
 
   try {
     const quantGateFacts = compileQuantGateHardeningFacts({ cwd, planDir, stateJson });
     if (quantGateFacts?.prolog) session.consult(quantGateFacts.prolog);
   } catch (err) {
     debugLog("fact_loader", `Quant gate hardening fact extraction failed: ${err.message}`);
-    session.consult("quant_optimization_scale_required(false).");
-    session.consult("quant_optimization_scale_status('error').");
-    session.consult("quant_run_class_interpretive(false).");
-    session.consult("quant_run_class_quick_evidence(false).");
-    session.consult("quant_run_class_discovered_budget_unknown(true).");
-    session.consult("quant_leakage_proof_artifact_required(false).");
-    session.consult("quant_leakage_proof_artifact_status(error).");
-    session.consult("quant_leakage_proof_artifact_row_count(0).");
+    session.consult("quant_optimization_scale_required(false). quant_optimization_scale_status('error'). quant_run_class_interpretive(false). quant_run_class_quick_evidence(false). quant_run_class_discovered_budget_unknown(true). quant_leakage_proof_artifact_required(false). quant_leakage_proof_artifact_status(error). quant_leakage_proof_artifact_row_count(0).");
   }
 
   try {
@@ -849,6 +836,8 @@ export function loadStateFacts(session, { cwd, skillPath, transientCloseSignals 
     ? Math.max(0, Math.trunc(Number(reviewIntake.unresolved_required_count)))
     : 0;
   session.consult(`review_intake_unresolved_required_count(${unresolvedReviewCount}).`);
+
+  const truthConvergence = closeSignals?.truth_convergence || { required: false, satisfied: true, status: "not_required" }; session.consult(`truth_convergence_required(${closeSignalRequiredAtom(truthConvergence)}).`); session.consult(`truth_convergence_satisfied(${closeSignalSatisfiedAtom(truthConvergence)}).`); session.consult(`truth_convergence_status(${sanitizeEnumAtom(closeSignalStatusValue(truthConvergence))}).`); for (const blocker of Array.isArray(truthConvergence?.blockers) ? truthConvergence.blockers : []) session.consult(`truth_convergence_blocker(${sanitizeEnumAtom(blocker)}).`);
 
   // Root cause documented
   if (effectiveFindings) {
@@ -1586,7 +1575,7 @@ export function loadRules(session, { cwd, skillPath, transientOntologyFacts = ""
     "can_transition", "gate_passed", "state_history_available",
     "kb_read", "findings_count", "findings_depth_ok",
     "proof_of_work", "all_verification_pass", "progress_complete",
-    "red_team_documented", "kb_updated", "migration_smoke_satisfied", "test_evidence_satisfied", "anti_recurrence_required", "anti_recurrence_satisfied", "intent_evidence_satisfied", "semantic_substrate_required", "semantic_substrate_satisfied", "semantic_substrate_scope_degraded", "semantic_substrate_scan_scope_used", "semantic_substrate_scope_degraded_reason", "semantic_substrate_relevance", "semantic_substrate_gap", "semantic_substrate_blocking_gap", "quant_results_validation_required", "quant_results_validation_satisfied", "quant_results_validation_status", "quant_results_evidence_validity", "quant_results_claim_support_allowed", "quant_results_numeric_output_reportable", "quant_results_environment_preflight_status", "quant_results_environment_preflight_performed", "quant_results_environment_preflight_probe_count", "quant_results_run_class", "quant_results_promotion_verdict", "quant_results_blocking_issue", "quant_optimization_scale_required", "quant_optimization_scale_status", "quant_optimization_scale_section_present", "quant_optimization_scale_issue", "quant_run_class_interpretive", "quant_run_class_declared", "quant_run_class_quick_evidence", "quant_run_class_discovered_budget", "quant_run_class_discovered_budget_unknown", "quant_run_class_threshold", "quant_run_class_inflation_issue", "quant_leakage_proof_artifact_required", "quant_leakage_proof_artifact_status", "quant_leakage_proof_artifact_row_count", "quant_leakage_proof_artifact_run_class", "quant_leakage_proof_artifact_issue", "ava_report_present", "ava_artifact_error", "ava_verification_agent", "ava_agent_persona", "ava_sandbox_floor_satisfied", "ava_discovered_defect", "ava_defect_discovered_by", "ava_defect_type", "ava_defect_status", "ava_defect_story", "ava_defect_anchor", "review_intake_required", "review_intake_satisfied", "review_intake_unresolved_required_count", "has_external_api",
+    "red_team_documented", "kb_updated", "migration_smoke_satisfied", "test_evidence_satisfied", "anti_recurrence_required", "anti_recurrence_satisfied", "intent_evidence_satisfied", "semantic_substrate_required", "semantic_substrate_satisfied", "semantic_substrate_scope_degraded", "semantic_substrate_scan_scope_used", "semantic_substrate_scope_degraded_reason", "semantic_substrate_relevance", "semantic_substrate_gap", "semantic_substrate_blocking_gap", "quant_results_validation_required", "quant_results_validation_satisfied", "quant_results_validation_status", "quant_results_evidence_validity", "quant_results_claim_support_allowed", "quant_results_numeric_output_reportable", "quant_results_environment_preflight_status", "quant_results_environment_preflight_performed", "quant_results_environment_preflight_probe_count", "quant_results_run_class", "quant_results_promotion_verdict", "quant_results_blocking_issue", "scientific_review_present", "scientific_review_satisfied", "scientific_execution_status", "scientific_design_validity", "scientific_evidence_grade", "scientific_verdict", "scientific_promotion_status", "quant_optimization_scale_required", "quant_optimization_scale_status", "quant_optimization_scale_section_present", "quant_optimization_scale_issue", "quant_run_class_interpretive", "quant_run_class_declared", "quant_run_class_quick_evidence", "quant_run_class_discovered_budget", "quant_run_class_discovered_budget_unknown", "quant_run_class_threshold", "quant_run_class_inflation_issue", "quant_leakage_proof_artifact_required", "quant_leakage_proof_artifact_status", "quant_leakage_proof_artifact_row_count", "quant_leakage_proof_artifact_run_class", "quant_leakage_proof_artifact_issue", "ava_report_present", "ava_artifact_error", "ava_verification_agent", "ava_agent_persona", "ava_sandbox_floor_satisfied", "ava_discovered_defect", "ava_defect_discovered_by", "ava_defect_type", "ava_defect_status", "ava_defect_story", "ava_defect_anchor", "review_intake_required", "review_intake_satisfied", "review_intake_unresolved_required_count", "truth_convergence_required", "truth_convergence_satisfied", "truth_convergence_status", "truth_convergence_blocker", "has_external_api",
     "session_assumption_tracking_enabled", "session_assumption",
     "breaking_change", "search_required", "search_completed",
     "plan_options_count", "story", "story_dep", "story_status",

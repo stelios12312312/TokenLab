@@ -26,6 +26,10 @@
 %%   review_intake_required(true/false/unknown)
 %%   review_intake_satisfied(true/false/unknown/not_required)
 %%   review_intake_unresolved_required_count(N)
+%%   truth_convergence_required(true/false/unknown)
+%%   truth_convergence_satisfied(true/false/unknown/not_required)
+%%   truth_convergence_status(Status)
+%%   truth_convergence_blocker(BlockerId)
 
 phase_index(explore, 1).
 phase_index(plan, 2).
@@ -94,6 +98,11 @@ review_intake_ready :-
 review_intake_ready :-
     review_intake_satisfied(not_required).
 
+truth_convergence_ready :-
+    truth_convergence_satisfied(true).
+truth_convergence_ready :-
+    truth_convergence_satisfied(not_required).
+
 %% ═══════════════════════════════════════════════════════════
 %% Valid states
 %% ═══════════════════════════════════════════════════════════
@@ -153,6 +162,7 @@ can_transition(validate, close) :-
     anti_recurrence_ready,
     intent_evidence_ready,
     review_intake_ready,
+    truth_convergence_ready,
     \+ session_assumption_close_blocker,
     \+ learned_obligation_missing_now.
 
@@ -224,6 +234,8 @@ missing_guard(validate, close, intent_evidence_missing) :-
     \+ intent_evidence_ready.
 missing_guard(validate, close, review_intake_unresolved) :-
     \+ review_intake_ready.
+missing_guard(validate, close, truth_surface_nonconvergent) :-
+    \+ truth_convergence_ready.
 missing_guard(validate, close, session_assumption_unresolved) :-
     session_assumption_close_blocker.
 missing_guard(validate, close, learned_obligation_missing) :-

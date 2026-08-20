@@ -225,6 +225,20 @@ proposed -> ready -> in_progress -> blocked -> done -> verified -> closed
 aliases, but gates normalize them through effective lifecycle semantics; use
 ticket `review_status` for review state instead of overloading dispatch state.
 
+Cross-Program execution dependencies belong in ticket
+`external_prerequisites`, never only in prose. Each row has exactly one of these
+shapes:
+
+```json
+{"program_ref":"PGM-UPSTREAM","required_status":"closed"}
+{"program_ref":"PGM-UPSTREAM","ticket_ref":"T-UPSTREAM-1","required_lifecycle":"closed"}
+```
+
+Program checks, task intake, truth convergence, and Prolog consume this same
+contract. An unknown, malformed, or unsatisfied prerequisite blocks a
+ready-or-later dependent ticket; packets with no declared rows retain legacy
+behavior.
+
 ### Required GitHub Tickets
 
 GitHub Issues are the required external collaboration surface for executable
@@ -391,6 +405,40 @@ Update the packet as child plans close:
 - residual risks
 
 Do not mark a ticket `verified` or `closed` if a required child plan is not closed or explicitly waived.
+
+If one active attempt failed and its exact child plan was explicitly abandoned,
+review the dry-run and defer that ticket without claiming delivery:
+
+```bash
+node .agent/skills/iterative-planner/scripts/program_manager.mjs defer --program <program-id-or-path> --ticket <ticket-id> --decision <accepted-decision-id> --reason "<reason>" --child-plan <plan-dir> --json
+node .agent/skills/iterative-planner/scripts/program_manager.mjs defer --program <program-id-or-path> --ticket <ticket-id> --decision <accepted-decision-id> --reason "<reason>" --child-plan <plan-dir> --write --json
+```
+
+The command requires one exact `in_progress` or `blocked` ticket, an exact linked
+child plan in CLOSE with `[ABANDONED]`, and a non-colliding accepted decision. It
+validates the complete candidate packet and treats an exact repeat as a no-op.
+It never closes the ticket or rewrites the failed plan as success.
+
+To resume an explicitly deferred ticket, never hand-edit its lifecycle. Review
+the dry-run, then write the exact accepted revival decision:
+
+```bash
+node .agent/skills/iterative-planner/scripts/program_manager.mjs revive --program <program-id-or-path> --ticket <ticket-id> --decision <accepted-decision-id> --reason "<reason>" --child-plan <plan-dir> --json
+node .agent/skills/iterative-planner/scripts/program_manager.mjs revive --program <program-id-or-path> --ticket <ticket-id> --decision <accepted-decision-id> --reason "<reason>" --child-plan <plan-dir> --write --json
+```
+
+Revival requires one exact `deferred` ticket, preserves its
+`deferral_decision_ref`, records `revival_decision_ref`, moves it to
+`in_progress`, links the child plan, and validates the complete packet before
+writing. It does not infer a revival from an active downstream ticket.
+
+For a real autonomous close, the separate
+`autonomous_ticket_delivery.mjs run` lane may execute one explicitly chosen
+Program ticket in an isolated worktree. Before spending an invocation it blocks
+missing lifecycle evidence, unresolved remote policy, and remote-synced tickets
+without their own GitHub issue mirror. Its token ceiling is a post-run acceptance
+check, not a provider hard cap. Its parent-owned grade and countersigned receipt
+are evidence only; the lane does not merge, push, delete branches, or mutate GitHub.
 
 ## Phase 6: Program Close
 

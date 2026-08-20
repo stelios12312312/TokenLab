@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from "child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "fs";
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "fs";
 import { join, relative, resolve } from "path";
 import { tmpdir } from "os";
 
@@ -284,13 +284,25 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
       }
       return allIds;
     };
+    const gitRoot = gitText(targetPath, ["rev-parse", "--show-toplevel"]);
     for (const entry of candidates) {
       const targetRelativePath = gitPath(relative(targetPath, entry.path));
       const sourceRelativeToAgent = relative(join(targetPath, ".agent"), entry.path);
       const incomingPath = entry.removal ? null : join(agentDir, sourceRelativeToAgent);
       const sourceRelativePath = gitPath(join(".agent", sourceRelativeToAgent));
-      const targetHeadBlob = gitText(targetPath, ["rev-parse", "--verify", `HEAD:${targetRelativePath}`]);
-      const targetWorkingBlob = gitText(targetPath, ["hash-object", "--", targetRelativePath]);
+      let gitRelPath = targetRelativePath;
+      if (gitRoot) {
+        try {
+          const realEntryPath = existsSync(entry.path) ? realpathSync(entry.path) : entry.path;
+          gitRelPath = gitPath(relative(gitRoot, realEntryPath));
+        } catch {
+          gitRelPath = targetRelativePath;
+        }
+      }
+      const targetHeadBlob = gitText(targetPath, ["rev-parse", "--verify", `HEAD:${gitRelPath}`]);
+      const targetWorkingBlob = existsSync(entry.path)
+        ? gitText(targetPath, ["hash-object", "--", entry.path])
+        : null;
 
       let classification = null;
       if (!targetWorkingBlob) classification = "unclassifiable_target";

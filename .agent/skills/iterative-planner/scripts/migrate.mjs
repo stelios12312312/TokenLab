@@ -29,6 +29,7 @@ import {
   validateMistakeOverlayDocument,
 } from "./lib/mistake_registry.mjs";
 import { createMigrationSourcePin } from "./lib/migration_source_pin.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 import {
   readLearnedObligationRegistryEntries,
   validateLearnedObligationOverlayDocument,
@@ -37,6 +38,7 @@ import { loadRetroRegistry } from "./lib/retro_registry.mjs";
 import { summarizeWorkflowIntelligence } from "./lib/workflow_intelligence.mjs";
 import {
   HOST_OWNED_WORKFLOW_MARKER,
+  listFleetManagedWorkflowFiles,
   validateWorkflowContractSurface,
   workflowFileHasExplicitHostOwnerMarker,
 } from "./lib/workflow_contracts.mjs";
@@ -51,7 +53,7 @@ import {
 } from "./lib/persona_adaptation.mjs";
 import { writePlanWorkOrderProjection } from "./lib/work_order_contract.mjs";
 import { attachSemanticHealth } from "./lib/semantic_maintenance.mjs";
-import { readStateJson as readPlanStateJson, writeStateJson as writePlanStateJson } from "./lib/determinism.mjs";
+import { ensureCircuitBreakersState, readStateJson as readPlanStateJson } from "./lib/determinism.mjs";
 import { ensurePlannerPolicy, loadPlannerPolicy } from "./lib/planner_policy.mjs";
 import {
   ROOT_INSTRUCTION_SOURCE_OF_TRUTH,
@@ -266,6 +268,7 @@ function buildExpectedManifest(targetPath) {
   const standaloneSkillFiles = [
     { path: "SKILL.md", category: "core", critical: true },
     { path: "MIGRATION.md", category: "docs", critical: false },
+    { path: "MIGRATION_HISTORY.md", category: "docs", critical: false },
     { path: "QUICKSTART.md", category: "docs", critical: false },
     { path: "ERROR-RECOVERY.md", category: "docs", critical: false },
     { path: "EDGE-CASES.md", category: "docs", critical: false },
@@ -320,7 +323,14 @@ function buildExpectedManifest(targetPath) {
         || name === ".checklist_integrity"
         || name.endsWith(".yaml")
     )) {
-      entries.push({ path: join(base, "config", f), category: "config", critical: true });
+      const isConsumerOwned = f === "source_hygiene.json" || f === ".project_registry.json";
+      entries.push({
+        path: join(base, "config", f),
+        category: "config",
+        critical: true,
+        allow_content_drift: isConsumerOwned,
+        consumer_owned: isConsumerOwned,
+      });
     }
   }
 
@@ -401,7 +411,7 @@ function buildExpectedManifest(targetPath) {
   // Workflows — scan source dynamically
   const sourceWorkflowsDir = join(agentDir, "workflows");
   if (existsSync(sourceWorkflowsDir)) {
-    for (const f of listManagedDirNames(sourceWorkflowsDir, (f) => f.endsWith(".md"))) {
+    for (const f of listFleetManagedWorkflowFiles(dirname(agentDir))) {
       entries.push({ path: join(targetPath, ".agent/workflows", f), category: "workflows", critical: true });
     }
   }
@@ -741,7 +751,7 @@ function checklistIntegrityReceipt(snapshot, timestamp, receiptRel) {
 
 function emitChecklistIntegrityResult(result, jsonOutput) {
   if (jsonOutput) {
-    console.log(JSON.stringify(result, null, 2));
+    emitJson(result, { exitCode: result.ok ? undefined : 1 });
   } else if (result.ok) {
     console.log(`Checklist integrity regeneration ${result.mode}: PASS`);
     console.log(`  Checklist: ${result.checklist.path}`);
@@ -751,6 +761,7 @@ function emitChecklistIntegrityResult(result, jsonOutput) {
     if (result.receipt_path) console.log(`  Receipt:   ${result.receipt_path}`);
   } else {
     console.error(`Checklist integrity regeneration: FAIL\n  ${result.reason}`);
+    process.exitCode = 1;
   }
 }
 
@@ -855,7 +866,6 @@ function cmdRegenerateChecklistIntegrity(targetPath, { checklistName, decisionRe
       durable_state: "inspect reported reason; failed writes are rolled back when possible and never emit a PASS result",
     };
     emitChecklistIntegrityResult(failure, jsonOutput);
-    process.exit(1);
   }
 }
 
@@ -2910,6 +2920,10 @@ function copyIfMissing(src, dest, dryRun, log) {
     return false;
   }
   if (existsSync(dest)) {
+    if (basename(dest) === "source_hygiene.json") {
+      log.push(`  OK (consumer-owned overlay): ${basename(dest)}`);
+      return false;
+    }
     const srcHash = normalizedComparisonHash(src, { sourceProjectPath: canonicalSourceProjectPath() });
     const destHash = normalizedComparisonHash(dest);
     if (srcHash && destHash && srcHash === destHash) {
@@ -2975,7 +2989,7 @@ function collectObsoletePlannerWorkflowFiles(targetPath) {
     return { prunable: [], preserved: [] };
   }
 
-  const canonical = new Set(listManagedDirNames(sourceWorkflowsDir, (name) => name.endsWith(".md")));
+  const canonical = new Set(listFleetManagedWorkflowFiles(dirname(agentDir)));
   const prunable = [];
   const preserved = [];
   for (const entry of readdirSync(targetWorkflowsDir, { withFileTypes: true })) {
@@ -3114,8 +3128,46 @@ function pruneObsoletePlannerTestFiles(targetPath, dryRun, log) {
  * Shared project-level setup: audit config, KB seeding, version marker, hooks, ripple check.
  * Called by explicit setup and by upgrade only when a real repair requires setup.
  */
+function ensureManagedGitignore(targetPath, { dryRun = false, log = null } = {}) {
+  const gitignorePath = join(targetPath, ".gitignore");
+  const patterns = [
+    "plans/.current_plan*",
+    "plans/ACTIVE_PLAN.*",
+    "plans/.thread_targets/",
+    "plans/.audit-archive/",
+  ];
+  let content = "";
+  if (existsSync(gitignorePath)) {
+    try {
+      content = readFileSync(gitignorePath, "utf-8");
+    } catch {
+      // unreadable
+    }
+  }
+  const lines = content.split("\n").map((l) => l.trim());
+  const missing = patterns.filter((p) => !lines.includes(p));
+  if (missing.length === 0) {
+    if (log) log.push("  OK: .gitignore contains managed planner ignore patterns");
+    return false;
+  }
+  if (dryRun) {
+    if (log) log.push(`  WOULD UPDATE: .gitignore (add ${missing.join(", ")})`);
+    return true;
+  }
+  const suffix = (content && !content.endsWith("\n") ? "\n" : "") + missing.join("\n") + "\n";
+  const updated = content + suffix;
+  writeFileSync(gitignorePath + ".tmp", updated);
+  renameSync(gitignorePath + ".tmp", gitignorePath);
+  if (log) log.push(`  UPDATED: .gitignore (added ${missing.join(", ")})`);
+  return true;
+}
+
 function runProjectSetup(targetPath, dryRun, log) {
   const targetBase = join(targetPath, ".agent/skills/iterative-planner");
+
+  // 0. Ensure .gitignore has managed planner patterns
+  log.push("\n## Git Ignore");
+  ensureManagedGitignore(targetPath, { dryRun, log });
 
   // 1. Seed audit.config.json if missing
   log.push("\n## Audit Config");
@@ -3845,6 +3897,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   log.push("\n## Skill Files");
   copyIfMissing(join(skillDir, "SKILL.md"), join(targetBase, "SKILL.md"), dryRun, log);
   copyIfMissing(join(skillDir, "MIGRATION.md"), join(targetBase, "MIGRATION.md"), dryRun, log);
+  copyIfMissing(join(skillDir, "MIGRATION_HISTORY.md"), join(targetBase, "MIGRATION_HISTORY.md"), dryRun, log);
   copyIfMissing(join(skillDir, "QUICKSTART.md"), join(targetBase, "QUICKSTART.md"), dryRun, log);
   copyIfMissing(join(skillDir, "ERROR-RECOVERY.md"), join(targetBase, "ERROR-RECOVERY.md"), dryRun, log);
   copyIfMissing(join(skillDir, "EDGE-CASES.md"), join(targetBase, "EDGE-CASES.md"), dryRun, log);
@@ -3861,7 +3914,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   const sourceWorkflowsDir = join(agentDir, "workflows");
   const targetWorkflowsDir = join(targetPath, ".agent/workflows");
   if (existsSync(sourceWorkflowsDir)) {
-    for (const f of listManagedDirNames(sourceWorkflowsDir, (f) => f.endsWith(".md")).sort()) {
+    for (const f of listFleetManagedWorkflowFiles(dirname(agentDir))) {
       copyIfMissing(join(sourceWorkflowsDir, f), join(targetWorkflowsDir, f), dryRun, log);
     }
   }
@@ -3913,11 +3966,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
         const planDir = join(plansDir, planDirName);
         const statePath = join(plansDir, planDirName, "state.json");
         if (existsSync(statePath)) {
-          const stateJson = JSON.parse(readFileSync(statePath, "utf-8"));
-          if (!stateJson.circuit_breakers) {
-            stateJson.circuit_breakers = {};
-            delete stateJson._state_hash;
-            writeFileSync(statePath, JSON.stringify(stateJson, null, 2) + "\n");
+          if (ensureCircuitBreakersState(planDir)) {
             log.push(`  SEEDED: circuit_breakers field in ${planDirName}/state.json (v3.8.0)`);
           }
         }
@@ -4161,8 +4210,8 @@ function cmdSyncInstructions(targetPath, dryRun, jsonOutput) {
   const report = syncRootInstructionSurfaces(targetPath, { dryRun, log });
 
   if (jsonOutput) {
-    console.log(JSON.stringify(report, null, 2));
-    process.exit(verificationStatusIsPass(report.status, "execution") ? 0 : 1);
+    emitJson(report, { exitCode: verificationStatusIsPass(report.status, "execution") ? 0 : 1 });
+    return;
   }
 
   console.log(`\n╔══════════════════════════════════════════════════════╗`);
@@ -6196,7 +6245,7 @@ function cmdUpgradeApprovalEnvelope(projectRoot, { dryRun, jsonOutput, rollback 
 
 function emitIveMigrationResult(result, jsonOutput) {
   if (jsonOutput) {
-    console.log(JSON.stringify(result, null, 2));
+    emitJson(result, { exitCode: result.ok ? undefined : 1 });
   } else {
     const statusLabel = canonicalVerificationStatus(result.status, "execution", {
       fallback: result.ok === false ? "FAIL" : "UNKNOWN",
@@ -6234,7 +6283,7 @@ function emitIveMigrationResult(result, jsonOutput) {
     }
     console.log();
   }
-  if (!result.ok) process.exit(1);
+  if (!jsonOutput && !result.ok) process.exitCode = 1;
 }
 
 const args = process.argv.slice(2);

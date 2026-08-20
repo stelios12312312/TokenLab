@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import { dirname, join } from "path";
 import { verificationStatusIsHardFailure, verificationStatusIsPass } from "./verification_status_vocabulary.mjs";
+import { finalizeOwnedFileReplace, observeOwnedFile, replaceOwnedFile } from "./owned_file_replace.mjs";
 
 function metricsPath(planDir) {
   return join(planDir, "metrics.json");
@@ -158,10 +159,20 @@ function normalizeMetricsShape(metrics, { planId, createdAt }) {
 function writeMetrics(planDir, metrics) {
   const path = metricsPath(planDir);
   mkdirSync(dirname(path), { recursive: true });
-  const tmpPath = `${path}.tmp`;
-  writeFileSync(tmpPath, JSON.stringify(metrics, null, 2) + "\n");
-  renameSync(tmpPath, path);
-  return path;
+  const observed = observeOwnedFile(path);
+  const replacement = replaceOwnedFile({
+    path,
+    bytes: JSON.stringify(metrics, null, 2) + "\n",
+    expected: observed.status === "present" ? observed.token : null,
+  });
+  if (replacement.status !== "committed") {
+    throw new Error(`metrics persistence ${replacement.status}: ${replacement.reason}`);
+  }
+  const finalization = finalizeOwnedFileReplace(replacement);
+  if (finalization.status !== "committed") {
+    throw new Error(`metrics persistence cleanup_pending: ${finalization.reason}`);
+  }
+  return replacement;
 }
 
 function computeDurationSeconds(createdAt, closedAt) {
@@ -187,8 +198,8 @@ export function initializePlanMetrics({ projectRoot, planDirName, planDir, creat
     planId: planDirName,
     createdAt: normalizeIso(createdAt, null),
   });
-  writeMetrics(planDir, metrics);
-  return metrics;
+  const persistence = writeMetrics(planDir, metrics);
+  return { metrics, persistence };
 }
 
 export function recordGateMetrics({
@@ -232,8 +243,8 @@ export function recordGateMetrics({
     for (const code of codes) {
       metrics.transition_friction.tool_error_codes[code] = (metrics.transition_friction.tool_error_codes[code] || 0) + 1;
     }
-    writeMetrics(planDir, metrics);
-    return metrics;
+    const persistence = writeMetrics(planDir, metrics);
+    return { metrics, persistence };
   }
 
   metrics.gate_attempts_total += 1;
@@ -274,8 +285,8 @@ export function recordGateMetrics({
     metrics.duration_seconds = computeDurationSeconds(metrics.created_at, metrics.closed_at);
   }
 
-  writeMetrics(planDir, metrics);
-  return metrics;
+  const persistence = writeMetrics(planDir, metrics);
+  return { metrics, persistence };
 }
 
 export function readPlanMetrics(planDir) {
@@ -298,6 +309,6 @@ export function recordVerificationStrategyReaderUsage({ projectRoot, planDirName
   metrics.verification_strategy_reader.last_used_at = timestamp;
   metrics.verification_strategy_reader.counts[normalizedSource] += 1;
 
-  writeMetrics(planDir, metrics);
-  return metrics;
+  const persistence = writeMetrics(planDir, metrics);
+  return { metrics, persistence };
 }

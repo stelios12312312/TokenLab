@@ -1726,6 +1726,13 @@ export function serializeToFacts({
     for (const issue of Array.isArray(quantResultsValidation.blocking_issues) ? quantResultsValidation.blocking_issues : []) {
       facts.push(`quant_results_blocking_issue(${sanitizeEnumAtom(issue)}).`);
     }
+    facts.push(`scientific_review_present(${quantResultsValidation.scientific_review ? "true" : "false"}).`);
+    facts.push(`scientific_review_satisfied(${quantResultsValidation.scientific_review?.satisfied === true ? "true" : "false"}).`);
+    facts.push(`scientific_execution_status(${sanitizeEnumAtom(quantResultsValidation.scientific_review?.execution_status || "not_available")}).`);
+    facts.push(`scientific_design_validity(${sanitizeEnumAtom(quantResultsValidation.scientific_review?.design_validity || "not_available")}).`);
+    facts.push(`scientific_evidence_grade(${sanitizeEnumAtom(quantResultsValidation.scientific_review?.evidence_grade || "not_available")}).`);
+    facts.push(`scientific_verdict(${sanitizeEnumAtom(quantResultsValidation.scientific_review?.scientific_verdict || "not_available")}).`);
+    facts.push(`scientific_promotion_status(${sanitizeEnumAtom(quantResultsValidation.scientific_review?.promotion_status || "not_available")}).`);
     const semanticGates = Array.isArray(quantResultsValidation.semantic_gates) ? quantResultsValidation.semantic_gates : [];
     facts.push(`quant_semantic_gate_count(${semanticGates.length}).`);
     for (const gate of semanticGates) {

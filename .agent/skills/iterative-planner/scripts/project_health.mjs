@@ -1036,6 +1036,13 @@ if (_isMain && !flags.help && !flags.list) (async () => {
     // -----------------------------------------------------------------------
 
     if (flags.out) report.run_receipt_path = flags.out;
+    
+    // Cap findings to prevent multi-thousand-line reports
+    const capF = report.findings.filter(f => f.severity === "fail");
+    const capW = report.findings.filter(f => f.severity === "warn");
+    const capI = report.findings.filter(f => f.severity === "info");
+    report.findings = [...capF.slice(0, 100), ...capW.slice(0, 100), ...capI.slice(0, 100)];
+    
     report.normalized_findings = findingsFromProjectHealthReport(report);
     const output = flags.json ? JSON.stringify(report, null, 2) : formatMarkdown(report);
 

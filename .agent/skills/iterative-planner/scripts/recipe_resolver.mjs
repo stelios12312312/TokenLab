@@ -3,6 +3,7 @@
 
 import { readFileSync } from "fs";
 import { join, resolve } from "path";
+import { emitJson } from "./lib/emit_json.mjs";
 import { getPaths, readFile, resolvePlanTarget } from "./lib/plan_utils.mjs";
 import { resolveRecipeRequest } from "./lib/recipe_utils.mjs";
 
@@ -63,20 +64,19 @@ const payload = {
 };
 
 if (flags.json) {
-  console.log(JSON.stringify(payload, null, 2));
-  process.exit(0);
-}
-
-console.log("Recipe Resolver");
-console.log(`Goal: ${payload.goal || "(not provided)"}`);
-console.log(`Primary route: ${payload.primary_resolution.route}`);
-console.log(`Reason: ${payload.primary_resolution.reason}`);
-if (payload.primary_resolution.recipe_id) {
-  console.log(`Recipe: ${payload.primary_resolution.recipe_id}`);
-}
-if (payload.entities.length > 0) {
-  console.log(`Entities: ${payload.entities.map((entity) => `${entity.id} (${entity.matched_aliases.join(", ")})`).join("; ")}`);
-}
-if (payload.capabilities.length > 0) {
-  console.log(`Capabilities: ${payload.capabilities.map((capability) => `${capability.id} [score=${capability.score}]`).join("; ")}`);
+  emitJson(payload, { exitCode: 0 });
+} else {
+  console.log("Recipe Resolver");
+  console.log(`Goal: ${payload.goal || "(not provided)"}`);
+  console.log(`Primary route: ${payload.primary_resolution.route}`);
+  console.log(`Reason: ${payload.primary_resolution.reason}`);
+  if (payload.primary_resolution.recipe_id) {
+    console.log(`Recipe: ${payload.primary_resolution.recipe_id}`);
+  }
+  if (payload.entities.length > 0) {
+    console.log(`Entities: ${payload.entities.map((entity) => `${entity.id} (${entity.matched_aliases.join(", ")})`).join("; ")}`);
+  }
+  if (payload.capabilities.length > 0) {
+    console.log(`Capabilities: ${payload.capabilities.map((capability) => `${capability.id} [score=${capability.score}]`).join("; ")}`);
+  }
 }

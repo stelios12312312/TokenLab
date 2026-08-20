@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   buildLifecycleReconciliationReport,
+  duplicateConfidence,
   lifecycleReconciliationSummary,
   renderLifecycleReconciliationStatusLine,
   renderLifecycleReconciliationText,
@@ -49,6 +50,18 @@ const EXPECTED_COMMITS = new Map([
 
 function byTicket(findings) {
   return new Map(findings.map((finding) => [finding.ticket_id, finding]));
+}
+
+function childPlanIsClosed(ticket) {
+  const planDir = ticket?.child_plan?.plan_dir;
+  if (!planDir) return false;
+  try {
+    return ["close", "closed"].includes(
+      String(JSON.parse(readFileSync(join(planDir, "state.json"), "utf-8"))?.state || "").toLowerCase(),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function receiptByTicket(receipt) {
@@ -154,6 +167,85 @@ assert.equal(renderLifecycleReconciliationStatusLine(null), "", "unavailable lif
 assert(
   renderLifecycleReconciliationText(null).includes("Repair packet: not available (not written)"),
   "unavailable lifecycle text renders an explicit missing-proof boundary",
+);
+
+const presentationReport = {
+  status: "ADVISORY",
+  counts: {
+    advisory_findings: 9,
+    shipped_open_findings: 9,
+    duplicate_scope_findings: 0,
+    awaiting_external_action_exemptions: 1,
+    staged_close_pending_commit: 1,
+  },
+  warnings: [{ code: "dirty_worktree" }],
+  repo_state: { dirty: true },
+  repair_packet: { path: "reports/ive/lifecycle_reconciliation/presentation.json", written: true },
+  findings: {
+    shipped_open: Array.from({ length: 9 }, (_, index) => ({
+      ticket_id: `T-PRESENT-${index + 1}`,
+      current_lifecycle: "in_progress",
+      proposed_lifecycle: "closed",
+      ticket_title: `Presentation finding ${index + 1}`,
+      evidence_chain: [{ kind: "declared_child_plan" }],
+    })),
+  },
+  pending: {
+    staged_close: [{
+      ticket_id: "T-PRESENT-PENDING",
+      current_lifecycle: "in_progress",
+      ticket_title: "Presentation pending close",
+      index_fingerprint: "fixture-index",
+    }],
+  },
+  exemptions: {
+    awaiting_external_action: [{
+      ticket_id: "T-PRESENT-WAIT",
+      current_lifecycle: "in_progress",
+      action_kind: "operator_run",
+      reason: "Presentation wait fixture",
+    }],
+  },
+};
+const presentationStatus = renderLifecycleReconciliationStatusLine(presentationReport);
+const presentationText = renderLifecycleReconciliationText(presentationReport);
+const fallbackStatus = renderLifecycleReconciliationStatusLine({
+  advisory_findings: 1,
+  shipped_open_findings: 1,
+  duplicate_scope_findings: 0,
+  awaiting_external_action_exemptions: 0,
+  staged_close_pending_commit: 0,
+  repair_packet_path: null,
+  repair_packet_written: false,
+  dirty_worktree: false,
+});
+assert(
+  presentationStatus.includes("repair packet: reports/ive/lifecycle_reconciliation/presentation.json (written; dirty proof warning)"),
+  "non-empty status line renders written and dirty-proof state deterministically",
+);
+assert(
+  presentationText.includes("... 1 more shipped-open finding(s)")
+    && presentationText.includes("T-PRESENT-PENDING")
+    && presentationText.includes("T-PRESENT-WAIT")
+    && presentationText.includes("Warning: dirty worktree"),
+  "non-empty text rendering covers bounded overflow, pending-close, exemption, and dirty-warning rows",
+);
+assert(
+  fallbackStatus.includes("repair packet: not available (not written)"),
+  "non-empty summary-form status line renders the missing repair-packet fallback",
+);
+
+const duplicateConfidenceCases = [
+  [{ sharedLabel: false, sharedTokens: [], unitKind: "ticket", titleScore: 1, batchLabelHit: false }, "low"],
+  [{ sharedLabel: true, sharedTokens: [], unitKind: "ticket", titleScore: 0.1, batchLabelHit: false }, "low"],
+  [{ sharedLabel: true, sharedTokens: ["one", "two", "three"], unitKind: "ticket", titleScore: 0.8, batchLabelHit: false }, "high"],
+  [{ sharedLabel: true, sharedTokens: [], unitKind: "decision", titleScore: 0.1, batchLabelHit: false }, "low"],
+  [{ sharedLabel: true, sharedTokens: ["one", "two"], unitKind: "decision", titleScore: 0.1, batchLabelHit: true }, "medium"],
+  [{ sharedLabel: true, sharedTokens: ["one"], unitKind: "other", titleScore: 0.8, batchLabelHit: false }, "low"],
+];
+assert(
+  duplicateConfidenceCases.every(([input, expected]) => duplicateConfidence(input) === expected),
+  "duplicate confidence classifier covers low, medium, and high boolean combinations deterministically",
 );
 
 function externalWaitProgramPacket(awaitingExternalAction) {
@@ -282,16 +374,25 @@ try {
   const invalidDeclaredTicketId = "T-INVALID-DECLARED";
   const missingDeclaredTicketId = "T-MISSING-DECLARED";
   const nestedDeclaredTicketId = "T-NESTED-SUPPORTED";
+  const abandonedDeclaredTicketId = "T-ABANDONED-DECLARED";
+  const blockedClosedTicketId = "T-BLOCKED-CLOSED-SUCCESSOR";
+  const blockedOpenTicketId = "T-BLOCKED-OPEN-SUCCESSOR";
   const planRel = "plans/plan_bare_declared";
   const planDir = join(planAuthorityTemp, planRel);
+  const openPlanRel = "plans/plan_blocked_open_successor";
+  const openPlanDir = join(planAuthorityTemp, openPlanRel);
   const programDir = join(planAuthorityTemp, "plans", "programs", "plan-authority");
   const invalidDeclaredDir = join(planAuthorityTemp, "plans", "nested", "plan_declared");
   const nestedDeclaredRel = "plans/programs/plan-authority/child_plans/nested_supported";
   const nestedDeclaredDir = join(planAuthorityTemp, nestedDeclaredRel);
+  const abandonedDeclaredRel = "plans/plan_abandoned_declared";
+  const abandonedDeclaredDir = join(planAuthorityTemp, abandonedDeclaredRel);
   mkdirSync(planDir, { recursive: true });
+  mkdirSync(openPlanDir, { recursive: true });
   mkdirSync(programDir, { recursive: true });
   mkdirSync(invalidDeclaredDir, { recursive: true });
   mkdirSync(nestedDeclaredDir, { recursive: true });
+  mkdirSync(abandonedDeclaredDir, { recursive: true });
   mkdirSync(join(planAuthorityTemp, "src"), { recursive: true });
   writeFileSync(join(planDir, "state.json"), JSON.stringify({
     state: "CLOSE",
@@ -301,10 +402,27 @@ try {
     declared_files: ["src/plan-authority.mjs"],
     owned_files: ["src/plan-authority.mjs"],
   }, null, 2));
+  writeFileSync(join(openPlanDir, "state.json"), JSON.stringify({ state: "EXPLORE", goal: `${blockedOpenTicketId} authorized successor remains open` }, null, 2));
+  writeFileSync(join(openPlanDir, "scope.json"), JSON.stringify({
+    declared_files: ["src/plan-authority.mjs"],
+    owned_files: ["src/plan-authority.mjs"],
+  }, null, 2));
   writeFileSync(join(invalidDeclaredDir, "state.json"), JSON.stringify({ state: "CLOSE", goal: "Unsupported nested plan" }, null, 2));
   writeFileSync(join(invalidDeclaredDir, "scope.json"), JSON.stringify({ declared_files: ["src/plan-authority.mjs"] }, null, 2));
   writeFileSync(join(nestedDeclaredDir, "state.json"), JSON.stringify({ state: "CLOSE", goal: "Supported Program child plan" }, null, 2));
   writeFileSync(join(nestedDeclaredDir, "scope.json"), JSON.stringify({ declared_files: ["src/plan-authority.mjs"] }, null, 2));
+  writeFileSync(join(abandonedDeclaredDir, "state.json"), JSON.stringify({
+    state: "CLOSE",
+    goal: `${abandonedDeclaredTicketId} abandoned child plan`,
+    transitions: [{
+      from: "EXECUTE",
+      to: "CLOSE",
+      gate_result: "SKIP",
+      marker: "[ABANDONED]",
+      is_forced: true,
+    }],
+  }, null, 2));
+  writeFileSync(join(abandonedDeclaredDir, "scope.json"), JSON.stringify({ declared_files: ["src/plan-authority.mjs"] }, null, 2));
   writeFileSync(join(planAuthorityTemp, "src", "plan-authority.mjs"), "export const authority = true;\n");
   writeFileSync(join(programDir, "program_packet.json"), JSON.stringify({
     id: "PGM-PLAN-AUTHORITY",
@@ -340,11 +458,38 @@ try {
         lifecycle: "in_progress",
         child_plan: { policy: "required", plan_dir: nestedDeclaredRel },
       },
+      {
+        id: abandonedDeclaredTicketId,
+        title: "Abandoned declared child plan",
+        lifecycle: "in_progress",
+        child_plan: { policy: "required", plan_dir: abandonedDeclaredRel },
+      },
+      {
+        id: "T-UNKNOWN-LIFECYCLE",
+        title: "Unknown actionable lifecycle remains inspectable",
+        lifecycle: "queued",
+      },
+      {
+        title: "Missing ticket id is ignored safely",
+        lifecycle: "proposed",
+      },
+      {
+        id: blockedClosedTicketId,
+        title: "Blocked ticket with a completed declared successor",
+        lifecycle: "blocked",
+        child_plan: { policy: "required", plan_dir: planRel },
+      },
+      {
+        id: blockedOpenTicketId,
+        title: "Blocked ticket with an open declared successor",
+        lifecycle: "blocked",
+        child_plan: { policy: "required", plan_dir: openPlanRel },
+      },
     ],
   }, null, 2));
   runFixtureGit(planAuthorityTemp, ["init"]);
   runFixtureGit(planAuthorityTemp, ["add", "."]);
-  runFixtureGit(planAuthorityTemp, ["-c", "user.name=Planner Test", "-c", "user.email=planner-test@example.com", "commit", "-m", `${declaredTicketId} ${invalidDeclaredTicketId} ${missingDeclaredTicketId} ${nestedDeclaredTicketId} plan authority fixture`]);
+  runFixtureGit(planAuthorityTemp, ["-c", "user.name=Planner Test", "-c", "user.email=planner-test@example.com", "commit", "-m", `${declaredTicketId} ${invalidDeclaredTicketId} ${missingDeclaredTicketId} ${nestedDeclaredTicketId} ${abandonedDeclaredTicketId} ${blockedClosedTicketId} ${blockedOpenTicketId} plan authority fixture`]);
 
   const authorityReport = buildLifecycleReconciliationReport({ cwd: planAuthorityTemp, write: false });
   assert.equal(
@@ -371,6 +516,21 @@ try {
     authorityReport.findings.shipped_open.some((entry) => entry.ticket_id === nestedDeclaredTicketId),
     true,
     "scanner discovers and honors a supported nested Program child plan",
+  );
+  assert.equal(
+    authorityReport.findings.shipped_open.some((entry) => entry.ticket_id === abandonedDeclaredTicketId),
+    false,
+    "scanner does not treat a sanctioned abandoned child plan as shipment evidence",
+  );
+  assert.equal(
+    authorityReport.findings.shipped_open.filter((entry) => entry.ticket_id === blockedClosedTicketId).length,
+    1,
+    "blocked ticket with a declared closed successor enters evidence-verified reconciliation exactly once",
+  );
+  assert.equal(
+    authorityReport.findings.shipped_open.some((entry) => entry.ticket_id === blockedOpenTicketId),
+    false,
+    "blocked ticket with a declared open successor remains ineligible and cannot fall back",
   );
   assert(
     authorityReport.warnings.some((entry) => entry.code === "canonical_declared_plan_path_invalid"),
@@ -456,6 +616,12 @@ try {
   assert.equal(shipped.pending.staged_close.length, 0, "committed shipment no longer reports staged-pending evidence");
   assert.equal(shipped.findings.shipped_open.length, 1, "HEAD-reachable full-scope commit restores genuine shipped-open detection");
   assert.equal(shipped.findings.shipped_open[0].evidence_chain.some((entry) => entry.kind === "git_commit" && entry.detail === "full_delivery_scope"), true, "scanner report carries verified no-ID full-scope linkage");
+  const shippedWithoutStamps = buildLifecycleReconciliationReport({
+    cwd: stagedLifecycleTemp,
+    includeStampedArtifacts: false,
+    write: false,
+  });
+  assert.equal(shippedWithoutStamps.findings.shipped_open.length, 1, "explicit stamped-artifact opt-out preserves trusted commit reconciliation");
 
   writeFileSync(join(planDir, "scope.json"), JSON.stringify({
     version: 1,
@@ -656,17 +822,35 @@ try {
 }
 
 const report = buildLifecycleReconciliationReport({
-  cwd: process.cwd(),
   write: false,
 });
 
 const shippedByTicket = byTicket(report.findings.shipped_open);
-assert.equal(shippedByTicket.size, 0, "post-disposition lifecycle reconciliation has no shipped-open findings");
+const canonicalProgramPacket = JSON.parse(readFileSync("plans/programs/ive-trust-repair/program_packet.json", "utf-8"));
+const convergenceProgramPacket = JSON.parse(readFileSync("plans/programs/ive-consolidation-rectification/program_packet.json", "utf-8"));
+const expectedShippedOpen = [
+  ["T-INTAKE-CF4AC8A5", "blocked"],
+  ["T-INTAKE-D6AE86C9", "blocked"],
+  ["T-INTAKE-56F58BA6", "in_progress"],
+].filter(([ticketId, lifecycle]) => {
+  const ticket = (canonicalProgramPacket.tickets || []).find((candidate) => candidate.id === ticketId);
+  return ticket?.lifecycle === lifecycle
+    && (ticketId !== "T-INTAKE-56F58BA6" || childPlanIsClosed(ticket));
+}).map(([ticketId]) => ticketId);
+const convergenceTicket = (convergenceProgramPacket.tickets || [])
+  .find((ticket) => ticket.id === "T-INTAKE-A7B1851A");
+if (convergenceTicket?.lifecycle === "in_progress" && childPlanIsClosed(convergenceTicket)) {
+  expectedShippedOpen.push(convergenceTicket.id);
+}
+assert.deepEqual(
+  [...shippedByTicket.keys()].sort(),
+  expectedShippedOpen.sort(),
+  "lifecycle reconciliation reports every canonical shipped/open ticket awaiting evidence-gated disposition",
+);
 const awaitingByTicket = byTicket(report.exemptions.awaiting_external_action);
 assert(!awaitingByTicket.has("T-INTAKE-10643BA2"), "L3 ticket exemption expired after the green receipt closed it (2026-07-12)");
 {
-  const packet = JSON.parse(readFileSync("plans/programs/ive-trust-repair/program_packet.json", "utf-8"));
-  const l3Ticket = (packet.tickets || []).find((ticket) => ticket.id === "T-INTAKE-10643BA2");
+  const l3Ticket = (canonicalProgramPacket.tickets || []).find((ticket) => ticket.id === "T-INTAKE-10643BA2");
   assert.equal(l3Ticket?.lifecycle, "closed", "L3 ticket closed via evidence-verified disposition");
   assert(!l3Ticket?.awaiting_external_action, "expired awaiting_external_action is removed from the closed ticket");
   assert(
@@ -717,20 +901,38 @@ for (const ticketId of ["T-INTAKE-DB2421D7", "T-INTAKE-E8A55E22"]) {
 }
 
 const summary = lifecycleReconciliationSummary(report);
-assert.equal(summary.shipped_open_findings, 0, "summary carries zero shipped-open findings");
+assert.equal(summary.shipped_open_findings, expectedShippedOpen.length, "summary carries only the expected pending Item 4 and parked J16 findings");
 assert.equal(summary.duplicate_scope_findings, 0, "active E4 delivery clears its former duplicate-scope advisory");
 const renderedReport = renderLifecycleReconciliationText(report);
 assert.match(renderedReport, /^Lifecycle reconciliation: ADVISORY$/m, "text report identifies the advisory reconciliation surface");
-assert.match(renderedReport, /^Findings: 0 \(0 shipped-open, 0 duplicate-scope\)$/m, "text report renders canonical finding counts");
-assertLifecycleExemptionConformance(report, { cwd: process.cwd() });
+assert.match(
+  renderedReport,
+  new RegExp(`^Findings: ${expectedShippedOpen.length} \\(${expectedShippedOpen.length} shipped-open, 0 duplicate-scope\\)$`, "m"),
+  "text report renders canonical finding counts",
+);
+const exemptionConformanceReport = JSON.parse(JSON.stringify(report));
+exemptionConformanceReport.findings.shipped_open = exemptionConformanceReport.findings.shipped_open.filter((finding) =>
+  !expectedShippedOpen.includes(finding.ticket_id)
+);
+exemptionConformanceReport.counts.shipped_open_findings = exemptionConformanceReport.findings.shipped_open.length;
+exemptionConformanceReport.counts.advisory_findings = exemptionConformanceReport.findings.shipped_open.length
+  + exemptionConformanceReport.findings.duplicate_scope.length;
+assertLifecycleExemptionConformance(exemptionConformanceReport, { cwd: process.cwd() });
 assert(
   !report.findings.duplicate_scope.some((finding) => finding.ticket_id === "T-INTAKE-D0585FC9"),
   "active E4 ticket is no longer reported as duplicate-scope backlog",
 );
-if (summary.awaiting_external_action_exemptions === 0 && summary.staged_close_pending_commit === 0) {
+if (summary.advisory_findings === 0 && summary.awaiting_external_action_exemptions === 0 && summary.staged_close_pending_commit === 0) {
   assert.equal(renderLifecycleReconciliationStatusLine(summary), "", "clean reconciliation status line stays silent when no findings or exemptions exist");
 } else {
   const statusLine = renderLifecycleReconciliationStatusLine(summary);
+  if (summary.shipped_open_findings > 0) {
+    assert.match(
+      statusLine,
+      new RegExp(`${summary.shipped_open_findings} shipped-open`),
+      "pending shipped-open findings remain visible in the reconciliation status line",
+    );
+  }
   if (summary.awaiting_external_action_exemptions > 0) {
     assert.match(
       statusLine,
@@ -1175,6 +1377,15 @@ try {
     filteredByPeer.findings.duplicate_scope.some((finding) => finding.packet_path === copiedPacketRel && finding.matched_scope.packet_path === "plans/programs/resolution-peer/program_packet.json"),
     "Program filtering retains findings where the selected Program is the matched scope",
   );
+  assert.equal(filteredByPeer.counts.programs_scanned, 1, "exact Program filtering scans only the selected Program for lifecycle evidence");
+  assert.equal(filteredByPeer.counts.tickets_scanned, 1, "exact Program filtering applies candidate budgets only after target selection");
+  const filteredByCanonicalId = buildLifecycleReconciliationReport({
+    cwd: proposedResolutionTemp,
+    program: "PGM-RESOLUTION-PEER",
+    write: false,
+  });
+  assert.equal(filteredByCanonicalId.program_filter?.packet_path, "plans/programs/resolution-peer/program_packet.json", "canonical Program ID resolves independently of its directory slug");
+  assert.equal(filteredByCanonicalId.counts.programs_scanned, 1, "canonical ID filtering preserves exact scan counts");
   const whitespaceFilter = buildLifecycleReconciliationReport({ cwd: proposedResolutionTemp, program: " ", write: false });
   assert.equal(whitespaceFilter.program_filter, null, "blank Program filter falls back to the complete lifecycle report");
 } finally {

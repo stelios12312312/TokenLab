@@ -4,6 +4,7 @@ import { existsSync, readFileSync, realpathSync } from "fs";
 import { resolve, basename } from "path";
 import { fileURLToPath } from "url";
 
+import { emitJson } from "./lib/emit_json.mjs";
 import { loadOntologyRuntime } from "./lib/ontology_runtime.mjs";
 import { sanitizeStrictId } from "./lib/sanitize.mjs";
 
@@ -575,14 +576,14 @@ function main() {
   });
 
   if (options.json) {
-    console.log(JSON.stringify(result, null, 2));
+    emitJson(result, { exitCode: result.ok ? 0 : 1 });
   } else if (result.ok) {
     console.log(renderHumanSummary(result));
+    process.exit(0);
   } else {
     console.error(result.issues.join("\n"));
+    process.exit(1);
   }
-
-  process.exit(result.ok ? 0 : 1);
 }
 
 if (_isMain) {

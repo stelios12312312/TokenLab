@@ -11,6 +11,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 
 import { buildContextPacket, DEFAULT_ENTRY_BUDGET } from "./context_packet.mjs";
 import { buildWorkflowContractSummary } from "./workflow_contracts.mjs";
+import { evaluateExternalPrerequisites } from "./program_packet.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const libDir = dirname(__filename);
@@ -290,22 +291,52 @@ function titleLaneMatch(goal, ticket) {
   return lane ? new RegExp(`\\b${lane}\\b`, "i").test(goal) : false;
 }
 
-function selectProgramContext({ cwd, goal }) {
+function activePlanProgramSelection({ cwd, decision, preflight, packets }) {
+  if (decision?.route !== "continue_active_plan" || preflight?.active_plan?.used_for_classification !== true) return null;
+  const planDirName = asString(preflight?.active_plan?.plan_dir_name);
+  if (!planDirName || planDirName.includes("/") || planDirName.includes("\\") || planDirName === "." || planDirName === "..") return null;
+  const state = safeJson(join(cwd, "plans", planDirName, "state.json"));
+  const context = state?.program_context;
+  const expectedProgramId = asString(context?.program_id);
+  const expectedTicketId = asString(context?.ticket_id);
+  const packetRef = asString(context?.program_packet_path);
+  let selected = null;
+  if (packetRef) {
+    const candidatePath = resolve(cwd, packetRef);
+    const candidateRel = relative(cwd, candidatePath);
+    if (candidateRel !== ".." && !candidateRel.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)) {
+      selected = packets.find((entry) => resolve(entry.path) === candidatePath) || null;
+    }
+  }
+  if (!selected && expectedProgramId) {
+    const matches = packets.filter((entry) => programId(entry.packet) === expectedProgramId);
+    if (matches.length === 1) selected = matches[0];
+  }
+  if (!selected || (expectedProgramId && programId(selected.packet) !== expectedProgramId)) return null;
+  if (expectedTicketId && !asArray(selected.packet?.tickets).some((ticket) => asString(ticket?.id) === expectedTicketId)) return null;
+  return { selected, ticket_ids: expectedTicketId ? [expectedTicketId] : [], source: "active_plan_program_context" };
+}
+
+function selectProgramContext({ cwd, goal, decision = null, preflight = null }) {
   const packets = loadProgramPackets(cwd);
   const normalizedGoal = normalizeGoal(goal);
   const explicitTicketIds = unique(String(goal || "").match(/T-[A-Z0-9-]+/g) || []);
+  const preferred = activePlanProgramSelection({ cwd, decision, preflight, packets });
   const ranked = packets.map((entry) => {
     const id = programId(entry.packet);
     const tickets = asArray(entry.packet.tickets);
     const exactProgram = id && normalizedGoal.includes(id.toLowerCase());
     const exactTicket = tickets.some((ticket) => explicitTicketIds.includes(asString(ticket.id)));
-    return { ...entry, score: exactProgram ? 1000 : exactTicket ? 900 : overlap(goal, `${id} ${entry.packet.title} ${entry.packet.goal}`) };
-  }).filter((entry) => entry.score > 0).sort((left, right) => right.score - left.score);
-  const selected = ranked[0];
+    const exact = exactProgram || exactTicket;
+    return { ...entry, exact, score: exactProgram ? 1000 : exactTicket ? 900 : overlap(goal, `${id} ${entry.packet.title} ${entry.packet.goal}`) };
+  }).filter((entry) => entry.score > 0 && (entry.exact || asString(entry.packet?.status).toLowerCase() !== "closed"))
+    .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
+  const selected = preferred?.selected || ranked[0];
   if (!selected) return { program: null, tickets: [], warnings: [], source: null };
 
   const packet = selected.packet;
-  let tickets = asArray(packet.tickets).filter((ticket) => explicitTicketIds.includes(asString(ticket.id)) || titleLaneMatch(goal, ticket));
+  const preferredTicketIds = new Set(preferred?.ticket_ids || []);
+  let tickets = asArray(packet.tickets).filter((ticket) => preferredTicketIds.has(asString(ticket.id)) || (!preferred && (explicitTicketIds.includes(asString(ticket.id)) || titleLaneMatch(goal, ticket))));
   if (tickets.length === 0) {
     tickets = asArray(packet.tickets)
       .map((ticket) => ({ ticket, score: overlap(goal, `${ticket.id} ${ticket.title} ${ticket.problem}`) }))
@@ -320,6 +351,9 @@ function selectProgramContext({ cwd, goal }) {
   const verification = asArray(packet.verification_matrix);
   const dependencies = asArray(packet.dependencies);
   const warnings = [];
+  const externalPrerequisites = evaluateExternalPrerequisites(packet, {
+    programPackets: packets.map((entry) => entry.packet),
+  });
   for (const epic of asArray(packet.epics)) {
     for (const storyRef of asArray(epic.story_refs)) {
       if (!registryIds.has(asString(storyRef))) warnings.push(`Unknown Program story reference: ${storyRef} (epic ${epic.id || "unknown"})`);
@@ -338,6 +372,8 @@ function selectProgramContext({ cwd, goal }) {
       gap_refs: unique(ticket.gap_refs),
       defect_refs: unique(ticket.defect_refs),
       depends_on: unique(ticket.depends_on),
+      external_prerequisites: asArray(ticket.external_prerequisites),
+      prerequisite_blockers: externalPrerequisites.blockers.filter((entry) => entry.ticket_id === asString(ticket.id)),
       acceptance_criteria: acceptance.filter((row) => asArray(ticket.acceptance_criteria).includes(row.id) || row.subject_ref === ticket.id),
       verification_rows: verification.filter((row) => asArray(ticket.verification_refs).includes(row.id) || row.subject_ref === ticket.id),
       dependency_rows: dependencies.filter((row) => [row.from, row.source_ref, row.subject_ref].includes(ticket.id) || [row.to, row.target_ref].includes(ticket.id)),
@@ -345,6 +381,9 @@ function selectProgramContext({ cwd, goal }) {
       external_refs: asArray(ticket.external_refs),
     };
   });
+  for (const blocker of externalPrerequisites.blockers.filter((entry) => tickets.some((ticket) => asString(ticket.id) === entry.ticket_id))) {
+    warnings.push(`Unsatisfied external prerequisite for ${blocker.ticket_id}: ${blocker.message}`);
+  }
   return {
     program: {
       id: programId(packet),
@@ -355,6 +394,7 @@ function selectProgramContext({ cwd, goal }) {
     tickets: expandedTickets,
     warnings: unique(warnings),
     source: rel(cwd, selected.path),
+    selection_source: preferred?.source || "goal_match",
   };
 }
 
@@ -551,7 +591,7 @@ export async function buildGuidancePacket({
     knowledge_reasons: [],
     error: null,
   } : runWorkPreflight(root, goal);
-  const programContext = proportionality === "skip" ? { program: null, tickets: [], warnings: [], source: null } : selectProgramContext({ cwd: root, goal });
+  const programContext = proportionality === "skip" ? { program: null, tickets: [], warnings: [], source: null } : selectProgramContext({ cwd: root, goal, decision, preflight });
   const primaryTicket = programContext.tickets[0]?.id || null;
   const contextPacket = buildContextPacket({
     cwd: root,

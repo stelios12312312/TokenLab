@@ -164,6 +164,18 @@ export function buildBaselineFromIstanbul({ report, repoRoot = REPO_ROOT, genera
   };
 }
 
+export function preserveByteUnchangedCoverageRows(measuredBaseline, previousBaseline) {
+  if (!previousBaseline || !Array.isArray(previousBaseline.targets)) return measuredBaseline;
+  const previousRows = new Map(previousBaseline.targets.map((row) => [normalizePath(row?.file), row]));
+  return {
+    ...measuredBaseline,
+    targets: (measuredBaseline.targets || []).map((measuredRow) => {
+      const previousRow = previousRows.get(normalizePath(measuredRow?.file));
+      return previousRow?.source_hash === measuredRow?.source_hash ? previousRow : measuredRow;
+    }),
+  };
+}
+
 export function validateBaselineArtifact(baseline, { repoRoot = REPO_ROOT, requireFresh = true, expectedTargets = COVERAGE_TARGETS } = {}) {
   const issues = [];
   const rows = Array.isArray(baseline?.targets) ? baseline.targets : [];
@@ -344,10 +356,14 @@ async function measureCoverage(args) {
     }
     const reportPath = join(reportDir, "coverage-final.json");
     if (!existsSync(reportPath)) throw new Error("c8 did not produce coverage-final.json");
-    const baseline = buildBaselineFromIstanbul({
+    const measuredBaseline = buildBaselineFromIstanbul({
       report: readJson(reportPath),
       workload: COVERAGE_WORKLOAD,
     });
+    const baseline = preserveByteUnchangedCoverageRows(
+      measuredBaseline,
+      args.noHead ? null : readHeadBaseline(REPO_ROOT, args.baseline),
+    );
     atomicWriteJson(args.baseline, baseline);
     return { status: "PASS", command: "measure", baseline_path: normalizePath(relative(REPO_ROOT, args.baseline)), target_count: baseline.targets.length, targets: baseline.targets };
   } finally {

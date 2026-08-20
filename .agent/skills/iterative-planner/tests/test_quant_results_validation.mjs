@@ -12,6 +12,7 @@ import {
   evaluateQuantArtifactKillClaim,
 } from "../scripts/lib/quant_results_validation.mjs";
 import { stampRunRecordPayload } from "../scripts/lib/run_record.mjs";
+import { materializeScientificBundle } from "./lib/scientific_fixture.mjs";
 
 let passed = 0;
 let failed = 0;
@@ -39,6 +40,7 @@ function writePlanFiles(planDir, { plan = "", verification = "", validation = nu
   writeFileSync(join(planDir, "verification.md"), verification || "# Verification\n");
   writeFileSync(join(planDir, "reflection.md"), "# Reflection\n");
   if (validation !== null) {
+    if (validation?.scientific_review_request) materializeScientificBundle(planDir);
     writeFileSync(join(planDir, "quant_results_validation.json"), JSON.stringify(validation, null, 2));
     const ref = validation?.evidence?.leakage_audit?.artifact;
     if (writeLeakageArtifact && ref === "leakage-audit.json") {
@@ -170,6 +172,7 @@ function completePromotionArtifact(overrides = {}) {
     applicable: true,
     run_class: "promotion_candidate",
     promotion_verdict: "promotable",
+    scientific_review_request: "scientific/review-request.json",
     search: {
       trials_completed: 200,
       unique_parameter_count: 40,
@@ -295,11 +298,17 @@ function scenarioCompleteBettingEvidencePasses() {
       planDir,
       planContent: "# Plan\n\nIPBS betting inefficiency report with CLV and odds snapshot evidence.",
       annotations: [],
+      quantResultsValidationOverride: signal,
     });
     assert(serialized.facts.includes("quant_semantic_gate_count(1)."), "ontology facts expose semantic gate count");
     assert(serialized.facts.includes("quant_semantic_gate('leakage_audit', true)."), "ontology facts expose passing leakage gate");
     assert(serialized.facts.includes("quant_claim_ledger_count(2)."), "ontology facts expose claim ledger count");
     assert(serialized.facts.includes("quant_claim_status('leakage_audit', 'confirmed')."), "ontology facts expose confirmed leakage claim");
+    assert(serialized.facts.includes("scientific_execution_status('complete')."), "ontology facts expose recomputed scientific execution status");
+    assert(serialized.facts.includes("scientific_design_validity('valid')."), "ontology facts expose scientific design validity");
+    assert(serialized.facts.includes("scientific_evidence_grade('evidence')."), "ontology facts expose scientific evidence grade");
+    assert(serialized.facts.includes("scientific_verdict('supported')."), "ontology facts expose the scientific verdict independently");
+    assert(serialized.facts.includes("scientific_promotion_status('candidate_for_confirmation')."), "ontology facts expose lifecycle promotion status");
   } finally {
     rmSync(planDir, { recursive: true, force: true });
   }
@@ -1048,33 +1057,70 @@ the tooling plan documents those trigger words and tests the result validator.
   }
 }
 
-function scenarioStructuredPlannerCoreShapeSuppressesQuotedQuantBoundary() {
-  const planDir = makePlanDir("structured-planner-core-quant-boundary");
-  try {
-    writePlanFiles(planDir, {
-      plan: `# Plan
+const plannerCoreBoundaryFixtureText = `# Plan
 
 ## Goal
 
-Repair planner coverage reporting where the documented model result beats baseline trigger is only heuristic test language.
+Repair planner coverage reporting where documented model results beat a baseline only as validator fixture language.
 
-## Files To Modify
+## False-Positive Boundary
 
-- .agent/skills/iterative-planner/scripts/lib/quant_results_validation.mjs
-- .agent/skills/iterative-planner/tests/test_quant_results_validation.mjs
-- reports/user_story_audit/story_registry.json
-`,
+This planner-core contract mentions coverage, calibration, optimization results, and baseline comparisons solely to test classification. It makes no live model-result claim.
+`;
+
+function scenarioExactStructuredPlannerCoreShapeSuppressesQuotedQuantBoundary() {
+  const planDir = makePlanDir("exact-structured-planner-core-quant-boundary");
+  try {
+    writePlanFiles(planDir, {
+      plan: plannerCoreBoundaryFixtureText,
     });
     writeFileSync(join(planDir, "state.json"), JSON.stringify({
       plan_shape: {
-        primary: "feature",
-        source: "goal_text",
+        primary: "planner-core",
+        detected_primary: "planner-core",
       },
     }, null, 2));
 
     const signal = computeQuantResultsValidationSignal({ planDir });
-    assert(signal.required === false, "mixed-scope planner-core plan is re-detected despite stale feature state shape");
-    assert(signal.satisfied === true && signal.status === "not_required", "re-detected planner-core shape needs no quant result artifact");
+    assert(signal.required === false, "exact primary plus detected_primary planner-core state suppresses quoted result language");
+    assert(signal.satisfied === true && signal.status === "not_required", "exact structured planner-core state needs no quant result artifact");
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioDetectedPrimaryPlannerCoreCompatibilityFallback() {
+  const planDir = makePlanDir("detected-primary-planner-core-compatibility");
+  try {
+    writePlanFiles(planDir, { plan: plannerCoreBoundaryFixtureText });
+    writeFileSync(join(planDir, "state.json"), JSON.stringify({
+      plan_shape: {
+        detected_primary: "planner-core",
+      },
+    }, null, 2));
+
+    const signal = computeQuantResultsValidationSignal({ planDir });
+    assert(signal.required === false, "detected_primary-only planner-core state uses the compatibility fallback");
+    assert(signal.satisfied === true && signal.status === "not_required", "detected_primary-only planner-core state needs no quant result artifact");
+  } finally {
+    rmSync(planDir, { recursive: true, force: true });
+  }
+}
+
+function scenarioStructuredPrimaryRemainsAuthoritative() {
+  const planDir = makePlanDir("structured-primary-authority");
+  try {
+    writePlanFiles(planDir, { plan: genericMlFixtureText });
+    writeFileSync(join(planDir, "state.json"), JSON.stringify({
+      plan_shape: {
+        primary: "scientific",
+        detected_primary: "planner-core",
+      },
+    }, null, 2));
+
+    const signal = computeQuantResultsValidationSignal({ planDir });
+    assert(signal.required === true, "present scientific primary remains authoritative over detected planner-core fallback");
+    assert(signal.satisfied === false && signal.status === "missing_artifact", "scientific primary preserves genuine ML fail-closed behavior");
   } finally {
     rmSync(planDir, { recursive: true, force: true });
   }
@@ -1474,7 +1520,9 @@ function scenarioLegacyExp012BundleProjection() {
 
 scenarioGenericMlMissingArtifactBlocks();
 scenarioPlannerCoreFilesSuppressQuotedQuantBoundary();
-scenarioStructuredPlannerCoreShapeSuppressesQuotedQuantBoundary();
+scenarioExactStructuredPlannerCoreShapeSuppressesQuotedQuantBoundary();
+scenarioDetectedPrimaryPlannerCoreCompatibilityFallback();
+scenarioStructuredPrimaryRemainsAuthoritative();
 scenarioGenericMlDiagnosticPasses();
 scenarioGenericMlLeakageFailureBlocks();
 scenarioNonResultSkipsEnvironmentObservation();

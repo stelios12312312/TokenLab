@@ -8,6 +8,7 @@ import { existsSync, readFileSync, realpathSync } from "fs";
 import { basename, relative, resolve, sep } from "path";
 import { fileURLToPath } from "url";
 
+import { emitJson } from "./lib/emit_json.mjs";
 import { extractMarkdownSection } from "./lib/plan_utils.mjs";
 
 const SCHEMA_ID = "mini_reflection/v1";
@@ -410,12 +411,14 @@ function main() {
     filePath: args.filePath,
   });
 
+  const exitCode = result.ok ? 0 : 1;
   if (args.json) {
-    console.log(JSON.stringify(result, null, 2));
+    emitJson(result, { exitCode });
+    return;
   } else {
     console.log(renderHuman(result));
   }
-  process.exit(result.ok ? 0 : 1);
+  process.exitCode = exitCode;
 }
 
 if (isMainModule()) {

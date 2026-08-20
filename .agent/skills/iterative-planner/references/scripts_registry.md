@@ -15,6 +15,7 @@ This document serves as a registry for all utility scripts used by the Iterative
 | `app_dev_tesseract_check.mjs` | Validation tool for Tesseract-based application development. |
 | `audit_runner.mjs` | Core execution engine for running red-team, regression, and user-story audits. |
 | `autocoder_metrics.mjs` | Collects IVE/autocoder proof, close-evidence, lifecycle, and telemetry metrics. |
+| `autonomous_ticket_delivery.mjs` | Preflights one explicitly selected production Program ticket, spends zero invocations when blocked, otherwise runs once in an isolated Git worktree and emits sanitized diagnostics plus a parent-countersigned artifact grade and receipt without merging or remote mutation. |
 | `autonomous_driver.mjs` | Orchestrator for running the planner in autonomous batch mode. |
 | `autonomy_leash.mjs` | Safety leash and budget controls for autonomous execution. |
 | `batch.mjs` | Handles batch processing for planner operations. |
@@ -84,7 +85,7 @@ This document serves as a registry for all utility scripts used by the Iterative
 | `pre-commit-hook.sh` | Utility script supporting planner operations. |
 | `pre_push_conformance.mjs` | Git pre-push hook to prevent pushing to main branch when IVE conformance is red. |
 | `pre_commit_policy.mjs` | Enforces pre-commit policies for the repository. |
-| `program_manager.mjs` | Roadmap and program orchestrator for managing epics and tickets. |
+| `program_manager.mjs` | Roadmap and program orchestrator for managing epics and tickets, including dry-run-first explicit revival of deferred tickets. |
 | `project.mjs` | Project-level planner utilities. |
 | `project_health.mjs` | Scans the codebase for stale documentation references, orphaned scripts, and config gaps. |
 | `project_ive.mjs` | Workspace integration script for IVE. |

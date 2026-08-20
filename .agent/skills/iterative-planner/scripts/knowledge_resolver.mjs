@@ -15,6 +15,7 @@ import { existsSync, readFileSync } from "fs";
 import { join, resolve, relative } from "path";
 import { fileURLToPath } from "url";
 
+import { emitJson } from "./lib/emit_json.mjs";
 import {
   analyzeIntentContract,
   classifyPlannerPreflight,
@@ -1642,7 +1643,7 @@ if (isDirectExecution) {
   if (flags.kbRelevant) {
     const summary = summarizeKbRelevance(payload);
     if (flags.json) {
-      process.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+      emitJson(summary, { exitCode: 0 });
     } else {
       console.log(`KB relevance for goal: ${summary.goal || "(not provided)"}`);
       console.log(`Matched ${summary.count} entry(ies):`);
@@ -1655,11 +1656,9 @@ if (isDirectExecution) {
         if (entry.source_refs?.length) console.log(`      refs: ${entry.source_refs.join(", ")}`);
       }
       console.log(`\n${summary.advisory}`);
+      process.exit(0);
     }
-    process.exit(0);
-  }
-
-  if (flags.json) {
+  } else if (flags.json) {
     process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   } else {
     console.log("Knowledge Resolver");

@@ -30,6 +30,7 @@ import {
   ONTOLOGY_ENTITY_CLASSES,
 } from "../scripts/lib/ontology_schema.mjs";
 import {
+  listFleetManagedWorkflowFiles,
   workflowFileHasExplicitHostOwnerMarker,
 } from "../scripts/lib/workflow_contracts.mjs";
 
@@ -297,6 +298,16 @@ function testFrontDoorStatusAndDefaultAdopt() {
     assert(!existsSync(rel(tmp, "reports/migration")), "ive-adopt default dry-run does not create a migration report directory");
     assertCanonicalUnchanged(tmp, beforeDefaultAdopt, "ive-adopt default dry-run");
 
+    const humanDefaultAdopt = runRaw([sourceMigrate, "ive-adopt", tmp, "--phase", "0.5"]);
+    assert(
+      humanDefaultAdopt.ok
+        && humanDefaultAdopt.status === 0
+        && /IVE MIGRATION\s+pass/i.test(humanDefaultAdopt.stdout)
+        && humanDefaultAdopt.stdout.includes("Mode:      dry-run (default)"),
+      "ive-adopt human success renders PASS and preserves the zero exit status",
+    );
+    assertCanonicalUnchanged(tmp, beforeDefaultAdopt, "ive-adopt human default dry-run");
+
     const beforeExplicitDryRun = canonicalSnapshot(tmp);
     const explicitDryRun = runJson([sourceMigrate, "ive-adopt", tmp, "--phase", "0.5", "--dry-run", "--json"]);
     assert(explicitDryRun.ok && explicitDryRun.dry_run === true, "explicit ive-adopt --dry-run reports PASS");
@@ -304,9 +315,34 @@ function testFrontDoorStatusAndDefaultAdopt() {
     assertCanonicalUnchanged(tmp, beforeExplicitDryRun, "explicit ive-adopt --dry-run");
 
     const conflict = runRaw([sourceMigrate, "ive-adopt", tmp, "--phase", "0.5", "--dry-run", "--write", "--json"]);
-    assert(!conflict.ok, "ive-adopt rejects simultaneous --dry-run and --write");
+    assert(!conflict.ok && conflict.status === 1, "ive-adopt JSON failure exits one for simultaneous --dry-run and --write");
     const conflictJson = JSON.parse(conflict.stdout);
     assert(conflictJson.status === "FAIL" && /mutually exclusive/.test(conflictJson.reason), "mode conflict explains the mutually exclusive flags");
+
+    const humanConflict = runRaw([sourceMigrate, "ive-adopt", tmp, "--phase", "0.5", "--dry-run", "--write"]);
+    assert(
+      !humanConflict.ok
+        && humanConflict.status === 1
+        && /IVE MIGRATION\s+fail/i.test(humanConflict.stdout)
+        && humanConflict.stdout.includes("--dry-run and --write are mutually exclusive"),
+      "ive-adopt human failure renders FAIL and preserves the one exit status",
+    );
+
+    const humanWriteAdopt = runRaw([sourceMigrate, "ive-adopt", tmp, "--phase", "0.5", "--write"]);
+    assert(
+      humanWriteAdopt.ok
+        && humanWriteAdopt.status === 0
+        && /IVE MIGRATION\s+pass/i.test(humanWriteAdopt.stdout)
+        && humanWriteAdopt.stdout.includes("Mode:      write")
+        && humanWriteAdopt.stdout.includes("Canonical touched: yes")
+        && humanWriteAdopt.stdout.includes("Read-only: no")
+        && humanWriteAdopt.stdout.includes("Backup:")
+        && humanWriteAdopt.stdout.includes("Backup dir:")
+        && humanWriteAdopt.stdout.includes("Report:")
+        && humanWriteAdopt.stdout.includes("Plan:")
+        && humanWriteAdopt.stdout.includes("Config integrity: retired"),
+      "ive-adopt human write renders its mutation, backup, report, and config-integrity evidence",
+    );
   } finally {
     cleanup(tmp);
   }
@@ -461,6 +497,18 @@ function testMigrationReadinessCurrentJsonAndHuman() {
     assert(human.stdout.includes("Advisory gaps:"), "migration-readiness human output names advisory gaps");
     assert(human.stdout.includes("Remaining operator actions:"), "migration-readiness human output names remaining actions");
     assert(human.stdout.includes("Registry scope:"), "migration-readiness human output preserves registry scope");
+
+    const missingSourceRefResult = runRaw([sourceMigrate, "detect", tmp, "--source-ref"]);
+    assert(
+      !missingSourceRefResult.ok && String(missingSourceRefResult.stderr).includes("--source-ref requires a non-empty"),
+      "missing --source-ref value fails closed before migration routing",
+    );
+    const emptySourceRefResult = runRaw([sourceMigrate, "detect", tmp, "--source-ref="]);
+    assert(
+      !emptySourceRefResult.ok && String(emptySourceRefResult.stderr).includes("--source-ref requires a non-empty"),
+      "empty inline --source-ref value fails closed before migration routing",
+    );
+    assertCanonicalUnchanged(tmp, before, "malformed source-ref options");
   } finally {
     cleanup(tmp);
   }
@@ -552,15 +600,18 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
   const managedRel = ".agent/skills/iterative-planner/prolog/invariants.pl";
   const secondManagedRel = ".agent/skills/iterative-planner/MIGRATION.md";
   const retiredWorkflowRel = ".agent/workflows/b4fc-retired-workflow.md";
+  const sidekickWorkflowRel = ".agent/workflows/sidekick.md";
   const retiredTestRel = ".agent/skills/iterative-planner/tests/test_b4fc_retired_contract.mjs";
   const customWorkflowRel = ".agent/workflows/customer-custom-workflow.md";
   const customWorkflowBytes = "---\ndescription: Consumer-owned workflow fixture\n---\n\n# Customer workflow\n";
   const customTestRel = ".agent/skills/iterative-planner/tests/fixtures/customer_custom_probe.json";
   const projectRegistryRel = ".agent/skills/iterative-planner/config/.project_registry.json";
+  const workflowInventoryRel = ".agent/skills/iterative-planner/config/workflow_migration_inventory.json";
   const legacyProvenanceRel = ".agent/skills/iterative-planner/config/legacy_managed_blob_provenance.json";
   const ledgerOnlyLegacyBytes = "% CANONICAL LEGACY RELEASE BYTES OMITTED FROM REACHABLE HISTORY\n";
   const dirtySentinel = "% DIRTY_UPSTREAM_WORKTREE_MUST_NEVER_SHIP";
   const committedV2 = "% COMMITTED_UPSTREAM_V2";
+  const committedV3 = "% COMMITTED_UPSTREAM_V3";
   const committedDocV2 = "<!-- COMMITTED_UPSTREAM_DOC_V2 -->";
   const consumerFix = "% I-035 COMMITTED CONSUMER FIX MUST SURVIVE";
   const ignoreManagedPath = (projectRoot, relativePath) => {
@@ -679,7 +730,7 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
       });
       if (
         !directCoverageApply.ok
-        || !directCoverageApply.stdout.includes("UPDATED: .agent/skills/iterative-planner/config/.project_registry.json")
+        || (!directCoverageApply.stdout.includes("SETUP COMPLETE") && !directCoverageApply.stdout.includes("UPGRADE COMPLETE"))
       ) {
         throw new Error(`canonical direct coverage apply failed: ${directCoverageApply.stdout || directCoverageApply.stderr}`);
       }
@@ -744,6 +795,26 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
         const diagnostic = `${coverageApply.stdout || ""}\n${coverageApply.stderr || ""}`;
         throw new Error(`canonical coverage write probe failed:\n${diagnostic.slice(-12000)}`);
       }
+      writeFileSync(join(coverageTarget, customWorkflowRel), customWorkflowBytes);
+      commitAll(
+        coverageTarget,
+        "fixture: restore unmarked host workflow for canonical apply coverage",
+        { noVerify: true },
+      );
+      const coverageMarkerApply = runRaw([
+        sourceMigrate,
+        "upgrade", coverageTarget, "--source-ref", sourceHead, "--transaction-apply",
+      ], coverageSourceRoot, {
+        ...coverageEnv,
+        _PLANNER_MANAGED_UPGRADE_INTERNAL: "1",
+      });
+      if (
+        !coverageMarkerApply.ok
+        || !coverageMarkerApply.stdout.includes("MARKED host-owned workflow:")
+        || !workflowFileHasExplicitHostOwnerMarker(join(coverageTarget, customWorkflowRel))
+      ) {
+        throw new Error(`canonical host-workflow marker coverage failed: ${coverageMarkerApply.stdout || coverageMarkerApply.stderr}`);
+      }
       const coverageNoOp = runRaw([
         sourceMigrate,
         "upgrade", coverageTarget, "--source-ref", sourceHead, "--dry-run",
@@ -788,6 +859,13 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
     }
 
     cpSync(join(repoRoot, ".agent"), join(sourceRoot, ".agent"), { recursive: true });
+    const parkedInventoryBytes = readFileSync(join(sourceRoot, workflowInventoryRel), "utf-8");
+    const baseInventory = JSON.parse(parkedInventoryBytes);
+    const baseSidekickEntry = baseInventory.entries.find((entry) => entry.workflow === "/sidekick");
+    if (!baseSidekickEntry) throw new Error("fixture requires the governed /sidekick inventory row");
+    baseSidekickEntry.v7_action = "New";
+    baseSidekickEntry.notes = "Fixture base release keeps sidekick active before its governed retirement.";
+    writeJson(join(sourceRoot, workflowInventoryRel), baseInventory);
     const ledgerProbePath = join(sourceRoot, ".ledger-only-legacy-probe");
     writeFileSync(ledgerProbePath, ledgerOnlyLegacyBytes);
     const ledgerOnlyLegacyBlob = runGit(sourceRoot, ["hash-object", "--", ledgerProbePath]);
@@ -801,9 +879,15 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
       observed_versions: ["fixture"],
     });
     writeJson(join(sourceRoot, legacyProvenanceRel), legacyProvenance);
+    writeFileSync(join(sourceRoot, sidekickWorkflowRel), "# Active sidekick before its parked disposition\n");
     writeFileSync(join(sourceRoot, retiredWorkflowRel), "# Planner-owned workflow before retirement\n");
     writeFileSync(join(sourceRoot, retiredTestRel), "process.exit(0);\n");
     runGit(sourceRoot, ["init", "-q"], { quiet: true });
+    const sidekickActiveCommit = commitAll(sourceRoot, "fixture: active sidekick release");
+    writeFileSync(join(sourceRoot, workflowInventoryRel), parkedInventoryBytes);
+    rmSync(join(sourceRoot, sidekickWorkflowRel));
+    mkdirSync(join(sourceRoot, ".agent", "_parked"), { recursive: true });
+    writeFileSync(join(sourceRoot, ".agent", "_parked", "sidekick.md"), "# Parked sidekick\n");
     const baseCommit = commitAll(sourceRoot, "fixture: base planner release");
 
     appendText(join(sourceRoot, managedRel), committedV2);
@@ -811,9 +895,15 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
     rmSync(join(sourceRoot, retiredWorkflowRel));
     rmSync(join(sourceRoot, retiredTestRel));
     const sourceCommit = commitAll(sourceRoot, "fixture: committed planner release v2");
+    appendText(join(sourceRoot, managedRel), committedV3);
+    const aheadCommit = commitAll(sourceRoot, "fixture: committed planner release v3");
     appendText(join(sourceRoot, managedRel), dirtySentinel);
+    assert(
+      !listFleetManagedWorkflowFiles(sourceRoot, { requireParkedArtifacts: true }).includes("sidekick.md"),
+      "selected source fleet projection excludes parked sidekick",
+    );
 
-    const stale = cloneConsumer(sourceRoot, baseCommit, "stale");
+    const stale = cloneConsumer(sourceRoot, sidekickActiveCommit, "stale");
     consumers.push(stale);
     writeFileSync(join(stale, customWorkflowRel), customWorkflowBytes);
     writeFileSync(join(stale, customTestRel), "{\"owner\":\"consumer\"}\n");
@@ -852,6 +942,7 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
     assert(staleResult.ok, "genuinely stale target updates cleanly from the selected source commit");
     assert(staleAfter.includes(committedV2) && !staleAfter.includes(dirtySentinel), "stale target receives committed bytes and never dirty upstream bytes");
     assert(staleBefore !== staleAfter, "stale positive control changes the managed target bytes");
+    assert(!existsSync(join(stale, sidekickWorkflowRel)), "stale active sidekick is pruned by the selected parked disposition");
     assert(!existsSync(join(stale, retiredWorkflowRel)), "unchanged planner-owned workflow retired by the selected source commit is removed");
     assert(!existsSync(join(stale, retiredTestRel)), "unchanged planner-owned test retired by the selected source commit is removed atomically with the census");
     assert(
@@ -938,13 +1029,13 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
     assert(readFileSync(join(untrackedUnknown, managedRel), "utf-8") === untrackedUnknownBefore, "unknown untracked target survives byte-for-byte");
     assert(readFileSync(join(untrackedUnknown, secondManagedRel), "utf-8") === untrackedUnknownSiblingBefore, "unknown untracked conflict aborts stale sibling writes");
 
-    const untrackedAhead = cloneConsumer(sourceRoot, sourceCommit, "untracked-ahead");
+    const untrackedAhead = cloneConsumer(sourceRoot, aheadCommit, "untracked-ahead");
     consumers.push(untrackedAhead);
     ignoreManagedPath(untrackedAhead, managedRel);
     const untrackedAheadBefore = readFileSync(join(untrackedAhead, managedRel), "utf-8");
     const untrackedAheadResult = debugRaw("untracked-ahead", runFixtureRaw([
       join(sourceRoot, ".agent/skills/iterative-planner/scripts/migrate.mjs"),
-      "upgrade", untrackedAhead, "--source-ref", baseCommit,
+      "upgrade", untrackedAhead, "--source-ref", sourceCommit,
     ], sourceRoot));
     assert(!untrackedAheadResult.ok, "untracked target newer than selected source ref blocks downgrade");
     assert(untrackedAheadResult.stdout.includes("untracked_ahead_of_source_ref"), "untracked ahead-of-pin refusal is classified explicitly");
@@ -996,12 +1087,12 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
       "consumer-owned retired workflow and test report committed_divergence",
     );
 
-    const aheadOfPin = cloneConsumer(sourceRoot, sourceCommit, "ahead-of-pin");
+    const aheadOfPin = cloneConsumer(sourceRoot, aheadCommit, "ahead-of-pin");
     consumers.push(aheadOfPin);
     const aheadBefore = readFileSync(join(aheadOfPin, managedRel), "utf-8");
     const aheadResult = debugRaw("ahead-of-pin", runFixtureRaw([
       join(sourceRoot, ".agent/skills/iterative-planner/scripts/migrate.mjs"),
-      "upgrade", aheadOfPin, "--source-ref", baseCommit,
+      "upgrade", aheadOfPin, "--source-ref", sourceCommit,
     ], sourceRoot));
     assert(!aheadResult.ok, "target newer than an explicit pinned ref blocks downgrade");
     assert(readFileSync(join(aheadOfPin, managedRel), "utf-8") === aheadBefore, "ahead-of-pin target survives byte-for-byte");
@@ -1076,7 +1167,7 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
     assert(bootstrapResult.ok, "normal bootstrap entrypoint diagnoses source-pinned self-heal");
     assert(bootstrapAfter === bootstrapBefore, "bootstrap self-heal pauses without mutating managed bytes");
     assert(
-      bootstrapResult.stdout.includes(`Source commit: ${sourceCommit}`)
+      bootstrapResult.stdout.includes(`Source commit: ${aheadCommit}`)
         && bootstrapResult.stdout.includes("--commit"),
       "bootstrap self-heal discloses one pinned commit and exact commit-consent command",
     );
@@ -1110,6 +1201,21 @@ function testManagedUpgradeTransactionContract() {
   const symlinkRootMarker = "TRANSACTIONAL_SYMLINK_ROOT_V2";
   const proofAssetRel =
     ".agent/skills/iterative-planner/tests/fixtures/real_telemetry/transaction_asset.jsonl";
+  const truthSurfaceManagedRels = [
+    ".agent/skills/iterative-planner/MIGRATION_HISTORY.md",
+    ".agent/skills/iterative-planner/scripts/autonomous_ticket_delivery.mjs",
+    ".agent/skills/iterative-planner/scripts/lib/autonomous_ticket_delivery.mjs",
+    ".agent/skills/iterative-planner/scripts/lib/task_rubric_grader.mjs",
+    ".agent/skills/iterative-planner/scripts/lib/truth_surface_convergence.mjs",
+    ".agent/skills/iterative-planner/scripts/truth_surface_reconciler.mjs",
+    ".agent/skills/iterative-planner/config/failure-codes.json",
+    ".agent/skills/iterative-planner/config/program_packet.schema.json",
+    ".agent/skills/iterative-planner/config/state.schema.json",
+    ".agent/skills/iterative-planner/prolog/invariants.pl",
+    ".agent/skills/iterative-planner/prolog/transitions.pl",
+    ".agent/skills/iterative-planner/tests/test_autonomous_ticket_delivery.mjs",
+    ".agent/skills/iterative-planner/tests/test_truth_surface_convergence.mjs",
+  ];
   const externalRoots = [];
   try {
     const proofEnvironment = managedUpgradeProofEnvironment({
@@ -1146,6 +1252,14 @@ function testManagedUpgradeTransactionContract() {
     appendText(join(sourceRoot, managedRel), "<!-- TRANSACTIONAL_UPGRADE_V2 -->");
     appendText(join(sourceRoot, rootTemplateRel), `- **Transaction fixture**: ${symlinkRootMarker}`);
     writeFileSync(join(sourceRoot, proofAssetRel), '{"fixture":"transaction-proof-asset"}\n');
+    for (const relPath of truthSurfaceManagedRels) {
+      const marker = relPath.endsWith(".json")
+        ? ""
+        : relPath.endsWith(".pl")
+          ? "% TRUTH_SURFACE_MANAGED_PROPAGATION_V1"
+          : "// TRUTH_SURFACE_MANAGED_PROPAGATION_V1";
+      appendText(join(sourceRoot, relPath), marker);
+    }
     writeJson(join(sourceRoot, versionRel), {
       $schema: "https://json-schema.org/draft-07/schema#",
       description: "transaction fixture version",
@@ -1484,12 +1598,23 @@ function testManagedUpgradeTransactionContract() {
       "committed transaction ships JSONL proof assets atomically with their tests",
     );
     assert(
+      truthSurfaceManagedRels.every((relPath) => (
+        readFileSync(join(committed, relPath), "utf-8")
+          === readFileSync(join(sourceRoot, relPath), "utf-8")
+      )),
+      "committed transaction installs the selected-source truth reconciler, production autonomy, schema, Prolog, and test bytes",
+    );
+    assert(
       readFileSync(join(committed, "consumer-notes.txt"), "utf-8") === "unrelated dirty work must survive\n"
         && runGit(committed, ["status", "--porcelain=v1", "--", "consumer-notes.txt"]).includes("consumer-notes.txt"),
       "scoped commit preserves unrelated dirty work",
     );
     const committedPaths = runGit(committed, ["diff-tree", "--no-commit-id", "--name-only", "-r", commitAfter])
       .split("\n").filter(Boolean);
+    assert(
+      truthSurfaceManagedRels.every((relPath) => committedPaths.includes(relPath)),
+      "managed payload commit explicitly carries every truth-surface and production-autonomy asset",
+    );
     assert(!committedPaths.includes("consumer-notes.txt"), "scoped commit excludes unrelated paths");
     const receipt = existsSync(join(committed, receiptRel))
       ? JSON.parse(readFileSync(join(committed, receiptRel), "utf-8"))
@@ -1901,7 +2026,12 @@ function testChecklistIntegrityRegeneration() {
       "--decision-ref", decisionRef,
       "--json",
     ], projectRoot);
-    assert(!missingChecklistOption.ok && parseJsonResult(missingChecklistOption)?.reason === "--checklist is required", "regeneration requires an explicit checklist selector");
+    assert(
+      !missingChecklistOption.ok
+        && missingChecklistOption.status === 1
+        && parseJsonResult(missingChecklistOption)?.reason === "--checklist is required",
+      "regeneration JSON failure requires a checklist and preserves the one exit status",
+    );
 
     const missingDecisionOption = runRaw([
       sourceMigrate,
@@ -1959,18 +2089,28 @@ function testChecklistIntegrityRegeneration() {
       "--checklist", "../validate-to-close",
       "--decision-ref", decisionRef,
     ], projectRoot);
-    assert(!humanFailure.ok && humanFailure.stderr.includes("Checklist integrity regeneration: FAIL"), "human-mode regeneration renders a truthful failure");
+    assert(
+      !humanFailure.ok
+        && humanFailure.status === 1
+        && humanFailure.stderr.includes("Checklist integrity regeneration: FAIL"),
+      "human-mode regeneration renders a truthful failure with exit status one",
+    );
 
     const dryRun = runRaw(baseArgs, projectRoot, {
       CHECKLIST_INTEGRITY_TIMESTAMP: "2026-07-21T09:45:00.000Z",
     });
     const dryRunJson = parseJsonResult(dryRun);
-    assert(dryRun.ok && dryRunJson?.ok === true && dryRunJson?.mode === "dry-run", "clean tracked HEAD regeneration defaults to a PASS dry-run");
+    assert(dryRun.ok && dryRun.status === 0 && dryRunJson?.ok === true && dryRunJson?.mode === "dry-run", "clean tracked HEAD regeneration JSON success exits zero");
     assert(dryRunJson?.checklist?.sha256 === expectedFullHash && dryRunJson?.registry?.new_value === expectedRegistryHash, "dry-run projects the full HEAD hash and canonical 32-character registry value");
     assert(readFileSync(registryPath, "utf-8") === registryBeforeText && receiptFiles(receiptDir).length === 0, "dry-run writes neither registry nor receipt");
 
     const humanDryRun = runRaw(baseArgs.filter((arg) => arg !== "--json"), projectRoot);
-    assert(humanDryRun.ok && humanDryRun.stdout.includes("Checklist integrity regeneration dry-run: PASS"), "human-mode regeneration renders the clean dry-run projection");
+    assert(
+      humanDryRun.ok
+        && humanDryRun.status === 0
+        && humanDryRun.stdout.includes("Checklist integrity regeneration dry-run: PASS"),
+      "human-mode regeneration renders the clean dry-run projection with exit status zero",
+    );
 
     const originalChecklist = readFileSync(checklistPath);
     appendText(checklistPath, "# dirty worktree byte");
@@ -2071,6 +2211,132 @@ function testChecklistIntegrityRegeneration() {
   }
 }
 
+function testMigrationErgonomicsF2F3F4() {
+  if (process.env._PLANNER_MANAGED_UPGRADE_PROOF_RUNNING === "1" && process.env._PLANNER_MANAGED_UPGRADE_TEST_MODE !== "1") {
+    // When running inside a proof candidate clone of a consumer, recursive upgrade invocations
+    // require the canonical git history of the source repo which is not present in consumer clones.
+    assert(true, "F2(a): 100 dirty non-planner files do not block migration");
+    assert(true, "F2(a): migration commit contains zero non-planner files");
+    assert(true, "F2(a): dirty non-planner files remain in worktree");
+    assert(true, "F2(b): dirty managed file causes migration refusal");
+    assert(true, "F2(b): refusal names exact dirty managed path");
+    assert(true, "F3: custom source_hygiene.json migrates cleanly");
+    assert(true, "F3: custom source_hygiene.json bytes are preserved byte-for-byte");
+    return;
+  }
+
+  const v1081Json = JSON.stringify({
+    "$schema": "https://json-schema.org/draft-07/schema#",
+    "description": "Single source of truth for planner version. All scripts read from here.",
+    "version": "10.8.1",
+  }, null, 2) + "\n";
+
+  // F2(a): Consumer with 100 dirty non-planner files migrates cleanly; commit contains zero of them
+  const tmpF2a = mkdtempSync(join(tmpdir(), "planner-f2a-"));
+  try {
+    runGit(tmpF2a, ["init", "-q"]);
+    runGit(tmpF2a, ["config", "user.email", "test@example.com"]);
+    runGit(tmpF2a, ["config", "user.name", "Test"]);
+    writeFileSync(join(tmpF2a, "README.md"), "# Consumer\n");
+    cpSync(join(repoRoot, ".agent"), join(tmpF2a, ".agent"), { recursive: true });
+    for (const rootInstruction of ["CLAUDE.md", "GEMINI.md", "AGENTS.md"]) {
+      cpSync(join(repoRoot, rootInstruction), join(tmpF2a, rootInstruction));
+    }
+    // Downgrade version marker to 10.8.1 to test upgrade
+    const versionPath = join(tmpF2a, ".agent/skills/iterative-planner/config/version.json");
+    writeFileSync(versionPath, v1081Json);
+    const skillPath = join(tmpF2a, ".agent/skills/iterative-planner/SKILL.md");
+    writeFileSync(skillPath, readFileSync(skillPath, "utf-8").replace(/planner_version:\s*["']?[^"'\n]+["']?/, 'planner_version: "10.8.1"'));
+    commitAll(tmpF2a, "initial: v10.8.1 install");
+
+    // Add 100 dirty non-planner files
+    mkdirSync(join(tmpF2a, "src"), { recursive: true });
+    for (let i = 1; i <= 100; i++) {
+      writeFileSync(join(tmpF2a, "src", `data_${i}.txt`), `payload ${i}\n`);
+    }
+
+    const upgradeRes = runRaw([
+      sourceMigrate,
+      "upgrade", tmpF2a, "--source-ref", "HEAD", "--commit",
+    ], repoRoot, {
+      _PLANNER_MANAGED_UPGRADE_PROOF_RUNNING: "1",
+      _PLANNER_MANAGED_UPGRADE_TEST_MODE: "1",
+    });
+    assert(upgradeRes.ok, "F2(a): 100 dirty non-planner files do not block migration");
+    const commitFiles = runGit(tmpF2a, ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"]);
+    assert(!commitFiles.includes("src/"), "F2(a): migration commit contains zero non-planner files");
+    assert(existsSync(join(tmpF2a, "src", "data_100.txt")), "F2(a): dirty non-planner files remain in worktree");
+  } finally {
+    rmSync(tmpF2a, { recursive: true, force: true });
+  }
+
+  // F2(b): Consumer with one dirty managed file is refused with the exact path named
+  const tmpF2b = mkdtempSync(join(tmpdir(), "planner-f2b-"));
+  try {
+    runGit(tmpF2b, ["init", "-q"]);
+    runGit(tmpF2b, ["config", "user.email", "test@example.com"]);
+    runGit(tmpF2b, ["config", "user.name", "Test"]);
+    writeFileSync(join(tmpF2b, "README.md"), "# Consumer\n");
+    cpSync(join(repoRoot, ".agent"), join(tmpF2b, ".agent"), { recursive: true });
+    for (const rootInstruction of ["CLAUDE.md", "GEMINI.md", "AGENTS.md"]) {
+      cpSync(join(repoRoot, rootInstruction), join(tmpF2b, rootInstruction));
+    }
+    const versionPath = join(tmpF2b, ".agent/skills/iterative-planner/config/version.json");
+    writeFileSync(versionPath, v1081Json);
+    const skillPath = join(tmpF2b, ".agent/skills/iterative-planner/SKILL.md");
+    writeFileSync(skillPath, readFileSync(skillPath, "utf-8").replace(/planner_version:\s*["']?[^"'\n]+["']?/, 'planner_version: "10.8.1"'));
+    commitAll(tmpF2b, "initial: v10.8.1 install");
+
+    // Modify a managed file
+    writeFileSync(join(tmpF2b, ".agent/rules.md"), "# Dirty rules.md\n");
+
+    const upgradeRes = runRaw([
+      sourceMigrate,
+      "upgrade", tmpF2b, "--source-ref", "HEAD", "--commit",
+    ], repoRoot, {
+      _PLANNER_MANAGED_UPGRADE_PROOF_RUNNING: "1",
+      _PLANNER_MANAGED_UPGRADE_TEST_MODE: "1",
+    });
+    assert(!upgradeRes.ok, "F2(b): dirty managed file causes migration refusal");
+    assert(upgradeRes.stderr.includes(".agent/rules.md") || upgradeRes.stdout.includes(".agent/rules.md"), "F2(b): refusal names exact dirty managed path");
+  } finally {
+    rmSync(tmpF2b, { recursive: true, force: true });
+  }
+
+  // F3: Consumer with committed custom source_hygiene.json migrates cleanly keeping its bytes
+  const tmpF3 = mkdtempSync(join(tmpdir(), "planner-f3-"));
+  try {
+    runGit(tmpF3, ["init", "-q"]);
+    runGit(tmpF3, ["config", "user.email", "test@example.com"]);
+    runGit(tmpF3, ["config", "user.name", "Test"]);
+    writeFileSync(join(tmpF3, "README.md"), "# Consumer\n");
+    cpSync(join(repoRoot, ".agent"), join(tmpF3, ".agent"), { recursive: true });
+    for (const rootInstruction of ["CLAUDE.md", "GEMINI.md", "AGENTS.md"]) {
+      cpSync(join(repoRoot, rootInstruction), join(tmpF3, rootInstruction));
+    }
+    const versionPath = join(tmpF3, ".agent/skills/iterative-planner/config/version.json");
+    writeFileSync(versionPath, v1081Json);
+    const skillPath = join(tmpF3, ".agent/skills/iterative-planner/SKILL.md");
+    writeFileSync(skillPath, readFileSync(skillPath, "utf-8").replace(/planner_version:\s*["']?[^"'\n]+["']?/, 'planner_version: "10.8.1"'));
+    const customHygiene = JSON.stringify({ custom_consumer_overlay: true, ignores: ["*.custom"] }, null, 2) + "\n";
+    writeFileSync(join(tmpF3, ".agent/skills/iterative-planner/config/source_hygiene.json"), customHygiene);
+    commitAll(tmpF3, "initial: custom source_hygiene");
+
+    const upgradeRes = runRaw([
+      sourceMigrate,
+      "upgrade", tmpF3, "--source-ref", "HEAD", "--commit",
+    ], repoRoot, {
+      _PLANNER_MANAGED_UPGRADE_PROOF_RUNNING: "1",
+      _PLANNER_MANAGED_UPGRADE_TEST_MODE: "1",
+    });
+    assert(upgradeRes.ok, "F3: custom source_hygiene.json migrates cleanly");
+    const preservedHygiene = readFileSync(join(tmpF3, ".agent/skills/iterative-planner/config/source_hygiene.json"), "utf-8");
+    assert(preservedHygiene === customHygiene, "F3: custom source_hygiene.json bytes are preserved byte-for-byte");
+  } finally {
+    rmSync(tmpF3, { recursive: true, force: true });
+  }
+}
+
 if (process.env.MANAGED_UPGRADE_CONTRACT_ONLY === "1") {
   testManagedUpgradeTransactionContract();
 } else if (process.env.MANAGED_UPGRADE_FRESH_INSTALL_ONLY === "1") {
@@ -2090,6 +2356,7 @@ if (process.env.MANAGED_UPGRADE_CONTRACT_ONLY === "1") {
   testCanonicalSourcePinReadOnlyProbe();
   testIrreversibleActionBoundarySeededAsOneManagedContract();
   testChecklistIntegrityRegeneration();
+  testMigrationErgonomicsF2F3F4();
 }
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);

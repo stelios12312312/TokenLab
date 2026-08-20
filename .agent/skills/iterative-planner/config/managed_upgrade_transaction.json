@@ -3,7 +3,10 @@
   "receipt_path": ".agent/skills/iterative-planner/config/last_upgrade_receipt.json",
   "journal_git_path": "iterative-planner/managed-upgrade",
   "preflight_scopes": [
-    ".agent",
+    ".agent/skills/iterative-planner",
+    ".agent/rules.md",
+    ".agent/scripts",
+    ".agent/workflows",
     "CLAUDE.md",
     "GEMINI.md",
     "AGENTS.md",

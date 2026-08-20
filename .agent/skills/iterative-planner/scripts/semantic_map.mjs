@@ -12,6 +12,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "fs";
 import { basename, dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
+import { emitJson } from "./lib/emit_json.mjs";
 import { buildStoryEvidenceReport } from "./story_registry.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -1246,20 +1247,22 @@ function cmdCheck(filePath, options) {
     process.exit(1);
   }
   const validation = validateSemanticMap(map);
+  const exitCode = validation.ok ? 0 : 1;
   if (options.json) {
-    console.log(JSON.stringify({
+    emitJson({
       status: validation.ok ? "PASS" : "FAIL",
       file: relPath(target),
       errors: validation.errors,
       counts: validation.counts,
-    }, null, 2));
+    }, { exitCode });
+    return;
   } else if (validation.ok) {
     console.log(`PASS ${relPath(target)} (${validation.counts.entities} entities, ${validation.counts.obligations} obligations)`);
   } else {
     console.log(`FAIL ${relPath(target)}`);
     for (const error of validation.errors) console.log(`- ${error}`);
   }
-  process.exit(validation.ok ? 0 : 1);
+  process.exitCode = exitCode;
 }
 
 function cmdSummary(filePath, options) {

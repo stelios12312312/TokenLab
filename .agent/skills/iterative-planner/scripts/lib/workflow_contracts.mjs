@@ -12,6 +12,20 @@ export const WORKFLOW_REGISTRY_PATH = join(__dirname, "..", "..", "config", "wor
 export const WORKFLOW_MIGRATION_INVENTORY_PATH = join(__dirname, "..", "..", "config", "workflow_migration_inventory.json");
 export const WORKFLOW_CONTRACT_VERSION = "2026-04-30.ritual-contracts.v1";
 export const HOST_OWNED_WORKFLOW_MARKER = "planner:host-owned-workflow";
+export const KNOWN_WORKFLOW_ACTIONS = Object.freeze([
+  "deprecated",
+  "keep_unchanged",
+  "new",
+  "parked",
+  "redesigned",
+  "renamed",
+  "restored",
+  "simplified",
+  "updated",
+]);
+
+const KNOWN_WORKFLOW_ACTION_SET = new Set(KNOWN_WORKFLOW_ACTIONS);
+const WORKFLOW_ID_PATTERN = /^\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export const CANONICAL_RITUAL_ARTIFACTS = Object.freeze(new Set([
   "plan.md",
@@ -92,6 +106,14 @@ export function normalizeWorkflowId(value) {
   return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
 }
 
+export function normalizeWorkflowAction(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 export function normalizePhase(value) {
   const normalized = String(value || "").trim().toLowerCase();
   const gateMap = {
@@ -111,6 +133,10 @@ export function getSkillRootFromProject(projectRoot = process.cwd()) {
 
 export function getWorkflowDir(projectRoot = process.cwd()) {
   return join(projectRoot, ".agent", "workflows");
+}
+
+export function getParkedWorkflowDir(projectRoot = process.cwd()) {
+  return join(projectRoot, ".agent", "_parked");
 }
 
 export function loadWorkflowRegistry(projectRoot = process.cwd()) {
@@ -136,13 +162,29 @@ export function loadWorkflowMigrationInventory(projectRoot = process.cwd()) {
   const path = join(getSkillRootFromProject(projectRoot), "config", "workflow_migration_inventory.json");
   const parsed = safeReadJson(path, null);
   const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
-  return { path, version: parsed?.version || null, entries };
+  return {
+    path,
+    version: parsed?.version || null,
+    generated_report: typeof parsed?.generated_report === "string" && parsed.generated_report.trim()
+      ? parsed.generated_report.trim()
+      : join("reports", "workflow_migration_inventory.yaml"),
+    entries,
+  };
 }
 
 export function listWorkflowMarkdownIds(projectRoot = process.cwd()) {
   const workflowDir = getWorkflowDir(projectRoot);
   if (!existsSync(workflowDir)) return [];
   return readdirSync(workflowDir)
+    .filter((entry) => entry.endsWith(".md"))
+    .map((entry) => `/${entry.replace(/\.md$/i, "")}`)
+    .sort();
+}
+
+export function listParkedWorkflowMarkdownIds(projectRoot = process.cwd()) {
+  const parkedDir = getParkedWorkflowDir(projectRoot);
+  if (!existsSync(parkedDir)) return [];
+  return readdirSync(parkedDir)
     .filter((entry) => entry.endsWith(".md"))
     .map((entry) => `/${entry.replace(/\.md$/i, "")}`)
     .sort();
@@ -192,6 +234,12 @@ export function workflowMarkdownPath(projectRoot, workflowId) {
   return join(getWorkflowDir(projectRoot), `${normalized.slice(1)}.md`);
 }
 
+export function parkedWorkflowMarkdownPath(projectRoot, workflowId) {
+  const normalized = normalizeWorkflowId(workflowId);
+  if (!normalized) return null;
+  return join(getParkedWorkflowDir(projectRoot), `${normalized.slice(1)}.md`);
+}
+
 export function workflowFileHasExplicitHostOwnerMarker(filePath) {
   if (!filePath || !existsSync(filePath)) return false;
   let text = "";
@@ -221,6 +269,179 @@ function issue({ id, severity = "error", message, repair_command = null, workflo
   };
 }
 
+export function isCanonicalWorkflowSource(projectRoot = process.cwd()) {
+  // Inside a managed upgrade proof or pinned source snapshot, the project root
+  // is always a candidate or snapshot — never the canonical source. Returning
+  // false preserves consumer identity across parked-workflow transitions
+  // (T-INTAKE-962DFCF9).
+  if (
+    process.env._PLANNER_MANAGED_UPGRADE_PROOF_RUNNING === "1"
+    || process.env._PLANNER_PINNED_SOURCE_RUNNING === "1"
+  ) {
+    return false;
+  }
+  const registryPath = join(getSkillRootFromProject(projectRoot), "config", ".project_registry.json");
+  const registry = safeReadJson(registryPath, null);
+  const sourcePath = typeof registry?.source_project_path === "string"
+    ? registry.source_project_path.trim()
+    : "";
+  return Boolean(sourcePath) && resolve(sourcePath) === resolve(projectRoot);
+}
+
+export function buildWorkflowDispositionSurface(
+  projectRoot = process.cwd(),
+  { requireParkedArtifacts = isCanonicalWorkflowSource(projectRoot) } = {},
+) {
+  const inventory = loadWorkflowMigrationInventory(projectRoot);
+  const registry = loadWorkflowRegistry(projectRoot);
+  const activeIds = new Set(listWorkflowMarkdownIds(projectRoot));
+  const parkedIds = new Set(listParkedWorkflowMarkdownIds(projectRoot));
+  const registryIds = new Set(registry.workflows.map((entry) => normalizeWorkflowId(entry?.id)).filter(Boolean));
+  const issues = [];
+  const normalizedIds = inventory.entries.map((entry) => normalizeWorkflowId(entry?.workflow));
+  const validIds = normalizedIds.filter((id) => id && WORKFLOW_ID_PATTERN.test(id));
+  const duplicateIds = new Set(validIds.filter((id, index) => validIds.indexOf(id) !== index));
+
+  inventory.entries.forEach((entry, index) => {
+    if (!normalizedIds[index] || !WORKFLOW_ID_PATTERN.test(normalizedIds[index])) {
+      issues.push(issue({
+        id: "workflow_inventory_invalid_id",
+        message: `workflow_migration_inventory.json entry ${index + 1} must declare a lower-kebab workflow id such as /safe-change`,
+      }));
+    }
+  });
+  for (const workflowId of [...duplicateIds].sort()) {
+    issues.push(issue({
+      id: "workflow_inventory_duplicate_id",
+      workflow: workflowId,
+      message: `workflow_migration_inventory.json declares duplicate workflow id ${workflowId}`,
+    }));
+  }
+
+  const entries = inventory.entries.map((entry, index) => {
+    const workflowId = validIds.includes(normalizedIds[index]) ? normalizedIds[index] : null;
+    const action = normalizeWorkflowAction(entry?.v7_action);
+    const actionKnown = KNOWN_WORKFLOW_ACTION_SET.has(action);
+    const parked = action === "parked";
+    const activeFileExists = Boolean(workflowId && activeIds.has(workflowId));
+    const parkedFileExists = Boolean(workflowId && parkedIds.has(workflowId));
+    const registryTracked = Boolean(workflowId && registryIds.has(workflowId));
+
+    if (workflowId && !action) {
+      issues.push(issue({
+        id: "workflow_inventory_missing_action",
+        workflow: workflowId,
+        message: `${workflowId} must declare a non-empty v7_action in workflow_migration_inventory.json`,
+      }));
+    } else if (workflowId && !actionKnown) {
+      issues.push(issue({
+        id: "workflow_inventory_unknown_action",
+        workflow: workflowId,
+        message: `${workflowId} declares unknown v7_action ${JSON.stringify(entry?.v7_action ?? null)}`,
+        repair_command: `Choose one of: ${[...KNOWN_WORKFLOW_ACTIONS].sort().join(", ")}.`,
+      }));
+    }
+
+    if (workflowId && actionKnown && parked) {
+      if (activeFileExists) {
+        issues.push(issue({
+          id: "workflow_parked_present_in_active_dir",
+          workflow: workflowId,
+          message: `${workflowId} is Parked but remains active at ${workflowMarkdownPath(projectRoot, workflowId)}`,
+          repair_command: `Move it to ${parkedWorkflowMarkdownPath(projectRoot, workflowId)}.`,
+        }));
+      }
+      if (registryTracked) {
+        issues.push(issue({
+          id: "workflow_parked_public_registry_conflict",
+          workflow: workflowId,
+          message: `${workflowId} is Parked but remains public in workflow_registry.json`,
+        }));
+      }
+      if (requireParkedArtifacts && !parkedFileExists) {
+        issues.push(issue({
+          id: "workflow_parked_artifact_missing",
+          workflow: workflowId,
+          message: `${workflowId} is Parked but its canonical archive ${parkedWorkflowMarkdownPath(projectRoot, workflowId)} is missing`,
+        }));
+      }
+    } else if (workflowId && actionKnown && !activeFileExists) {
+      issues.push(issue({
+        id: "workflow_active_file_missing",
+        workflow: workflowId,
+        message: `${workflowId} declares active disposition ${entry.v7_action} but ${workflowMarkdownPath(projectRoot, workflowId)} is missing`,
+      }));
+    }
+
+    return {
+      ...entry,
+      workflow: workflowId,
+      action,
+      action_known: actionKnown,
+      disposition_status: parked ? "parked" : "active",
+      fleet_managed: actionKnown && !parked,
+      active_file: workflowId ? workflowMarkdownPath(projectRoot, workflowId) : null,
+      active_file_exists: activeFileExists,
+      parked_file: workflowId ? parkedWorkflowMarkdownPath(projectRoot, workflowId) : null,
+      parked_file_exists: parkedFileExists,
+      registry_tracked: registryTracked,
+    };
+  });
+
+  const inventoryIds = new Set(validIds);
+  for (const activeId of [...activeIds].sort()) {
+    if (!inventoryIds.has(activeId) && !workflowMarkdownIsExplicitHostOwned(projectRoot, activeId)) {
+      issues.push(issue({
+        id: "workflow_markdown_missing_inventory_entry",
+        workflow: activeId,
+        message: `${workflowMarkdownPath(projectRoot, activeId)} exists without a workflow_migration_inventory.json disposition`,
+        repair_command: `Add ${activeId} to workflow_migration_inventory.json or mark a consumer-owned file with ${HOST_OWNED_WORKFLOW_MARKER}.`,
+      }));
+    }
+  }
+  for (const parkedId of [...parkedIds].sort()) {
+    const matchingEntries = entries.filter((entry) => entry.workflow === parkedId);
+    if (!matchingEntries.some((entry) => entry.action === "parked")) {
+      issues.push(issue({
+        id: "workflow_parked_artifact_undispositioned",
+        workflow: parkedId,
+        message: `${parkedWorkflowMarkdownPath(projectRoot, parkedId)} exists without a Parked inventory disposition`,
+      }));
+    }
+  }
+
+  return {
+    ok: issues.every((entry) => !entry.blocking),
+    issues,
+    inventory,
+    registry,
+    entries,
+    active_workflow_ids: [...activeIds].sort(),
+    parked_workflow_ids: [...parkedIds].sort(),
+    require_parked_artifacts: requireParkedArtifacts,
+  };
+}
+
+export function listFleetManagedWorkflowFiles(projectRoot = process.cwd(), options = {}) {
+  const surface = buildWorkflowDispositionSurface(projectRoot, {
+    requireParkedArtifacts: false,
+    ...options,
+  });
+  const specIssues = surface.issues.filter(
+    (entry) => entry.blocking && entry.id.startsWith("workflow_inventory_"),
+  );
+  if (specIssues.length > 0) {
+    const detail = specIssues
+      .map((entry) => `${entry.id}${entry.workflow ? `:${entry.workflow}` : ""}`)
+      .join(", ");
+    throw new Error(`workflow disposition surface is invalid: ${detail}`);
+  }
+  return surface.entries
+    .filter((entry) => entry.fleet_managed)
+    .map((entry) => `${entry.workflow.slice(1)}.md`)
+    .sort();
+}
+
 function isPlannerCommandRouted(projectRoot, command) {
   if (ROUTED_PLANNER_COMMANDS.has(command)) return true;
   const plannerPath = join(getSkillRootFromProject(projectRoot), "scripts", "planner.mjs");
@@ -236,9 +457,9 @@ export function validateWorkflowContractSurface(projectRoot = process.cwd()) {
   const workflowIds = registry.workflows.map((entry) => normalizeWorkflowId(entry?.id)).filter(Boolean);
   const workflowIdSet = new Set(workflowIds);
   const markdownIds = new Set(listWorkflowMarkdownIds(projectRoot));
-  const inventory = loadWorkflowMigrationInventory(projectRoot);
-  const inventoryIds = new Set(inventory.entries.map((entry) => normalizeWorkflowId(entry?.workflow)).filter(Boolean));
-  const issues = [];
+  const dispositionSurface = buildWorkflowDispositionSurface(projectRoot);
+  const inventory = dispositionSurface.inventory;
+  const issues = [...dispositionSurface.issues];
 
   if (registry.version !== 1) {
     issues.push(issue({
@@ -267,17 +488,6 @@ export function validateWorkflowContractSurface(projectRoot = process.cwd()) {
       id: "workflow_migration_inventory_invalid_version",
       message: `workflow_migration_inventory.json must declare version=1 at ${inventory.path}`
     }));
-  }
-
-  for (const markdownId of markdownIds) {
-    if (!workflowIdSet.has(markdownId) && !inventoryIds.has(markdownId) && !workflowMarkdownIsExplicitHostOwned(projectRoot, markdownId)) {
-      issues.push(issue({
-        id: "workflow_markdown_missing_inventory_entry",
-        workflow: markdownId,
-        message: `${workflowMarkdownPath(projectRoot, markdownId)} exists but is neither public in workflow_registry.json, accounted for in workflow_migration_inventory.json, nor explicitly marked ${HOST_OWNED_WORKFLOW_MARKER}`,
-        repair_command: `Remove ${markdownId}, add it to workflow_migration_inventory.json, make it public in workflow_registry.json, or mark the file with ${HOST_OWNED_WORKFLOW_MARKER}.`
-      }));
-    }
   }
 
   for (const workflow of registry.workflows) {
@@ -343,7 +553,8 @@ export function validateWorkflowContractSurface(projectRoot = process.cwd()) {
     issues,
     registry,
     profiles: profilesDocument,
-    workflow_files: [...markdownIds].sort()
+    workflow_files: [...markdownIds].sort(),
+    dispositions: dispositionSurface,
   };
 }
 

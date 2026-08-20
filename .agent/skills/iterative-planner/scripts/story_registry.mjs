@@ -18,6 +18,7 @@ import { isAbsolute, join, resolve, sep } from "path";
 import { spawnSync } from "child_process";
 import { createHash } from "crypto";
 import { fileURLToPath } from "url";
+import { emitJson } from "./lib/emit_json.mjs";
 import { normalizeVerificationStatus } from "./lib/verification_status_vocabulary.mjs";
 
 // Validate that a value is a safe git commit hash (7–40 hex chars).
@@ -852,18 +853,24 @@ function diffFilesDetailed(files, registry) {
 function printCheck(registry, jsonMode) {
   if (registry._parseError) {
     const result = { status: "FAIL", errors: [`JSON parse error: ${registry._parseError}`], warnings: [] };
-    if (jsonMode) { console.log(JSON.stringify(result, null, 2)); } else {
+    if (jsonMode) {
+      emitJson(result, { exitCode: 1 });
+      return;
+    } else {
       console.log("❌ FAIL — story_registry.json is not valid JSON");
       console.log(`   ${registry._parseError}`);
     }
-    process.exit(1);
+    process.exitCode = 1;
+    return;
   }
 
   const { errors, warnings } = validateRegistry(registry);
   const status = errors.length > 0 ? "FAIL" : warnings.length > 0 ? "WARN" : "PASS";
+  const exitCode = errors.length > 0 ? 1 : 0;
 
   if (jsonMode) {
-    console.log(JSON.stringify({ status, errors, warnings, storyCount: allRegistryStories(registry).length }, null, 2));
+    emitJson({ status, errors, warnings, storyCount: allRegistryStories(registry).length }, { exitCode });
+    return;
   } else {
     const statusKind = normalizeVerificationStatus(status, "execution").kind;
     const icon = statusKind === "pass" ? "✅" : statusKind === "pending" ? "⚠️" : "❌";
@@ -872,7 +879,7 @@ function printCheck(registry, jsonMode) {
     for (const w of warnings) console.log(`  ⚠️  ${w}`);
   }
 
-  process.exit(errors.length > 0 ? 1 : 0);
+  process.exitCode = exitCode;
 }
 
 function printFreshness(registry, jsonMode) {
@@ -932,11 +939,12 @@ function printPrune(registry, args, jsonMode) {
       required_flag: "--safe",
     };
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitJson(result, { exitCode: 1 });
     } else {
       console.error("ERROR: 'prune' requires --safe");
+      process.exitCode = 1;
     }
-    process.exit(1);
+    return;
   }
 
   if (!registry) {
@@ -947,22 +955,24 @@ function printPrune(registry, args, jsonMode) {
       registry_path: "reports/user_story_audit/story_registry.json",
     };
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitJson(result, { exitCode: 0 });
     } else {
       console.log("No story_registry.json found; nothing to prune.");
+      process.exitCode = 0;
     }
-    process.exit(0);
+    return;
   }
 
   if (registry._parseError) {
     const result = { status: "FAIL", errors: [`JSON parse error: ${registry._parseError}`], write: false };
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitJson(result, { exitCode: 1 });
     } else {
       console.error("ERROR: story_registry.json is not valid JSON");
       console.error(`  ${registry._parseError}`);
+      process.exitCode = 1;
     }
-    process.exit(1);
+    return;
   }
 
   const result = analyzeRegistryPrune(registry, { write });
@@ -994,12 +1004,13 @@ function printEvidence(registry, storyId, jsonMode) {
   if (registry._parseError) {
     const result = { status: "FAIL", errors: [`JSON parse error: ${registry._parseError}`] };
     if (jsonMode) {
-      console.log(JSON.stringify(result, null, 2));
+      emitJson(result, { exitCode: 1 });
     } else {
       console.log("❌ FAIL — story_registry.json is not valid JSON");
       console.log(`   ${registry._parseError}`);
+      process.exitCode = 1;
     }
-    process.exit(1);
+    return;
   }
 
   const stories = allRegistryStories(registry);
@@ -1010,16 +1021,18 @@ function printEvidence(registry, storyId, jsonMode) {
     if (!report) {
       const result = { status: "FAIL", message: `Story not found: ${storyId}` };
       if (jsonMode) {
-        console.log(JSON.stringify(result, null, 2));
+        emitJson(result, { exitCode: 1 });
       } else {
         console.log(`❌ Story not found: ${storyId}`);
+        process.exitCode = 1;
       }
-      process.exit(1);
+      return;
     }
 
     const status = report.evidence_ready ? "PASS" : "WARN";
+    const exitCode = report.evidence_ready ? 0 : 1;
     if (jsonMode) {
-      console.log(JSON.stringify({ status, story: report }, null, 2));
+      emitJson({ status, story: report }, { exitCode });
     } else {
       const icon = report.evidence_ready ? "✅" : "⚠️";
       console.log(`${icon} Evidence ${status} — ${report.id} [${report.status}] ${report.title}`);
@@ -1030,16 +1043,19 @@ function printEvidence(registry, storyId, jsonMode) {
         for (const issue of report.issues) console.log(`  ❌ ${issue.message}`);
       }
       console.log(`  Hint: ${report.guidance}`);
+      process.exitCode = exitCode;
     }
-    process.exit(report.evidence_ready ? 0 : 1);
+    return;
   }
 
   const incomplete = allReports.filter((entry) => !entry.evidence_ready);
   const status = incomplete.length > 0 ? "WARN" : "PASS";
+  const exitCode = incomplete.length > 0 ? 1 : 0;
   if (jsonMode) {
-    console.log(JSON.stringify({ status, incomplete_count: incomplete.length, stories: incomplete }, null, 2));
+    emitJson({ status, incomplete_count: incomplete.length, stories: incomplete }, { exitCode });
   } else if (incomplete.length === 0) {
     console.log("✅ All stories have code_refs, test_refs, and validation_refs present.");
+    process.exitCode = exitCode;
   } else {
     console.log(`⚠️  ${incomplete.length} story/stories have incomplete close-time evidence:\n`);
     for (const report of incomplete) {
@@ -1047,8 +1063,8 @@ function printEvidence(registry, storyId, jsonMode) {
       console.log(`  ${report.id} [${report.status}] — ${summary}`);
     }
     console.log(`\n  Hint: Update ${registryPath}; @planner: annotations do not replace story_registry evidence refs.`);
+    process.exitCode = exitCode;
   }
-  process.exit(incomplete.length > 0 ? 1 : 0);
 }
 
 function printSummary(registry, jsonMode) {
@@ -1099,24 +1115,26 @@ const registry = loadRegistry();
 if (command === "check") {
   if (!registry) {
     if (jsonMode) {
-      console.log(JSON.stringify({ status: "SKIP", message: "No story_registry.json found" }, null, 2));
+      emitJson({ status: "SKIP", message: "No story_registry.json found" }, { exitCode: 0 });
     } else {
       console.log("⚠️  No story_registry.json found — run /red-team-user-story-audit to create one.");
+      process.exitCode = 0;
     }
-    process.exit(0);
+  } else {
+    printCheck(registry, jsonMode);
   }
-  printCheck(registry, jsonMode);
 
 } else if (command === "evidence") {
   if (!registry) {
     if (jsonMode) {
-      console.log(JSON.stringify({ status: "SKIP", message: "No story_registry.json found" }, null, 2));
+      emitJson({ status: "SKIP", message: "No story_registry.json found" }, { exitCode: 0 });
     } else {
       console.log("⚠️  No story registry — cannot inspect evidence readiness.");
+      process.exitCode = 0;
     }
-    process.exit(0);
+  } else {
+    printEvidence(registry, filteredArgs[1] || null, jsonMode);
   }
-  printEvidence(registry, filteredArgs[1] || null, jsonMode);
 
 } else if (command === "freshness") {
   printFreshness(registry, jsonMode);
@@ -1129,13 +1147,14 @@ if (command === "check") {
   }
   if (!registry) {
     if (jsonMode) {
-      console.log(JSON.stringify({ affected: [], count: 0, message: "No registry" }, null, 2));
+      emitJson({ affected: [], count: 0, message: "No registry" }, { exitCode: 0 });
     } else {
       console.log("⚠️  No story registry — cannot determine affected stories.");
+      process.exitCode = 0;
     }
-    process.exit(0);
+  } else {
+    printDiff(files, registry, jsonMode);
   }
-  printDiff(files, registry, jsonMode);
 
 } else if (command === "prune") {
   printPrune(registry, filteredArgs.slice(1), jsonMode);

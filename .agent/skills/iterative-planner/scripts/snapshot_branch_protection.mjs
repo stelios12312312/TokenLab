@@ -1,11 +1,12 @@
 #!/usr/bin/env node
 // snapshot_branch_protection.mjs
-// Capture GitHub branch-protection truth for t04 without treating API failure as pass.
+// Capture optional GitHub branch-protection diagnostics without treating remote state as local release authority.
 
 import { execFileSync } from "child_process";
 import { mkdirSync, writeFileSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
+import { emitJson } from "./lib/emit_json.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -44,7 +45,7 @@ function classifyProtectionError(result) {
   if (/Upgrade to GitHub Pro|make this repository public|HTTP 403|status.*403|Resource not accessible/i.test(text)) {
     return {
       status: "unavailable",
-      reason: "GitHub branch protection API is unavailable for this private repo/account. Keep the repo private; t04 AC1 requires private branch protection/ruleset support or an equivalent private host that enforces PR-only main with required IVE conformance checks.",
+      reason: "Optional GitHub branch-protection observation is unavailable for this private repo/account. This does not block or satisfy the repository's local governed replay and exact-commit release contract.",
       http_status: 403,
     };
   }
@@ -80,8 +81,8 @@ function summarizeProtection(protection) {
   return {
     status: enforced ? "enforced" : "not_protected",
     reason: enforced
-      ? "Branch protection requires IVE conformance, pull-request review, and admin enforcement."
-      : "Branch protection is present but does not yet prove IVE conformance plus PR-only main enforcement.",
+      ? "Optional branch-protection observation includes the legacy IVE context, pull-request review, and admin enforcement; it is diagnostic only."
+      : "Optional branch-protection configuration was observed but is not this repository's enforcement authority.",
     required_status_checks: protection?.required_status_checks || null,
     required_pull_request_reviews: protection?.required_pull_request_reviews || null,
     enforce_admins: protection?.enforce_admins || null,
@@ -125,7 +126,9 @@ if (write) {
   writeFileSync(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`);
 }
 
-process.stdout.write(`${JSON.stringify(snapshot, null, 2)}\n`);
-if (requireEnforced && snapshot.status !== "enforced") process.exit(2);
 // proof-status-lint: exempt T-INTAKE-B07B8898 -- GitHub snapshot transport and domain error lifecycle controls whether a snapshot was obtained.
-if (snapshot.status === "error") process.exit(1);
+const snapshotErrored = snapshot.status === "error";
+const exitCode = requireEnforced && snapshot.status !== "enforced"
+  ? 2
+  : snapshotErrored ? 1 : 0;
+emitJson(snapshot, { exitCode });

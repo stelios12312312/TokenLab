@@ -19,6 +19,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join, resolve, dirname } from "path";
 import { fileURLToPath } from "url";
+import { emitJson } from "./lib/emit_json.mjs";
 import { getSkillPath, getPaths, readFindingsMarkdown } from "./lib/plan_utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -395,7 +396,7 @@ async function main() {
 
   // Output
   if (flags.json) {
-    console.log(JSON.stringify({
+    emitJson({
       project:    cwd,
       dry_run:    flags.dryRun,
       existing:   existing.length,
@@ -403,7 +404,7 @@ async function main() {
       skipped:    stats.skipped_existing,
       stats,
       new_stories: newStories,
-    }, null, 2));
+    }, { exitCode: 0 });
   } else {
     if (newStories.length === 0) {
       console.log(`  ✅ No new stories to add — registry already covers all detected candidates`);
@@ -436,11 +437,9 @@ async function main() {
       console.log(`     Total stories: ${registry.stories.length} (${existing.length} existing + ${newStories.length} new)`);
     }
   }
-
-  process.exit(0);
 }
 
 main().catch(e => {
   console.error(`ERROR: ${e.message}`);
-  process.exit(1);
+  process.exitCode = 1;
 });

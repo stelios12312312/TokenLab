@@ -61,9 +61,8 @@ function runRender(args) {
   summary.write = write;
 
   if (json) {
-    emitJson(summary);
     // proof-status-lint: exempt T-INTAKE-B07B8898 -- Renderer summary status is locally synthesized from artifact-render errors.
-    process.exit(summary.status === "PASS" ? 0 : 1);
+    return emitJson(summary, { exitCode: summary.status === "PASS" ? 0 : 1 });
   }
 
   if (!write && results.length === 1 && results[0]?.status === "rendered") {
@@ -86,8 +85,7 @@ function runMeasure(args) {
   const sample = Number(flagValue(args, "--sample", "5"));
   const result = measurePlanArtifactProjection({ plansDir, sampleLimit: sample });
   if (json) {
-    emitJson(result);
-    process.exit(0);
+    return emitJson(result, { exitCode: 0 });
   }
   console.log(`Sampled plans: ${result.sample_count}`);
   console.log(`Current files: ${result.totals.current_file_count}`);

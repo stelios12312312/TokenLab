@@ -9,6 +9,7 @@ import { fileURLToPath } from "url";
 import {
   auditCoverageRatchet,
   COVERAGE_TARGETS,
+  preserveByteUnchangedCoverageRows,
   resolveCoverageWorkloadSuiteIds,
   summarizeFailedIveSuites,
   validateBaselineArtifact,
@@ -44,17 +45,63 @@ function artifact(rows) {
   return { schema_version: 1, targets: rows };
 }
 
+const stablePrevious = row("scripts/stable.mjs", "a".repeat(64), 80);
+const stableMeasured = row("scripts/stable.mjs", "a".repeat(64), 70);
+const changedMeasured = row("scripts/changed.mjs", "c".repeat(64), 75);
+const stabilized = preserveByteUnchangedCoverageRows(
+  artifact([stableMeasured, changedMeasured]),
+  artifact([stablePrevious, row("scripts/changed.mjs", "b".repeat(64), 90)]),
+);
+assert(stabilized.targets[0] === stablePrevious, "measurement preserves the committed row for byte-unchanged targets");
+assert(stabilized.targets[1] === changedMeasured, "measurement keeps fresh evidence for byte-changed targets");
+assert(
+  preserveByteUnchangedCoverageRows(artifact([stableMeasured]), null).targets[0] === stableMeasured,
+  "first measurement keeps fresh evidence without inventing a prior floor",
+);
+
 const canonical = JSON.parse(readFileSync(baselinePath, "utf8"));
 const canonicalValidation = validateBaselineArtifact(canonical, { repoRoot });
 assert(COVERAGE_TARGETS.length === 20, "coverage target contract contains exactly twenty scripts");
 assert(new Set(COVERAGE_TARGETS).size === 20, "coverage targets are unique");
 assert(canonicalValidation.status === "PASS", "canonical baseline is complete and source-fresh", canonicalValidation.issues.join("; "));
+const committedBaselineRead = spawnSync(
+  "git",
+  ["show", "HEAD:.agent/skills/iterative-planner/config/coverage_baseline.json"],
+  { cwd: repoRoot, encoding: "utf8" },
+);
+let committedBaseline = null;
+try {
+  committedBaseline = committedBaselineRead.status === 0
+    ? JSON.parse(committedBaselineRead.stdout || "null")
+    : null;
+} catch {
+  // The assertion below reports an unreadable committed baseline.
+}
+const committedRows = new Map((committedBaseline?.targets || []).map((entry) => [entry.file, entry]));
+const loweredCanonicalFloors = [];
+for (const currentRow of canonical.targets || []) {
+  const committedRow = committedRows.get(currentRow.file);
+  if (!committedRow) continue;
+  for (const metric of ["lines", "branches", "functions", "statements"]) {
+    const before = committedRow.metrics?.[metric]?.pct;
+    const after = currentRow.metrics?.[metric]?.pct;
+    if (Number.isFinite(before) && Number.isFinite(after) && after < before) {
+      loweredCanonicalFloors.push(`${currentRow.file} ${metric}: ${before} -> ${after}`);
+    }
+  }
+}
+assert(
+  committedBaselineRead.status !== 0 || (committedBaseline && loweredCanonicalFloors.length === 0),
+  "canonical baseline never lowers a committed coverage floor",
+  loweredCanonicalFloors.join("; ") || committedBaselineRead.stderr,
+);
 const workloadSuiteIds = await resolveCoverageWorkloadSuiteIds();
 assert(workloadSuiteIds.length > 0, "coverage measurement resolves a non-empty governed workload");
 assert(new Set(workloadSuiteIds).size === workloadSuiteIds.length, "coverage measurement workload has unique suite IDs");
 assert(!workloadSuiteIds.includes("planner-core-coverage-ratchet"), "coverage measurement excludes its recursive ratchet suite");
 assert(!workloadSuiteIds.includes("cli-determinism"), "coverage measurement excludes timing-sensitive CLI determinism");
 assert(workloadSuiteIds.includes("planner-shell-wrapper-hooks"), "coverage measurement includes governed pre-commit wrapper proof");
+assert(workloadSuiteIds.includes("harvest-real-telemetry"), "coverage measurement includes bootstrap reachability branch proof");
 
 const failedSuiteSummary = summarizeFailedIveSuites(JSON.stringify({
   results: [

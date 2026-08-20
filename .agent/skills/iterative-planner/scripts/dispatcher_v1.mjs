@@ -183,10 +183,10 @@ if (isDirectInvocation(import.meta.url)) {
       code: error.code || "dispatcher_v1_failed",
     };
     if (process.argv.includes("--json")) {
-      emitJson(failure);
+      emitJson(failure, { exitCode: 1 });
     } else {
       console.error(`ERROR: ${error.message}`);
+      process.exit(1);
     }
-    process.exit(1);
   }
 }

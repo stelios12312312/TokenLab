@@ -6,6 +6,7 @@ import { dirname, extname, join, resolve } from "path";
 import { spawnSync } from "child_process";
 import { fileURLToPath } from "url";
 import { walkDir } from "./annotation_parser.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 import {
   buildProjectContext,
   enforceMinimumPersona,
@@ -877,8 +878,8 @@ async function main() {
   const payload = toJsonPayload(report, outputs);
 
   if (flags.json) {
-    console.log(JSON.stringify(payload, null, 2));
-    process.exit(0);
+    emitJson(payload, { exitCode: 0 });
+    return;
   }
 
   console.log("Recipe Discovery");

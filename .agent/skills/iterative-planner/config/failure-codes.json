@@ -910,6 +910,13 @@
       "message": "High-confidence stewardship opportunities lack a recorded disposition",
       "severity": "advisory"
     },
+    "GATE-VAL-024": {
+      "gate": "validate-to-close",
+      "check": "truth_surface_convergence",
+      "message": "Scoped canonical and mirrored truth surfaces have actionable or indeterminate disagreement",
+      "next": "node .agent/skills/iterative-planner/scripts/truth_surface_reconciler.mjs scan --json",
+      "why": "A plan must not close while its scoped Program, story, audit, issue, plan, branch, or PR truth is unresolved."
+    },
     "GATE-PTE-012": {
       "gate": "plan-to-execute",
       "severity": "warn",

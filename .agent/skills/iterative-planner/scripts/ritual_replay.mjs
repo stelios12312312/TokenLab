@@ -36,9 +36,11 @@ if (isDirectInvocation(import.meta.url)) {
       process.exit(0);
     }
     const report = runRitualReplay(args);
-    if (args.json) emitJson(report);
-    else console.log(renderRitualReplayText(report));
-    process.exit(report.ok ? 0 : 1);
+    if (args.json) emitJson(report, { exitCode: report.ok ? 0 : 1 });
+    else {
+      console.log(renderRitualReplayText(report));
+      process.exit(report.ok ? 0 : 1);
+    }
   } catch (error) {
     const failure = {
       schema_version: 1,
@@ -47,8 +49,10 @@ if (isDirectInvocation(import.meta.url)) {
       status: "FAIL",
       error: error.message,
     };
-    if (process.argv.includes("--json")) emitJson(failure);
-    else console.error(`ERROR: ${error.message}`);
-    process.exit(1);
+    if (process.argv.includes("--json")) emitJson(failure, { exitCode: 1 });
+    else {
+      console.error(`ERROR: ${error.message}`);
+      process.exit(1);
+    }
   }
 }

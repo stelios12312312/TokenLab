@@ -5,6 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
 import { spawnSync } from "child_process";
+import { createHash } from "crypto";
 import {
   collectAutocoderMetrics,
   writeAutocoderMetricsReport,
@@ -20,6 +21,56 @@ function assert(cond, label) {
 function writeJson(path, value) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(value, null, 2) + "\n");
+}
+
+function stable(value) {
+  if (Array.isArray(value)) return value.map(stable);
+  if (!value || typeof value !== "object") return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stable(value[key])]));
+}
+
+function productionReceipt(overrides = {}) {
+  const stableReceipt = {
+    schema_version: "ive.autonomous_ticket_delivery.v1",
+    receipt_type: "production_program_ticket_delivery",
+    program_id: "PGM-FIXTURE",
+    program_packet_path: "plans/programs/fixture/program_packet.json",
+    ticket_id: "T-1",
+    base_commit: overrides.final_commit,
+    candidate_branch: "autonomous/t-1",
+    final_commit: overrides.final_commit,
+    outcome: "PASS",
+    grade: { status: "PASS", ok: true, failures: [], transcript_used_for_outcome: false },
+    budget: { max_total_tokens: 1000, used_tokens: 100, remaining_tokens: 900, automatic_retries: 0 },
+    invocation_count: 1,
+    actor: "agent",
+    actor_observed_by: "parent_harness",
+    countersign: { agent_self_graded: false, transcript_used_for_outcome: false, target_selected_by: "operator" },
+    human_touchpoints: ["target_selection", "final_merge"],
+    fixture: false,
+    automatic_retries: 0,
+    ...overrides,
+  };
+  const receiptId = createHash("sha256").update(JSON.stringify(stable(stableReceipt))).digest("hex");
+  return { ...stableReceipt, receipt_id: receiptId, started_at: "2026-06-12T00:00:00.000Z", finished_at: "2026-06-12T00:01:00.000Z" };
+}
+
+function writeProductionReceipt(root, ticketId, runId, overrides = {}, { withArtifactHashes = true } = {}) {
+  const runDir = join(root, "reports", "ive", "autonomous_ticket_deliveries", ticketId, runId);
+  mkdirSync(runDir, { recursive: true });
+  const artifactHashes = {};
+  if (withArtifactHashes) {
+    for (const name of ["work_order.json", "dispatch.json", "diff.json", "budget.json", "grade.json", "close_evidence.json"]) {
+      const contents = `${name}\n`;
+      writeFileSync(join(runDir, name), contents);
+      artifactHashes[name] = createHash("sha256").update(contents).digest("hex");
+    }
+  }
+  writeJson(join(runDir, "receipt.json"), productionReceipt({
+    ticket_id: ticketId,
+    ...(withArtifactHashes ? { artifact_hashes: artifactHashes } : {}),
+    ...overrides,
+  }));
 }
 
 function mkPlan(root, name, { state, metrics = {}, decisions = "" }) {
@@ -129,10 +180,10 @@ try {
   writeJson(join(tmp, "plans", "programs", "fixture", "program_packet.json"), {
     program: { id: "PGM-FIXTURE", title: "Fixture" },
     tickets: [
-      { id: "T-1", lifecycle: "closed", review_status: "verified", verification_refs: ["VM-1"], autocoder: { autonomous: true } },
+      { id: "T-1", lifecycle: "closed", review_status: "verified", verification_refs: ["VM-1"] },
       { id: "T-2", lifecycle: "done", review_status: "verified", verification_refs: ["VM-2"], human_intervention: true },
       { id: "T-3", lifecycle: "deferred", verification_refs: [] },
-      { id: "T-4", lifecycle: "closed", recurrence_refs: ["R-1"], rework_count: 1 },
+      { id: "T-4", lifecycle: "closed", recurrence_refs: ["R-1"], rework_count: 1, autocoder: { autonomous: true } },
     ],
     verification_matrix: [
       { id: "VM-1", subject_ref: "T-1", status: "pass", proof_type: "proof:command_smoke" },
@@ -164,6 +215,24 @@ try {
     ],
   });
 
+  let git = spawnSync("git", ["init"], { cwd: tmp, encoding: "utf-8" });
+  assert(git.status === 0, "production receipt fixture initializes a repository");
+  git = spawnSync("git", ["add", "."], { cwd: tmp, encoding: "utf-8" });
+  assert(git.status === 0, "production receipt fixture stages canonical ticket authority");
+  git = spawnSync("git", ["-c", "user.name=Planner Test", "-c", "user.email=planner-test@example.com", "commit", "-m", "seed metric authority"], { cwd: tmp, encoding: "utf-8" });
+  assert(git.status === 0, "production receipt fixture commits canonical ticket authority");
+  const finalCommit = String(spawnSync("git", ["rev-parse", "HEAD"], { cwd: tmp, encoding: "utf-8" }).stdout || "").trim();
+  writeProductionReceipt(tmp, "T-1", "run-pass", { final_commit: finalCommit });
+  writeProductionReceipt(tmp, "T-2", "fixture", {
+    final_commit: finalCommit,
+    fixture: true,
+  });
+  writeProductionReceipt(tmp, "T-3", "missing-artifact-chain", { final_commit: finalCommit }, { withArtifactHashes: false });
+  git = spawnSync("git", ["add", "."], { cwd: tmp, encoding: "utf-8" });
+  assert(git.status === 0, "production receipt fixture stages countersigned receipts");
+  git = spawnSync("git", ["-c", "user.name=Planner Test", "-c", "user.email=planner-test@example.com", "commit", "-m", "record countersigned receipts"], { cwd: tmp, encoding: "utf-8" });
+  assert(git.status === 0, "production receipt fixture commits countersigned receipts");
+
   const report = collectAutocoderMetrics({ cwd: tmp, generatedAt: "2026-06-12T00:00:00.000Z" });
   const m = report.metrics;
   assert(report.schema_version === 1, "collector emits schema version");
@@ -191,7 +260,10 @@ try {
     assert(Object.hasOwn(report.definitions, key), `${key} has a definition`);
   }
 
-  assert(m.autonomous_ticket_completion_rate === 0.25, "autonomous completion is autonomous completed / total tickets");
+  assert(m.autonomous_ticket_completion_rate === 0.25, "autonomous completion counts only countersigned production receipts over total tickets");
+  assert(report.detail.production_delivery_receipts.proven_completed_tickets === 1 && report.detail.production_delivery_receipts.invalid_receipts === 2, "production receipt ledger accepts one real countersigned close and rejects fixture or incomplete receipts");
+  assert(report.detail.production_delivery_receipts.ledger.some((row) => row.ticket_id === "T-3" && row.reasons.includes("artifact_chain_invalid")), "production receipt ledger rejects a receipt without its hashed parent-owned artifact chain");
+  assert(report.detail.sample_rows.tickets.some((row) => row.id === "T-4" && row.reported_autonomous === true && row.autonomous === false), "self-asserted ticket autonomy is visible but excluded from the proven numerator");
   assert(m.human_interventions_per_close === 0.222, "human interventions per close uses explicit approvals/manual markers");
   assert(m.retries_per_close === 0.333, "retries per close folds gate retries over closed plans");
   assert(m.tool_errors_per_close === 0.222, "tool errors per close stay separate from lifecycle retries");
@@ -722,14 +794,22 @@ function isProjectRelativePath(value) {
 }
 
 function assertBaselineContract() {
-  const baselinePath = resolve("plans", "programs", "ive-autocoder-v2", "baselines", "baseline-2026-06-12.json");
-  assert(existsSync(baselinePath), "E2-1 baseline file exists");
+  const archivePath = resolve("plans", "programs", "ive-autocoder-v2", "baselines", "baseline-2026-06-12.json");
+  assert(existsSync(archivePath), "June baseline archive exists");
+  assert(
+    createHash("sha256").update(readFileSync(archivePath)).digest("hex") === "29ada09020702c78ecd1b0e5c2b047156cb410a71ecddc44884d1ae82fc93d2d",
+    "June baseline archive remains byte-identical",
+  );
+  const baselinePath = resolve("plans", "programs", "ive-autocoder-v2", "baselines", "baseline-2026-08-07.json");
+  assert(existsSync(baselinePath), "B3 current baseline file exists");
   const baseline = JSON.parse(readFileSync(baselinePath, "utf8"));
 
-  assert(baseline.schema_version === 1, "E2-1 baseline emits schema version");
-  assert(baseline.baseline_id === "baseline-2026-06-12", "E2-1 baseline id is stable");
-  assert(baseline.program?.id === "PGM-IVE-AUTOCODER-V2", "E2-1 baseline links the program");
-  assert(baseline.ticket?.id === "T-INTAKE-1342EE68", "E2-1 baseline links the ticket");
+  assert(baseline.schema_version === 1, "B3 baseline emits schema version");
+  assert(baseline.baseline_id === "baseline-2026-08-07", "B3 baseline id is stable");
+  assert(baseline.program?.id === "PGM-IVE-AUTOCODER-V2", "B3 baseline retains the metric-owning program");
+  assert(baseline.program?.owner_program_id === "PGM-IVE-TRUST-REPAIR", "B3 baseline records the owner program");
+  assert(baseline.ticket?.id === "T-INTAKE-A55DBB9B", "B3 baseline links the owning ticket");
+  assert(baseline.decision?.id === "D-001", "B3 baseline links the ownership decision");
 
   const requiredTopLevel = [
     "schema_version",
@@ -742,7 +822,7 @@ function assertBaselineContract() {
     "rebaseline_policy",
   ];
   for (const key of requiredTopLevel) {
-    assert(Object.hasOwn(baseline, key), `E2-1 baseline top-level key ${key} exists`);
+    assert(Object.hasOwn(baseline, key), `B3 baseline top-level key ${key} exists`);
   }
 
   const requiredMetricSections = [
@@ -754,32 +834,35 @@ function assertBaselineContract() {
     "plan_corpus",
   ];
   for (const key of requiredMetricSections) {
-    assert(Object.hasOwn(baseline.metrics || {}, key), `E2-1 baseline metric section ${key} exists`);
+    assert(Object.hasOwn(baseline.metrics || {}, key), `B3 baseline metric section ${key} exists`);
   }
 
   const conformance = baseline.metrics.ive_conformance;
-  assert(Number.isInteger(conformance.suite_count) && conformance.suite_count > 0, "E2-1 baseline records suite count");
-  assert(Number.isInteger(conformance.pass_count), "E2-1 baseline records pass count");
-  assert(Number.isInteger(conformance.wall_clock_ms) && conformance.wall_clock_ms > 0, "E2-1 baseline records wall-clock ms");
-  assert(Array.isArray(conformance.suites) && conformance.suites.length === conformance.suite_count, "E2-1 baseline has one suite timing row per suite");
-  assert(conformance.suites.every((suite) => typeof suite.id === "string" && Number.isFinite(suite.duration_ms)), "E2-1 baseline suite rows have ids and numeric duration_ms");
+  assert(conformance.suite_count === 134 && conformance.pass_count === 133, "B3 baseline records the measured 134/133 suite partition");
+  assert(conformance.failed_required_count === 0, "B3 baseline records zero required failures");
+  assert(conformance.warning_count === 1 && conformance.advisory_warning_count === 1 && conformance.warning_regression_count === 0, "B3 baseline separates the observed optional advisory from the zero warning-regression budget");
+  assert(Number.isInteger(conformance.wall_clock_ms) && conformance.wall_clock_ms > 0, "B3 baseline records wall-clock ms");
+  assert(Array.isArray(conformance.suites) && conformance.suites.length === conformance.suite_count, "B3 baseline has one suite timing row per suite");
+  assert(conformance.suites.every((suite) => typeof suite.id === "string" && Number.isFinite(suite.duration_ms)), "B3 baseline suite rows have ids and numeric duration_ms");
 
   const behavior = baseline.metrics.behavior_report;
-  assert(behavior.gate_bounce_rates && typeof behavior.gate_bounce_rates === "object", "E2-1 baseline records gate bounce rates");
-  assert(behavior.ceremony_gate_bounce_rates && typeof behavior.ceremony_gate_bounce_rates === "object", "E2-1 baseline records ceremony bounce rates");
-  assert(behavior.shadow_canary && typeof behavior.shadow_canary.divergence_rate_pct === "number", "E2-1 baseline records shadow-canary divergence");
-  assert(behavior.output_volume_lines?.blocked_first === 99, "E2-1 baseline records blocked-first output lines");
-  assert(behavior.output_volume_lines?.blocked_repeat === 79, "E2-1 baseline records blocked-repeat output lines");
-  assert(behavior.output_volume_lines?.pre_dedupe_baseline === 234, "E2-1 baseline records pre-dedupe output lines");
+  assert(behavior.total_runs === 302 && behavior.total_gate_bounces === 2406, "B3 baseline preserves the pre-intervention behavior snapshot");
+  assert(behavior.gate_bounce_rates && typeof behavior.gate_bounce_rates === "object", "B3 baseline retains a typed gate-rate surface");
+  assert(behavior.ceremony_gate_bounce_rates && typeof behavior.ceremony_gate_bounce_rates === "object", "B3 baseline retains a typed ceremony-rate surface");
+  assert(behavior.shadow_canary?.source_status === "not_remeasured" && behavior.shadow_canary?.divergence_rate_pct === null, "B3 baseline does not fabricate an August shadow-canary measurement");
+  assert(behavior.output_volume_lines?.blocked_first === 36, "B3 baseline records blocked-first output lines");
+  assert(behavior.output_volume_lines?.blocked_repeat === 4, "B3 baseline records blocked-repeat output lines");
+  assert(behavior.output_volume_lines?.pre_dedupe_baseline === 234, "B3 baseline records pre-dedupe output lines");
 
-  assert(Number.isInteger(baseline.metrics.test_estate.test_files_total) && baseline.metrics.test_estate.test_files_total > 0, "E2-1 baseline records test file count");
-  assert(Number.isInteger(baseline.metrics.test_estate.ci_gated_test_files) && baseline.metrics.test_estate.ci_gated_test_files > 0, "E2-1 baseline records CI-gated test count");
-  assert(Number.isInteger(baseline.metrics.loc.scripts_mjs) && baseline.metrics.loc.scripts_mjs > 0, "E2-1 baseline records script LOC");
-  assert(Number.isInteger(baseline.metrics.loc.tests_mjs) && baseline.metrics.loc.tests_mjs > 0, "E2-1 baseline records test LOC");
-  assert(Number.isInteger(baseline.metrics.loc.prolog_pl) && baseline.metrics.loc.prolog_pl > 0, "E2-1 baseline records Prolog LOC");
-  assert(Number.isInteger(baseline.metrics.plan_corpus.total_plans) && baseline.metrics.plan_corpus.total_plans > 0, "E2-1 baseline records plan corpus count");
+  assert(Number.isInteger(baseline.metrics.test_estate.test_files_total) && baseline.metrics.test_estate.test_files_total > 0, "B3 baseline records test file count");
+  assert(Number.isInteger(baseline.metrics.test_estate.ci_gated_test_files) && baseline.metrics.test_estate.ci_gated_test_files > 0, "B3 baseline records CI-gated test count");
+  assert(Number.isInteger(baseline.metrics.loc.scripts_mjs) && baseline.metrics.loc.scripts_mjs > 0, "B3 baseline records script LOC");
+  assert(Number.isInteger(baseline.metrics.loc.tests_mjs) && baseline.metrics.loc.tests_mjs > 0, "B3 baseline records test LOC");
+  assert(Number.isInteger(baseline.metrics.loc.prolog_pl) && baseline.metrics.loc.prolog_pl > 0, "B3 baseline records Prolog LOC");
+  assert(Number.isInteger(baseline.metrics.plan_corpus.total_plans) && baseline.metrics.plan_corpus.total_plans > 0, "B3 baseline records plan corpus count");
+  assert(baseline.measurement_provenance?.static_sections?.source_status === "carried_forward_not_remeasured", "B3 baseline labels static sections as June carry-forward");
 
-  assert(baseline.scoreboard_contract?.intended_consumer_ticket === "E2-5", "E2-1 baseline names E2-5 scoreboard consumer");
-  assert(Array.isArray(baseline.scoreboard_contract?.required_top_level_keys), "E2-1 baseline records scoreboard top-level contract");
-  assert(baseline.rebaseline_policy?.required_commit_citation_ticket === "T-INTAKE-1342EE68 or the later ticket that intentionally shifts the number.", "E2-1 baseline records ticket-cited rebaseline policy");
+  assert(baseline.scoreboard_contract?.intended_consumer_ticket === "T-INTAKE-A55DBB9B / scoreboard.mjs default", "B3 baseline names its scoreboard consumer");
+  assert(Array.isArray(baseline.scoreboard_contract?.required_top_level_keys), "B3 baseline records scoreboard top-level contract");
+  assert(baseline.rebaseline_policy?.required_commit_citation_ticket === "T-INTAKE-A55DBB9B or the later ticket that intentionally shifts the number.", "B3 baseline records ticket-cited rebaseline policy");
 }

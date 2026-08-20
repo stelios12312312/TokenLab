@@ -20,6 +20,7 @@
 import { readFileSync, existsSync } from "fs";
 import { join, dirname, resolve } from "path";
 import { fileURLToPath } from "url";
+import { emitJson } from "./lib/emit_json.mjs";
 import { resolvePlanTarget } from "./lib/plan_utils.mjs";
 import { verificationStatusIsPass } from "./lib/verification_status_vocabulary.mjs";
 
@@ -212,14 +213,14 @@ function printHuman(plan, audit) {
   console.log();
 }
 
-function printJson(plan, audit) {
-  console.log(JSON.stringify({
+function printJson(plan, audit, exitCode) {
+  emitJson({
     plan: plan.name,
     state: audit.currentState,
     compliant: audit.compliant,
     gates: audit.results,
     total_attempts: audit.allAttempts.length,
-  }, null, 2));
+  }, { exitCode });
 }
 
 // ---------------------------------------------------------------------------
@@ -235,23 +236,21 @@ const strict = !lenient;
 const plan = getActivePlan();
 if (!plan) {
   if (jsonMode) {
-    console.log(JSON.stringify({ error: "no_active_plan", compliant: true }));
+    emitJson({ error: "no_active_plan", compliant: true }, { space: 0, exitCode: 0 });
   } else {
     console.log("\n  No active plan found. Gate compliance check skipped.\n");
   }
-  process.exit(0);
-}
-
-const stateJson = readStateJson(plan.path);
-const currentState = readCurrentState(plan.path);
-const audit = auditCompliance(stateJson, currentState);
-
-if (jsonMode) {
-  printJson(plan, audit);
 } else {
-  printHuman(plan, audit);
-}
+  const stateJson = readStateJson(plan.path);
+  const currentState = readCurrentState(plan.path);
+  const audit = auditCompliance(stateJson, currentState);
 
-if (strict && !audit.compliant) {
-  process.exit(1);
+  if (jsonMode) {
+    printJson(plan, audit, strict && !audit.compliant ? 1 : 0);
+  } else {
+    printHuman(plan, audit);
+    if (strict && !audit.compliant) {
+      process.exit(1);
+    }
+  }
 }

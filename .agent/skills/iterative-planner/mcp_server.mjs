@@ -278,8 +278,17 @@ const handlers = {
 
   check_adjacency(params) {
     const result = runScript("blast_radius.mjs", ["--files", ...(params.files || [])]);
+    if (result.exitCode !== 0 && result.exitCode !== 2) {
+      const diagnostic = result.stderr.trim()
+        .replace(/^ERROR:\s*/, "") ||
+        "Blast radius analysis failed before producing a result.";
+      return {
+        ...errorResult(diagnostic),
+        ...getStatusSuffix(),
+      };
+    }
     return {
-      content: [{ type: "text", text: result.stdout || "Blast radius analysis complete.\n" + result.stderr }],
+      content: [{ type: "text", text: result.stdout || result.stderr || "Blast radius analysis complete." }],
       ...getStatusSuffix(),
     };
   },

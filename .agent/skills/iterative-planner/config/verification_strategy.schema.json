@@ -60,6 +60,7 @@
               "id": { "type": "string" },
               "criterion": { "type": "string" },
               "story_id": { "type": ["string", "null"] },
+              "story_criterion_id": { "type": ["string", "null"] },
               "domain": { "type": ["string", "null"] },
               "repo_system_context": { "type": "string" },
               "required_proof_type": { "type": "string" },

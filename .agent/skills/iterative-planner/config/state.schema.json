@@ -218,6 +218,23 @@
             "journey_verification_command": { "type": ["string", "null"] }
           }
         },
+        "truth_convergence": {
+          "type": "object",
+          "description": "Generated scoped reconciliation result; absence is legacy-compatible and not required",
+          "properties": {
+            "version": { "type": "integer", "minimum": 1 },
+            "generated_at": { "type": "string", "format": "date-time" },
+            "required": { "type": "boolean" },
+            "satisfied": { "type": "boolean" },
+            "status": { "type": "string", "enum": ["not_required", "converged", "drift", "indeterminate"] },
+            "scope": { "type": "object" },
+            "blockers": { "type": "array", "items": { "type": "string" } },
+            "actions": { "type": "array", "items": { "type": "object" } },
+            "input_digest": { "type": "string" },
+            "receipt_id": { "type": "string" }
+          },
+          "required": ["required", "satisfied", "status", "blockers", "input_digest", "receipt_id"]
+        },
         "test_evidence": {
           "type": "object",
           "properties": {
@@ -747,6 +764,32 @@
             "promotion_verdict": {
               "type": ["string", "null"],
               "enum": ["diagnostic_only", "not_promotable", "promotable", "blocked", null]
+            },
+            "implementation_validation": {
+              "type": "object",
+              "required": ["satisfied", "status", "blocking_issues"],
+              "properties": {
+                "satisfied": { "type": "boolean" },
+                "status": { "enum": ["pass", "fail"] },
+                "blocking_issues": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "scientific_review": {
+              "type": ["object", "null"],
+              "required": ["schema_version", "execution_status", "design_validity", "evidence_grade", "scientific_verdict", "promotion_status", "satisfied", "blockers", "warnings", "recomputed", "checks"],
+              "properties": {
+                "schema_version": { "const": "planner.scientific_review_receipt.v1" },
+                "execution_status": { "enum": ["not_run", "complete", "failed"] },
+                "design_validity": { "enum": ["valid", "invalid", "unresolved"] },
+                "evidence_grade": { "enum": ["evidence", "exploratory", "smoke_fixture", "underpowered", "legacy_unknown"] },
+                "scientific_verdict": { "enum": ["supported", "falsified", "inconclusive", "not_evaluated"] },
+                "promotion_status": { "enum": ["blocked", "research_only", "candidate_for_confirmation", "eligible_for_integration_review"] },
+                "satisfied": { "type": "boolean" },
+                "blockers": { "type": "array", "items": { "type": "object" } },
+                "warnings": { "type": "array", "items": { "type": "object" } },
+                "recomputed": { "type": "object" },
+                "checks": { "type": "object" }
+              }
             },
             "blocking_issues": {
               "type": "array",

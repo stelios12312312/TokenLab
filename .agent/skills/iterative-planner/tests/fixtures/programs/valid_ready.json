@@ -1,6 +1,7 @@
 {
   "version": 1,
   "id": "PGM-TEST",
+  "remote_mode": "remote-sync",
   "title": "Generic Capability Rollout",
   "status": "ready",
   "goal": "Deliver a reusable capability across multiple work units.",

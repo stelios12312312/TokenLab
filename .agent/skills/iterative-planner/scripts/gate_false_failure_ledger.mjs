@@ -273,7 +273,7 @@ function main() {
     suspect_codes: codes.filter((c) => c.systemic_suspect).map((c) => c.code),
   };
   if (opts.json) {
-    emitJson(result);
+    emitJson(result, { exitCode: 0 });
   } else {
     console.log(humanSummary(gates, codes, opts, result.plan_count));
   }

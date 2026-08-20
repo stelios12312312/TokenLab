@@ -761,9 +761,11 @@ if (isDirectInvocation(import.meta.url)) {
       console.log(result.text);
       process.exit(0);
     }
-    if (process.argv.includes("--json")) emitJson(result.report);
-    else console.log(renderCloseoutText(result.report));
-    process.exit(result.ok ? 0 : 1);
+    if (process.argv.includes("--json")) emitJson(result.report, { exitCode: result.ok ? 0 : 1 });
+    else {
+      console.log(renderCloseoutText(result.report));
+      process.exit(result.ok ? 0 : 1);
+    }
   } catch (error) {
     const failure = {
       schema_version: 1,
@@ -772,8 +774,10 @@ if (isDirectInvocation(import.meta.url)) {
       status: "FAIL",
       error: error.message,
     };
-    if (process.argv.includes("--json")) emitJson(failure);
-    else console.error(`ERROR: ${error.message}`);
-    process.exit(1);
+    if (process.argv.includes("--json")) emitJson(failure, { exitCode: 1 });
+    else {
+      console.error(`ERROR: ${error.message}`);
+      process.exit(1);
+    }
   }
 }

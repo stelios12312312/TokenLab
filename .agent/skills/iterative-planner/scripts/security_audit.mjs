@@ -6,6 +6,7 @@ import { existsSync, readFileSync, statSync } from "fs";
 import { join } from "path";
 
 import { loadInterfaceConfig } from "../../planner-mcp/interface_config.mjs";
+import { emitJson } from "./lib/emit_json.mjs";
 
 function usage() {
   return [
@@ -170,14 +171,15 @@ function main() {
     process.exit(2);
   }
   const result = runAudit();
+  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Local security-audit aggregate is derived from its check issue counts.
+  const exitCode = result.status === "PASS" ? 0 : 1;
   if (json) {
-    console.log(JSON.stringify(result, null, 2));
+    emitJson(result, { exitCode });
   } else {
     console.log(`Security audit ${result.status}: ${result.checks.length} checks`);
     for (const entry of result.checks) console.log(`${entry.status}: ${entry.id} ${entry.label}`);
+    process.exitCode = exitCode;
   }
-  // proof-status-lint: exempt T-INTAKE-B07B8898 -- Local security-audit aggregate is derived from its check issue counts.
-  process.exit(result.status === "PASS" ? 0 : 1);
 }
 
 main();

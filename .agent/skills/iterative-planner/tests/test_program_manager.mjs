@@ -18,10 +18,12 @@ const visualizerPayloadModule = join(repoRoot, "apps", "ive-visualizer", "script
 const programDispositionModule = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "lib", "program_disposition.mjs");
 const gateSatisfiabilityModule = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "lib", "gate_satisfiability.mjs");
 const verificationStatusVocabularyModule = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "lib", "verification_status_vocabulary.mjs");
+const programPacketModule = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "lib", "program_packet.mjs");
 const githubReviewModule = join(repoRoot, ".agent", "skills", "iterative-planner", "scripts", "github_ticket_review.mjs");
 const NODE = process.execPath;
 const { buildProgramDisposition } = await import(pathToFileURL(programDispositionModule).href);
 const { getVerificationStatusVocabulary } = await import(pathToFileURL(verificationStatusVocabularyModule).href);
+const { evaluateExternalPrerequisites, programPacketToFacts, validateProgramPacket } = await import(pathToFileURL(programPacketModule).href);
 const { renderText: renderGithubReviewText, runPublish, runReview } = await import(pathToFileURL(githubReviewModule).href);
 
 let passed = 0;
@@ -79,6 +81,14 @@ function errorMessages(result) {
     ...(result.parsed?.errors || []).map((entry) => entry?.message),
   ].filter(Boolean).join("\n");
 }
+
+const helpResult = run(["--help"]);
+assert(
+  helpResult.ok
+    && helpResult.stdout.includes("--defer-open")
+    && helpResult.stdout.includes("--expect-deferred-count <n>"),
+  "Program Manager help documents the guarded reversible open-deferral lane",
+);
 
 console.log("\nProgram Manager Contracts\n");
 
@@ -145,6 +155,26 @@ let result = run(["check", "--program", fixture("valid_ready.json"), "--json"]);
 assert(result.ok && result.parsed.status === "PASS", "valid Program Packet passes check");
 assert(result.parsed.counts.tickets === 1, "valid Program Packet reports ticket count");
 
+{
+  const knownStoryIds = new Set(["US-TEST-001"]);
+  const mature = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+  mature.story_refs = ["US-GHOST-PROGRAM"];
+  mature.epics[0].story_refs = ["US-GHOST-EPIC"];
+  mature.tickets[0].story_refs = ["US-GHOST-TICKET"];
+  mature.acceptance_criteria[0].story_refs = ["US-GHOST-CRITERION"];
+  const matureResult = validateProgramPacket(mature, { cwd: repoRoot, storyIds: knownStoryIds });
+  for (const code of ["program_unknown_story", "epic_unknown_story", "ticket_unknown_story", "acceptance_unknown_story"]) {
+    assert(matureResult.errors.some((entry) => entry.code === code), `mature Program validation fails on ${code}`);
+  }
+
+  const draft = structuredClone(mature);
+  draft.status = "design";
+  draft.tickets[0].lifecycle = "proposed";
+  const draftResult = validateProgramPacket(draft, { cwd: repoRoot, storyIds: knownStoryIds });
+  assert(!draftResult.errors.some((entry) => entry.code === "program_unknown_story"), "design Program keeps unknown Program refs advisory");
+  assert(draftResult.warnings.some((entry) => entry.code === "ticket_unknown_story"), "proposed ticket keeps unknown story refs advisory");
+}
+
 result = run(["verify", "design-to-ready", "--program", fixture("valid_ready.json"), "--json"]);
 assert(result.ok && result.parsed.status === "PASS", "design-to-ready accepts a traceable ready packet");
 
@@ -170,6 +200,24 @@ assert(result.ok && result.parsed.status === "PASS", "ready-to-execution accepts
     result = run(["check", "--program", packetPath, "--remote-mode", "remote-sync", "--json"], tmp);
     assert(!result.ok && hasError(result, "ready_ticket_missing_github_issue"), "remote-sync ready ticket without GitHub issue fails JS validation");
     assert(!result.ok && hasError(result, "program_ready_ticket_missing_github_issue"), "remote-sync ready ticket without GitHub issue fails ontology validation");
+    const publish = await runPublish({
+      command: "publish",
+      program: packetPath,
+      ticket: "T-001",
+      repo: "owner/repo",
+      project: null,
+      remoteMode: "remote-sync",
+      write: false,
+      json: true,
+    }, {
+      cwd: tmp,
+      env: {},
+      clock: () => new Date("2026-07-14T00:00:00.000Z"),
+    });
+    assert(publish.status === "PASS" && publish.issue?.action === "planned", "publish permits the target GitHub mirror precondition that the publish action resolves");
+    assert(publish.program_packet_validation?.remote_policy?.effective_mode === "remote-sync", "publish validates the Program under its explicit remote mode and repository");
+    assert(publish.program_packet_validation?.errors?.some((entry) => entry.code === "ready_ticket_missing_github_issue"), "publish preserves the target missing-mirror validation observation");
+    assert(publish.publish_preflight?.self_resolving_preconditions?.some((entry) => entry.code === "ready_ticket_missing_github_issue") && publish.publish_preflight?.blockers?.length === 0, "publish classifies only the target missing mirror as a self-resolving precondition");
     const text = run(["check", "--program", packetPath, "--remote-mode", "remote-sync"], tmp);
     const lines = text.stdout.trim().split(/\n/).filter(Boolean);
     assert(!text.ok && lines.length <= 10, "blocked check default output is capped at 10 lines");
@@ -240,13 +288,19 @@ assert(result.ok && result.parsed.status === "PASS", "ready-to-execution accepts
     writeFileSync(repoPath, `${JSON.stringify(repoPacket, null, 2)}\n`, "utf-8");
     const repoBefore = readFileSync(repoPath);
     result = run(["check", "--program", repoPath, "--json"], tmp, emptyRemoteEnv);
-    assert(result.ok && result.parsed?.remote_policy?.effective_mode === "remote-sync", "one persisted repository identity resolves an absent mode to remote-sync");
-    assert(repoBefore.equals(readFileSync(repoPath)), "repository-backed satisfiable check leaves the packet untouched");
+    assert(!result.ok && hasError(result, "program_gate_requirement_resolution_required"), "historical repository identity does not resolve an absent policy mode");
+    assert(result.parsed?.remote_policy?.repository?.slug === "owner/repo" && result.parsed?.remote_policy?.mode_source === "compatibility_default", "repository identity remains observable without becoming policy authority");
+    assert(repoBefore.equals(readFileSync(repoPath)), "repository-backed unresolved check leaves the packet untouched");
 
     const cliRepoPath = join(tmp, "cli-repository-backed.json");
     writeFileSync(cliRepoPath, `${JSON.stringify(legacyPacket, null, 2)}\n`, "utf-8");
     result = run(["check", "--program", cliRepoPath, "--repo", "owner/repo", "--json"], tmp, emptyRemoteEnv);
-    assert(result.parsed?.remote_policy?.repository?.slug === "owner/repo" && !hasError(result, "program_gate_requirement_unsatisfied"), "CLI repository identity is shared by JavaScript validation and ontology fact generation");
+    assert(!result.ok && result.parsed?.remote_policy?.repository?.slug === "owner/repo" && hasError(result, "program_gate_requirement_unsatisfied"), "CLI repository identity alone is shared as data but does not select remote policy");
+    const cliRemotePacket = structuredClone(legacyPacket);
+    cliRemotePacket.tickets[0].external_refs = [{ kind: "github_issue", issue_number: 101, repo: "owner/repo" }];
+    writeFileSync(cliRepoPath, `${JSON.stringify(cliRemotePacket, null, 2)}\n`, "utf-8");
+    result = run(["check", "--program", cliRepoPath, "--repo", "owner/repo", "--remote-mode", "remote-sync", "--json"], tmp, emptyRemoteEnv);
+    assert(result.ok && result.parsed?.remote_policy?.effective_mode === "remote-sync", "CLI remote mode plus repository identity explicitly resolves remote-sync");
 
     const missingRepoPath = join(tmp, "remote-missing-repository.json");
     const missingRepoPacket = structuredClone(legacyPacket);
@@ -326,7 +380,7 @@ assert(result.ok && result.parsed.status === "PASS", "ready-to-execution accepts
 
     const repoInit = run(["init", "--program", "repository-init", "--repo", "owner/repo", "--json"], tmp, emptyRemoteEnv);
     const repoInitPacket = JSON.parse(readFileSync(join(tmp, "plans", "programs", "repository-init", "program_packet.json"), "utf-8"));
-    assert(repoInit.ok && repoInitPacket.remote_mode === "remote-sync" && repoInitPacket.remote_policy?.repository_slug === "owner/repo", "init repository identity persists the remote-sync resolution");
+    assert(repoInit.ok && repoInitPacket.remote_mode === "local-only" && repoInitPacket.remote_policy?.repository_slug === "owner/repo", "init repository identity persists the local-only resolution");
 
     const canonicalRepoInit = run(["init", "--program", "canonical-repository-init", "--repo", "https://github.com/owner/repo.git", "--json"], tmp, emptyRemoteEnv);
     const canonicalRepoInitPacket = JSON.parse(readFileSync(join(tmp, "plans", "programs", "canonical-repository-init", "program_packet.json"), "utf-8"));
@@ -503,7 +557,7 @@ assert(result.ok && result.parsed.status === "PASS", "ready-to-execution accepts
 
 result = run(["facts", "--program", fixture("valid_ready.json")]);
 assert(result.ok && result.stdout.includes("program('PGM-TEST'"), "facts command emits program facts");
-assert(result.stdout.includes("program_remote_mode('PGM-TEST', 'remote_sync')"), "facts command infers remote-sync from the fixture repository identity");
+assert(result.stdout.includes("program_remote_mode('PGM-TEST', 'remote_sync')"), "facts command emits the fixture's explicit remote-sync policy");
 assert(result.stdout.includes("ticket('T-001'"), "facts command emits ticket facts");
 assert(result.stdout.includes("ticket_github_issue('T-001')"), "facts command emits GitHub issue mirror facts");
 assert(result.stdout.includes("ticket_github_issue_ref('T-001', 'owner/repo', 9016)"), "facts command emits detailed GitHub issue mirror refs");
@@ -1068,6 +1122,173 @@ assert(!result.ok && hasError(result, "program_child_plan_not_closed"), "closed 
     rmSync(dispositionTmp, { recursive: true, force: true });
   }
 
+  function openDeferralPacket({
+    programId = "PGM-OPEN-DEFERRAL",
+    includeUnhandled = false,
+    keepTicketId = "T-KEEP",
+  } = {}) {
+    const ticket = (id, lifecycle, title) => ({
+      id,
+      epic_id: "EP-OPEN",
+      title,
+      type: "feature",
+      lifecycle,
+      gap_refs: [`GAP-${id}`],
+    });
+    const tickets = [
+      ticket("T-PROPOSED", "proposed", "Proposed backlog candidate"),
+      ticket("T-BLOCKED", "blocked", "Blocked backlog candidate"),
+      ticket(keepTicketId, "proposed", "Explicitly protected work"),
+      {
+        ...ticket("T-ALREADY-DEFERRED", "deferred", "Already deferred backlog"),
+        deferral_decision_ref: "D-ALREADY-DEFERRED",
+        backlog_disposition: {
+          classification: "revive",
+          decision_ref: "D-ALREADY-DEFERRED",
+          receipt_ref: "reports/ive/lifecycle_dispositions/existing.json",
+          source: "program_manager_disposition",
+          updated_at: "2026-08-05T00:00:00.000Z",
+        },
+      },
+    ];
+    if (includeUnhandled) tickets.push(ticket("T-IN-PROGRESS", "in_progress", "Unprotected active work"));
+    return {
+      version: 1,
+      id: programId,
+      title: "Open backlog deferral fixture",
+      status: "executing",
+      goal: "Defer only explicitly selected open backlog while preserving protected work.",
+      remote_mode: "local-only",
+      story_refs: ["US-001"],
+      epics: [{
+        id: "EP-OPEN",
+        title: "Open backlog",
+        story_refs: ["US-001"],
+        ticket_refs: tickets.map((entry) => entry.id),
+      }],
+      tickets,
+      acceptance_criteria: [],
+      dependencies: [],
+      compatibility_contracts: [],
+      migration_boundaries: [],
+      deletion_move_census: [],
+      verification_matrix: [],
+      decisions: [{
+        id: "D-ALREADY-DEFERRED",
+        type: "deferral",
+        subject_ref: "T-ALREADY-DEFERRED",
+        status: "accepted",
+        rationale: "Existing reversible backlog deferral.",
+        decision: "Preserve this ticket for possible revival.",
+      }],
+    };
+  }
+
+  const openDeferralTmp = mkdtempSync(join(tmpdir(), "program-manager-open-deferral-"));
+  try {
+    const packetPath = join(openDeferralTmp, "program_packet.json");
+    const dryReceipt = join(openDeferralTmp, "dry-receipt.json");
+    const writeReceipt = join(openDeferralTmp, "write-receipt.json");
+    writeFileSync(packetPath, `${JSON.stringify(openDeferralPacket(), null, 2)}\n`, "utf-8");
+    const originalBytes = readFileSync(packetPath);
+    const originalPacket = JSON.parse(originalBytes.toString("utf-8"));
+    const originalKeep = JSON.stringify(originalPacket.tickets.find((entry) => entry.id === "T-KEEP"));
+    const originalDeferred = JSON.stringify(originalPacket.tickets.find((entry) => entry.id === "T-ALREADY-DEFERRED"));
+
+    const dryRun = run([
+      "disposition",
+      "--deferred-program", packetPath,
+      "--defer-open",
+      "--keep-ticket", "T-KEEP",
+      "--expect-deferred-count", "2",
+      "--output", dryReceipt,
+      "--json",
+    ], openDeferralTmp);
+    assert(dryRun.ok && dryRun.parsed?.counts?.open_deferred === 2, "disposition --defer-open dry-run selects the exact proposed/blocked candidate count");
+    assert(dryRun.parsed?.deferred_by_program?.[0]?.candidate_count === 2, "open deferral receipt reports per-Program candidate count");
+    assert(dryRun.parsed?.deferred?.filter((entry) => entry.action === "would_defer_open").length === 2, "open deferral dry-run reports would_defer_open actions");
+    assert(readFileSync(packetPath).equals(originalBytes) && !existsSync(dryReceipt), "open deferral dry-run writes neither Program Packet nor receipt");
+
+    const written = run([
+      "disposition",
+      "--deferred-program", packetPath,
+      "--defer-open",
+      "--keep-ticket", "T-KEEP",
+      "--expect-deferred-count", "2",
+      "--output", writeReceipt,
+      "--write",
+      "--json",
+    ], openDeferralTmp);
+    const afterWrite = JSON.parse(readFileSync(packetPath, "utf-8"));
+    const newlyDeferred = afterWrite.tickets.filter((entry) => ["T-PROPOSED", "T-BLOCKED"].includes(entry.id));
+    assert(written.ok && written.parsed?.counts?.open_deferred === 2 && written.parsed?.counts?.packets_written === 1, "open deferral write persists the exact expected candidate set");
+    assert(newlyDeferred.every((entry) => entry.lifecycle === "deferred" && entry.deferral_decision_ref === `D-DEFER-${entry.id}`), "open deferral writes lifecycle and deterministic decision refs");
+    assert(newlyDeferred.every((entry) => entry.backlog_disposition?.classification === "revive" && entry.backlog_disposition?.source === "program_manager_disposition" && entry.backlog_disposition?.receipt_ref === "write-receipt.json"), "open deferral writes reversible backlog disposition metadata tied to the receipt");
+    assert(newlyDeferred.every((entry) => afterWrite.decisions.some((decision) => decision.id === entry.deferral_decision_ref && decision.type === "deferral" && decision.subject_ref === entry.id && decision.status === "accepted" && decision.rationale)), "open deferral writes accepted per-ticket deferral decisions");
+    assert(JSON.stringify(afterWrite.tickets.find((entry) => entry.id === "T-KEEP")) === originalKeep, "open deferral preserves explicit KEEP ticket byte-equivalent JSON");
+    assert(JSON.stringify(afterWrite.tickets.find((entry) => entry.id === "T-ALREADY-DEFERRED")) === originalDeferred, "open deferral preserves already-deferred ticket byte-equivalent JSON");
+    const checked = run(["check", "--program", packetPath, "--json"], openDeferralTmp);
+    const facts = run(["facts", "--program", packetPath], openDeferralTmp);
+    assert(checked.ok && checked.parsed?.status === "PASS", "open deferral output passes Program Manager validation");
+    assert(facts.ok && facts.stdout.includes("ticket_deferred_by_decision('T-PROPOSED', 'D-DEFER-T-PROPOSED')"), "open deferral output emits ontology deferral-decision facts");
+
+    const repeatedBytes = readFileSync(packetPath);
+    const repeated = run([
+      "disposition",
+      "--deferred-program", packetPath,
+      "--defer-open",
+      "--keep-ticket", "T-KEEP",
+      "--expect-deferred-count", "0",
+      "--write",
+      "--json",
+    ], openDeferralTmp);
+    assert(repeated.ok && repeated.parsed?.counts?.open_deferred === 0 && readFileSync(packetPath).equals(repeatedBytes), "open deferral is idempotent after candidates have been deferred");
+  } finally {
+    rmSync(openDeferralTmp, { recursive: true, force: true });
+  }
+
+  const openDeferralRejectTmp = mkdtempSync(join(tmpdir(), "program-manager-open-deferral-reject-"));
+  try {
+    const packetPath = join(openDeferralRejectTmp, "program_packet.json");
+    const duplicatePacketPath = join(openDeferralRejectTmp, "duplicate", "program_packet.json");
+    mkdirSync(dirname(duplicatePacketPath), { recursive: true });
+    const resetPacket = (packet = openDeferralPacket()) => {
+      writeFileSync(packetPath, `${JSON.stringify(packet, null, 2)}\n`, "utf-8");
+      return readFileSync(packetPath);
+    };
+    let before = resetPacket();
+    let rejected = run(["disposition", "--deferred-program", packetPath, "--defer-open", "--keep-ticket", "T-KEEP", "--write", "--json"], openDeferralRejectTmp);
+    assert(!rejected.ok && errorMessages(rejected).includes("--expect-deferred-count") && readFileSync(packetPath).equals(before), "open deferral rejects a missing expected count before writes");
+
+    before = resetPacket();
+    rejected = run(["disposition", "--deferred-program", packetPath, "--defer-open", "--keep-ticket", "T-KEEP", "--expect-deferred-count", "2", "--close", "--write", "--json"], openDeferralRejectTmp);
+    assert(!rejected.ok && errorMessages(rejected).includes("incompatible") && readFileSync(packetPath).equals(before), "open deferral rejects incompatible --close before writes");
+
+    before = resetPacket();
+    rejected = run(["disposition", "--deferred-program", packetPath, "--defer-open", "--keep-ticket", "T-KEEP", "--expect-deferred-count", "3", "--write", "--json"], openDeferralRejectTmp);
+    assert(!rejected.ok && errorMessages(rejected).includes("expected 3") && readFileSync(packetPath).equals(before), "open deferral rejects a candidate-count mismatch before writes");
+
+    before = resetPacket();
+    rejected = run(["disposition", "--deferred-program", packetPath, "--defer-open", "--keep-ticket", "T-MISSING", "--expect-deferred-count", "3", "--write", "--json"], openDeferralRejectTmp);
+    assert(!rejected.ok && errorMessages(rejected).includes("T-MISSING") && readFileSync(packetPath).equals(before), "open deferral rejects a KEEP id that does not resolve exactly once");
+
+    before = resetPacket();
+    rejected = run(["disposition", "--deferred-program", packetPath, "--deferred-program", packetPath, "--defer-open", "--keep-ticket", "T-KEEP", "--expect-deferred-count", "2", "--write", "--json"], openDeferralRejectTmp);
+    assert(!rejected.ok && errorMessages(rejected).includes("selected more than once") && readFileSync(packetPath).equals(before), "open deferral rejects duplicate Program Packet selection before writes");
+
+    before = resetPacket(openDeferralPacket({ includeUnhandled: true }));
+    rejected = run(["disposition", "--deferred-program", packetPath, "--defer-open", "--keep-ticket", "T-KEEP", "--expect-deferred-count", "2", "--write", "--json"], openDeferralRejectTmp);
+    assert(!rejected.ok && errorMessages(rejected).includes("T-IN-PROGRESS") && readFileSync(packetPath).equals(before), "open deferral rejects unprotected actionable lifecycle outside proposed/blocked before writes");
+
+    before = resetPacket();
+    writeFileSync(duplicatePacketPath, `${JSON.stringify(openDeferralPacket({ programId: "PGM-OPEN-DEFERRAL-DUPLICATE" }), null, 2)}\n`, "utf-8");
+    const duplicateBefore = readFileSync(duplicatePacketPath);
+    rejected = run(["disposition", "--deferred-program", packetPath, "--deferred-program", duplicatePacketPath, "--defer-open", "--keep-ticket", "T-KEEP", "--expect-deferred-count", "4", "--write", "--json"], openDeferralRejectTmp);
+    assert(!rejected.ok && errorMessages(rejected).includes("T-KEEP") && readFileSync(packetPath).equals(before) && readFileSync(duplicatePacketPath).equals(duplicateBefore), "open deferral rejects a KEEP id that resolves in multiple selected Programs before writes");
+  } finally {
+    rmSync(openDeferralRejectTmp, { recursive: true, force: true });
+  }
+
   const sameSecondTmp = mkdtempSync(join(tmpdir(), "program-manager-disposition-same-second-"));
   try {
     const packetAPath = join(sameSecondTmp, "program-a", "program_packet.json");
@@ -1402,7 +1623,7 @@ try {
     const acceptanceId = first.parsed?.candidate_ticket?.acceptance_criteria?.[0];
     const verificationId = first.parsed?.candidate_ticket?.verification_refs?.[0];
     assert(first.ok && ticketId && acceptanceId && verificationId, "preserve fixture creates intake ticket");
-    assert(first.parsed?.ticket_intake_receipt?.github_publication === "required_before_ready", "local intake receipt requires GitHub publication before readiness");
+    assert(first.parsed?.ticket_intake_receipt?.github_publication === "opt_in", "local intake receipt requires GitHub publication before readiness");
     assert(first.parsed?.ticket_intake_receipt?.next_required_command?.includes("github_ticket_review.mjs publish"), "local intake next command points to GitHub publish");
 
     const packet = JSON.parse(readFileSync(packetPath, "utf-8"));
@@ -2120,6 +2341,28 @@ try {
       },
     });
 
+    function scopedDispositionFixture(suffix, mutateRepair = (value) => value) {
+      const programId = `PGM-DISP-${suffix.toUpperCase()}`;
+      const packetRel = `plans/programs/disp-${suffix}/program_packet.json`;
+      const scopedPacketPath = join(tmp, packetRel);
+      const scopedPacket = structuredClone(packet);
+      scopedPacket.id = programId;
+      writeJson(scopedPacketPath, scopedPacket);
+
+      const scopedRepair = JSON.parse(readFileSync(repairPath, "utf-8"));
+      for (const finding of [
+        ...(scopedRepair.findings?.shipped_open || []),
+        ...(scopedRepair.findings?.duplicate_scope || []),
+      ]) {
+        finding.program_id = programId;
+        finding.packet_path = packetRel;
+      }
+      mutateRepair(scopedRepair);
+      const scopedRepairPath = join(tmp, "reports", "ive", "lifecycle_reconciliation", `fixture_repair_${suffix}.json`);
+      writeJson(scopedRepairPath, scopedRepair);
+      return { packetPath: scopedPacketPath, repairPath: scopedRepairPath };
+    }
+
     const remoteSyncPacketPath = join(tmp, "plans", "programs", "disp-sync", "program_packet.json");
     const remoteSyncPacket = {
       ...packet,
@@ -2174,6 +2417,85 @@ try {
       "--json",
     ], tmp);
     assert(!remoteSyncDryRun.ok && remoteSyncDryRun.parsed?.shipped_open?.[0]?.blockers?.includes("missing_github_issue_mirror"), "remote-sync shipped-open disposition still requires GitHub issue mirror");
+
+    const bareFindingFixture = scopedDispositionFixture("bare-finding-filter");
+    const bareFindingBefore = readFileSync(bareFindingFixture.packetPath);
+    const bareFindingReceiptPath = join(tmp, "reports", "ive", "lifecycle_dispositions", "fixture_bare_finding_filter_receipt.json");
+    const bareFinding = run([
+      "disposition",
+      "--from-repair-packet", bareFindingFixture.repairPath,
+      "--output", bareFindingReceiptPath,
+      "--write",
+      "--json",
+      "--finding",
+    ], tmp);
+    assert(!bareFinding.ok && bareFinding.parsed?.status === "FAIL" && /finding.*(?:missing|requires).*value/i.test(bareFinding.parsed?.error || ""), "disposition rejects a value-less --finding selector before bulk fallback");
+    assert(bareFindingBefore.equals(readFileSync(bareFindingFixture.packetPath)) && !existsSync(bareFindingReceiptPath), "value-less disposition --finding leaves packet bytes unchanged and writes no receipt");
+
+    const missingFixture = scopedDispositionFixture("missing-filter");
+    const missingBefore = readFileSync(missingFixture.packetPath);
+    const missingReceiptPath = join(tmp, "reports", "ive", "lifecycle_dispositions", "fixture_missing_filter_receipt.json");
+    const missing = run([
+      "disposition",
+      "--from-repair-packet", missingFixture.repairPath,
+      "--finding", "lifecycle:T-DISP-MISSING",
+      "--output", missingReceiptPath,
+      "--write",
+      "--json",
+    ], tmp);
+    assert(!missing.ok && missing.parsed?.status === "FAIL" && /finding.*not found/i.test(missing.parsed?.error || ""), "disposition --finding fails closed when the exact repair finding does not exist");
+    assert(missingBefore.equals(readFileSync(missingFixture.packetPath)) && !existsSync(missingReceiptPath), "missing disposition finding leaves packet bytes unchanged and writes no receipt");
+
+    const selectedFixture = scopedDispositionFixture("selected-filter");
+    const selectedBefore = readFileSync(selectedFixture.packetPath);
+    const selectedBeforePacket = JSON.parse(selectedBefore.toString("utf-8"));
+    const siblingBefore = Buffer.from(JSON.stringify(selectedBeforePacket.tickets.find((entry) => entry.id === "T-DISP-LEGACY")));
+    const selectedDryRun = run([
+      "disposition",
+      "--from-repair-packet", selectedFixture.repairPath,
+      "--finding", "lifecycle:T-DISP-VALID",
+      "--json",
+    ], tmp);
+    const selectedDryEntry = selectedDryRun.parsed?.shipped_open?.[0];
+    assert(selectedDryRun.ok && selectedDryRun.parsed?.status === "PASS", "disposition --finding dry-run evaluates only the selected valid repair finding");
+    assert(selectedDryRun.parsed?.finding_id === "lifecycle:T-DISP-VALID" && selectedDryRun.parsed?.shipped_open?.length === 1 && selectedDryRun.parsed?.duplicate_scope?.length === 0, "disposition --finding dry-run records one exact repair finding in its receipt");
+    assert(selectedDryEntry?.ticket_id === "T-DISP-VALID" && selectedDryEntry?.action === "would_apply_closed", "disposition --finding dry-run reports the selected ticket would close");
+    assert(selectedBefore.equals(readFileSync(selectedFixture.packetPath)), "selected disposition dry-run leaves Program Packet bytes unchanged");
+
+    const selectedReceiptPath = join(tmp, "reports", "ive", "lifecycle_dispositions", "fixture_selected_filter_receipt.json");
+    const selectedWrite = run([
+      "disposition",
+      "--from-repair-packet", selectedFixture.repairPath,
+      "--finding", "lifecycle:T-DISP-VALID",
+      "--output", selectedReceiptPath,
+      "--write",
+      "--json",
+    ], tmp);
+    const selectedWrittenPacket = JSON.parse(readFileSync(selectedFixture.packetPath, "utf-8"));
+    const selectedWriteEntry = selectedWrite.parsed?.shipped_open?.[0];
+    const siblingAfter = Buffer.from(JSON.stringify(selectedWrittenPacket.tickets.find((entry) => entry.id === "T-DISP-LEGACY")));
+    assert(selectedWrite.ok && selectedWrite.parsed?.status === "PASS" && selectedWrite.parsed?.receipt_written === true && existsSync(selectedReceiptPath), "disposition --finding write persists one passing scoped receipt");
+    assert(selectedWrite.parsed?.shipped_open?.length === 1 && selectedWrite.parsed?.duplicate_scope?.length === 0 && selectedWriteEntry?.ticket_id === "T-DISP-VALID" && selectedWriteEntry?.action === "applied_closed", "disposition --finding write applies only the selected repair finding");
+    assert(selectedWrittenPacket.tickets.find((entry) => entry.id === "T-DISP-VALID")?.lifecycle === "closed", "disposition --finding write closes the selected ticket");
+    assert(siblingBefore.equals(siblingAfter), "disposition --finding write preserves the sibling ticket byte-for-byte");
+    assert(JSON.stringify(selectedDryEntry?.verification) === JSON.stringify(selectedWriteEntry?.verification), "disposition --finding dry-run and write use identical verification evidence");
+    assert(JSON.stringify(selectedWrite.parsed?.packet_writes?.[0]?.changed_ticket_ids) === JSON.stringify(["T-DISP-VALID"]), "disposition --finding packet receipt names only the selected changed ticket");
+
+    const ambiguousFixture = scopedDispositionFixture("ambiguous-filter", (scopedRepair) => {
+      scopedRepair.findings.duplicate_scope[0].id = "lifecycle:T-DISP-VALID";
+    });
+    const ambiguousBefore = readFileSync(ambiguousFixture.packetPath);
+    const ambiguousReceiptPath = join(tmp, "reports", "ive", "lifecycle_dispositions", "fixture_ambiguous_filter_receipt.json");
+    const ambiguous = run([
+      "disposition",
+      "--from-repair-packet", ambiguousFixture.repairPath,
+      "--finding", "lifecycle:T-DISP-VALID",
+      "--output", ambiguousReceiptPath,
+      "--write",
+      "--json",
+    ], tmp);
+    assert(!ambiguous.ok && ambiguous.parsed?.status === "FAIL" && /finding.*ambiguous/i.test(ambiguous.parsed?.error || ""), "disposition --finding rejects an ambiguous repair finding id");
+    assert(ambiguousBefore.equals(readFileSync(ambiguousFixture.packetPath)) && !existsSync(ambiguousReceiptPath), "ambiguous disposition finding leaves packet bytes unchanged and writes no receipt");
 
     const beforeDryRun = readFileSync(packetPath, "utf-8");
     const dryRun = run([
@@ -3126,11 +3448,12 @@ assert(result.ok && (result.parsed?.tickets || []).length === 0, "blockers on un
       ticket: "T-HEALTHY",
       repo: "owner/repo",
       project: null,
-      remoteMode: "local-only",
+      remoteMode: "remote-sync",
       write: false,
       json: true,
     }, { cwd: tmp, clock: () => new Date("2026-07-14T00:00:00.000Z") });
     assert(publish.status === "BLOCKED" && publish.ticket_intake_receipt?.deterministic_blocker_count > 0, "publish dry-run remains blocked by whole-Program validation failure");
+    assert(publish.publish_preflight?.blockers?.some((entry) => entry.code === "ready_ticket_missing_github_issue" && entry.path?.includes("T-UNRELATED")), "publish does not waive an unrelated ticket's missing GitHub mirror");
     const publishCli = runGithub([
       "publish", "--program", packetPath, "--ticket", "T-HEALTHY",
       "--repo", "owner/repo", "--remote-mode", "local-only", "--json",
@@ -3205,6 +3528,256 @@ process.exit(1);
     rmSync(tmp, { recursive: true, force: true });
   }
 }
+
+console.log("\nCross-Program Prerequisites And Revival\n");
+
+{
+  const current = {
+    id: "PGM-CURRENT",
+    tickets: [{
+      id: "T-CURRENT",
+      lifecycle: "in_progress",
+      external_prerequisites: [
+        { program_ref: "PGM-TRUST", required_status: "closed" },
+        { program_ref: "PGM-AUTONOMY", ticket_ref: "T-GRADER", required_lifecycle: "closed" },
+      ],
+    }],
+  };
+  const blocked = evaluateExternalPrerequisites(current, {
+    programPackets: [
+      { id: "PGM-TRUST", status: "closed", tickets: [] },
+      { id: "PGM-AUTONOMY", status: "deferred", tickets: [{ id: "T-GRADER", lifecycle: "deferred" }] },
+    ],
+  });
+  assert(!blocked.ok && blocked.blockers.some((entry) => entry.code === "ticket_external_prerequisite_lifecycle_mismatch" && entry.ticket_id === "T-CURRENT"), "structured cross-Program ticket prerequisite blocks on deferred lifecycle");
+
+  const satisfied = evaluateExternalPrerequisites(current, {
+    programPackets: [
+      { id: "PGM-TRUST", status: "closed", tickets: [] },
+      { id: "PGM-AUTONOMY", status: "executing", tickets: [{ id: "T-GRADER", lifecycle: "closed" }] },
+    ],
+  });
+  assert(satisfied.ok && satisfied.prerequisites.every((entry) => entry.satisfied), "structured cross-Program prerequisites pass only against canonical Program/ticket state");
+  const advanced = evaluateExternalPrerequisites({
+    id: "PGM-ADVANCED",
+    tickets: [{
+      id: "T-ADVANCED",
+      lifecycle: "in_progress",
+      external_prerequisites: [{ program_ref: "PGM-AUTONOMY", ticket_ref: "T-GRADER", required_lifecycle: "in_progress" }],
+    }],
+  }, {
+    programPackets: [{ id: "PGM-AUTONOMY", status: "closed", tickets: [{ id: "T-GRADER", lifecycle: "closed" }] }],
+  });
+  assert(advanced.ok && advanced.prerequisites[0]?.observed === "closed", "a forward-advanced ticket continues to satisfy an earlier minimum lifecycle prerequisite");
+  const nonForward = evaluateExternalPrerequisites({
+    id: "PGM-NON-FORWARD",
+    tickets: [{
+      id: "T-NON-FORWARD",
+      lifecycle: "in_progress",
+      external_prerequisites: [{ program_ref: "PGM-AUTONOMY", ticket_ref: "T-GRADER", required_lifecycle: "in_progress" }],
+    }],
+  }, {
+    programPackets: [{ id: "PGM-AUTONOMY", status: "deferred", tickets: [{ id: "T-GRADER", lifecycle: "deferred" }] }],
+  });
+  assert(!nonForward.ok && nonForward.blockers[0]?.code === "ticket_external_prerequisite_lifecycle_mismatch", "blocked or deferred branches never satisfy a forward minimum lifecycle prerequisite");
+  const malformed = evaluateExternalPrerequisites({
+    id: "PGM-MALFORMED",
+    tickets: [{
+      id: "T-MALFORMED",
+      lifecycle: "ready",
+      external_prerequisites: [
+        { program_ref: "PGM-TRUST", required_status: "impossible" },
+        { program_ref: "PGM-AUTONOMY", ticket_ref: "T-GRADER", required_status: "closed", required_lifecycle: "closed" },
+      ],
+    }],
+  }, {
+    programPackets: [
+      { id: "PGM-TRUST", status: "closed", tickets: [] },
+      { id: "PGM-AUTONOMY", status: "closed", tickets: [{ id: "T-GRADER", lifecycle: "closed" }] },
+    ],
+  });
+  assert(!malformed.ok && malformed.blockers.length === 2 && malformed.blockers.every((entry) => entry.code === "ticket_external_prerequisite_invalid"), "external prerequisite shape and enum drift fail closed instead of matching canonical authority accidentally");
+  const facts = programPacketToFacts(current, {
+    programPackets: [
+      { id: "PGM-TRUST", status: "closed", tickets: [] },
+      { id: "PGM-AUTONOMY", status: "deferred", tickets: [{ id: "T-GRADER", lifecycle: "deferred" }] },
+    ],
+  });
+  assert(facts.includes("ticket_external_prerequisite('T-CURRENT', 'PGM-AUTONOMY', 'T-GRADER')") && facts.includes("ticket_external_prerequisite_unsatisfied('T-CURRENT', 'PGM-AUTONOMY', 'T-GRADER')"), "Program facts expose the same unsatisfied external prerequisite to Prolog");
+}
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-deferral-"));
+  try {
+    const packetPath = join(tmp, "plans", "programs", "active-work", "program_packet.json");
+    const childPlanRel = "plans/plan_2026-08-17_failed_active";
+    const childPlanDir = join(tmp, childPlanRel);
+    mkdirSync(dirname(packetPath), { recursive: true });
+    mkdirSync(childPlanDir, { recursive: true });
+    const fixturePacket = JSON.parse(readFileSync(fixture("valid_ready.json"), "utf-8"));
+    fixturePacket.remote_mode = "local-only";
+    fixturePacket.status = "executing";
+    fixturePacket.tickets[0].lifecycle = "in_progress";
+    fixturePacket.tickets[0].child_plan = {
+      policy: "required",
+      plan_dir: childPlanRel,
+      reason: "Active work requires a governed child plan.",
+    };
+    writeFileSync(packetPath, `${JSON.stringify(fixturePacket, null, 2)}\n`);
+    writeFileSync(join(childPlanDir, "state.json"), `${JSON.stringify({ state: "EXECUTE", transitions: [] }, null, 2)}\n`);
+    const args = [
+      "defer", "--program", packetPath, "--ticket", "T-001",
+      "--decision", "D-DEFER-FAILED-ACTIVE", "--reason", "The bounded active attempt failed and its abandoned evidence is preserved.",
+      "--child-plan", childPlanRel, "--json",
+    ];
+
+    const incomplete = run(["defer", "--program", packetPath, "--json"], tmp);
+    assert(!incomplete.ok && /requires --program, --ticket, --decision, --reason, and --child-plan/.test(errorMessages(incomplete)), "defer rejects an incomplete exact-ticket contract");
+    const nonterminalBefore = readFileSync(packetPath);
+    const nonterminal = run(args, tmp);
+    assert(!nonterminal.ok && /terminal CLOSE with \[ABANDONED\]/.test(errorMessages(nonterminal)), "defer rejects nonterminal child-plan evidence");
+    assert(nonterminalBefore.equals(readFileSync(packetPath)), "blocked defer leaves Program Packet bytes unchanged");
+
+    writeFileSync(join(childPlanDir, "state.json"), `${JSON.stringify({
+      state: "CLOSE",
+      transitions: [{ from: "EXECUTE", to: "CLOSE", marker: "[ABANDONED]" }],
+    }, null, 2)}\n`);
+    const collisionPacket = structuredClone(fixturePacket);
+    collisionPacket.decisions.push({ id: "D-DEFER-FAILED-ACTIVE", type: "deferral", subject_ref: "T-OTHER", status: "accepted", rationale: "Collision fixture decision." });
+    writeFileSync(packetPath, `${JSON.stringify(collisionPacket, null, 2)}\n`);
+    const collision = run(args, tmp);
+    assert(!collision.ok && /decision id collision/.test(errorMessages(collision)), "defer rejects a colliding decision id before mutation");
+
+    writeFileSync(packetPath, `${JSON.stringify(fixturePacket, null, 2)}\n`);
+    const before = readFileSync(packetPath);
+    const dry = run(args, tmp);
+    assert(dry.ok && dry.parsed?.action === "would_defer" && dry.parsed?.new_program_status === "deferred", "defer dry-run plans one exact active ticket and terminal Program status");
+    assert(before.equals(readFileSync(packetPath)), "defer defaults to a non-writing dry-run");
+
+    const written = run([...args.slice(0, -1), "--write", "--json"], tmp);
+    const after = JSON.parse(readFileSync(packetPath, "utf-8"));
+    const ticket = after.tickets.find((entry) => entry.id === "T-001");
+    const decision = after.decisions.find((entry) => entry.id === "D-DEFER-FAILED-ACTIVE");
+    assert(written.ok && written.parsed?.action === "deferred" && ticket?.lifecycle === "deferred" && after.status === "deferred", "defer write changes only the failed ticket lifecycle and aligns a fully terminal Program");
+    assert(ticket?.deferral_decision_ref === "D-DEFER-FAILED-ACTIVE" && decision?.status === "accepted" && decision?.child_plan_terminal_state === "abandoned", "defer persists accepted decision and abandoned child-plan provenance");
+
+    const afterWrite = readFileSync(packetPath);
+    const repeat = run([...args.slice(0, -1), "--write", "--json"], tmp);
+    assert(repeat.ok && repeat.parsed?.action === "already_deferred", "exact repeated defer is an idempotent success");
+    assert(afterWrite.equals(readFileSync(packetPath)), "idempotent repeated defer leaves Program Packet byte-for-byte unchanged");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+{
+  const tmp = mkdtempSync(join(tmpdir(), "program-manager-revival-"));
+  try {
+    const packetPath = join(tmp, "plans", "programs", "self-improving", "program_packet.json");
+    mkdirSync(dirname(packetPath), { recursive: true });
+    const sourcePacket = join(repoRoot, "plans", "programs", "ive-self-improving-tests", "program_packet.json");
+    const revivalFixture = JSON.parse(readFileSync(sourcePacket, "utf-8"));
+    revivalFixture.status = "deferred";
+    revivalFixture.decisions = revivalFixture.decisions.filter((entry) => entry.type !== "revival");
+    for (const entry of revivalFixture.tickets) {
+      if (!entry.revival_decision_ref) continue;
+      entry.lifecycle = "deferred";
+      delete entry.revival_decision_ref;
+      if (entry.backlog_disposition) delete entry.backlog_disposition.revived_by_decision_ref;
+      entry.child_plan = {
+        policy: "required",
+        plan_dir: null,
+        reason: "Executable intake ticket requires a child iterative plan before implementation.",
+      };
+    }
+    writeFileSync(packetPath, `${JSON.stringify(revivalFixture, null, 2)}\n`);
+    const childPlanDir = join(tmp, "plans", "plan_2026-08-17_test");
+    mkdirSync(childPlanDir, { recursive: true });
+    writeFileSync(join(childPlanDir, "state.json"), `${JSON.stringify({ state: "EXECUTE" }, null, 2)}\n`);
+    const before = readFileSync(packetPath, "utf-8");
+    const missingContract = run(["revive", "--program", packetPath, "--json"], tmp);
+    assert(!missingContract.ok && /requires --program, --ticket, --decision, --reason, and --child-plan/.test(errorMessages(missingContract)), "revive rejects an incomplete explicit-revival contract");
+    const unsafePlan = run([
+      "revive", "--program", packetPath, "--ticket", "T-INTAKE-EA5351FD",
+      "--decision", "D-REVIVE-UNSAFE-PLAN", "--reason", "Reject absolute child-plan authority.",
+      "--child-plan", childPlanDir, "--json",
+    ], tmp);
+    assert(!unsafePlan.ok && /repository-relative path/.test(errorMessages(unsafePlan)), "revive rejects absolute child-plan paths");
+    const unknownTicket = run([
+      "revive", "--program", packetPath, "--ticket", "T-NOT-PRESENT",
+      "--decision", "D-REVIVE-UNKNOWN", "--reason", "Reject ambiguous or absent ticket authority.",
+      "--child-plan", "plans/plan_2026-08-17_test", "--json",
+    ], tmp);
+    assert(!unknownTicket.ok && /resolve exactly once; found 0/.test(errorMessages(unknownTicket)), "revive rejects a ticket that is absent from the selected Program");
+    const args = [
+      "revive", "--program", packetPath, "--ticket", "T-INTAKE-EA5351FD",
+      "--decision", "D-REVIVE-L2-TEST", "--reason", "Production grader contract is now implemented under governed O1 work.",
+      "--child-plan", "plans/plan_2026-08-17_test", "--json",
+    ];
+    const dry = run(args, tmp);
+    assert(dry.ok && dry.parsed?.status === "PASS" && dry.parsed?.action === "would_revive", "revive defaults to a non-writing dry-run with an exact accepted decision");
+    assert(readFileSync(packetPath, "utf-8") === before, "revive dry-run leaves Program Packet bytes unchanged");
+
+    const written = run([...args.slice(0, -1), "--write", "--json"], tmp);
+    const after = JSON.parse(readFileSync(packetPath, "utf-8"));
+    const ticket = after.tickets.find((entry) => entry.id === "T-INTAKE-EA5351FD");
+    const decision = after.decisions.find((entry) => entry.id === "D-REVIVE-L2-TEST");
+    assert(written.ok && written.parsed?.action === "revived" && ticket?.lifecycle === "in_progress" && after.status === "executing", "revive write advances only the selected deferred ticket and resumes a deferred Program");
+    assert(ticket?.deferral_decision_ref && ticket?.revival_decision_ref === "D-REVIVE-L2-TEST" && decision?.previous_decision_ref === ticket.deferral_decision_ref && decision?.status === "accepted", "revive preserves deferral history and records the accepted revival decision");
+    assert(ticket?.child_plan?.plan_dir === "plans/plan_2026-08-17_test", "revive links the explicit child plan without inventing one");
+
+    const repeat = run([...args.slice(0, -1), "--write", "--json"], tmp);
+    assert(!repeat.ok && /deferred/.test(errorMessages(repeat)), "revive rejects a non-deferred ticket and never revives implicitly");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function scenarioGithubMirrorDefaultPushOnly() {
+  const tmp = mkdtempSync(join(tmpdir(), "planner-gh-mirror-"));
+  try {
+    const packetDir = join(tmp, "plans", "programs", "test-mirror");
+    mkdirSync(packetDir, { recursive: true });
+    const packetPath = join(packetDir, "program_packet.json");
+    const initRes = run(["init", "--program", "test-mirror", "--title", "Test Mirror", "--repo", "owner/test-repo", "--json"], tmp);
+    assert(initRes.ok, "github mirror test: program initialized");
+
+    // 1. Intake with GitHub unreachable (gh fails/offline) -> succeeds locally with queued record
+    const offlineIntake = run([
+      "intake", "--program", packetPath, "--from-text", "Offline feature request", "--write", "--json"
+    ], tmp, { PATH: "/dev/null" }); // Ensure gh is not found / fails
+    assert(offlineIntake.ok, "intake with GitHub unreachable succeeds locally");
+    const offlinePacket = JSON.parse(readFileSync(packetPath, "utf-8"));
+    const offlineTicket = offlinePacket.tickets[0];
+    assert(offlineTicket && offlineTicket.github_sync?.status === "queued", "offline ticket records queued github_sync status");
+    assert(offlineTicket.github_sync.pending_action === "publish", "offline ticket records pending publish action");
+
+    // 2. Intake with mirror explicitly off -> no github_sync queued
+    const noMirrorIntake = run([
+      "intake", "--program", packetPath, "--from-text", "No mirror feature request", "--no-github-mirror", "--write", "--json"
+    ], tmp);
+    assert(noMirrorIntake.ok, "intake with --no-github-mirror succeeds");
+    const noMirrorPacket = JSON.parse(readFileSync(packetPath, "utf-8"));
+    const noMirrorTicket = noMirrorPacket.tickets.find((t) => t.title.includes("No mirror"));
+    assert(noMirrorTicket && !noMirrorTicket.github_sync, "no-mirror ticket does not record github_sync");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function scenarioProgramManagerCliUsageAndHelp() {
+  const helpResult = run(["--help"]);
+  assert(helpResult.ok && helpResult.stdout.includes("program_manager.mjs — Program Packet validation"), "program_manager --help prints usage");
+
+  const unknownCommand = run(["unknown-command"]);
+  assert(!unknownCommand.ok && unknownCommand.stderr.includes("Unknown command: unknown-command"), "program_manager unknown command prints usage");
+
+  const helpCommand = run(["help"]);
+  assert(helpCommand.ok && helpCommand.stdout.includes("Program gates:"), "program_manager help prints program gates");
+}
+
+scenarioProgramManagerCliUsageAndHelp();
+scenarioGithubMirrorDefaultPushOnly();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

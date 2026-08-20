@@ -483,6 +483,7 @@ function validateVerificationDocument(root, issues) {
     }
     if (!isNonEmptyString(criterionRecord.id)) issues.push(`${label}.id is required`);
     if (!isNonEmptyString(criterionRecord.plan_id)) issues.push(`${label}.plan_id is required`);
+    if (criterionRecord.story_id !== undefined && !isNonEmptyString(criterionRecord.story_id)) issues.push(`${label}.story_id must be a non-empty string when present`);
     if (criterionRecord.story_criterion_id !== undefined && !isNonEmptyString(criterionRecord.story_criterion_id)) issues.push(`${label}.story_criterion_id must be a non-empty string when present`);
     validateOptionalStringArray(criterionRecord.test_refs, `${label}.test_refs`, issues);
     validateOptionalStringArray(criterionRecord.artifact_refs, `${label}.artifact_refs`, issues);

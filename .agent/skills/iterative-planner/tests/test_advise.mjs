@@ -10,6 +10,7 @@ import { tmpdir } from "os";
 import { createInitialStateJson, writeStateJson } from "../scripts/lib/determinism.mjs";
 import { buildAdvisoryRecommendation } from "../scripts/advise.mjs";
 import { deriveTaskFocusContract } from "../scripts/lib/task_focus_contract.mjs";
+import { buildGuidancePacket } from "../scripts/lib/guidance_packet.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -858,6 +859,7 @@ function seedGuidanceFirstProgram(cwd) {
       story_refs: [],
       gap_refs: ["GAP-INTAKE-120A6B61"],
       depends_on: ["T-INTAKE-2707D982"],
+      external_prerequisites: [{ program_ref: "PGM-GUIDANCE-PREREQ", ticket_ref: "T-PREREQ", required_lifecycle: "closed" }],
       acceptance_criteria: ["AC-G1"],
       verification_refs: ["VM-G1"],
       problem: "Publish route gate persona ontology knowledge and ticket contracts before the agent acts.",
@@ -873,6 +875,22 @@ function seedGuidanceFirstProgram(cwd) {
     compatibility_contracts: [],
     migration_boundaries: [],
     deletion_move_census: [],
+    decisions: [],
+  });
+  writeJsonFixture(cwd, "plans/programs/guidance-prereq/program_packet.json", {
+    version: 1,
+    id: "PGM-GUIDANCE-PREREQ",
+    title: "Guidance prerequisite",
+    status: "deferred",
+    goal: "Provide a prerequisite contract.",
+    epics: [],
+    tickets: [{ id: "T-PREREQ", lifecycle: "deferred" }],
+    acceptance_criteria: [],
+    dependencies: [],
+    compatibility_contracts: [],
+    migration_boundaries: [],
+    deletion_move_census: [],
+    verification_matrix: [],
     decisions: [],
   });
 }
@@ -907,11 +925,65 @@ function scenarioTaskIntakeComposesFullGuidancePacket() {
     assert(packet?.semantic_substrate_contract?.check_id === "GATE-REF-016" && packet.semantic_substrate_contract.canonical_shape.includes("planner-owned evidence paths"), "packet explains the GATE-REF-016 semantic provenance contract");
     assert(packet?.program_context?.tickets?.[0]?.id === "T-INTAKE-120A6B61" && packet.program_context.tickets[0].acceptance_criteria[0]?.id === "AC-G1", "packet embeds exact matched ticket acceptance context");
     assert(packet?.program_context?.tickets?.[0]?.verification_rows?.[0]?.id === "VM-G1" && packet.program_context.tickets[0].depends_on.includes("T-INTAKE-2707D982"), "packet embeds exact verification and dependency context");
+    assert(packet?.program_context?.tickets?.[0]?.prerequisite_blockers?.some((entry) => entry.program_ref === "PGM-GUIDANCE-PREREQ" && entry.ticket_ref === "T-PREREQ"), "task intake exposes unsatisfied cross-Program prerequisites in the selected ticket context");
     assert(packet?.ontology_findings?.warnings?.some((warning) => warning.includes("US-INTAKE-TBD")), "packet preserves the Program story-linkage warning");
     assert(packet?.budgets?.context_entries_used <= packet?.budgets?.context_entry_budget, "guidance packet respects the context entry budget");
     assert(existsSync(join(tmp, "plans", "guidance_packet.json")) && existsSync(join(tmp, "plans", "guidance_packet.md")), "task intake writes carried JSON and Markdown guidance artifacts");
     const rendered = readFileSync(join(tmp, "plans", "guidance_packet.md"), "utf-8");
     assert(rendered.includes("notify-user") && rendered.includes("GATE-REF-016") && rendered.includes("T-INTAKE-120A6B61"), "Markdown mirror renders gate semantic and Program context");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+async function scenarioTaskIntakeUsesExactActiveProgramContext() {
+  const tmp = makeTemp("task-intake-active-program-context");
+  try {
+    const { planDir } = seedAdviseFixture(tmp);
+    const activePacketPath = "plans/programs/active-authority/program_packet.json";
+    writeJsonFixture(tmp, activePacketPath, {
+      version: 1,
+      id: "PGM-ACTIVE-AUTHORITY",
+      remote_mode: "local-only",
+      title: "Exact active authority",
+      status: "executing",
+      goal: "Own the exact current plan work.",
+      epics: [],
+      tickets: [{ id: "T-ACTIVE-001", title: "Exact active ticket", lifecycle: "in_progress", story_refs: ["US-083"] }],
+      acceptance_criteria: [], dependencies: [], compatibility_contracts: [], migration_boundaries: [], deletion_move_census: [], verification_matrix: [], decisions: [],
+    });
+    writeJsonFixture(tmp, "plans/programs/closed-lexical-winner/program_packet.json", {
+      version: 1,
+      id: "PGM-CLOSED-LEXICAL-WINNER",
+      remote_mode: "local-only",
+      title: "Advise fixture active plan closed lexical winner archived routing guidance",
+      status: "closed",
+      goal: "Advise fixture active plan closed lexical winner archived routing guidance.",
+      epics: [],
+      tickets: [{ id: "T-CLOSED-001", title: "Advise fixture active plan", lifecycle: "closed", story_refs: ["US-083"] }],
+      acceptance_criteria: [], dependencies: [], compatibility_contracts: [], migration_boundaries: [], deletion_move_census: [], verification_matrix: [], decisions: [],
+    });
+    const state = JSON.parse(readFileSync(join(planDir, "state.json"), "utf-8"));
+    state.program_context = {
+      program_id: "PGM-ACTIVE-AUTHORITY",
+      program_packet_path: activePacketPath,
+      ticket_id: "T-ACTIVE-001",
+    };
+    writeStateJson(planDir, state);
+
+    const result = run([taskIntakeCliPath, "--json", "--no-log"], tmp);
+    const payload = parseJson(result.stdout);
+    assert(result.ok && payload?.task_intake?.route === "continue_active_plan", "task intake recognizes authoritative active-plan continuation");
+    assert(payload?.guidance_packet?.program_context?.program?.id === "PGM-ACTIVE-AUTHORITY" && payload?.guidance_packet?.program_context?.tickets?.[0]?.id === "T-ACTIVE-001", "continued-plan guidance uses the exact state.json Program and ticket instead of a lexical winner");
+    assert(payload?.guidance_packet?.program_context?.selection_source === "active_plan_program_context", "guidance exposes active-plan Program authority provenance");
+
+    const fuzzy = await buildGuidancePacket({
+      cwd: tmp,
+      goal: "Review closed lexical winner archived routing guidance",
+      decision: { route: "direct_agent_a", recommended_action: { workflow: "/safe-change" } },
+      preflight: { flow: { mode: "full" }, workflow: { recommended: "/safe-change" }, active_plan: { used_for_classification: false } },
+    });
+    assert(fuzzy?.program_context?.program === null, "fuzzy-only new-work guidance excludes a closed Program");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -1191,6 +1263,7 @@ scenarioTaskIntakeEscalatesNonTrivialWork();
 scenarioTaskIntakeAsksHumanForCanonicalOperatorDecision();
 await scenarioDecisionRequestHelperCoversAmbiguityConflictAndRecordedDegradation();
 scenarioTaskIntakeComposesFullGuidancePacket();
+await scenarioTaskIntakeUsesExactActiveProgramContext();
 scenarioBootstrapCarriesMatchingIntakeContextIntoFocusContract();
 scenarioTaskIntakeKeepsSkipGuidanceProportional();
 scenarioTaskIntakeHonorsCanonicalQuestionSkipRoute();

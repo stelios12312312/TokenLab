@@ -38,12 +38,20 @@ const PROOF_ENVIRONMENT_KEYS_TO_CLEAR = Object.freeze([
   "PLANNER_PROJECT_REGISTRY_PATH",
 ]);
 const DEFAULT_PREFLIGHT_SCOPES = [
-  ".agent",
+  ".agent/skills/iterative-planner",
+  ".agent/rules.md",
+  ".agent/scripts",
+  ".agent/workflows",
   "CLAUDE.md",
   "GEMINI.md",
   "AGENTS.md",
   ".cursor/rules/iterative-planner.mdc",
   ".github/copilot-instructions.md",
+  "audit.config.json",
+  "planner.policy.yaml",
+  "planner.policy.yml",
+  "planner.policy.json",
+  "plans/knowledge",
 ];
 const REQUIRED_PROOF_SUITE_IDS = Object.freeze([
   "gate-or-delete-census",
@@ -281,15 +289,37 @@ function managedPreflightScopes(targetPath, scopes = DEFAULT_PREFLIGHT_SCOPES) {
   return [...expanded];
 }
 
+function pathMatchesScope(relPath, scopes) {
+  const norm = String(relPath || "").replace(/\\/g, "/").replace(/^\.\//, "");
+  for (const scope of scopes) {
+    const normScope = String(scope || "").replace(/\\/g, "/").replace(/^\.\//, "");
+    if (norm === normScope || norm.startsWith(`${normScope}/`)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function managedStatus(targetPath, scopes = DEFAULT_PREFLIGHT_SCOPES) {
   const expandedScopes = managedPreflightScopes(targetPath, scopes);
-  return git(targetPath, [
+  const output = git(targetPath, [
     "status",
     "--porcelain=v1",
     "--untracked-files=all",
-    "--",
-    ...expandedScopes,
   ]);
+  if (!output) return "";
+  const matching = [];
+  for (const line of output.split("\n")) {
+    if (!line.trim()) continue;
+    const pathPart = line.slice(3).trim();
+    const paths = pathPart.includes(" -> ")
+      ? pathPart.split(" -> ").map((p) => p.trim())
+      : [pathPart];
+    if (paths.some((p) => pathMatchesScope(p, expandedScopes))) {
+      matching.push(line);
+    }
+  }
+  return matching.join("\n");
 }
 
 function receiptPath(targetPath, config = targetConfig(targetPath)) {

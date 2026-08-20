@@ -1,11 +1,12 @@
 // @planner:module = gate_verdict_contract
 // @planner:capability = guide_first_transition_classification_receipts_and_terminal_rendering
 
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, readFileSync } from "fs";
 import { join, relative } from "path";
 import { getFailureCode } from "./determinism.mjs";
 import { recordGateMetrics } from "./plan_metrics.mjs";
 import { normalizeVerificationStatus, verificationStatusIsPass } from "./verification_status_vocabulary.mjs";
+import { finalizeOwnedFileReplace, observeOwnedFile, replaceOwnedFile } from "./owned_file_replace.mjs";
 
 export const GATE_CONTRACT_FAILURE_CODE = "GATE-CONTRACT-001";
 export const TRANSITION_RECEIPT_SCHEMA_VERSION = 1;
@@ -312,9 +313,20 @@ export function buildTransitionReceipt({
 
 function atomicWriteJson(path, value) {
   mkdirSync(join(path, ".."), { recursive: true });
-  const tmp = `${path}.tmp`;
-  writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
-  renameSync(tmp, path);
+  const observed = observeOwnedFile(path);
+  const replacement = replaceOwnedFile({
+    path,
+    bytes: `${JSON.stringify(value, null, 2)}\n`,
+    expected: observed.status === "present" ? observed.token : null,
+  });
+  if (replacement.status !== "committed") {
+    throw new Error(`transition receipt ${replacement.status}: ${replacement.reason}`);
+  }
+  const finalization = finalizeOwnedFileReplace(replacement);
+  if (finalization.status !== "committed") {
+    throw new Error(`transition receipt cleanup_pending: ${finalization.reason}`);
+  }
+  return replacement;
 }
 
 export function writeTransitionReceipt(planDir, receipt, { projectRoot = process.cwd() } = {}) {
@@ -331,9 +343,14 @@ export function writeTransitionReceipt(planDir, receipt, { projectRoot = process
   // The same invocation writes a provisional receipt before state persistence
   // and finalizes it afterward. Its timestamped path is unique to that attempt,
   // so replacing that one path does not rewrite prior attempts.
-  atomicWriteJson(immutablePath, decorated);
-  atomicWriteJson(latestPath, decorated);
-  return { receipt: decorated, immutable_path: immutablePath, latest_path: latestPath };
+  const immutableWrite = atomicWriteJson(immutablePath, decorated);
+  const latestWrite = atomicWriteJson(latestPath, decorated);
+  return {
+    receipt: decorated,
+    immutable_path: immutablePath,
+    latest_path: latestPath,
+    persistence: { status: "committed", immutable: immutableWrite, latest: latestWrite },
+  };
 }
 
 export function finalizeToolErrorTransition({
@@ -373,7 +390,7 @@ export function finalizeToolErrorTransition({
         toolErrorKind: receipt.tool_errors[0]?.kind || null,
         resultingState: sourceState,
       });
-      metricsPersisted = Boolean(metrics);
+      metricsPersisted = metrics?.persistence?.status === "committed";
     } catch {
       // Receipt is authoritative; telemetry remains best-effort.
     }

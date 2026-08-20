@@ -109,6 +109,20 @@ function runFixture(fixturePath) {
 // Main
 const fixtures = readdirSync(fixturesDir)
   .filter(f => f.endsWith(".json"))
+  .filter((file) => {
+    try {
+      const candidate = JSON.parse(readFileSync(join(fixturesDir, file), "utf-8"));
+      return candidate
+        && typeof candidate === "object"
+        && candidate.input
+        && typeof candidate.input === "object"
+        && typeof candidate.gate === "string"
+        && typeof candidate.expected_result === "string";
+    } catch {
+      // Malformed JSON is still a candidate so runFixture reports it clearly.
+      return true;
+    }
+  })
   .sort();
 
 if (fixtures.length === 0) {

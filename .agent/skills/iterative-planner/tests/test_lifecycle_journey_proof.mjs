@@ -2,20 +2,20 @@
 // test_lifecycle_journey_proof.mjs - deterministic full planner lifecycle proof.
 
 import {
+  cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "fs";
 import { execFileSync } from "child_process";
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
-import { fileURLToPath } from "url";
+import { fileURLToPath, pathToFileURL } from "url";
 import { plannerSubprocessEnv } from "./helpers/env.mjs";
-import { scaffoldVerificationStrategy } from "../scripts/lib/verification_strategy.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -23,9 +23,6 @@ const skillDir = resolve(testDir, "..");
 const repoRoot = resolve(skillDir, "..", "..", "..");
 const agentDir = join(repoRoot, ".agent");
 const NODE = process.execPath;
-
-const bootstrapScript = join(skillDir, "scripts", "bootstrap.mjs");
-const transitionScript = join(skillDir, "scripts", "transition.mjs");
 
 const LIFECYCLE_GATES = [
   "explore-to-plan",
@@ -87,6 +84,7 @@ function getPlanDir(cwd) {
 }
 
 function transition(gate, cwd, outputs) {
+  const transitionScript = join(cwd, ".agent", "skills", "iterative-planner", "scripts", "transition.mjs");
   const result = runNode([transitionScript, gate], cwd, gate === "explore-to-plan" ? { _PLANNER_FAST_TRACK: "1" } : {});
   outputs[gate] = result.stdout + result.stderr;
   assert(result.ok, `transition.mjs ${gate} exits successfully`);
@@ -98,7 +96,7 @@ function transition(gate, cwd, outputs) {
 
 function setupFixtureRepo(tmp) {
   mkdirSync(join(tmp, "docs"), { recursive: true });
-  symlinkSync(agentDir, join(tmp, ".agent"), "dir");
+  cpSync(agentDir, join(tmp, ".agent"), { recursive: true });
   writeFileSync(join(tmp, ".gitignore"), ".agent\nplans/\nreports/\n");
   writeFileSync(join(tmp, "audit.config.json"), JSON.stringify({
     roles: ["core"],
@@ -109,8 +107,17 @@ function setupFixtureRepo(tmp) {
   runGit(["init"], tmp);
   runGit(["config", "user.email", "planner-test@example.invalid"], tmp);
   runGit(["config", "user.name", "Planner Lifecycle Test"], tmp);
-  runGit(["add", ".gitignore", "audit.config.json", "docs/lifecycle-note.md"], tmp);
-  runGit(["commit", "-m", "seed lifecycle fixture"], tmp);
+  runGit(["add", "-f", ".agent"], tmp);
+  runGit(["add", "."], tmp);
+  runGit(["-c", "core.hooksPath=/dev/null", "commit", "-m", "seed consumer before planner setup"], tmp);
+  const localMigrate = join(tmp, ".agent", "skills", "iterative-planner", "scripts", "migrate.mjs");
+  const setup = runNode([localMigrate, "setup", tmp], tmp);
+  assert(setup.ok && setup.stdout.includes("SETUP COMPLETE"), "copied consumer runs its own local migrate.mjs setup");
+  if (!setup.ok) console.log(setup.stdout + setup.stderr);
+  assert(!lstatSync(join(tmp, ".agent")).isSymbolicLink(), "consumer fixture owns a copied .agent payload instead of a source symlink");
+  runGit(["rm", "--quiet", "--cached", "-r", ".agent"], tmp);
+  runGit(["add", "."], tmp);
+  runGit(["-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-m", "record planner setup"], tmp);
 }
 
 function seedStoryRegistry(tmp) {
@@ -185,7 +192,7 @@ Adjacency: bootstrap.mjs creates the plan, transition.mjs advances the state mac
 
 ## Assumption Ledger
 - VERIFIED: The temp directory is a git repo with a tracked fixture file.
-- VERIFIED: The local .agent symlink lets planner subprocesses run against the fixture as a project.
+- VERIFIED: The copied local .agent payload completes project setup before planner subprocesses run.
 - VERIFIED: The Tier 1 journey is deterministic scaffolding proof, not autonomous-coding concept proof.
 `);
 }
@@ -487,8 +494,13 @@ const keepTemp = process.env.KEEP_PLANNER_LIFECYCLE_TEMP === "1";
 const gateOutputs = {};
 
 try {
+  const sourceSemanticHygiene = await import(pathToFileURL(join(skillDir, "scripts", "lib", "semantic_hygiene.mjs")).href);
+  assert(!sourceSemanticHygiene.loadSemanticHygieneConfig(repoRoot).skip_path_prefixes.includes(".agent/"), "planner source keeps tracked .agent runtime inside semantic hygiene");
   setupFixtureRepo(tmp);
+  const localSemanticHygiene = await import(pathToFileURL(join(tmp, ".agent", "skills", "iterative-planner", "scripts", "lib", "semantic_hygiene.mjs")).href);
+  assert(localSemanticHygiene.loadSemanticHygieneConfig(tmp).skip_path_prefixes.includes(".agent/"), "consumer semantic hygiene excludes its Git-ignored managed runtime");
 
+  const bootstrapScript = join(tmp, ".agent", "skills", "iterative-planner", "scripts", "bootstrap.mjs");
   const bootstrap = runNode([bootstrapScript, "new", "--force", "deterministic full lifecycle journey proof"], tmp);
   assert(bootstrap.ok, "bootstrap.mjs new creates a temp fixture plan");
   if (!bootstrap.ok) console.log(bootstrap.stdout + bootstrap.stderr);
@@ -501,7 +513,8 @@ try {
   if (!transition("explore-to-plan", tmp, gateOutputs)) throw new Error("explore-to-plan failed");
 
   writePlan(planDir);
-  const verificationStrategy = scaffoldVerificationStrategy({ cwd: tmp, planDir, force: true });
+  const localVerificationStrategy = await import(pathToFileURL(join(tmp, ".agent", "skills", "iterative-planner", "scripts", "lib", "verification_strategy.mjs")).href);
+  const verificationStrategy = localVerificationStrategy.scaffoldVerificationStrategy({ cwd: tmp, planDir, force: true });
   assert(verificationStrategy.ok && verificationStrategy.wrote, "fixture authors a canonical verification strategy after replacing the bootstrap plan");
   if (!transition("plan-to-execute", tmp, gateOutputs)) throw new Error("plan-to-execute failed");
 

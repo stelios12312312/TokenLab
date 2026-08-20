@@ -87,6 +87,10 @@ function normalizeString(value) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeVerificationIdentity(value) {
+  return normalizeString(value).replace(/\s+/g, " ").toUpperCase();
+}
+
 function normalizeQueryText(queryText) {
   return normalizeString(queryText).replace(/\.\s*$/, "");
 }
@@ -361,6 +365,7 @@ export function validateOntologyGraph({ cwd = process.cwd() } = {}) {
       dangling_test_run_tests: [],
       dangling_retro_mistakes: [],
       broken_mirror_reader: [],
+      duplicate_verification_criteria: [],
       issues: runtime.issues,
       issue_count: runtime.issues.length,
     };
@@ -375,8 +380,21 @@ export function validateOntologyGraph({ cwd = process.cwd() } = {}) {
       .map((criterion) => criterion.id)
       .filter(Boolean)
   );
-  const verificationCriterionIds = new Set((documents.verification?.criteria || []).map((record) => record.id).filter(Boolean));
-  const allCriterionIds = new Set([...storyCriterionIds, ...verificationCriterionIds]);
+  const storyCriterionOwners = new Map();
+  for (const story of documents.specification?.stories || []) {
+    for (const criterion of Array.isArray(story.acceptance_criteria) ? story.acceptance_criteria : []) {
+      if (!criterion?.id) continue;
+      const owners = storyCriterionOwners.get(criterion.id) || new Set();
+      owners.add(story.id);
+      storyCriterionOwners.set(criterion.id, owners);
+    }
+  }
+  const planStoryIds = new Map(
+    (documents.specification?.plans || []).map((record) => [
+      record.id,
+      new Set(uniqueStrings(record.story_ids || [])),
+    ])
+  );
   const testNames = new Set((documents.verification?.tests || []).map((record) => record.name).filter(Boolean));
   const artifactPaths = new Set((documents.verification?.artifacts || []).map((record) => record.path).filter(Boolean));
   const { filePaths, fileBasenames } = buildKnownFileRefs(cwd, documents);
@@ -394,6 +412,7 @@ export function validateOntologyGraph({ cwd = process.cwd() } = {}) {
     dangling_test_run_tests: [],
     dangling_retro_mistakes: [],
     broken_mirror_reader: [],
+    duplicate_verification_criteria: [],
   };
 
   for (const story of documents.specification?.stories || []) {
@@ -410,21 +429,74 @@ export function validateOntologyGraph({ cwd = process.cwd() } = {}) {
     }
   }
 
-  for (const criterion of documents.verification?.criteria || []) {
-    if (criterion.story_criterion_id && !storyCriterionIds.has(criterion.story_criterion_id)) {
+  for (const [criterionId, owners] of storyCriterionOwners.entries()) {
+    if (owners.size > 1) {
       issues.dangling_story_criteria.push(
-        `${criterion.id}: story criterion '${criterion.story_criterion_id}' is not declared`
+        `story criterion '${criterionId}' is declared by multiple stories: ${[...owners].sort().join(", ")}`
       );
+    }
+  }
+
+  const verificationCriterionIdentities = new Map();
+  for (const [index, criterion] of (documents.verification?.criteria || []).entries()) {
+    const normalizedPlanId = normalizeVerificationIdentity(criterion?.plan_id);
+    const normalizedCriterionId = normalizeVerificationIdentity(criterion?.id);
+    if (!normalizedPlanId || !normalizedCriterionId) continue;
+    const identityKey = `${normalizedPlanId}:${normalizedCriterionId}`;
+    const first = verificationCriterionIdentities.get(identityKey);
+    if (first) {
+      issues.duplicate_verification_criteria.push(
+        `duplicate verification criterion identity ${first.plan_id}:${normalizedCriterionId} (verification.criteria[${first.index}] and verification.criteria[${index}])`
+      );
+      continue;
+    }
+    verificationCriterionIdentities.set(identityKey, {
+      index,
+      plan_id: normalizeString(criterion.plan_id),
+    });
+  }
+
+  for (const criterion of documents.verification?.criteria || []) {
+    const criterionLabel = `${criterion.plan_id}:${criterion.id}`;
+    const addressedStories = planStoryIds.get(criterion.plan_id) || new Set();
+    if (criterion.story_id) {
+      if (!storyIds.has(criterion.story_id)) {
+        issues.dangling_story_criteria.push(
+          `${criterionLabel}: story_id '${criterion.story_id}' is not declared`
+        );
+      } else if (!addressedStories.has(criterion.story_id)) {
+        issues.dangling_story_criteria.push(
+          `${criterionLabel}: story_id '${criterion.story_id}' is not addressed by plan '${criterion.plan_id}'`
+        );
+      }
+    }
+    if (criterion.story_criterion_id) {
+      const owners = storyCriterionOwners.get(criterion.story_criterion_id);
+      if (!owners || owners.size === 0) {
+        issues.dangling_story_criteria.push(
+          `${criterionLabel}: story criterion '${criterion.story_criterion_id}' is not declared`
+        );
+      } else if (!criterion.story_id) {
+        issues.dangling_story_criteria.push(
+          `${criterionLabel}: story criterion '${criterion.story_criterion_id}' requires an exact story_id owner`
+        );
+      } else {
+        if (!owners.has(criterion.story_id)) {
+          issues.dangling_story_criteria.push(
+            `${criterionLabel}: story criterion '${criterion.story_criterion_id}' does not belong to story_id '${criterion.story_id}'`
+          );
+        }
+      }
     }
     for (const testRef of uniqueStrings(criterion.test_refs || [])) {
       if (!testNames.has(testRef)) {
-        issues.missing_test_refs.push(`${criterion.id}: test_ref '${testRef}' does not resolve to verification.tests`);
+        issues.missing_test_refs.push(`${criterionLabel}: test_ref '${testRef}' does not resolve to verification.tests`);
       }
     }
     for (const artifactRef of uniqueStrings(criterion.artifact_refs || [])) {
       if (!artifactPaths.has(artifactRef)) {
         issues.missing_artifact_refs.push(
-          `${criterion.id}: artifact_ref '${artifactRef}' does not resolve to verification.artifacts`
+          `${criterionLabel}: artifact_ref '${artifactRef}' does not resolve to verification.artifacts`
         );
       }
     }
@@ -432,9 +504,9 @@ export function validateOntologyGraph({ cwd = process.cwd() } = {}) {
 
   for (const testRecord of documents.verification?.tests || []) {
     for (const criterionId of uniqueStrings(testRecord.criterion_ids || [])) {
-      if (!allCriterionIds.has(criterionId)) {
+      if (!storyCriterionIds.has(criterionId)) {
         issues.dangling_test_criteria.push(
-          `${testRecord.name}: criterion_id '${criterionId}' does not resolve to a declared verification or story criterion`
+          `${testRecord.name}: criterion_id '${criterionId}' does not resolve to a declared story acceptance criterion; plan-local criteria must use verification.criteria[].test_refs`
         );
       }
     }
@@ -442,9 +514,9 @@ export function validateOntologyGraph({ cwd = process.cwd() } = {}) {
 
   for (const artifactRecord of documents.verification?.artifacts || []) {
     for (const criterionId of uniqueStrings(artifactRecord.criterion_ids || [])) {
-      if (!allCriterionIds.has(criterionId)) {
+      if (!storyCriterionIds.has(criterionId)) {
         issues.dangling_artifact_criteria.push(
-          `${artifactRecord.path}: criterion_id '${criterionId}' does not resolve to a declared verification or story criterion`
+          `${artifactRecord.path}: criterion_id '${criterionId}' does not resolve to a declared story acceptance criterion; plan-local criteria must use verification.criteria[].artifact_refs`
         );
       }
     }

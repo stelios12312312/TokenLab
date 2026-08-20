@@ -2,6 +2,7 @@
 
 import { resolve } from "path";
 
+import { emitJson } from "./lib/emit_json.mjs";
 import { buildOntologyFacts } from "./lib/ontology_fact_builder.mjs";
 import {
   listOntologyFacts,
@@ -304,9 +305,8 @@ if (options.command === "build") {
 }
 
 if (options.json) {
-  console.log(JSON.stringify(result, null, 2));
+  emitJson(result, { exitCode: result.ok ? 0 : 1 });
 } else {
   console.log(humanSummary(result));
+  process.exit(result.ok ? 0 : 1);
 }
-
-process.exit(result.ok ? 0 : 1);

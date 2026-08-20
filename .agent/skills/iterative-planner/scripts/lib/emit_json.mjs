@@ -15,6 +15,10 @@ export function writeAllSync(fd, value) {
   return buffer.length;
 }
 
-export function emitJson(value, { fd = 1, space = 2 } = {}) {
-  return writeAllSync(fd, `${JSON.stringify(value, null, space)}\n`);
+export function emitJson(value, { fd = 1, space = 2, exitCode } = {}) {
+  const bytesWritten = writeAllSync(fd, `${JSON.stringify(value, null, space)}\n`);
+  if (exitCode !== undefined) {
+    process.exitCode = exitCode;
+  }
+  return bytesWritten;
 }

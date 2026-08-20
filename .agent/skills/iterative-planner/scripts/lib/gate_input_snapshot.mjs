@@ -16,6 +16,13 @@ import {
   writeFileSync,
 } from "fs";
 import { basename, dirname, join, relative, resolve, sep } from "path";
+import {
+  cleanupOwnedFile,
+  finalizeOwnedFileReplace,
+  observeOwnedFile,
+  replaceOwnedFile,
+  tokenOwnsPath,
+} from "./owned_file_replace.mjs";
 
 export const GATE_INPUT_SNAPSHOT_SCHEMA_VERSION = 1;
 const SNAPSHOT_ROOT = join("artifacts", "gate_input_snapshots");
@@ -153,9 +160,18 @@ export function persistGateInputSnapshot(prepared) {
       snapshot_dir: prepared.snapshot_name,
       manifest_sha256: sha256(prepared.manifest_bytes),
     };
-    pointerPending = `${pointerPath}.pending-${process.pid}`;
-    writeFileSync(pointerPending, jsonBytes(pointer));
-    renameSync(pointerPending, pointerPath);
+    const pointerReplacement = replaceOwnedFile({
+      path: pointerPath,
+      bytes: jsonBytes(pointer),
+      expected: null,
+    });
+    if (pointerReplacement.status !== "committed") {
+      throw new Error(`snapshot pointer ${pointerReplacement.status}: ${pointerReplacement.reason}`);
+    }
+    const pointerFinalization = finalizeOwnedFileReplace(pointerReplacement);
+    if (pointerFinalization.status !== "committed") {
+      throw new Error(`snapshot pointer cleanup_pending: ${pointerFinalization.reason}`);
+    }
   } catch (error) {
     if (pointerPending) rmSync(pointerPending, { force: true });
     rmSync(pendingPath, { recursive: true, force: true });
@@ -180,12 +196,31 @@ export function removeGateInputSnapshot(snapshot) {
   const root = join(planDir, SNAPSHOT_ROOT);
   const snapshotPath = snapshot?.path ? resolve(snapshot.path) : null;
   const pointerPath = snapshot?.pointer_path ? resolve(snapshot.pointer_path) : null;
-  if (snapshotPath && isContained(root, snapshotPath) && dirname(snapshotPath) === resolve(root)) {
+  const fileTokens = Array.isArray(snapshot?.file_tokens) ? snapshot.file_tokens : [];
+  const snapshotOwned = Boolean(
+    snapshotPath
+    && isContained(root, snapshotPath)
+    && dirname(snapshotPath) === resolve(root)
+    && tokenOwnsPath(snapshot?.manifest_token)
+    && fileTokens.length > 0
+    && fileTokens.every(tokenOwnsPath)
+  );
+  if (snapshotOwned) {
     rmSync(snapshotPath, { recursive: true, force: true });
   }
-  if (pointerPath && pointerPath === resolve(pointerPathFor(planDir, snapshot?.gate))) {
-    rmSync(pointerPath, { force: true });
+  let pointerCleanup = { status: "conflict", reason: "pointer_token_missing" };
+  if (
+    pointerPath
+    && pointerPath === resolve(pointerPathFor(planDir, snapshot?.gate))
+    && snapshot?.pointer_token
+  ) {
+    pointerCleanup = cleanupOwnedFile(snapshot.pointer_token);
   }
+  return {
+    status: snapshotOwned && pointerCleanup.status === "committed" ? "committed" : "cleanup_pending",
+    snapshot_removed: snapshotOwned,
+    pointer: pointerCleanup,
+  };
 }
 
 export function resolveGateInputSnapshot({ planDir, gate } = {}) {
@@ -297,6 +332,9 @@ export function resolveGateInputSnapshot({ planDir, gate } = {}) {
     pointer_path: pointerPath,
     manifest_path: manifestPath,
     manifest,
+    pointer_token: observeOwnedFile(pointerPath).token,
+    manifest_token: observeOwnedFile(manifestPath).token,
+    file_tokens: manifest.files.map((file) => observeOwnedFile(join(snapshotPath, file.path)).token),
     artifact_paths: [
       pointerPath,
       manifestPath,

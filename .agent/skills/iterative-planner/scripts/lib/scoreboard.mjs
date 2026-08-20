@@ -1,9 +1,11 @@
 // scoreboard.mjs - E2-5 fail-closed metrics scoreboard.
 
-import { execFileSync } from "child_process";
-import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "fs";
-import { basename, dirname, join, relative, resolve } from "path";
+import { spawnSync } from "child_process";
+import { createHash } from "crypto";
+import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "fs";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
+import { DEFAULT_SUITES as IVE_DEFAULT_SUITES } from "../../tests/ive/run.mjs";
 import {
   REQUIRED_DEFECT_CLASSES,
   runSeededDefectHarness,
@@ -16,6 +18,7 @@ import {
 import { findingsFromScoreboardReport } from "./deterministic_findings.mjs";
 import { buildIdeationQualityBenchmark } from "./ideation_quality_benchmark.mjs";
 import { buildPackGuardBenchmark } from "./pack_guard_benchmark.mjs";
+import { buildRepoStateStamp } from "./repo_state_stamp.mjs";
 import { normalizeVerificationStatus, verificationStatusIsPass } from "./verification_status_vocabulary.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,14 +30,20 @@ const REPO_ROOT = resolve(SKILL_ROOT, "..", "..", "..");
 const NODE = process.execPath;
 
 export const SCOREBOARD_SCHEMA_VERSION = 1;
-export const DEFAULT_BASELINE_PATH = "plans/programs/ive-autocoder-v2/baselines/baseline-2026-06-12.json";
+export const DEFAULT_BASELINE_PATH = "plans/programs/ive-autocoder-v2/baselines/baseline-2026-08-07.json";
 export const DEFAULT_SCOREBOARD_OUT_DIR = "reports/ive/scoreboard";
-export const DEFAULT_CONFORMANCE_BUDGET_MS = 420000;
-export const DEFAULT_CONFORMANCE_TIMEOUT_MS = 480000;
+export const DEFAULT_CONFORMANCE_BUDGET_MS = 600000;
+export const DEFAULT_CONFORMANCE_TIMEOUT_MS = 660000;
 export const SAMPLE_TIMESTAMP = "2026-01-01T00:00:00.000Z";
 export const SCOREBOARD_ID = "ive_autocoder_v2_scoreboard";
 export const CONVERGENCE_MIN_PLAN_COUNT = 5;
 export const CONVERGENCE_SCAN_LIMIT = 12;
+export const GOVERNED_CONFORMANCE_SUITES = Object.freeze(IVE_DEFAULT_SUITES.map((suite) => Object.freeze({
+  id: suite.id,
+  required: suite.required !== false,
+  command: suite.display_command,
+})));
+export const GOVERNED_CONFORMANCE_SUITE_IDS = Object.freeze(GOVERNED_CONFORMANCE_SUITES.map((suite) => suite.id));
 
 function asNumber(value, fallback = 0) {
   const n = Number(value);
@@ -112,6 +121,61 @@ function commandString(argv) {
   return argv.join(" ");
 }
 
+function conformanceIdentityForScoreboardRun(runId) {
+  const scoreboardRunId = typeof runId === "string" ? runId : "";
+  const childRunId = `${scoreboardRunId}-conformance`;
+  const valid = scoreboardRunId === scoreboardRunId.trim()
+    && /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(scoreboardRunId)
+    && !scoreboardRunId.includes("..")
+    && !scoreboardRunId.includes("--")
+    && !scoreboardRunId.endsWith("-")
+    && childRunId.length <= 120;
+  const reportDir = valid ? `reports/ive/test_runs/${childRunId}` : null;
+  const manifestPath = reportDir ? `${reportDir}/manifest.json` : null;
+  const argv = valid
+    ? [NODE, join(TESTS_ROOT, "ive", "run.mjs"), "--json", "--run-id", childRunId]
+    : null;
+  return {
+    valid,
+    scoreboard_run_id: scoreboardRunId,
+    child_run_id: valid ? childRunId : null,
+    report_dir: reportDir,
+    manifest_path: manifestPath,
+    argv,
+    command: argv ? commandString(argv) : null,
+  };
+}
+
+function trustedArtifactFile(path, expectedRoot) {
+  if (typeof path !== "string" || !path || isAbsolute(path)) return null;
+  const root = resolve(REPO_ROOT, expectedRoot);
+  const target = resolve(REPO_ROOT, path);
+  const fromRoot = relative(root, target);
+  if (!fromRoot || fromRoot.startsWith("..") || isAbsolute(fromRoot)) return null;
+  try {
+    const stat = lstatSync(target);
+    if (!stat.isFile() || realpathSync(target) !== target) return null;
+    return { path: target, stat };
+  } catch {
+    return null;
+  }
+}
+
+function trustedArtifactDirectory(path, expectedRoot) {
+  if (typeof path !== "string" || !path || isAbsolute(path)) return null;
+  const root = resolve(REPO_ROOT, expectedRoot);
+  const target = resolve(REPO_ROOT, path);
+  const fromRoot = relative(root, target);
+  if (!fromRoot || fromRoot.startsWith("..") || isAbsolute(fromRoot)) return null;
+  try {
+    const stat = lstatSync(target);
+    if (!stat.isDirectory() || realpathSync(target) !== target) return null;
+    return { path: target, stat };
+  } catch {
+    return null;
+  }
+}
+
 function subprocessEnv() {
   const env = {
     ...process.env,
@@ -138,43 +202,39 @@ export function runScoreboardJsonCommand(argv, {
   maxBuffer = 80 * 1024 * 1024,
 } = {}) {
   const started = Date.now();
-  try {
-    const stdout = execFileSync(argv[0], argv.slice(1), {
-      cwd,
-      env: subprocessEnv(),
-      encoding: "utf-8",
-      timeout: timeoutMs,
-      maxBuffer,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    const parsed = parseJsonMaybe(stdout);
-    return {
-      ok: parsed.ok,
-      exit_code: 0,
-      timed_out: false,
-      duration_ms: Date.now() - started,
-      command: commandString(argv),
-      json: parsed.value,
-      parse_error: parsed.error,
-      stderr_excerpt: "",
-    };
-  } catch (error) {
-    const stdout = error.stdout?.toString?.() || "";
-    const stderr = error.stderr?.toString?.() || "";
-    const parsed = parseJsonMaybe(stdout);
-    return {
-      ok: false,
-      exit_code: Number.isFinite(error.status) ? error.status : null,
-      signal: error.signal || null,
-      timed_out: error.signal === "SIGTERM" || /timed out/i.test(error.message || ""),
-      duration_ms: Date.now() - started,
-      command: commandString(argv),
-      json: parsed.value,
-      parse_error: parsed.error,
-      error: error.message,
-      stderr_excerpt: stderr.slice(0, 2000),
-    };
-  }
+  const startedAt = new Date(started).toISOString();
+  const child = spawnSync(argv[0], argv.slice(1), {
+    cwd,
+    env: subprocessEnv(),
+    encoding: "utf-8",
+    timeout: timeoutMs,
+    maxBuffer,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const stdout = child.stdout?.toString?.() || "";
+  const stderr = child.stderr?.toString?.() || "";
+  const parsed = parseJsonMaybe(stdout);
+  const finished = Date.now();
+  const errorMessage = child.error?.message || null;
+  const timedOut = child.error?.code === "ETIMEDOUT"
+    || child.signal === "SIGTERM"
+    || /timed out/i.test(errorMessage || "");
+  const exitCode = Number.isFinite(child.status) ? child.status : null;
+  return {
+    ok: !child.error && exitCode === 0 && parsed.ok,
+    exit_code: exitCode,
+    signal: child.signal || null,
+    timed_out: timedOut,
+    duration_ms: finished - started,
+    started_at: startedAt,
+    finished_at: new Date(finished).toISOString(),
+    argv: [...argv],
+    command: commandString(argv),
+    json: parsed.value,
+    parse_error: parsed.error,
+    error: errorMessage,
+    stderr_excerpt: stderr.slice(0, 2000),
+  };
 }
 
 export function loadScoreboardBaseline(path = DEFAULT_BASELINE_PATH, { cwd = REPO_ROOT } = {}) {
@@ -189,35 +249,492 @@ export function loadScoreboardBaseline(path = DEFAULT_BASELINE_PATH, { cwd = REP
   };
 }
 
-function normalizeConformance(input = {}) {
+function normalizeConformance(input = {}, {
+  scoreboardRunId = null,
+  declaredManifestPath = null,
+  declaredCommand = null,
+} = {}) {
+  const hasOwn = (value, key) => Object.prototype.hasOwnProperty.call(value || {}, key);
+  const isRecord = (value) => value !== null && typeof value === "object" && !Array.isArray(value);
+  const isNonnegativeInteger = (value) => Number.isInteger(value) && value >= 0;
+  const isEmptyDiagnostic = (value) => value === undefined || value === null || value === "";
+  const validPassReasons = new Set(["", "latest_receipt_fresh"]);
+  const validAdvisoryReasons = new Set([
+    "latest_receipt_absent",
+    "latest_receipt_invalid",
+    "latest_receipt_timestamp_invalid",
+    "latest_receipt_stale",
+    "latest_receipt_failed",
+  ]);
+  const advisorySuiteId = "l3-autonomous-dogfood-receipt-freshness";
+  const forbiddenRowDiagnosticFields = ["ok", "error", "issues", "failed"];
+  const isCanonicalIsoTimestamp = (value) => {
+    if (typeof value !== "string") return false;
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
+  };
   const wrappedCommand = Object.prototype.hasOwnProperty.call(input, "json");
-  const json = input.json || input;
+  const reportCandidate = wrappedCommand ? input.json : input;
+  const json = reportCandidate && typeof reportCandidate === "object" && !Array.isArray(reportCandidate)
+    ? reportCandidate
+    : {};
   const started = Date.parse(json.run_started_at || "");
   const finished = Date.parse(json.run_finished_at || "");
   const derivedWallClock = Number.isFinite(started) && Number.isFinite(finished) ? Math.max(0, finished - started) : null;
   const checks = Array.isArray(json.checks) ? json.checks : (Array.isArray(json.suites) ? json.suites : []);
-  const durationTotal = checks.reduce((sum, row) => sum + asNumber(row.duration_ms), 0);
+  const durationTotal = checks.reduce((sum, row) => sum + asNumber(row?.duration_ms), 0);
   const reportedWallClock = asNullableNumber(json.wall_clock_ms);
   const wallClockMs = reportedWallClock ?? derivedWallClock ?? (checks.length > 0 ? durationTotal : null);
   const warningCount = asNumber(json.warning_count);
+  const suiteCount = asNumber(json.command_count ?? json.suite_count ?? checks.length);
+  const passCount = asNumber(json.passed_count ?? json.pass_count ?? checks.filter((row) => verificationStatusIsPass(row?.status, "execution")).length);
+  const nonPassingChecks = checks.filter((row) => !verificationStatusIsPass(row?.status, "execution"));
+  const rowExecutionHealthy = (row) => (
+    row?.exit_code === 0
+    && row?.timed_out === false
+    && isEmptyDiagnostic(row?.signal)
+    && isEmptyDiagnostic(row?.parse_error)
+  );
+  const rowTimingHealthy = (row) => {
+    const rowStarted = Date.parse(typeof row?.started_at === "string" ? row.started_at : "");
+    const rowFinished = Date.parse(typeof row?.finished_at === "string" ? row.finished_at : "");
+    return isNonnegativeInteger(row?.duration_ms)
+      && isCanonicalIsoTimestamp(row?.started_at)
+      && isCanonicalIsoTimestamp(row?.finished_at)
+      && rowFinished >= rowStarted
+      && Math.abs(row.duration_ms - (rowFinished - rowStarted)) <= 1
+      && Number.isFinite(started)
+      && Number.isFinite(finished)
+      && rowStarted >= started
+      && rowFinished <= finished;
+  };
+  const advisoryWarningChecks = nonPassingChecks.filter((row) => (
+    isRecord(row)
+    && typeof row.status === "string"
+    && row.status.trim().toUpperCase() === "WARN"
+    && row.id === advisorySuiteId
+    && row.required === false
+    && row.injected === false
+    && rowExecutionHealthy(row)
+  ));
   const advisoryWarningCount = Math.min(
     warningCount,
-    checks.filter((row) => normalizeVerificationStatus(row.status, "execution").kind === "pending" && row.required === false).length,
+    advisoryWarningChecks.length,
   );
   const status = json.status || json.overall_status || "UNKNOWN";
+  const failedRequiredCount = asNumber(json.failed_required_count);
+  const warningRegressionCount = Math.max(0, warningCount - advisoryWarningCount);
+  const skippedCount = asNumber(json.skipped_count);
+  const notApplicableCount = asNumber(json.not_applicable_count);
+  const notImplementedCount = asNumber(json.not_implemented_count);
+  const declaredStatuses = [json.status, json.overall_status].filter((value) => value !== undefined && value !== null);
+  const expectedIdentity = conformanceIdentityForScoreboardRun(scoreboardRunId);
+  const expectedRunId = expectedIdentity.child_run_id;
+  const expectedReportDir = expectedIdentity.report_dir;
+  const expectedManifestPath = expectedIdentity.manifest_path;
+  const manifestFile = expectedManifestPath
+    ? trustedArtifactFile(expectedManifestPath, expectedReportDir)
+    : null;
+  const reportDirectory = expectedReportDir
+    ? trustedArtifactDirectory(expectedReportDir, "reports/ive/test_runs")
+    : null;
+  const persistedManifest = manifestFile ? safeReadJson(manifestFile.path) : null;
+  const wrapperStarted = Date.parse(typeof input.started_at === "string" ? input.started_at : "");
+  const wrapperFinished = Date.parse(typeof input.finished_at === "string" ? input.finished_at : "");
+  const wrapperTimingHealthy = isCanonicalIsoTimestamp(input.started_at)
+    && isCanonicalIsoTimestamp(input.finished_at)
+    && Number.isFinite(wrapperStarted)
+    && Number.isFinite(wrapperFinished)
+    && wrapperFinished >= wrapperStarted
+    && isNonnegativeInteger(input.duration_ms)
+    && Math.abs(input.duration_ms - (wrapperFinished - wrapperStarted)) <= 1
+    && (derivedWallClock === null || input.duration_ms >= derivedWallClock)
+    && (!Number.isFinite(started) || started >= wrapperStarted)
+    && (!Number.isFinite(finished) || finished <= wrapperFinished);
+  const manifestFreshForInvocation = !!manifestFile
+    && Number.isFinite(wrapperStarted)
+    && Number.isFinite(wrapperFinished)
+    && manifestFile.stat.mtimeMs >= wrapperStarted - 1000
+    && manifestFile.stat.mtimeMs <= wrapperFinished + 1000;
+  const manifestStamp = isRecord(persistedManifest) ? persistedManifest.repo_state_stamp : null;
+  const manifestStampedAt = Date.parse(typeof manifestStamp?.stamped_at === "string" ? manifestStamp.stamped_at : "");
+  const currentRepoStateStamp = manifestFile && expectedIdentity.valid
+    ? buildRepoStateStamp({
+      cwd: REPO_ROOT,
+      invocation: {
+        command: "tests/ive/run.mjs",
+        run_id: expectedRunId,
+        phase: "all",
+      },
+    })
+    : null;
+  const expectedRepoStateStamp = isRecord(currentRepoStateStamp) && isRecord(manifestStamp)
+    ? { ...currentRepoStateStamp, stamped_at: manifestStamp.stamped_at }
+    : null;
+  const manifestStampHealthy = isRecord(manifestStamp)
+    && isCanonicalIsoTimestamp(manifestStamp.stamped_at)
+    && Number.isFinite(manifestStampedAt)
+    && (!Number.isFinite(finished) || manifestStampedAt >= finished)
+    && (!Number.isFinite(wrapperFinished) || manifestStampedAt <= wrapperFinished)
+    && manifestStamp.git_root === "."
+    && typeof manifestStamp.head_sha === "string"
+    && /^[0-9a-f]{40}$/.test(manifestStamp.head_sha)
+    && manifestStamp.head_short_sha === manifestStamp.head_sha.slice(0, 12)
+    && Array.isArray(manifestStamp.warnings)
+    && manifestStamp.warnings.length === 0
+    && expectedRepoStateStamp !== null
+    && JSON.stringify(manifestStamp) === JSON.stringify(expectedRepoStateStamp);
+  const transportHealthy = !wrappedCommand || (
+    input.ok === true
+    && input.exit_code === 0
+    && isEmptyDiagnostic(input.signal)
+    && input.timed_out === false
+    && isEmptyDiagnostic(input.parse_error)
+    && isEmptyDiagnostic(input.error)
+    && isEmptyDiagnostic(input.stderr_excerpt)
+    && wrapperTimingHealthy
+    && input.artifact_preexisting === false
+    && Array.isArray(input.argv)
+    && JSON.stringify(input.argv) === JSON.stringify(expectedIdentity.argv)
+    && input.command === expectedIdentity.command
+  );
+  const rawTransportHealthy = (
+    (json.exit_code === undefined || json.exit_code === 0)
+    && (json.timed_out === undefined || json.timed_out === false)
+    && isEmptyDiagnostic(json.signal)
+    && isEmptyDiagnostic(json.parse_error)
+    && isEmptyDiagnostic(json.error)
+  );
+  const aliasGroupHealthy = (keys, expected) => {
+    const present = keys.filter((key) => hasOwn(json, key));
+    return present.length > 0
+      && present.every((key) => isNonnegativeInteger(json[key]))
+      && present.every((key) => json[key] === expected);
+  };
+  const counterSchemaHealthy = aliasGroupHealthy(["command_count", "suite_count"], suiteCount)
+    && aliasGroupHealthy(["passed_count", "pass_count"], passCount)
+    && [
+      "failed_required_count",
+      "warning_count",
+      "skipped_count",
+      "not_applicable_count",
+      "not_implemented_count",
+    ].every((key) => hasOwn(json, key) && isNonnegativeInteger(json[key]));
+  const checkIds = checks.map((row) => typeof row?.id === "string" ? row.id.trim() : "");
+  const checkRowsSchemaHealthy = Array.isArray(json.checks)
+    && checks.length > 0
+    && checkIds.every(Boolean)
+    && new Set(checkIds).size === checkIds.length
+    && checks.every((row) => (
+      isRecord(row)
+      && typeof row.required === "boolean"
+      && typeof row.status === "string"
+      && ["PASS", "WARN"].includes(row.status.trim().toUpperCase())
+      && typeof row.manifest_status === "string"
+      && row.manifest_status.trim().toUpperCase() === row.status.trim().toUpperCase()
+      && typeof row.status_reason === "string"
+      && (row.status.trim().toUpperCase() === "WARN"
+        ? validAdvisoryReasons.has(row.status_reason.trim().toLowerCase())
+        : validPassReasons.has(row.status_reason.trim().toLowerCase()))
+      && (row.status.trim().toUpperCase() !== "WARN" || row.id === advisorySuiteId)
+      && row.injected === false
+      && forbiddenRowDiagnosticFields.every((key) => !hasOwn(row, key))
+      && isEmptyDiagnostic(row.stderr_excerpt)
+      && isEmptyDiagnostic(row.raw_stderr)
+      && Array.isArray(row.missing_fixtures)
+      && row.missing_fixtures.length === 0
+      && rowTimingHealthy(row)
+      && rowExecutionHealthy(row)
+    ));
+  const resultsMirrorHealthy = Array.isArray(json.results)
+    && json.results.length === checks.length
+    && json.results.every((row, index) => JSON.stringify(row) === JSON.stringify(checks[index]));
+  const suitesProjectionHealthy = Array.isArray(json.suites)
+    && json.suites.length === checks.length
+    && json.suites.every((row, index) => {
+      const check = checks[index];
+      const forbiddenProjectionFields = [
+        "exit_code",
+        "timed_out",
+        "signal",
+        "parse_error",
+        "manifest_status",
+        "started_at",
+        "finished_at",
+        "duration_ms",
+        "missing_fixtures",
+        "injected",
+        "ok",
+        "error",
+        "issues",
+        "stderr_excerpt",
+        "raw_stderr",
+        "raw_stdout",
+        "failed",
+      ];
+      return check && typeof check.status === "string"
+        && typeof row?.id === "string"
+        && row.id === check.id
+        && typeof row.status === "string"
+        && row.status.trim().toUpperCase() === check.status.trim().toUpperCase()
+        && row.required === check.required
+        && row.status_reason === check.status_reason
+        && row.command === check.command
+        && row.proof_artifact === check.proof_artifact
+        && row.stdout_log === check.stdout_log
+        && row.stderr_log === check.stderr_log
+        && forbiddenProjectionFields.every((key) => !hasOwn(row, key));
+    });
+  const summaryFields = ["total", "passed", "warned", "skipped", "not_applicable", "not_implemented", "failed"];
+  const summarySchemaHealthy = json.summary && typeof json.summary === "object" && !Array.isArray(json.summary)
+    && summaryFields.every((key) => hasOwn(json.summary, key) && isNonnegativeInteger(json.summary[key]));
+  const summaryMirrorHealthy = summarySchemaHealthy
+    && json.summary.total === suiteCount
+    && json.summary.passed === passCount
+    && json.summary.warned === warningCount
+    && json.summary.skipped === skippedCount
+    && json.summary.not_applicable === notApplicableCount
+    && json.summary.not_implemented === notImplementedCount
+    && json.summary.failed === 0;
+  const issuesHealthy = Array.isArray(json.issues) && json.issues.length === 0;
+  const governedRosterHealthy = checks.length === GOVERNED_CONFORMANCE_SUITE_IDS.length
+    && checks.every((row, index) => {
+      const governed = GOVERNED_CONFORMANCE_SUITES[index];
+      return isRecord(row)
+        && row.id === governed?.id
+        && row.required === governed?.required
+        && row.command === governed?.command;
+    });
+  const fullRunProvenanceHealthy = wrappedCommand
+    && expectedIdentity.valid
+    && json.schema_version === 1
+    && json.run_id === expectedRunId
+    && Array.isArray(json.changed_files)
+    && json.changed_files.length === 0
+    && json.phase === "all"
+    && !hasOwn(json, "profile")
+    && json.report_dir === expectedReportDir
+    && json.manifest_path === expectedManifestPath
+    && input.manifest_path === expectedManifestPath
+    && declaredManifestPath === expectedManifestPath
+    && declaredCommand === expectedIdentity.command
+    && !!reportDirectory
+    && !!manifestFile
+    && manifestFreshForInvocation;
+  const manifestKeys = [
+    "schema_version",
+    "run_id",
+    "phase",
+    "changed_files",
+    "suites",
+    "overall_status",
+    "scores",
+    "summary",
+    "issues",
+    "findings",
+    "repo_state_stamp",
+  ];
+  const persistedManifestHealthy = isRecord(persistedManifest)
+    && Object.keys(persistedManifest).length === manifestKeys.length
+    && manifestKeys.every((key) => hasOwn(persistedManifest, key))
+    && persistedManifest.schema_version === json.schema_version
+    && persistedManifest.run_id === expectedRunId
+    && persistedManifest.phase === json.phase
+    && JSON.stringify(persistedManifest.changed_files) === JSON.stringify(json.changed_files)
+    && typeof persistedManifest.overall_status === "string"
+    && persistedManifest.overall_status === json.overall_status
+    && JSON.stringify(persistedManifest.suites) === JSON.stringify(json.suites)
+    && JSON.stringify(persistedManifest.scores) === JSON.stringify(json.scores)
+    && JSON.stringify(persistedManifest.summary) === JSON.stringify(json.summary)
+    && JSON.stringify(persistedManifest.issues) === JSON.stringify(json.issues)
+    && JSON.stringify(persistedManifest.findings) === JSON.stringify(json.findings)
+    && !hasOwn(persistedManifest, "profile")
+    && manifestStampHealthy
+    && persistedManifest.repo_state_stamp?.invocation?.command === "tests/ive/run.mjs"
+    && persistedManifest.repo_state_stamp?.invocation?.run_id === expectedRunId
+    && persistedManifest.repo_state_stamp?.invocation?.phase === "all";
+  const persistedSuiteArtifactsHealthy = Array.isArray(json.suites)
+    && json.suites.length === GOVERNED_CONFORMANCE_SUITES.length
+    && json.suites.every((row, index) => {
+      const governed = GOVERNED_CONFORMANCE_SUITES[index];
+      if (!isRecord(row) || row.id !== governed?.id) return false;
+      const proofArtifact = `${expectedReportDir}/${governed.id}.json`;
+      const stdoutLog = `${expectedReportDir}/logs/${governed.id}.stdout.log`;
+      const stderrLog = `${expectedReportDir}/logs/${governed.id}.stderr.log`;
+      const proofFile = trustedArtifactFile(proofArtifact, expectedReportDir);
+      const stdoutFile = trustedArtifactFile(stdoutLog, expectedReportDir);
+      const stderrFile = trustedArtifactFile(stderrLog, expectedReportDir);
+      const proofDocument = proofFile ? safeReadJson(proofFile.path) : null;
+      const proofStamp = isRecord(proofDocument) ? proofDocument.repo_state_stamp : null;
+      const proofRow = isRecord(proofDocument)
+        ? Object.fromEntries(Object.entries(proofDocument).filter(([key]) => key !== "repo_state_stamp"))
+        : null;
+      return row.required === governed.required
+        && row.command === governed.command
+        && row.proof_artifact === proofArtifact
+        && row.stdout_log === stdoutLog
+        && row.stderr_log === stderrLog
+        && !!proofFile
+        && !!stdoutFile
+        && !!stderrFile
+        && stderrFile.stat.size === 0
+        && JSON.stringify(proofRow) === JSON.stringify(checks[index])
+        && proofStamp?.schema_version === "repo_state_stamp.v1"
+        && proofStamp?.invocation?.command === "tests/ive/run.mjs"
+        && proofStamp?.invocation?.run_id === expectedRunId
+        && proofStamp?.invocation?.phase === "all"
+        && JSON.stringify(proofStamp) === JSON.stringify(persistedManifest?.repo_state_stamp);
+    });
+  const auxiliaryReportHealthy = !hasOwn(json, "runner_metadata")
+    && (!hasOwn(json, "findings") || (Array.isArray(json.findings) && json.findings.length === 0))
+    && !hasOwn(json, "failed")
+    && isEmptyDiagnostic(json.stderr_excerpt)
+    && isEmptyDiagnostic(json.raw_stderr);
+  const statusSchemaHealthy = typeof json.status === "string"
+    && typeof json.overall_status === "string"
+    && declaredStatuses.every((value) => value.trim().toUpperCase() === "WARN");
+  const timingSchemaHealthy = typeof json.run_started_at === "string"
+    && typeof json.run_finished_at === "string"
+    && isCanonicalIsoTimestamp(json.run_started_at)
+    && isCanonicalIsoTimestamp(json.run_finished_at)
+    && Number.isFinite(started)
+    && Number.isFinite(finished)
+    && finished >= started
+    && (!hasOwn(json, "wall_clock_ms") || (
+      isNonnegativeInteger(json.wall_clock_ms)
+      && Math.abs(json.wall_clock_ms - derivedWallClock) <= 1
+    ));
+  const mirroredReportHealthy = json.ok === true
+    && counterSchemaHealthy
+    && checkRowsSchemaHealthy
+    && timingSchemaHealthy
+    && issuesHealthy
+    && auxiliaryReportHealthy
+    && governedRosterHealthy
+    && fullRunProvenanceHealthy
+    && persistedManifestHealthy
+    && persistedSuiteArtifactsHealthy
+    && resultsMirrorHealthy
+    && suitesProjectionHealthy
+    && summaryMirrorHealthy;
+  const reportHealthy = mirroredReportHealthy && statusSchemaHealthy;
+  const advisoryRowsCoherent = checks.length > 0
+    && checks.length === suiteCount
+    && checks.filter((row) => verificationStatusIsPass(row?.status, "execution")).length === passCount
+    && passCount + warningCount === suiteCount
+    && advisoryWarningChecks.length === warningCount
+    && nonPassingChecks.length === advisoryWarningChecks.length;
+  const advisoryOnlyWarning = typeof status === "string"
+    && status.trim().toUpperCase() === "WARN"
+    && warningCount > 0
+    && warningRegressionCount === 0
+    && failedRequiredCount === 0
+    && skippedCount === 0
+    && notApplicableCount === 0
+    && notImplementedCount === 0
+    && declaredStatuses.length === 2
+    && advisoryRowsCoherent
+    && transportHealthy
+    && rawTransportHealthy
+    && reportHealthy;
+  const passStatusesHealthy = typeof json.status === "string"
+    && typeof json.overall_status === "string"
+    && json.status.trim().toUpperCase() === "PASS"
+    && json.overall_status.trim().toUpperCase() === "PASS";
+  const passRowsCoherent = checks.length > 0
+    && checks.length === suiteCount
+    && passCount === suiteCount
+    && checks.every((row) => typeof row?.status === "string" && row.status.trim().toUpperCase() === "PASS")
+    && failedRequiredCount === 0
+    && warningCount === 0
+    && skippedCount === 0
+    && notApplicableCount === 0
+    && notImplementedCount === 0;
+  const structuredReport = hasOwn(json, "checks")
+    || hasOwn(json, "results")
+    || hasOwn(json, "summary")
+    || hasOwn(json, "overall_status");
+  const structuredPassHealthy = mirroredReportHealthy
+    && passStatusesHealthy
+    && passRowsCoherent;
+  const normalizedSuiteRows = Array.isArray(json.suites) ? json.suites : [];
+  const forbiddenLegacyRowFields = [
+    "exit_code",
+    "timed_out",
+    "signal",
+    "parse_error",
+    "started_at",
+    "finished_at",
+    "manifest_status",
+    "status_reason",
+    "missing_fixtures",
+    "injected",
+    "ok",
+    "error",
+    "issues",
+    "failed",
+    "stderr_excerpt",
+    "raw_stderr",
+    "raw_stdout",
+  ];
+  const normalizedSuiteIds = normalizedSuiteRows.map((row) => typeof row?.id === "string" ? row.id.trim() : "");
+  const normalizedDurationTotal = normalizedSuiteRows.reduce((sum, row) => sum + (isNonnegativeInteger(row?.duration_ms) ? row.duration_ms : 0), 0);
+  const normalizedSuiteRowsHealthy = normalizedSuiteRows.length === suiteCount
+    && normalizedSuiteRows.length > 0
+    && normalizedSuiteIds.every(Boolean)
+    && new Set(normalizedSuiteIds).size === normalizedSuiteIds.length
+    && normalizedSuiteRows.every((row) => (
+      isRecord(row)
+      && typeof row.required === "boolean"
+      && typeof row.status === "string"
+      && row.status.trim().toUpperCase() === "PASS"
+      && isNonnegativeInteger(row.duration_ms)
+      && forbiddenLegacyRowFields.every((key) => !hasOwn(row, key))
+    ));
+  const normalizedIssuesHealthy = !hasOwn(json, "issues")
+    || (Array.isArray(json.issues) && json.issues.length === 0);
+  const normalizedTimingHealthy = hasOwn(json, "wall_clock_ms")
+    && isNonnegativeInteger(json.wall_clock_ms)
+    && !hasOwn(json, "run_started_at")
+    && !hasOwn(json, "run_finished_at")
+    && json.wall_clock_ms >= Math.max(...normalizedSuiteRows.map((row) => isNonnegativeInteger(row?.duration_ms) ? row.duration_ms : 0), 0)
+    && (!hasOwn(json, "per_suite_ms_total") || (
+      isNonnegativeInteger(json.per_suite_ms_total)
+      && json.per_suite_ms_total === normalizedDurationTotal
+    ));
+  const normalizedMetricPassHealthy = !wrappedCommand
+    && !structuredReport
+    && json.run_id === "sample-conformance"
+    && counterSchemaHealthy
+    && normalizedSuiteRowsHealthy
+    && normalizedIssuesHealthy
+    && normalizedTimingHealthy
+    && suiteCount > 0
+    && passCount === suiteCount
+    && failedRequiredCount === 0
+    && warningCount === 0
+    && skippedCount === 0
+    && notApplicableCount === 0
+    && notImplementedCount === 0;
+  const passReportHealthy = typeof status === "string"
+    && verificationStatusIsPass(status, "execution")
+    && json.ok === true
+    && transportHealthy
+    && rawTransportHealthy
+    && (structuredReport || wrappedCommand ? structuredPassHealthy : normalizedMetricPassHealthy);
   return {
-    ok: verificationStatusIsPass(status, "execution") && !input.timed_out,
+    ok: (passReportHealthy || advisoryOnlyWarning) && !input.timed_out,
     run_id: json.run_id || null,
     status,
-    suite_count: asNumber(json.command_count ?? json.suite_count ?? checks.length),
-    pass_count: asNumber(json.passed_count ?? json.pass_count ?? checks.filter((row) => verificationStatusIsPass(row.status, "execution")).length),
-    failed_required_count: asNumber(json.failed_required_count),
+    suite_count: suiteCount,
+    pass_count: passCount,
+    failed_required_count: failedRequiredCount,
     warning_count: warningCount,
     advisory_warning_count: advisoryWarningCount,
-    warning_regression_count: Math.max(0, warningCount - advisoryWarningCount),
-    skipped_count: asNumber(json.skipped_count),
-    not_applicable_count: asNumber(json.not_applicable_count),
-    not_implemented_count: asNumber(json.not_implemented_count),
+    warning_regression_count: warningRegressionCount,
+    skipped_count: skippedCount,
+    not_applicable_count: notApplicableCount,
+    not_implemented_count: notImplementedCount,
     wall_clock_ms: wallClockMs,
     wall_clock_source: reportedWallClock !== null
       ? "child_report"
@@ -226,7 +743,13 @@ function normalizeConformance(input = {}) {
     timed_out: !!input.timed_out,
     exit_code: input.exit_code ?? 0,
     issues: Array.isArray(json.issues) ? json.issues : [],
-    manifest_path: input.manifest_path || null,
+    manifest_path: input.manifest_path || json.manifest_path || null,
+    manifest_sha256: manifestFile
+      ? createHash("sha256").update(readFileSync(manifestFile.path)).digest("hex")
+      : null,
+    live_evidence: wrappedCommand && structuredReport,
+    validated_command: expectedIdentity.valid ? expectedIdentity.command : null,
+    validated_manifest_path: expectedIdentity.valid ? expectedIdentity.manifest_path : null,
   };
 }
 
@@ -236,6 +759,12 @@ function normalizeBehavior(input = {}) {
   const autocoderScoreboard = normalizeAutocoderScoreboard(metrics.autocoder_scoreboard || metrics.summary?.autocoder_scoreboard || null);
   return {
     ok: input.ok !== false,
+    status: typeof input.status === "string" ? input.status : null,
+    exit_code: asNullableNumber(input.exit_code),
+    signal: typeof input.signal === "string" ? input.signal : null,
+    timed_out: input.timed_out === true,
+    parse_error: typeof input.parse_error === "string" ? input.parse_error : null,
+    error: typeof input.error === "string" ? input.error : null,
     total_runs: asNumber(metrics.total_runs ?? metrics.summary?.total_runs),
     total_gate_bounces: asNumber(metrics.total_gate_bounces ?? metrics.summary?.total_gate_bounces),
     bounce_rate_per_run: round(asNumber(metrics.total_gate_bounces ?? metrics.summary?.total_gate_bounces) / Math.max(1, asNumber(metrics.total_runs ?? metrics.summary?.total_runs))),
@@ -304,8 +833,13 @@ function normalizeRitualReplay(input = {}) {
   const retired = report.retired_gates || {};
   const status = report.status || "UNKNOWN";
   return {
-    ok: verificationStatusIsPass(status, "execution"),
+    ok: input.ok === true && verificationStatusIsPass(status, "execution"),
     status,
+    exit_code: asNullableNumber(input.exit_code),
+    signal: typeof input.signal === "string" ? input.signal : null,
+    timed_out: input.timed_out === true,
+    parse_error: typeof input.parse_error === "string" ? input.parse_error : null,
+    error: typeof input.error === "string" ? input.error : null,
     fixture_count: asNumber(corpus.fixture_count ?? report.fixture_count),
     transition_count: asNumber(corpus.transition_count ?? report.transition_count),
     current_ritual_transition_count: asNumber(current.ritual_transition_count),
@@ -955,9 +1489,9 @@ function normalizeEscalationProtocol(input = null) {
 function outputVolumeBudget({ baselineBehavior, currentBehavior }) {
   const baseline = baselineBehavior.output_volume_lines || {};
   const live = currentBehavior.output_volume_lines;
-  const sourceStatus = live
-    ? "live_behavior_report_counter"
-    : "baseline_frozen_no_live_counter";
+  const sourceStatus = currentBehavior.ok === false
+    ? "behavior_report_command_failed"
+    : (live ? "live_behavior_report_counter" : "baseline_frozen_no_live_counter");
   const current = live || baseline;
   const keys = ["blocked_first", "blocked_repeat", "pre_dedupe_baseline"];
   return {
@@ -1011,7 +1545,9 @@ function proofExecutionBudget(behavior) {
   const aggregateRate = asNumber(metrics.real_executed_proof_ratio);
   const minimumProgramRateForGreenContext = 0.5;
   return {
-    source_status: hasScoreboard ? "autocoder_scoreboard" : "not_collected",
+    source_status: behavior.ok === false
+      ? "behavior_report_command_failed"
+      : (hasScoreboard ? "autocoder_scoreboard" : "not_collected"),
     program_proof_execution_rate: {
       current: programRate,
       minimum_for_green_context: minimumProgramRateForGreenContext,
@@ -1151,6 +1687,7 @@ function evaluateRegressions({
   baselineBehavior,
   baselineReuseDiscipline = {},
   conformance,
+  behavior,
   seeded,
   reuseDiscipline,
   falseRed,
@@ -1160,6 +1697,9 @@ function evaluateRegressions({
   budgets,
 }) {
   const regressions = [];
+  const baselineWarningRegressionCount = asNumber(
+    baselineConformance.warning_regression_count ?? baselineConformance.warning_count,
+  );
   if (!conformance.ok || conformance.failed_required_count > 0) {
     regressions.push(issue("conformance_command_failed", "IVE conformance command did not report PASS", {
       current_status: conformance.status,
@@ -1173,10 +1713,10 @@ function evaluateRegressions({
       baseline: asNumber(baselineConformance.failed_required_count),
     }));
   }
-  if (conformance.warning_regression_count > asNumber(baselineConformance.warning_count)) {
+  if (conformance.warning_regression_count > baselineWarningRegressionCount) {
     regressions.push(issue("conformance_warning_count", "IVE warning count increased above baseline", {
       current: conformance.warning_regression_count,
-      baseline: asNumber(baselineConformance.warning_count),
+      baseline: baselineWarningRegressionCount,
       advisory_warning_count: conformance.advisory_warning_count,
     }));
   }
@@ -1186,8 +1726,18 @@ function evaluateRegressions({
       baseline: asNumber(baselineConformance.not_implemented_count),
     }));
   }
+  if (!behavior.ok) {
+    regressions.push(issue("behavior_report_command_failed", "Behavior report command did not produce healthy telemetry", {
+      status: behavior.status,
+      exit_code: behavior.exit_code,
+      signal: behavior.signal,
+      timed_out: behavior.timed_out,
+      parse_error: behavior.parse_error,
+      error: behavior.error,
+    }));
+  }
   if (hasNumeric(conformance.wall_clock_ms) && conformance.wall_clock_ms > DEFAULT_CONFORMANCE_BUDGET_MS) {
-    regressions.push(issue("conformance_wall_clock_budget", "IVE conformance wall-clock exceeded the 7 minute budget", {
+    regressions.push(issue("conformance_wall_clock_budget", "IVE conformance wall-clock exceeded the 10 minute budget", {
       current_ms: conformance.wall_clock_ms,
       limit_ms: DEFAULT_CONFORMANCE_BUDGET_MS,
     }));
@@ -1237,6 +1787,12 @@ function evaluateRegressions({
   }
   if (!ritualReplay.ok) {
     regressions.push(issue("ritual_replay_gate_regression", "Real-work ritual replay gate did not report PASS", {
+      status: ritualReplay.status,
+      exit_code: ritualReplay.exit_code,
+      signal: ritualReplay.signal,
+      timed_out: ritualReplay.timed_out,
+      parse_error: ritualReplay.parse_error,
+      error: ritualReplay.error,
       current_ritual_transition_rate_pct: ritualReplay.current_ritual_transition_rate_pct,
       current_unknown_transition_rate_pct: ritualReplay.current_unknown_transition_rate_pct,
       retired_gate_active_bounce_count: ritualReplay.retired_gate_active_bounce_count,
@@ -1300,13 +1856,16 @@ function evaluateRegressions({
 }
 
 function conformanceDeltas(current, baseline) {
+  const baselineWarningRegressionCount = asNumber(
+    baseline.warning_regression_count ?? baseline.warning_count,
+  );
   return {
     suite_count: delta(current.suite_count, baseline.suite_count),
     pass_count: delta(current.pass_count, baseline.pass_count),
     failed_required_count: delta(current.failed_required_count, baseline.failed_required_count),
     warning_count: delta(current.warning_count, baseline.warning_count),
     advisory_warning_count: delta(current.advisory_warning_count, baseline.advisory_warning_count),
-    warning_regression_count: delta(current.warning_regression_count, baseline.warning_count),
+    warning_regression_count: delta(current.warning_regression_count, baselineWarningRegressionCount),
     skipped_count: delta(current.skipped_count, baseline.skipped_count),
     not_applicable_count: delta(current.not_applicable_count, baseline.not_applicable_count),
     not_implemented_count: delta(current.not_implemented_count, baseline.not_implemented_count),
@@ -1446,7 +2005,11 @@ export function buildScoreboardReport({
   const baselineIdeationQuality = baseline.metrics?.ideation_quality || {};
   const baselinePackGuardBenchmark = baseline.metrics?.pack_guard_benchmark || {};
   const baselineReuseDiscipline = baseline.metrics?.reuse_discipline || {};
-  const conformance = normalizeConformance(inputs.conformance || {});
+  const conformance = normalizeConformance(inputs.conformance || {}, {
+    scoreboardRunId: runId,
+    declaredManifestPath: inputs.artifacts?.conformance_manifest || null,
+    declaredCommand: inputs.commands?.ive_conformance || null,
+  });
   const behavior = normalizeBehavior(inputs.behavior_report || {});
   const ritualReplay = normalizeRitualReplay(inputs.ritual_replay || {});
   const seeded = normalizeSeeded(inputs.seeded_defects || {});
@@ -1475,6 +2038,7 @@ export function buildScoreboardReport({
     baselineBehavior,
     baselineReuseDiscipline,
     conformance,
+    behavior,
     seeded,
     reuseDiscipline,
     falseRed,
@@ -1513,10 +2077,18 @@ export function buildScoreboardReport({
       title: "E2-5 Scoreboard CLI + CI wiring (THE test switch)",
       story_ref: "US-PM-AUTO-084",
     },
-    commands: inputs.commands || {},
+    commands: {
+      ...(inputs.commands || {}),
+      ...(conformance.live_evidence && conformance.validated_command
+        ? { ive_conformance: conformance.validated_command }
+        : {}),
+    },
     artifacts: {
       scoreboard_json: artifactPath ? rel(artifactPath) : null,
-      conformance_manifest: inputs.artifacts?.conformance_manifest || null,
+      conformance_manifest: conformance.live_evidence && conformance.validated_manifest_path
+        ? conformance.validated_manifest_path
+        : (inputs.artifacts?.conformance_manifest || null),
+      conformance_manifest_sha256: conformance.manifest_sha256,
     },
     metrics: {
       ive_conformance: conformance,
@@ -1646,6 +2218,20 @@ export function buildSampleScoreboardInputs({
   conformance.run_id = "sample-conformance";
   conformance.ok = true;
   conformance.status = "PASS";
+  conformance.pass_count = asNumber(conformance.suite_count);
+  conformance.failed_required_count = 0;
+  conformance.warning_count = 0;
+  conformance.advisory_warning_count = 0;
+  conformance.warning_regression_count = 0;
+  conformance.skipped_count = 0;
+  conformance.not_applicable_count = 0;
+  conformance.not_implemented_count = 0;
+  if (Array.isArray(conformance.suites)) {
+    conformance.suites = conformance.suites.map((row) => ({
+      ...row,
+      status: "pass",
+    }));
+  }
   const behavior = deepClone(baseline.metrics?.behavior_report || {});
   delete behavior.output_volume_lines;
   const ritualReplay = deepClone(baseline.metrics?.ritual_replay || {
@@ -1841,14 +2427,13 @@ export function collectLiveScoreboardInputs({
   generatedAt = new Date().toISOString(),
   conformanceTimeoutMs = DEFAULT_CONFORMANCE_TIMEOUT_MS,
 } = {}) {
-  const conformanceRunId = `${runId || "scoreboard"}-conformance`;
-  const conformanceArgv = [
-    NODE,
-    join(TESTS_ROOT, "ive", "run.mjs"),
-    "--json",
-    "--run-id",
-    conformanceRunId,
-  ];
+  const conformanceIdentity = conformanceIdentityForScoreboardRun(runId);
+  if (!conformanceIdentity.valid) {
+    throw new Error("scoreboard run ID cannot produce a safe canonical conformance identity");
+  }
+  const conformanceRunId = conformanceIdentity.child_run_id;
+  const conformanceArgv = conformanceIdentity.argv;
+  const conformanceArtifactPreexisting = existsSync(resolve(REPO_ROOT, conformanceIdentity.report_dir));
   const behaviorArgv = [NODE, join(SCRIPTS_DIR, "behavior_report.mjs"), "--json"];
   const ritualReplayArgv = [
     NODE,
@@ -1896,10 +2481,27 @@ export function collectLiveScoreboardInputs({
     },
     conformance: {
       ...conformanceResult,
-      manifest_path: rel(join(REPO_ROOT, "reports", "ive", "test_runs", conformanceRunId, "manifest.json")),
+      artifact_preexisting: conformanceArtifactPreexisting,
+      manifest_path: conformanceIdentity.manifest_path,
     },
-    behavior_report: behaviorResult.json ? { ...behaviorResult.json, ok: behaviorResult.ok } : behaviorResult,
-    ritual_replay: ritualReplayResult.json ? { ...ritualReplayResult.json, ok: ritualReplayResult.ok && ritualReplayResult.json.ok === true } : ritualReplayResult,
+    behavior_report: behaviorResult.json ? {
+      ...behaviorResult.json,
+      ok: behaviorResult.ok,
+      exit_code: behaviorResult.exit_code,
+      signal: behaviorResult.signal,
+      timed_out: behaviorResult.timed_out,
+      parse_error: behaviorResult.parse_error,
+      error: behaviorResult.error,
+    } : behaviorResult,
+    ritual_replay: ritualReplayResult.json ? {
+      ...ritualReplayResult.json,
+      ok: ritualReplayResult.ok && ritualReplayResult.json.ok === true,
+      exit_code: ritualReplayResult.exit_code,
+      signal: ritualReplayResult.signal,
+      timed_out: ritualReplayResult.timed_out,
+      parse_error: ritualReplayResult.parse_error,
+      error: ritualReplayResult.error,
+    } : ritualReplayResult,
     seeded_defects: seeded,
     reuse_discipline: reuseDiscipline,
     false_red_exports: falseRedResult.json ? { ...falseRedResult.json, ok: falseRedResult.ok && falseRedResult.json.ok === true } : falseRedResult,
@@ -1921,7 +2523,7 @@ export function collectLiveScoreboardInputs({
     convergence_metrics: convergenceMetrics,
     escalation_protocol: escalationProtocol,
     artifacts: {
-      conformance_manifest: rel(join(REPO_ROOT, "reports", "ive", "test_runs", conformanceRunId, "manifest.json")),
+      conformance_manifest: conformanceIdentity.manifest_path,
     },
   };
 }
@@ -1980,6 +2582,9 @@ function defaultRunId(sample) {
 }
 
 export function scoreboardArtifactPath({ outDir = DEFAULT_SCOREBOARD_OUT_DIR, runId, cwd = REPO_ROOT } = {}) {
+  if (!conformanceIdentityForScoreboardRun(runId).valid) {
+    throw new Error("scoreboard run ID is unsafe or too long");
+  }
   return resolve(cwd, outDir, runId, "scoreboard.json");
 }
 
@@ -2050,6 +2655,9 @@ export function runScoreboard(argv = process.argv.slice(2), {
   const loaded = loadScoreboardBaseline(args.baselinePath, { cwd });
   const generatedAt = args.sample ? SAMPLE_TIMESTAMP : now();
   const runId = args.runId || defaultRunId(args.sample);
+  if (!conformanceIdentityForScoreboardRun(runId).valid) {
+    throw new Error("scoreboard run ID is unsafe or too long");
+  }
   const inputs = args.sample
     ? buildSampleScoreboardInputs({
         baseline: loaded.document,
