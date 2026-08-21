@@ -84,30 +84,28 @@ If the user did not name a workflow, do not make them choose from the whole cata
 | High-risk, shared-surface, cross-system, migration, security, or hard-to-reverse change | `/safe-change-power` | Escalates proof and audit depth before execution. |
 | Need a plan or design only, with no code edits yet | `/safe-plan` | Builds the plan and stops before implementation. |
 | Trivial, read-only, operational, or analysis-only request | `/ignore-planner` | Explicitly bypasses planner ceremony while keeping a bounded accountability note. |
+| Reusable operational flow, data sync, or ETL/script orchestration | `/recipe` | Discovers, normalizes, bootstraps, and previews deterministic recipe workflows. |
 | Something went wrong, a bug recurred, or a session needs lessons captured | `/retro` | Extracts reusable lessons and recurrence guards. |
 | Preparing, verifying, or cutting a release | `/release` | Runs release discipline, version, migration, and rollout checks. |
-| Repeated operational flow should become reusable | `/recipe-discovery` | Reviews candidate recipes before tidy/bootstrap creates canonical recipe surfaces. |
 
 Specialist workflows below are still available, but most users should only need the router above. When a front door or gate tells you to run a specialist workflow, read that workflow file and follow it exactly.
 
 | Command | File | When to use |
 |---------|------|-------------|
 | `/advisor` | `.agent/workflows/advisor.md` | Not sure what to do next; CI failures you don't recognise; start-of-session orientation |
-| `/steward` | `.agent/workflows/steward.md` | Proactive consolidation across docs, ontology, personas, stories, annotations, and user-intent drift |
-| `/program-manager` | `.agent/workflows/program-manager.md` | Turn broad roadmaps into Program Packets with epics, tickets, child plans, dependencies, contracts, and program-close criteria |
+| `/steward` | `.agent/workflows/steward.md` | Proactive consolidation across docs, ontology, personas, stories, annotations, and KB surfaces |
+| `/program-manager` | `.agent/workflows/program-manager.md` | Turn broad roadmaps into Program Packets with epics, tickets, child plans, dependencies, and contracts |
 | `/ticket-traceability-repair` | `.agent/workflows/ticket-traceability-repair.md` | Repair Program Packet tickets blocked by missing story traceability before child-plan implementation |
-| `/roadmap-steward` | `.agent/workflows/roadmap-steward.md` | Alias for `/program-manager` when the request uses roadmap-steward language |
-| `/sme-improvement` | `.agent/workflows/sme-improvement.md` | Goal-aligned strategic/process improvement discovery using repo goals and persona committee outputs, especially for quant projects |
+| `/recipe` | `.agent/workflows/recipe.md` | Propose, normalize, bootstrap, preview, and audit deterministic recipe workflows (`discover`, `tidy`, `bootstrap`, `audit`) |
+| `/sme-improvement` | `.agent/workflows/sme-improvement.md` | Goal-aligned strategic/process improvement discovery using repo goals and persona committee outputs |
 | `/safe-plan` | `.agent/workflows/safe-plan.md` | Build a detailed, mistake-aware plan without writing code yet |
 | `/safe-change` | `.agent/workflows/safe-change.md` | Any code change with regression protection |
 | `/safe-change-power` | `.agent/workflows/safe-change-power.md` | High-risk or cross-system changes |
 | `/ignore-planner` | `.agent/workflows/ignore-planner.md` | Explicitly bypass the planner for trivial, operational, or analysis-only work |
-| `/recipe-discovery` | `.agent/workflows/recipe-discovery.md` | Propose and review candidate recipes from a concrete prompt/request before recipe bootstrap creates folders and registries |
-| `/recipe-tidy` | `.agent/workflows/recipe-tidy.md` | Normalize messy operational requests into deterministic recipe folders before planning or rebuilding |
-| `/recipe-bootstrap` | `.agent/workflows/recipe-bootstrap.md` | Bootstrap recipe registries and runner contracts from approved discovery candidates |
-| `/story-bootstrap` | `.agent/workflows/story-bootstrap.md` | Story registry is missing or has insufficient coverage |
+| `/story-bootstrap` | `.agent/workflows/story-bootstrap.md` | Story registry is missing, empty, or has insufficient coverage |
 | `/register-user-story` | `.agent/workflows/register-user-story.md` | Elicit and register a new user story from a user request |
-| `/red-team-audit` | `.agent/workflows/red-team-audit.md` | Audit code for quality and risk |
+| `/story-verification` | `.agent/workflows/story-verification.md` | Read-only advisory story verification against story registry and annotations |
+| `/red-team-audit` | `.agent/workflows/red-team-audit.md` | Audit code for quality, architecture, and security risk |
 | `/red-team-user-story-audit` | `.agent/workflows/red-team-user-story-audit.md` | Audit user stories for gaps and conflicts |
 | `/retro` | `.agent/workflows/retro.md` | After a bug-fix session or anything that went wrong |
 | `/regression-audit` | `.agent/workflows/regression-audit.md` | Check for regressions after changes |

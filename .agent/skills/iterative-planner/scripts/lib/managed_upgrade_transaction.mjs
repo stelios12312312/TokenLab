@@ -259,32 +259,28 @@ function managedPreflightScopes(targetPath, scopes = DEFAULT_PREFLIGHT_SCOPES) {
     }
     expanded.add(normalizedScope.split(sep).join("/"));
 
-    let stat;
-    try {
-      stat = lstatSync(absoluteScope);
-    } catch {
-      continue;
+    if (existsSync(absoluteScope)) {
+      let resolvedTarget;
+      try {
+        resolvedTarget = realpathSync(absoluteScope);
+      } catch {
+        throw new Error(`managed upgrade refuses broken managed path: ${scope}`);
+      }
+      if (resolvedTarget !== absoluteScope) {
+        const relativeTarget = relative(targetRoot, resolvedTarget);
+        if (
+          !relativeTarget
+          || relativeTarget === ".."
+          || relativeTarget.startsWith(`..${sep}`)
+          || isAbsolute(relativeTarget)
+        ) {
+          throw new Error(
+            `managed upgrade refuses managed symlink outside target repository: ${scope} -> ${resolvedTarget}`,
+          );
+        }
+        expanded.add(relativeTarget.split(sep).join("/"));
+      }
     }
-    if (!stat.isSymbolicLink()) continue;
-
-    let resolvedTarget;
-    try {
-      resolvedTarget = realpathSync(absoluteScope);
-    } catch {
-      throw new Error(`managed upgrade refuses broken managed symlink: ${scope}`);
-    }
-    const relativeTarget = relative(targetRoot, resolvedTarget);
-    if (
-      !relativeTarget
-      || relativeTarget === ".."
-      || relativeTarget.startsWith(`..${sep}`)
-      || isAbsolute(relativeTarget)
-    ) {
-      throw new Error(
-        `managed upgrade refuses managed symlink outside target repository: ${scope} -> ${resolvedTarget}`,
-      );
-    }
-    expanded.add(relativeTarget.split(sep).join("/"));
   }
   return [...expanded];
 }

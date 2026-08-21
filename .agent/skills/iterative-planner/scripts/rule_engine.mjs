@@ -177,7 +177,7 @@ export function runSemanticChecks(gate, planDir, engineOptions = {}) {
       results.push({
         name: "Invariant advisories",
         status: "WARN",
-        detail: `${warnings.length} advisory(s): ${warnings.map(w => formatInvariantDiagnostic(session, w)).join("; ")}`,
+        detail: `${warnings.length} advisory(s) [ADVISORY ONLY — DOES NOT BLOCK TRANSITION]: ${warnings.map(w => formatInvariantDiagnostic(session, w)).join("; ")}`,
       });
     }
   } catch (e) {

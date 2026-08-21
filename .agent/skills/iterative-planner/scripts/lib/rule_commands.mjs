@@ -1217,6 +1217,10 @@ export function cmdCheckInvariants(jsonMode, {
       const coverageText = renderDegradedCoverageAssessment(degradedCoverage, { indent: "  " });
       if (coverageText) console.log(`${violations.length > 0 ? "\n" : ""}${coverageText}`);
     }
+    if (warnings.length > 0 && violations.length === 0) {
+      console.log(`\n  ℹ️  ${warnings.length} advisory warning(s) [ADVISORY ONLY — DOES NOT BLOCK TRANSITION]:`);
+      for (const w of warnings) console.log(`     - ${formatInvariantDiagnostic(session, w)}`);
+    }
   }
   return violations.length > 0 || coverageInvalid ? 1 : 0;
 }

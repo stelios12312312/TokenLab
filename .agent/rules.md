@@ -20,6 +20,8 @@ Mandatory rules for every AI session on this project. These rules prevent common
 
 - **All state transitions** must use `node .agent/skills/iterative-planner/scripts/transition.mjs <gate-name>`. Never manually edit `state.json`. Never skip a gate.
 - **The Prolog ontology** (`.agent/skills/iterative-planner/prolog/invariants.pl`, I-001 through I-029) runs automatically inside `transition.mjs`. This is why using the transition script is mandatory — skipping it silently bypasses formal verification.
+- **No Manual Prolog / Ontology Edits**: NEVER manually edit generated Prolog `.pl` fact files or try to hack ontology rules to force a pass. When an invariant fails, fix the upstream source artifact (`story_registry.json`, `program_packet.json`, or code).
+- **Advisory Warnings vs Hard Blockers**: Invariant warnings (`invariant_warning`) and persona recommendations are ADVISORY signals. They do NOT block state transitions and MUST NOT cause the agent to backtrack, thrash, or revert working code. Only `invariant_violated` or explicit gate FAILs are blockers.
 - Run manual ontology checks after updating `story_registry.json` or when cross-report consistency is in question:
   ```bash
   node .agent/skills/iterative-planner/scripts/rule_engine.mjs check-invariants
@@ -31,8 +33,9 @@ Mandatory rules for every AI session on this project. These rules prevent common
 - Personas are strongest in EXPLORE and REFLECT.
 - Ontology is strongest in PLAN and REFLECT.
 - EXECUTE consumes obligations and records evidence; do not add continuous second-guessing loops that turn planner discipline into ritual.
+- Prevent Drift: Stay on the linear state machine path. Do not second-guess already-verified earlier phases unless fresh, deterministic test evidence disproves them.
 
-**Why**: Agents default to ad-hoc planning when no explicit instruction exists. This bypasses gate enforcement, the Prolog invariant checks, and the knowledge base — defeating the entire system.
+**Why**: Agents default to ad-hoc planning or thrashing loops when no explicit instruction exists. This maintains forward momentum while preserving formal gate enforcement.
 
 ---
 

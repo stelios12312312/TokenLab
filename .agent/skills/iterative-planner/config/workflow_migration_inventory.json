@@ -47,9 +47,9 @@
     {
       "workflow": "/knowledge-steward",
       "v6_purpose": "N/A — new in v7",
-      "v7_action": "New",
-      "v7_owner": "Agent C",
-      "notes": "Phase 2 autonomous knowledge-steward surface."
+      "v7_action": "Parked",
+      "v7_owner": "N/A — consolidated/retired",
+      "notes": "Consolidated/retired. Archived in .agent/_parked/knowledge-steward.md."
     },
     {
       "workflow": "/migrate-all",
@@ -82,30 +82,30 @@
     {
       "workflow": "/recipe-bootstrap",
       "v6_purpose": "Bootstrap recipe registries and contracts",
-      "v7_action": "Restored",
-      "v7_owner": "Agent A",
-      "notes": "Restored by ADR 0042; bootstraps project-owned canonical recipe folders from approved discovery reviews."
+      "v7_action": "Parked",
+      "v7_owner": "N/A — consolidated/retired",
+      "notes": "Consolidated/retired. Archived in .agent/_parked/recipe-bootstrap.md."
     },
     {
       "workflow": "/recipe-discovery",
       "v6_purpose": "Propose candidate recipes from an operational request",
-      "v7_action": "Restored",
-      "v7_owner": "Agent A",
-      "notes": "Restored by ADR 0042; emits discovery_review.json/md for human or agent review."
+      "v7_action": "Parked",
+      "v7_owner": "N/A — consolidated/retired",
+      "notes": "Consolidated/retired. Archived in .agent/_parked/recipe-discovery.md."
     },
     {
       "workflow": "/recipe-fleet-audit",
       "v6_purpose": "N/A — added during recipe restoration",
-      "v7_action": "New",
-      "v7_owner": "Agent A",
-      "notes": "Added by ADR 0042 R.4; audits configured project recipe surfaces for adoption, schema drift, collisions, and plan-only migration recommendations."
+      "v7_action": "Parked",
+      "v7_owner": "N/A — consolidated/retired",
+      "notes": "Consolidated/retired. Archived in .agent/_parked/recipe-fleet-audit.md."
     },
     {
       "workflow": "/recipe-tidy",
       "v6_purpose": "Normalize messy requests into deterministic recipe folders",
-      "v7_action": "Restored",
-      "v7_owner": "Agent A",
-      "notes": "Restored by ADR 0042; consolidates ad-hoc operational scripts into project-owned recipe contracts."
+      "v7_action": "Parked",
+      "v7_owner": "N/A — consolidated/retired",
+      "notes": "Consolidated/retired. Archived in .agent/_parked/recipe-tidy.md."
     },
     {
       "workflow": "/register-user-story",
@@ -180,9 +180,9 @@
     {
       "workflow": "/roadmap-steward",
       "v6_purpose": "Alias for roadmap/program-management prompts",
-      "v7_action": "Renamed",
-      "v7_owner": "Agent A",
-      "notes": "Alias to /program-manager when requests use roadmap-steward language."
+      "v7_action": "Parked",
+      "v7_owner": "N/A — consolidated/retired",
+      "notes": "Consolidated/retired. Archived in .agent/_parked/roadmap-steward.md."
     },
     {
       "workflow": "/sme-improvement",
@@ -208,16 +208,16 @@
     {
       "workflow": "/story-registry-bootstrap",
       "v6_purpose": "N/A — new in v7",
-      "v7_action": "New",
-      "v7_owner": "Agent A",
-      "notes": "Phase 0.5 canonical story-registry bootstrap workflow."
+      "v7_action": "Parked",
+      "v7_owner": "N/A — consolidated/retired",
+      "notes": "Consolidated/retired. Archived in .agent/_parked/story-registry-bootstrap.md."
     },
     {
       "workflow": "/story-review-agent",
       "v6_purpose": "Separate-session story coverage review for multi-agent approvals",
-      "v7_action": "Keep unchanged",
-      "v7_owner": "Story Review Agent",
-      "notes": "Internal reviewer surface retained outside the main user-facing workflow table."
+      "v7_action": "Parked",
+      "v7_owner": "N/A — consolidated/retired",
+      "notes": "Consolidated/retired. Archived in .agent/_parked/story-review-agent.md."
     },
     {
       "workflow": "/evidence-browser",
@@ -274,6 +274,13 @@
       "v7_action": "Parked",
       "v7_owner": "N/A — parked by B.2",
       "notes": "Parked in .agent/_parked/sidekick.md because the pilot had zero flight evidence. The archive is source-only and excluded from fleet propagation; commit-message help may return only as a focused future tool."
+    },
+    {
+      "workflow": "/recipe",
+      "v6_purpose": "Unified recipe lifecycle orchestration",
+      "v7_action": "New",
+      "v7_owner": "Agent A",
+      "notes": "Consolidated recipe workflow encompassing discovery, tidy, bootstrap, and fleet audit."
     }
   ]
 }

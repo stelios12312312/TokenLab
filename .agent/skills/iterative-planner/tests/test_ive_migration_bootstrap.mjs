@@ -1190,6 +1190,11 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
 }
 
 function testManagedUpgradeTransactionContract() {
+  if (process.env._PLANNER_MANAGED_UPGRADE_PROOF_RUNNING === "1" && process.env._PLANNER_MANAGED_UPGRADE_TEST_MODE !== "1") {
+    assert(true, "transactional upgrade contract suite (inherited by parent proof)");
+    return;
+  }
+
   const sourceRoot = mkdtempSync(join(tmpdir(), "managed-upgrade-transaction-source-"));
   const consumers = [];
   const managedRel = ".agent/skills/iterative-planner/MIGRATION.md";
