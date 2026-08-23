@@ -1,0 +1,884 @@
+{
+  "schema_version": 1,
+  "minimum_per_type": 11,
+  "target_per_type": 20,
+  "command": "node .agent/skills/quant-researcher/tests/test_quant_researcher_e2e.mjs --type <project-type> --min 11",
+  "constraints": {
+    "no_live_data": true,
+    "network_calls": false,
+    "external_service_calls": false,
+    "trading_or_betting": false,
+    "promotion_allowed_default": false
+  },
+  "required_lifecycle": [
+    "SURVEY",
+    "HYPOTHESIZE",
+    "DESIGN",
+    "planner-loop",
+    "INTERPRET",
+    "ROUTE",
+    "REPORT",
+    "CLOSE"
+  ],
+  "required_mix_per_type": {
+    "golden": 2,
+    "killed-hypothesis": 2,
+    "defer-blocked-data": 2,
+    "planted-quant-failure": 3,
+    "stale-or-unrouted": 1,
+    "smoke-kill-attempt": 1
+  },
+  "project_types": {
+    "ipbs-ufc": {
+      "title": "IPBS/UFC E2E fixture corpus",
+      "target": "diagnostic-only UFC/IPBS model research route correctness",
+      "data_lineage": "fixture://ipbs-ufc frozen prediction, odds, bout, and bet-level artifacts",
+      "known_at_time": "only fields timestamped before the fixture prediction cutoff",
+      "temporal_split": "walk-forward bout cutoff with aggregate and bet-level OOS partitions",
+      "leakage_controls": [
+        "prediction artifact timestamp before bout start",
+        "odds snapshot timestamp before market close",
+        "aggregate and bet-level OOS split labels separated"
+      ],
+      "controls": [
+        "market implied baseline",
+        "no-edge report baseline",
+        "stale artifact guard"
+      ],
+      "claim_boundary": "diagnostic_only",
+      "fixtures": [
+        {
+          "id": "ipbs-golden-aggregate-oos",
+          "title": "aggregate-vs-bet-level OOS diagnostic report",
+          "category": "golden",
+          "focus": "aggregate-vs-bet-level OOS remains diagnostic only",
+          "route": "report_only"
+        },
+        {
+          "id": "ipbs-golden-valid-diagnostic",
+          "title": "valid diagnostic-only report with next experiment",
+          "category": "golden",
+          "focus": "valid diagnostic-only report boundaries",
+          "route": "report_only"
+        },
+        {
+          "id": "ipbs-killed-duplicate-edge",
+          "title": "killed idea dedup for repeated stale edge hypothesis",
+          "category": "killed-hypothesis",
+          "focus": "killed-idea dedup",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "ipbs-killed-provider-gap",
+          "title": "previously killed provider-gap hypothesis is not re-searched",
+          "category": "killed-hypothesis",
+          "focus": "provider-gap hypothesis remains killed until new evidence",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "ipbs-defer-missing-provider",
+          "title": "missing prediction provider blocks route",
+          "category": "defer-blocked-data",
+          "focus": "missing prediction providers",
+          "route": "defer",
+          "receipt_failure": "missing",
+          "validation": {
+            "missing_provider": true
+          }
+        },
+        {
+          "id": "ipbs-defer-stale-prediction",
+          "title": "stale odds and prediction artifact defers research",
+          "category": "defer-blocked-data",
+          "focus": "stale odds/prediction artifacts",
+          "route": "defer",
+          "receipt_failure": "stale",
+          "validation": {
+            "stale_artifact": true
+          }
+        },
+        {
+          "id": "ipbs-planted-aggregate-leakage",
+          "title": "planted aggregate OOS leakage failure",
+          "category": "planted-quant-failure",
+          "focus": "aggregate OOS future leakage",
+          "route": "blocked_claim",
+          "validation": {
+            "leakage": false
+          }
+        },
+        {
+          "id": "ipbs-planted-bet-controls",
+          "title": "planted bet-level control omission",
+          "category": "planted-quant-failure",
+          "focus": "bet-level OOS missing controls",
+          "route": "blocked_claim",
+          "validation": {
+            "controls": false
+          }
+        },
+        {
+          "id": "ipbs-planted-no-next-move",
+          "title": "no-next-move report failure",
+          "category": "planted-quant-failure",
+          "focus": "report must include next experiment",
+          "route": "blocked_claim",
+          "omit_next": true,
+          "validation": {
+            "no_next_move": true
+          }
+        },
+        {
+          "id": "ipbs-unrouted-fact",
+          "title": "material fact without route blocks close",
+          "category": "unrouted-fact-failure",
+          "focus": "unrouted stale-artifact fact",
+          "route": "blocked_claim",
+          "unrouted_fact_failure": true
+        },
+        {
+          "id": "ipbs-smoke-kill-attempt",
+          "title": "smoke evidence cannot kill the UFC edge hypothesis",
+          "category": "smoke-kill-attempt",
+          "focus": "under-evidenced UFC negative claim",
+          "attempted_route": "killed_hypothesis",
+          "route": "run_experiment",
+          "expected_blockers": ["kill_claim_from_smoke_evidence"]
+        },
+        {
+          "id": "ipbs-countersign-referee-mismatch",
+          "title": "referee envelope mismatch blocks an otherwise earned UFC kill",
+          "category": "countersign-control",
+          "focus": "artifact-only UFC referee envelope binding",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "referee_mismatch",
+          "close_allowed": false,
+          "expected_blockers": ["referee_mismatch"]
+        },
+        {
+          "id": "ipbs-countersign-skeptic-contest",
+          "title": "skeptic contest blocks an otherwise earned UFC kill",
+          "category": "countersign-control",
+          "focus": "artifact-only UFC skeptic contest",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "skeptic_contest",
+          "close_allowed": false,
+          "expected_blockers": ["skeptic_contested"]
+        }
+      ]
+    },
+    "tennis-trueskill": {
+      "title": "Tennis/TrueSkill E2E fixture corpus",
+      "target": "diagnostic-only tennis TrueSkill feature and ranking research route correctness",
+      "data_lineage": "fixture://tennis-trueskill frozen match, rating, feature, and result artifacts",
+      "known_at_time": "rankings, ratings, and features available before match prediction time",
+      "temporal_split": "CPCV groups and walk-forward folds preserve future match isolation",
+      "leakage_controls": [
+        "CPCV fold future-match exclusion",
+        "known-at-time feature registry",
+        "post-match ranking fields forbidden"
+      ],
+      "controls": [
+        "Elo baseline",
+        "market-rank baseline",
+        "feature-ablation control"
+      ],
+      "claim_boundary": "diagnostic_only",
+      "fixtures": [
+        {
+          "id": "tennis-golden-cpcv",
+          "title": "valid CPCV diagnostic with future isolation",
+          "category": "golden",
+          "focus": "CPCV future leakage proof",
+          "route": "report_only"
+        },
+        {
+          "id": "tennis-golden-ranking-diagnostic",
+          "title": "ranking diagnostic report with bounded claim",
+          "category": "golden",
+          "focus": "ranking metric claim boundaries",
+          "route": "report_only"
+        },
+        {
+          "id": "tennis-killed-feature-gain",
+          "title": "feature registration without gain proof stays killed",
+          "category": "killed-hypothesis",
+          "focus": "feature registration without gain proof",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "tennis-killed-ranking-overclaim",
+          "title": "prior ranking overclaim is deduped as killed",
+          "category": "killed-hypothesis",
+          "focus": "ranking metric overclaim dedup",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "tennis-defer-missing-rating-tape",
+          "title": "missing rating tape defers experiment",
+          "category": "defer-blocked-data",
+          "focus": "blocked data for TrueSkill update tape",
+          "route": "defer",
+          "receipt_failure": "incomplete_lineage",
+          "validation": {
+            "data_lineage": false
+          }
+        },
+        {
+          "id": "tennis-defer-temporal-metadata",
+          "title": "missing known-at-time metadata defers research",
+          "category": "defer-blocked-data",
+          "focus": "temporal split metadata prerequisite",
+          "route": "defer",
+          "receipt_failure": "future_canary",
+          "validation": {
+            "missing_provider": true
+          }
+        },
+        {
+          "id": "tennis-planted-cpcv-leakage",
+          "title": "planted CPCV future leakage failure",
+          "category": "planted-quant-failure",
+          "focus": "CPCV future leakage",
+          "route": "blocked_claim",
+          "validation": {
+            "leakage": false
+          }
+        },
+        {
+          "id": "tennis-planted-temporal-split",
+          "title": "planted temporal split mistake",
+          "category": "planted-quant-failure",
+          "focus": "temporal split mistakes",
+          "route": "blocked_claim",
+          "validation": {
+            "temporal_split": false
+          }
+        },
+        {
+          "id": "tennis-planted-ranking-overclaim",
+          "title": "planted ranking metric overclaim",
+          "category": "planted-quant-failure",
+          "focus": "ranking metric overclaim",
+          "route": "run_experiment",
+          "validation": {
+            "calibration": false,
+            "baseline": false
+          }
+        },
+        {
+          "id": "tennis-unrouted-fact",
+          "title": "unrouted ranking caveat blocks close",
+          "category": "unrouted-fact-failure",
+          "focus": "unrouted ranking caveat",
+          "route": "blocked_claim",
+          "unrouted_fact_failure": true
+        },
+        {
+          "id": "tennis-smoke-kill-attempt",
+          "title": "smoke evidence cannot kill the ranking hypothesis",
+          "category": "smoke-kill-attempt",
+          "focus": "under-evidenced tennis ranking negative claim",
+          "attempted_route": "killed_hypothesis",
+          "route": "run_experiment",
+          "expected_blockers": ["kill_claim_from_smoke_evidence"]
+        },
+        {
+          "id": "tennis-countersign-referee-mismatch",
+          "title": "referee envelope mismatch blocks an otherwise earned tennis kill",
+          "category": "countersign-control",
+          "focus": "artifact-only tennis referee envelope binding",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "referee_mismatch",
+          "close_allowed": false,
+          "expected_blockers": ["referee_mismatch"]
+        },
+        {
+          "id": "tennis-countersign-skeptic-contest",
+          "title": "skeptic contest blocks an otherwise earned tennis kill",
+          "category": "countersign-control",
+          "focus": "artifact-only tennis skeptic contest",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "skeptic_contest",
+          "close_allowed": false,
+          "expected_blockers": ["skeptic_contested"]
+        }
+      ]
+    },
+    "betting-odds": {
+      "title": "Betting odds E2E fixture corpus",
+      "target": "diagnostic-only odds snapshot, vig, timing, and report boundary research route correctness",
+      "data_lineage": "fixture://betting-odds frozen odds snapshots, market-close timestamps, and derived implied probabilities",
+      "known_at_time": "odds snapshots captured before market close and before outcome availability",
+      "temporal_split": "market-close cutoff with snapshot time strictly before result time",
+      "leakage_controls": [
+        "market-close cutoff proof",
+        "snapshot timestamp proof",
+        "result fields excluded before settlement"
+      ],
+      "controls": [
+        "vig-free implied probability baseline",
+        "raw market baseline",
+        "report-only boundary"
+      ],
+      "claim_boundary": "diagnostic_only",
+      "fixtures": [
+        {
+          "id": "odds-golden-report-boundary",
+          "title": "valid report-only odds diagnostic",
+          "category": "golden",
+          "focus": "report-only boundaries",
+          "route": "report_only"
+        },
+        {
+          "id": "odds-golden-vig-diagnostic",
+          "title": "vig and implied probability diagnostic",
+          "category": "golden",
+          "focus": "vig and implied probability sanity check",
+          "route": "report_only"
+        },
+        {
+          "id": "odds-killed-stale-snapshot",
+          "title": "stale snapshot hypothesis remains killed",
+          "category": "killed-hypothesis",
+          "focus": "stale odds snapshot dedup",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "odds-killed-market-close",
+          "title": "market-close timing shortcut remains killed",
+          "category": "killed-hypothesis",
+          "focus": "market-close timing killed hypothesis",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "odds-defer-missing-snapshot",
+          "title": "missing odds snapshot defers experiment",
+          "category": "defer-blocked-data",
+          "focus": "missing odds snapshots",
+          "route": "defer",
+          "receipt_failure": "content_hash_drift",
+          "validation": {
+            "data_lineage": false
+          }
+        },
+        {
+          "id": "odds-defer-provider-gap",
+          "title": "missing odds provider defers research",
+          "category": "defer-blocked-data",
+          "focus": "missing odds provider snapshot",
+          "route": "defer",
+          "receipt_failure": "schema_hash_drift",
+          "validation": {
+            "missing_provider": true
+          }
+        },
+        {
+          "id": "odds-planted-vig-mistake",
+          "title": "planted vig and implied probability mistake",
+          "category": "planted-quant-failure",
+          "focus": "vig/implied probability mistakes",
+          "route": "blocked_claim",
+          "validation": {
+            "controls": false
+          }
+        },
+        {
+          "id": "odds-planted-market-close-leakage",
+          "title": "planted market-close timing failure",
+          "category": "planted-quant-failure",
+          "focus": "market-close timing leakage",
+          "route": "blocked_claim",
+          "validation": {
+            "temporal_split": false
+          }
+        },
+        {
+          "id": "odds-planted-promotion-block",
+          "title": "promotion is blocked without validation proof",
+          "category": "planted-quant-failure",
+          "focus": "promotion blocking",
+          "route": "run_experiment",
+          "validation": {
+            "baseline": false,
+            "promotion_candidate": true
+          }
+        },
+        {
+          "id": "odds-stale-process-binding",
+          "title": "stale config/log binding blocks odds proof",
+          "category": "stale-process-config-log",
+          "focus": "stale process/config/log proof",
+          "route": "blocked_claim",
+          "process_identity_mismatch": true
+        },
+        {
+          "id": "odds-smoke-kill-attempt",
+          "title": "smoke evidence cannot kill the odds hypothesis",
+          "category": "smoke-kill-attempt",
+          "focus": "under-evidenced odds negative claim",
+          "attempted_route": "killed_hypothesis",
+          "route": "run_experiment",
+          "expected_blockers": ["kill_claim_from_smoke_evidence"]
+        },
+        {
+          "id": "odds-countersign-referee-mismatch",
+          "title": "referee envelope mismatch blocks an otherwise earned odds kill",
+          "category": "countersign-control",
+          "focus": "artifact-only odds referee envelope binding",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "referee_mismatch",
+          "close_allowed": false,
+          "expected_blockers": ["referee_mismatch"]
+        },
+        {
+          "id": "odds-countersign-skeptic-contest",
+          "title": "skeptic contest blocks an otherwise earned odds kill",
+          "category": "countersign-control",
+          "focus": "artifact-only odds skeptic contest",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "skeptic_contest",
+          "close_allowed": false,
+          "expected_blockers": ["skeptic_contested"]
+        }
+      ]
+    },
+    "tokenomics": {
+      "title": "Tokenomics E2E fixture corpus",
+      "target": "diagnostic-only token supply, emissions, unlocks, incentives, treasury, governance, and boundary research route correctness",
+      "data_lineage": "fixture://tokenomics frozen supply, emissions, vesting, unlock, incentive, treasury, and governance authority artifacts",
+      "known_at_time": "token docs and authority artifacts available before the fixture report cutoff",
+      "temporal_split": "report cutoff separates known token facts from later governance or market changes",
+      "leakage_controls": [
+        "cutoff-bound token document proof",
+        "vesting schedule version proof",
+        "treasury authority snapshot proof"
+      ],
+      "controls": [
+        "fully diluted valuation sanity baseline",
+        "supply and unlock reconciliation",
+        "APY source-of-incentives baseline"
+      ],
+      "claim_boundary": "diagnostic_only",
+      "fixtures": [
+        {
+          "id": "token-golden-supply-unlocks",
+          "title": "valid supply emissions and unlock diagnostic",
+          "category": "golden",
+          "focus": "supply, emissions, vesting, and unlocks",
+          "route": "report_only"
+        },
+        {
+          "id": "token-golden-governance-boundary",
+          "title": "valid treasury and governance authority diagnostic",
+          "category": "golden",
+          "focus": "treasury/governance authority and advisory boundaries",
+          "route": "report_only"
+        },
+        {
+          "id": "token-killed-apy-overclaim",
+          "title": "APY overclaim hypothesis remains killed",
+          "category": "killed-hypothesis",
+          "focus": "APY overclaim dedup",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "token-killed-fdv-overclaim",
+          "title": "FDV overclaim hypothesis remains killed",
+          "category": "killed-hypothesis",
+          "focus": "FDV overclaim dedup",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "token-defer-vesting-source",
+          "title": "missing vesting and unlock lineage defers research",
+          "category": "defer-blocked-data",
+          "focus": "vesting/unlocks source prerequisite",
+          "route": "defer",
+          "receipt_failure": "row_count_mismatch",
+          "validation": {
+            "data_lineage": false
+          }
+        },
+        {
+          "id": "token-defer-incentive-source",
+          "title": "missing incentive source defers APY diagnostic",
+          "category": "defer-blocked-data",
+          "focus": "incentive source prerequisite",
+          "route": "defer",
+          "receipt_failure": "coverage_count_mismatch",
+          "validation": {
+            "missing_provider": true
+          }
+        },
+        {
+          "id": "token-planted-supply-mismatch",
+          "title": "planted supply reconciliation failure",
+          "category": "planted-quant-failure",
+          "focus": "supply and emissions mismatch",
+          "route": "blocked_claim",
+          "validation": {
+            "controls": false
+          }
+        },
+        {
+          "id": "token-planted-legal-boundary",
+          "title": "planted legal and financial advisory boundary failure",
+          "category": "planted-quant-failure",
+          "focus": "legal/financial advisory boundaries",
+          "route": "blocked_claim",
+          "validation": {
+            "financial_or_legal_boundary": false
+          }
+        },
+        {
+          "id": "token-planted-governance-authority",
+          "title": "planted governance authority proof failure",
+          "category": "planted-quant-failure",
+          "focus": "treasury/governance authority",
+          "route": "blocked_claim",
+          "validation": {
+            "governance_delay": false
+          }
+        },
+        {
+          "id": "token-unrouted-authority-fact",
+          "title": "unrouted governance authority fact blocks close",
+          "category": "unrouted-fact-failure",
+          "focus": "unrouted treasury/governance authority fact",
+          "route": "blocked_claim",
+          "unrouted_fact_failure": true
+        },
+        {
+          "id": "token-smoke-kill-attempt",
+          "title": "smoke evidence cannot kill the tokenomics hypothesis",
+          "category": "smoke-kill-attempt",
+          "focus": "under-evidenced tokenomics negative claim",
+          "attempted_route": "killed_hypothesis",
+          "route": "run_experiment",
+          "expected_blockers": ["kill_claim_from_smoke_evidence"]
+        },
+        {
+          "id": "token-countersign-referee-mismatch",
+          "title": "referee envelope mismatch blocks an otherwise earned tokenomics kill",
+          "category": "countersign-control",
+          "focus": "artifact-only tokenomics referee envelope binding",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "referee_mismatch",
+          "close_allowed": false,
+          "expected_blockers": ["referee_mismatch"]
+        },
+        {
+          "id": "token-countersign-skeptic-contest",
+          "title": "skeptic contest blocks an otherwise earned tokenomics kill",
+          "category": "countersign-control",
+          "focus": "artifact-only tokenomics skeptic contest",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "skeptic_contest",
+          "close_allowed": false,
+          "expected_blockers": ["skeptic_contested"]
+        }
+      ]
+    },
+    "ml-ranking-backtest": {
+      "title": "ML ranking/backtest E2E fixture corpus",
+      "target": "diagnostic-only ML ranking, backtest, calibration, search, drift, and comparison research route correctness",
+      "data_lineage": "fixture://ml-ranking frozen labels, features, predictions, folds, metrics, and backtest artifacts",
+      "known_at_time": "features and labels follow prediction-time availability rules",
+      "temporal_split": "walk-forward and embargoed validation split by prediction time",
+      "leakage_controls": [
+        "forbidden future fields excluded",
+        "embargoed validation proof",
+        "hyperparameter search surface frozen before interpretation"
+      ],
+      "controls": [
+        "naive rank baseline",
+        "previous model baseline",
+        "calibration baseline"
+      ],
+      "claim_boundary": "diagnostic_only",
+      "fixtures": [
+        {
+          "id": "ml-golden-calibration",
+          "title": "valid calibration and baseline diagnostic",
+          "category": "golden",
+          "focus": "calibration and baseline controls",
+          "route": "report_only"
+        },
+        {
+          "id": "ml-golden-model-comparison",
+          "title": "valid bounded model-comparison diagnostic",
+          "category": "golden",
+          "focus": "model-comparison claim boundaries",
+          "route": "report_only"
+        },
+        {
+          "id": "ml-killed-overfit-search",
+          "title": "hyperparameter overfit idea remains killed",
+          "category": "killed-hypothesis",
+          "focus": "hyperparameter/search surface overfit dedup",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "ml-killed-comparison-overclaim",
+          "title": "model-comparison overclaim remains killed",
+          "category": "killed-hypothesis",
+          "focus": "model-comparison claim dedup",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "ml-defer-missing-lineage",
+          "title": "missing feature lineage defers backtest",
+          "category": "defer-blocked-data",
+          "focus": "missing feature lineage",
+          "route": "defer",
+          "receipt_failure": "empty",
+          "validation": {
+            "data_lineage": false
+          }
+        },
+        {
+          "id": "ml-defer-drift-tape",
+          "title": "missing drift tape defers ranking interpretation",
+          "category": "defer-blocked-data",
+          "focus": "drift artifact prerequisite",
+          "route": "defer",
+          "receipt_failure": "stale",
+          "validation": {
+            "missing_provider": true
+          }
+        },
+        {
+          "id": "ml-planted-leakage",
+          "title": "planted label leakage failure",
+          "category": "planted-quant-failure",
+          "focus": "leakage",
+          "route": "blocked_claim",
+          "validation": {
+            "leakage": false
+          }
+        },
+        {
+          "id": "ml-planted-calibration",
+          "title": "planted calibration failure",
+          "category": "planted-quant-failure",
+          "focus": "calibration failure",
+          "route": "blocked_claim",
+          "validation": {
+            "calibration": false
+          }
+        },
+        {
+          "id": "ml-planted-false-promotion",
+          "title": "false promotion blocked by missing controls",
+          "category": "planted-quant-failure",
+          "focus": "false promotion",
+          "route": "blocked_claim",
+          "validation": {
+            "controls": false,
+            "promotion_candidate": true
+          }
+        },
+        {
+          "id": "ml-stale-process-binding",
+          "title": "stale config/log binding blocks ML proof",
+          "category": "stale-process-config-log",
+          "focus": "stale process/config/log proof",
+          "route": "blocked_claim",
+          "process_identity_mismatch": true
+        },
+        {
+          "id": "ml-smoke-kill-attempt",
+          "title": "smoke evidence cannot kill the model hypothesis",
+          "category": "smoke-kill-attempt",
+          "focus": "under-evidenced ML negative claim",
+          "attempted_route": "killed_hypothesis",
+          "route": "run_experiment",
+          "expected_blockers": ["kill_claim_from_smoke_evidence"]
+        },
+        {
+          "id": "ml-countersign-referee-mismatch",
+          "title": "referee envelope mismatch blocks an otherwise earned model kill",
+          "category": "countersign-control",
+          "focus": "artifact-only model referee envelope binding",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "referee_mismatch",
+          "close_allowed": false,
+          "expected_blockers": ["referee_mismatch"]
+        },
+        {
+          "id": "ml-countersign-skeptic-contest",
+          "title": "skeptic contest blocks an otherwise earned model kill",
+          "category": "countersign-control",
+          "focus": "artifact-only model skeptic contest",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "skeptic_contest",
+          "close_allowed": false,
+          "expected_blockers": ["skeptic_contested"]
+        }
+      ]
+    },
+    "data-quality": {
+      "title": "Data-quality research-only E2E fixture corpus",
+      "target": "diagnostic-only data-quality research route correctness without model or backtest claims",
+      "data_lineage": "fixture://data-quality frozen source extracts, lineage notes, contradiction records, and limitation logs",
+      "known_at_time": "data artifacts and contradictions known before the research-only report cutoff",
+      "temporal_split": "report cutoff prevents later corrections from entering the research-only diagnosis",
+      "leakage_controls": [
+        "lineage artifact cutoff proof",
+        "contradiction record version proof",
+        "no-model and no-backtest claim boundary"
+      ],
+      "controls": [
+        "lineage completeness checklist",
+        "contradiction reconciliation baseline",
+        "accepted limitation register"
+      ],
+      "claim_boundary": "diagnostic_only",
+      "fixtures": [
+        {
+          "id": "dq-golden-accepted-limitations",
+          "title": "accepted limitations diagnostic-only report",
+          "category": "golden",
+          "focus": "accepted limitations",
+          "route": "report_only"
+        },
+        {
+          "id": "dq-golden-no-model-boundary",
+          "title": "no-model no-backtest claim boundary report",
+          "category": "golden",
+          "focus": "no-model/no-backtest claims",
+          "route": "report_only"
+        },
+        {
+          "id": "dq-killed-contradiction-shortcut",
+          "title": "contradictory artifact shortcut remains killed",
+          "category": "killed-hypothesis",
+          "focus": "contradictory artifacts dedup",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "dq-killed-model-claim",
+          "title": "model claim shortcut remains killed",
+          "category": "killed-hypothesis",
+          "focus": "no-model claim dedup",
+          "route": "killed_hypothesis",
+          "prior_killed": true
+        },
+        {
+          "id": "dq-defer-missing-lineage",
+          "title": "missing lineage blocks research-only close",
+          "category": "defer-blocked-data",
+          "focus": "missing lineage",
+          "route": "defer",
+          "receipt_failure": "incomplete_lineage",
+          "validation": {
+            "data_lineage": false
+          }
+        },
+        {
+          "id": "dq-defer-contradictory-artifacts",
+          "title": "contradictory artifacts require blocked-data route",
+          "category": "defer-blocked-data",
+          "focus": "contradictory artifacts",
+          "route": "defer",
+          "receipt_failure": "content_hash_drift",
+          "validation": {
+            "missing_provider": true
+          }
+        },
+        {
+          "id": "dq-planted-no-model-overclaim",
+          "title": "planted no-model boundary overclaim",
+          "category": "planted-quant-failure",
+          "focus": "no-model/no-backtest overclaim",
+          "route": "blocked_claim",
+          "validation": {
+            "controls": false
+          }
+        },
+        {
+          "id": "dq-planted-next-experiment",
+          "title": "missing next-experiment reporting failure",
+          "category": "planted-quant-failure",
+          "focus": "next-experiment reporting",
+          "route": "blocked_claim",
+          "omit_next": true,
+          "validation": {
+            "no_next_move": true
+          }
+        },
+        {
+          "id": "dq-planted-claim-boundary",
+          "title": "planted research-only claim-boundary failure",
+          "category": "planted-quant-failure",
+          "focus": "claim-boundary validation",
+          "route": "run_experiment",
+          "validation": {
+            "baseline": false
+          }
+        },
+        {
+          "id": "dq-unrouted-blocker",
+          "title": "unrouted blocker fact blocks close",
+          "category": "unrouted-fact-failure",
+          "focus": "blocker routing",
+          "route": "blocked_claim",
+          "unrouted_fact_failure": true
+        },
+        {
+          "id": "dq-smoke-kill-attempt",
+          "title": "smoke evidence cannot kill the data-quality hypothesis",
+          "category": "smoke-kill-attempt",
+          "focus": "under-evidenced data-quality negative claim",
+          "attempted_route": "killed_hypothesis",
+          "route": "run_experiment",
+          "expected_blockers": ["kill_claim_from_smoke_evidence"]
+        },
+        {
+          "id": "dq-countersign-referee-mismatch",
+          "title": "referee envelope mismatch blocks an otherwise earned data-quality kill",
+          "category": "countersign-control",
+          "focus": "artifact-only data-quality referee envelope binding",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "referee_mismatch",
+          "close_allowed": false,
+          "expected_blockers": ["referee_mismatch"]
+        },
+        {
+          "id": "dq-countersign-skeptic-contest",
+          "title": "skeptic contest blocks an otherwise earned data-quality kill",
+          "category": "countersign-control",
+          "focus": "artifact-only data-quality skeptic contest",
+          "attempted_route": "killed_hypothesis",
+          "route": "blocked_claim",
+          "countersign_control": "skeptic_contest",
+          "close_allowed": false,
+          "expected_blockers": ["skeptic_contested"]
+        }
+      ]
+    }
+  }
+}

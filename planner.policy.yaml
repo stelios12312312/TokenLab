@@ -1,5 +1,5 @@
 version: 1
-shape: null
+shape: planner-core
 domain: null
 default_route: auto
 verification:

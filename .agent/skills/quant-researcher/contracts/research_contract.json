@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "default_autonomy_level": 2,
+  "autonomy_levels": [
+    {
+      "level": 1,
+      "name": "hypothesis_approval",
+      "operator_gate": "Human approves each hypothesis before design or execution."
+    },
+    {
+      "level": 2,
+      "name": "charter_approval",
+      "operator_gate": "Human approves the experiment charter; execution may proceed autonomously within the charter."
+    },
+    {
+      "level": 3,
+      "name": "goal_and_budget",
+      "operator_gate": "Human sets the goal, domain scope, and resource budget; the agent may run the research loop within those limits."
+    },
+    {
+      "level": 4,
+      "name": "full_autonomy",
+      "operator_gate": "Full autonomous research loop. Promotion, live trading, deployment, and legal or financial decisions still require separate approval."
+    }
+  ],
+  "resource_budget_limits": {
+    "max_child_plans_per_run": 3,
+    "max_experiments_per_run": 5,
+    "max_runtime_minutes_per_experiment": 30,
+    "max_external_calls": 0,
+    "live_trading_allowed": false,
+    "live_betting_allowed": false
+  },
+  "domain_scope": {
+    "allowed": [
+      "offline research planning",
+      "diagnostic quant research",
+      "contract validation",
+      "fixture-based smoke tests"
+    ],
+    "requires_operator_approval": [
+      "live trading",
+      "live betting",
+      "production deployment",
+      "investment, legal, tax, or financial advice",
+      "promotion_allowed=true"
+    ]
+  },
+  "promotion_governance": {
+    "promotion_allowed_default": false,
+    "requires_quant_results_validation": true,
+    "requires_operator_approval": true,
+    "blocked_without": [
+      "data lineage",
+      "known-at-time boundary",
+      "temporal split or walk-forward proof",
+      "controls",
+      "stability/confidence assessment",
+      "strongest counterargument",
+      "falsification criteria",
+      "residual risk"
+    ]
+  }
+}

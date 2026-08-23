@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://portable-agent-kit.local/contracts/data_receipt.schema.json",
+  "title": "Quant Research Data Receipt",
+  "description": "Fail-closed provenance, completeness, freshness, integrity, identity, and known-at-time proof for one empirical research input.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "receipt_ref",
+    "source",
+    "generator_identity",
+    "span",
+    "generated_at",
+    "freshness",
+    "row_counts",
+    "coverage_counts",
+    "content_hash",
+    "schema_hash",
+    "missing_data_profile",
+    "known_at_time"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "receipt_ref": { "type": "string", "minLength": 1 },
+    "source": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "lineage"],
+      "properties": {
+        "ref": { "type": "string", "minLength": 1 },
+        "lineage": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "generator_identity": { "$ref": "#/$defs/identityBinding" },
+    "span": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["start_at", "end_at", "as_of_at"],
+      "properties": {
+        "start_at": { "type": "string", "format": "date-time" },
+        "end_at": { "type": "string", "format": "date-time" },
+        "as_of_at": { "type": "string", "format": "date-time" }
+      }
+    },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "freshness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["max_age_seconds"],
+      "properties": {
+        "max_age_seconds": { "type": "number", "minimum": 0 }
+      }
+    },
+    "row_counts": { "$ref": "#/$defs/countRange" },
+    "coverage_counts": { "$ref": "#/$defs/countRange" },
+    "content_hash": { "$ref": "#/$defs/hashPair" },
+    "schema_hash": { "$ref": "#/$defs/hashPair" },
+    "missing_data_profile": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["missing_rows", "missing_cells", "fields"],
+      "properties": {
+        "missing_rows": { "type": "integer", "minimum": 0 },
+        "missing_cells": { "type": "integer", "minimum": 0 },
+        "fields": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "known_at_time": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cutoff_at", "latest_observation_at", "future_canary"],
+      "properties": {
+        "cutoff_at": { "type": "string", "format": "date-time" },
+        "latest_observation_at": { "type": "string", "format": "date-time" },
+        "future_canary": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["passed", "checked_fields"],
+          "properties": {
+            "passed": { "type": "boolean" },
+            "checked_fields": {
+              "type": "array",
+              "minItems": 1,
+              "items": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "identityFields": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["running_process", "config", "log_stream", "code_under_test"],
+      "properties": {
+        "running_process": { "type": "string", "minLength": 1 },
+        "config": { "type": "string", "minLength": 1 },
+        "log_stream": { "type": "string", "minLength": 1 },
+        "code_under_test": { "type": "string", "minLength": 1 }
+      }
+    },
+    "identityBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expected", "observed"],
+      "properties": {
+        "expected": { "$ref": "#/$defs/identityFields" },
+        "observed": { "$ref": "#/$defs/identityFields" }
+      }
+    },
+    "countRange": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["observed", "expected"],
+      "properties": {
+        "observed": { "type": "integer", "minimum": 0 },
+        "expected": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["min", "max"],
+          "properties": {
+            "min": { "type": "integer", "minimum": 0 },
+            "max": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "hashPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["algorithm", "observed", "expected"],
+      "properties": {
+        "algorithm": { "const": "sha256" },
+        "observed": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+        "expected": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" }
+      }
+    }
+  }
+}
