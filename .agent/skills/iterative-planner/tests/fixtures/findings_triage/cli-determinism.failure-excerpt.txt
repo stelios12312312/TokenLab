@@ -1,0 +1,5 @@
+Archived finding evidence excerpt
+Source run: scoreboard-2026-07-07T17-40-11-369Z-conformance
+Suite: cli-determinism
+Finding: FAIL: all discovered --json scripts are covered or explicitly exempted - source_parity_guard.mjs
+Original result: 682 passed, 1 failed

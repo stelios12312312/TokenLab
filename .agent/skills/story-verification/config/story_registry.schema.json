@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Iterative Planner Story Registry",
+  "type": "object",
+  "required": ["version", "stories"],
+  "properties": {
+    "version": { "const": 1 },
+    "commit": { "type": ["string", "null"] },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "source": { "type": "string" },
+    "stories": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title", "status"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^(US|D|FEAT)-[0-9]+$" },
+          "title": { "type": "string" },
+          "priority": { "type": "string" },
+          "description": { "type": "string" },
+          "status": {
+            "oneOf": [
+              { "enum": ["FULLY_COVERED", "PARTIALLY_COVERED", "NOT_IMPLEMENTED", "RETIRED"] },
+              { "enum": ["proposed", "active", "implemented", "deprecated"] }
+            ]
+          },
+          "acceptance_criteria": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "tags": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "needs_review": { "type": "boolean" },
+          "needs_review_since": { "type": "string", "format": "date-time" },
+          "code_refs": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "required": ["file"],
+                  "properties": {
+                    "file": { "type": "string" },
+                    "lines": { "type": "string" },
+                    "symbol": { "type": "string" }
+                  },
+                  "additionalProperties": true
+                }
+              ]
+            }
+          },
+          "test_refs": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "required": ["file"],
+                  "properties": {
+                    "file": { "type": "string" },
+                    "test_name": { "type": "string" }
+                  },
+                  "additionalProperties": true
+                }
+              ]
+            }
+          },
+          "doc_refs": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "validation_refs": {
+            "type": "array",
+            "items": {
+              "oneOf": [
+                { "type": "string" },
+                {
+                  "type": "object",
+                  "required": ["kind", "target"],
+                  "properties": {
+                    "kind": { "type": "string" },
+                    "target": { "type": "string" },
+                    "verified_at": { "type": "string", "format": "date-time" }
+                  },
+                  "additionalProperties": true
+                }
+              ]
+            }
+          },
+          "annotations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "file": { "type": "string" },
+                "line": { "type": "integer" },
+                "tags": { "type": "object" }
+              },
+              "additionalProperties": true
+            }
+          },
+          "detected_files": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "detected_tests": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "merged_from": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "conflicts": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "conflicts_with": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "supersedes": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "additionalProperties": true
+      }
+    }
+  },
+  "additionalProperties": true
+}

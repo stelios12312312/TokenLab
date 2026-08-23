@@ -258,6 +258,12 @@ Assign each finding an execution mode:
       - Raise an error (production/critical context)
       - Be documented as intentional (with explicit `# INTENTIONAL_NOOP` comment)
 
+5aa. **Dependency Resolver No-Op Scan** (MANDATORY when manifests or lockfiles are in scope) — treat an exit-zero resolver as untrusted until the requested durable graph change is observed:
+   a. Record before/after hashes for every manifest and lockfile in scope and review the exact diff.
+   b. Assert the requested versions in both the lock representation and a clean installed graph; then rerun the scoped audit/test against that graph.
+   c. Classify exit zero with no intended durable diff or unchanged resolved versions as `SILENT_DEGRADATION`, preserve it as a failed/no-op approach, and do not credit it as remediation evidence.
+   d. Replay at least one wrong-flag or no-op case when changing resolver automation so the outer workflow cannot promote process success into graph success.
+
 5a. **Transactional Publisher Interruption Scan** (MANDATORY for multi-file publishers, migrations, installers, synchronizers, or generators) — attack every durable boundary:
    a. Interrupt after apply, after proof, after candidate commit, and immediately before and after live reference advancement.
    b. Require either an off-target scratch candidate or durable byte-exact before-images before the first target write.
@@ -275,6 +281,19 @@ Assign each finding an execution mode:
     a. Does the code execute unconditionally on load when it was only meant for user interaction?
     b. Does it lock the UI state (e.g., `isScrolling = true`, modal overlays)?
     c. How does the browser natively handle the hash/parameter, and does custom JS conflict with it?
+
+5d. **Proof Harness Side-Effect Scan** (MANDATORY when a test, browser server, build, generator, migration, or package script can write durable state) — treat the proof runner as an untrusted caller:
+   a. Expand package scripts and lifecycle hooks (`pre*`/`post*`) to the real processes they invoke; inventory every direct and indirect write target.
+   b. Snapshot protected and pre-existing dirty artifacts before the run, including bytes and Git index/worktree status, then compare after the run.
+   c. Prefer a direct non-mutating runtime entrypoint when setup/generation is not the behavior under test. If generation is required, redirect it to a run-local destination.
+   d. Classify behavior-green plus state-mutation as `SILENT_DEGRADATION`, not PASS. Preserve the mutation evidence, repair the harness, and replay the same journey with byte/status proof.
+
+5e. **Metered Executor Admission Scan** (MANDATORY when an agent, remote job, paid API, or other metered executor can be launched) — prove finishability before spend:
+   a. Enumerate every deterministic blocker already knowable from local state, declared remote policy, credentials/capabilities, lifecycle prerequisites, and the executor's allowed mutation boundary.
+   b. Evaluate those blockers before creating candidate topology or launching the executor. A blocked task must record zero invocations and no candidate workspace.
+   c. Distinguish controls enforced before/during execution from values observed only after completion. Never describe post-run accounting as a hard spend cap.
+   d. When transcripts are intentionally ephemeral, persist a sanitized structural diagnostic summary (event classes, exit/timing, usage, and stable error codes) without commands, messages, tool output, thread identifiers, or secrets.
+   e. Regression proof must include one deterministic blocker that reaches a complete idempotent receipt with zero executor calls and one admitted control that reaches the existing execution boundary.
 
 
 6. **Optimization Adequacy Scan** (MANDATORY for quant/model/strategy findings) — if a finding involves Optuna, hyperparameter search, model-family comparison, strategy selection, staking optimization, or profitability claims from an optimizer artifact:

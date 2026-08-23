@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "Iterative Planner Verification Report",
+  "type": "object",
+  "required": ["verification_report"],
+  "properties": {
+    "verification_report": {
+      "type": "object",
+      "required": [
+        "version",
+        "plan_id",
+        "verified_at",
+        "verified_by",
+        "strategy_source",
+        "findings",
+        "summary",
+        "gaps"
+      ],
+      "properties": {
+        "version": { "const": 1 },
+        "plan_id": { "type": "string" },
+        "verified_at": { "type": "string", "format": "date-time" },
+        "verified_by": { "type": "string" },
+        "strategy_source": { "type": "string" },
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "criterion_id",
+              "status",
+              "annotation_found",
+              "code_matches_declared",
+              "test_exists",
+              "test_passing",
+              "acceptance_met",
+              "obligation_met",
+              "obligation_notes"
+            ],
+            "properties": {
+              "criterion_id": { "type": "string" },
+              "status": {
+                "enum": ["VERIFIED", "PARTIAL", "FAILED", "ORPHANED"]
+              },
+              "annotation_found": { "type": ["string", "null"] },
+              "code_matches_declared": { "type": "boolean" },
+              "test_exists": { "type": "boolean" },
+              "test_passing": { "type": ["boolean", "null"] },
+              "acceptance_met": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "required": ["criterion", "status", "evidence"],
+                  "properties": {
+                    "criterion": { "type": "string" },
+                    "status": {
+                      "enum": ["verified", "not_verified", "unknown"]
+                    },
+                    "evidence": { "type": "string" }
+                  },
+                  "additionalProperties": true
+                }
+              },
+              "obligation_met": { "type": "boolean" },
+              "obligation_notes": { "type": ["string", "null"] }
+            },
+            "additionalProperties": true
+          }
+        },
+        "summary": {
+          "type": "object",
+          "required": [
+            "total_criteria",
+            "verified",
+            "partial",
+            "failed",
+            "orphaned",
+            "coverage_pct"
+          ],
+          "properties": {
+            "total_criteria": { "type": "integer" },
+            "verified": { "type": "integer" },
+            "partial": { "type": "integer" },
+            "failed": { "type": "integer" },
+            "orphaned": { "type": "integer" },
+            "coverage_pct": { "type": "number" }
+          },
+          "additionalProperties": true
+        },
+        "gaps": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "criterion_id", "file", "description", "severity"],
+            "properties": {
+              "type": {
+                "enum": [
+                  "MISSING_TEST",
+                  "OBLIGATION_MISMATCH",
+                  "ORPHANED_CODE",
+                  "STALE_ANNOTATION"
+                ]
+              },
+              "criterion_id": { "type": ["string", "null"] },
+              "file": { "type": ["string", "null"] },
+              "description": { "type": "string" },
+              "severity": { "enum": ["HIGH", "MEDIUM", "LOW"] }
+            },
+            "additionalProperties": true
+          }
+        },
+        "adequacy_findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["type", "criterion_id", "description", "severity"],
+            "properties": {
+              "type": {
+                "enum": [
+                  "COVERAGE_ARTIFACT_MISSING",
+                  "COVERAGE_THRESHOLD_UNMET",
+                  "TAUTOLOGICAL_ASSERTION",
+                  "NO_ASSERTION_BODY",
+                  "GENERIC_TEST_NAME",
+                  "TEST_NAME_MISMATCH"
+                ]
+              },
+              "criterion_id": { "type": ["string", "null"] },
+              "plan_id": { "type": ["string", "null"] },
+              "story_id": { "type": ["string", "null"] },
+              "description": { "type": "string" },
+              "severity": { "enum": ["HIGH", "MEDIUM", "LOW"] },
+              "test_name": { "type": ["string", "null"] },
+              "file": { "type": ["string", "null"] }
+            },
+            "additionalProperties": true
+          }
+        }
+      },
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": true
+}

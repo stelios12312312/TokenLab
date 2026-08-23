@@ -13,6 +13,10 @@
       "type": "standard"
     },
     {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Courses/learndash-t19-worktree",
+      "type": "standard"
+    },
+    {
       "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Courses/tender-copilot",
       "type": "standard"
     },
@@ -30,6 +34,10 @@
     },
     {
       "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Investment/ValueInvestingAI",
+      "type": "standard"
+    },
+    {
+      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Investment/polymarket-alpha",
       "type": "standard"
     },
     {
@@ -61,10 +69,6 @@
       "type": "standard"
     },
     {
-      "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/TalentInc/progression-ai-engine",
-      "type": "standard"
-    },
-    {
       "path": "/Users/stylianoskampakis/Dropbox (Personal)/Freelance/Tennis/Sport betting/ipbs_datapack_starter",
       "type": "standard"
     },
@@ -77,7 +81,7 @@
       "type": "standard"
     }
   ],
-  "last_scan": "2026-05-18T18:49:50.259Z",
+  "last_scan": "2026-08-23T12:14:15.803Z",
   "scan_roots": [
     "/Users/stylianoskampakis/Dropbox (Personal)/Freelance",
     "/Users/stylianoskampakis/Documents",
