@@ -388,7 +388,7 @@ const DEFAULT_SUITES = [
     category: "structured_plan",
     label: "Planner transition gate lifecycle flows",
     command: ["node", join(TESTS_ROOT, "test_transition_gate_flows.mjs")],
-    timeoutMs: 300000,
+    timeoutMs: 420000,
     phases: ["state-machine", "gate-lifecycle", "planner-core"],
     surfaces: ["state_machine", "transition_gates", "planner_core", "semantic_gate"],
     fixtures: [

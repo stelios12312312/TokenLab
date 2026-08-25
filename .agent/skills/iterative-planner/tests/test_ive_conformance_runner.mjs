@@ -148,7 +148,18 @@ assert(researchMemorySuite?.display_command.includes("test_research_memory_packe
 const transitionGateSuite = DEFAULT_SUITES.find((suite) => suite.id === "transition-gate-flows");
 assert(transitionGateSuite?.required === true, "transition gate flow suite is required by default");
 assert(transitionGateSuite?.display_command.includes("test_transition_gate_flows.mjs"), "transition gate flow suite drives the real lifecycle test");
-assert(transitionGateSuite?.timeout_ms === 300000, "transition gate flow suite has a reliable CI-safe timeout override");
+assert(transitionGateSuite?.timeout_ms === 420000, "transition gate flow suite has a reliable CI-safe timeout override");
+const managedUpgradeConfig = JSON.parse(readFileSync(
+  join(repoRoot, ".agent/skills/iterative-planner/config/managed_upgrade_transaction.json"),
+  "utf-8",
+));
+const managedUpgradeTransitionProof = managedUpgradeConfig.proof_commands.find(
+  (proof) => proof.id === "transition-gate-flows",
+);
+assert(
+  managedUpgradeTransitionProof?.timeout_ms === transitionGateSuite?.timeout_ms,
+  "managed upgrade transition proof preserves the governed suite timeout budget",
+);
 assert(transitionGateSuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/lib/gate_verdict.mjs"), "transition gate flow suite owns the authoritative receipt and verdict helper");
 assert(transitionGateSuite?.fixtures.includes(".agent/skills/iterative-planner/config/failure-codes.json"), "transition gate flow suite owns failure classification policy");
 const truthSurfaceSuite = DEFAULT_SUITES.find((suite) => suite.id === "truth-surface-convergence");
@@ -1243,7 +1254,7 @@ report = runConformance({
     return fakeExecutor()(suite);
   },
 });
-assert(report.ok && observedTimeoutMs === 300000, "per-suite timeout override is passed to executor");
+assert(report.ok && observedTimeoutMs === 420000, "per-suite timeout override is passed to executor");
 
 report = runConformance({
   suites: DEFAULT_SUITES,

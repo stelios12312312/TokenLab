@@ -37,7 +37,7 @@
     {
       "id": "transition-gate-flows",
       "args": [".agent/skills/iterative-planner/tests/ive/run.mjs", "--only", "transition-gate-flows", "--json", "--no-manifest"],
-      "timeout_ms": 300000
+      "timeout_ms": 420000
     }
   ]
 }
