@@ -1,133 +1,104 @@
 
-# TokenLab: Advanced Economic Systems Simulation Library
-<a href="https://tesseract.academy"><img src="https://thedatascientist.com/wp-content/uploads/2024/01/tokenlab_logo.jpeg" alt="Tesseract Academy" /></a>
+# TokenLab: Agentic Tokenomics & Economic Simulation Framework
 
-A Python library for modeling complex economic systems, agent behaviors, and incentive mechanisms across traditional and digital economies. Developed by Dr. Stylianos Kampakis (PhD, CStat) and the research team at Tesseract Academy.
+<p align="center">
+  <a href="https://tesseract.academy">
+    <img src="https://thedatascientist.com/wp-content/uploads/2024/01/tokenlab_logo.jpeg" alt="Tesseract Academy" width="440" />
+  </a>
+</p>
 
-## Core Capabilities
+<p align="center">
+  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square" alt="License: Apache 2.0" /></a>
+  <a href="pyproject.toml"><img src="https://img.shields.io/badge/Version-0.2.0-orange.svg?style=flat-square" alt="Version 0.2.0" /></a>
+  <a href="#-why-agentic-tokenomics"><img src="https://img.shields.io/badge/Paradigm-Agentic_Tokenomics-purple.svg?style=flat-square" alt="Agentic Tokenomics" /></a>
+  <a href="#-interactive-scenario-gallery"><img src="https://img.shields.io/badge/Offline_Studio-12_Scenarios-teal.svg?style=flat-square" alt="12 Scenarios" /></a>
+</p>
 
-TokenLab is a comprehensive economic simulation framework built on agent-based modeling principles. Originally developed for digital economies, it has evolved into a versatile platform for analyzing any complex economic system where incentives, behaviors, and mechanisms interact dynamically.
+<p align="center">
+  <strong>Move beyond fragile spreadsheets to autonomous agent simulation.</strong><br />
+  TokenLab is the AI-native framework for modeling complex token economies, market incentives, and multi-token ecosystems through agent-based dynamics and Monte Carlo stress-testing.
+</p>
 
-## Design Principles
+<p align="center">
+  <img src="resources/assets/tokenlab_dashboard_preview.jpg" alt="TokenLab Agentic Simulation Studio & Dashboard" width="100%" />
+</p>
 
-1. **Modularity**: Components can be combined flexibly to model diverse economic scenarios - from traditional market dynamics to innovative digital incentive systems.
+---
 
-2. **Explicitness**: All modeling assumptions, limitations, and methodological choices are clearly documented, ensuring academic rigor and reproducibility.
+## 💡 Why Agentic Tokenomics?
 
-3. **Intermediate Abstraction**: Focuses on aggregate agent cohorts (user segments, market participants, policy groups) rather than individual actors, enabling scalable economic analysis.
+Traditional tokenomics relies on static spreadsheets and naive linear projections. But crypto economies are **complex adaptive systems** driven by dynamic human and algorithmic behaviors.
 
-4. **Systems-First Approach**: Designed to answer fundamental questions about economic system stability, sustainability, and optimization through comprehensive stress testing.
+```
+❌ Old Way (Static Spreadsheets)       👉  🚀 TokenLab (Agentic Tokenomics)
+• Rigid cell formulas & static math       • Autonomous agent cohorts (traders, stakers, whales)
+• Single-point guessed estimates          • Monte Carlo stochastic uncertainty (P10–P90 fan bands)
+• Zero behavioral feedback loops          • Dynamic bonding curves, fee sinks & liquidity channels
+• Blind to black-swan liquidity cascades  • Automated stress-testing & statistical solvency checks
+• Manual, error-prone maintenance         • Declarative YAML specs ready for AI agent orchestration
+```
 
-5. **Maximum Flexibility**: Supports arbitrary logical flows and mechanisms, accommodating everything from traditional market models to experimental incentive designs.
+---
 
-## Applications
+## ⚡ Capabilities At-A-Glance
 
-- **Government & Policy**: Economic impact assessment, regulatory scenario modeling, public incentive design
-- **Enterprise**: Market dynamics simulation, pricing mechanism optimization, organizational incentive analysis  
-- **Financial Services**: Risk modeling, algorithmic trading backtesting, DeFi integration planning
-- **Web3 Protocols**: Tokenomics design, governance mechanism testing, economic security analysis
-- **Academic Research**: Complex systems studies, behavioral economics experiments, econometric validation
+| Feature | Description |
+| :--- | :--- |
+| 🤖 **Autonomous Agent Cohorts** | Model competing cohorts—arbitrageurs, long-term stakers, speculative traders, and treasury controllers—with emergent behavioral dynamics. |
+| 🎲 **Monte Carlo Uncertainty Engine** | Run hundreds of stochastic paths with prior distributions, P10–P90 modeled outcome fan charts, terminal histograms, bootstrap CIs, and Spearman sensitivity ranking. |
+| 📊 **Interactive Web Studio** | Standalone, offline browser dashboard (`tokenlab-dashboard --gallery`) for visual scenario execution, metric comparison, and evidence downloads. |
+| 🌐 **Scenario Topology Graphs** | Interactive visual maps of economy components, cliff-vesting pools, bonding curves, and inter-token value transfer channels. |
+| ⚙️ **AI-Agent Declarative Workflows** | Data-only YAML scenario definitions designed for LLMs and AI agents to design, simulate, and optimize economies autonomously. |
+| 📁 **20+ Battle-Tested Case Studies** | Client-grade simulation models included in `projects/` (*friendocash*, *footboard*, *andromeda*, *kix*, *valiants*, *z1*, etc.). |
 
-## Why TokenLab
+<p align="center">
+  <img src="resources/assets/tokenlab_topology_preview.jpg" alt="TokenLab Tokenomics Network Topology" width="100%" />
+</p>
 
-Built by economists and data scientists with deep expertise in both traditional econometrics and digital economic systems, TokenLab bridges academic rigor with practical implementation. The platform has been validated through government consultations, enterprise deployments, and peer-reviewed research.
+---
 
-## Getting Started
+## 🚀 30-Second Quickstart
 
-### Installation & Prerequisites
-TokenLab currently supports Python 3.10. The core numerical dependency stack
-is pinned to preserve the existing simulation contract.
-
-Install the core library and command-line tools:
-
+### 1. Install TokenLab
 ```bash
 python -m pip install .
 ```
 
-### Public demo — the best place to start
-
-Start the interactive reviewed-scenario gallery from an installed package:
-
+### 2. Launch the Interactive Studio
 ```bash
 tokenlab-dashboard --gallery --output-dir outputs/demo-gallery
 ```
+*Open `http://127.0.0.1:8765` in your browser to run live Monte Carlo simulations and explore scenario topologies.*
 
-Open the printed loopback URL. The flagship **Stochastic growth — Monte Carlo
-uncertainty** demo runs the real Monte Carlo runner server-side: edit any of
-the three reviewed priors (min/mode/max) or the master seed, pick an
-interactive run tier, and watch requested/completed/failed counts live. The
-result view shows the cross-path fan chart ("modeled outcomes: P10–P90"), the
-terminal outcome histogram, estimator confidence intervals, Spearman
-sensitivity, convergence status, the tokenomics coverage ledger, and
-downloadable evidence (results, parameter samples, manifest, and more).
-
-The **Deterministic scenario explorer** is the honest negative control: it
-runs repeated identical deterministic paths, is *not* Monte Carlo, and its
-zero dispersion is a property of the deterministic controllers, not
-statistical evidence. Choose the baseline, downside, or upside preset, adjust
-the three bounded controls, and select **Run simulation**. The page calls
-the real headless runner, compares profile-declared series, shows provenance,
-and exposes only validated source-table downloads. Scenario files, model class
-names, output locations, and arbitrary configuration keys are never accepted
-from the browser.
-
-The stochastic demo is also one command away:
-
+### 3. Run a One-Line CLI Simulation
 ```bash
 tokenlab-demo public-growth-uncertainty-v2 --run-tier fast --output-dir outputs/demo
 ```
 
-Run tiers are frozen: `test` (32 paths / 200 bootstrap resamples), `fast`
-(100/500, default; about a second wall time on a recent laptop), `standard`
-(500/2000), and `deep` (2000/5000, CLI/background-only — never servable to the
-browser). The requested path count is never silently reduced; failed paths are
-counted, published, and block claim eligibility. Modeled outcome intervals
-(P10–P90) are cross-path spreads of simulated outcomes under illustrative,
-uncalibrated, independent priors — they are not confidence intervals and not
-forecasts. Estimator intervals are labeled separately with estimator, method
-(percentile bootstrap), and level. Supply is fixed at 250,000,000 TLAB;
-emissions, vesting/unlocks, liquidity, treasury, governance, staking reward
-source, FDV, and APY are explicitly absent from this scenario.
+---
 
-The original one-command evidence flow and read-only bundle viewer remain
-available:
+## 🏛️ Bundled Scenarios & Archetypes
 
-```bash
-tokenlab-demo --output-dir outputs/demo --run-id public-demo
-tokenlab-dashboard outputs/demo/public-demo
-```
+TokenLab comes pre-packaged with **12 reviewed public scenarios**:
 
-The first command prints a six-line result and writes a non-overwriting evidence
-bundle containing `manifest.json`, raw and summary CSV tables, the full captured
-`diagnostics.log`, and a validated `artifact_profile.json`. The profile declares
-six metrics that are actually present and explicitly marks emissions, unlocks,
-liquidity, treasury, governance, staking yield, FDV, and APY unavailable.
+| Scenario ID | Category | Type | What It Simulates |
+| :--- | :---: | :---: | :--- |
+| **`public-growth-uncertainty-v2`** | 🌟 Flagship | Stochastic | **Monte Carlo Growth**: Live stochastic prior sampling, fan charts, bootstrap CIs & Spearman sensitivity. |
+| **`growth-path`** | 🛡️ Control | Deterministic | **Deterministic Baseline**: Zero-variance negative control isolating model mechanics. |
+| **`public-vesting-concentrated-v2`** | 🔓 Vesting | Stochastic | 5-pool cliff allocation with concentrated 1–3 period unlock bursts. |
+| **`public-vesting-smoothed-v2`** | 🔓 Vesting | Stochastic | Identical 5-pool allocation with smoothed 12–24 period unlocks (isolating unlock pacing). |
+| **`public-demand-history-v2`** | 📈 Demand | Stochastic | Synthetic logistic rise & plateau demand replay under price noise uncertainty. |
+| **`public-staking-rewards-v3`** | 🥩 Staking | Stochastic | Minted token dilution and staker lockup under participation uncertainty. |
+| **`public-multitoken-dependency-v3`** | 🌐 Multi-Token | Stochastic | Two-economy ecosystem (master MTLB + dependent MTDB) linked via value-transfer channels. |
+| **`z1-solvency-adapted-v1`** | 🏛️ Solvency | Adapted | Precomputed canonical baseline & stable solvency evidence adapted from the Z1 framework. |
+| **Controls (`constant-v1`, `disconnected`)** | 🛡️ Controls | Deterministic | Paired zero-variance negative controls for honest scientific comparison. |
 
-The gallery and the second command serve dependency-free local dashboards at
-`http://127.0.0.1:8765`. It charts only profile-declared metrics, keeps absent
-concepts visible, provides the exact source-table downloads, and shows run
-provenance. Gallery mutation is limited to a small typed/ranged JSON request;
-the legacy viewer remains strictly read-only. Both accept loopback hosts only,
-make no remote request, and stop with `Ctrl-C`.
+---
 
-The deterministic explorer's scenario is deterministic and illustrative:
-repeated paths do not represent statistical uncertainty. The stochastic
-flagship's priors are illustrative and uncalibrated: its intervals describe
-modeled outcomes under those priors, not market confidence. Neither output is
-investment, launch, legal, financial, forecast, or decision-grade advice. See the
-[three-minute presenter guide](docs/public-demo.md) for the recommended talk
-track and reproducibility check.
+## ⚙️ AI & Declarative Scenario Execution
 
-For repository development, including the Z1, reporting, and test extras:
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-### Declarative scenario runner
-
-TokenLab can run a complete simulation from a reviewed YAML or JSON scenario—no
-notebook editing or client-project code is required. From a repository checkout:
+Run end-to-end simulations directly from pure YAML/JSON definitions with zero boilerplate code:
 
 ```bash
 python -m TokenLab.agentic.runner \
@@ -136,71 +107,69 @@ python -m TokenLab.agentic.runner \
   --run-id quickstart
 ```
 
-The command publishes one non-overwriting bundle at
-`outputs/agentic/quickstart/` containing:
-
-- `manifest.json` with scenario hash, seed, run lineage, and output checksums;
-- `results.csv` with repetition-level simulation output; and
-- `iteration_summary.csv` with per-iteration summary statistics.
-
-The supplied reference scenario proves deterministic execution and lineage. It
-is not an investment forecast or a substitute for model, financial, or legal
-review. The public demo and local dashboard above are the recommended
-presentation flow.
-
-### Directory Structure & Organization
-The repository is organized to maintain a clean layout while keeping all client projects perfectly isolated:
-- `src/`: Core Python package `TokenLab` containing the modular simulation framework.
-- `projects/`: Client-specific simulation directories (e.g. `friendocash/`, `andromeda/`) containing their respective Python scripts and custom datasets.
-- `resources/`: Persistent asset repository (archives, prompt templates, and logos).
-- `tokenlab`: The installed CLI for listing and executing simulations from an external `projects/` directory.
-- `run_sim.py`: The backwards-compatible source-checkout wrapper for the same CLI.
-
-### Unified Simulation Runner (`tokenlab`)
-The `tokenlab` command discovers, inspects, and runs simulations while cleanly
-resolving library imports and project-relative data paths. By default it uses
-`./projects`; use `--projects-dir <path>` or `TOKENLAB_PROJECTS_DIR` for an
-external project root.
-
-1. **List all available simulations**:
-   ```bash
-   tokenlab --list
-   ```
-
-2. **Execute a client simulation (Headless / Non-blocking - Recommended)**:
-   Runs the simulation with a headless matplotlib backend (`MPLBACKEND=Agg`) to ensure it executes to completion in background/headless setups:
-   ```bash
-   tokenlab --project friendocash
-   ```
-
-3. **Execute in Interactive mode (GUI Plot Popups)**:
-   Runs the simulation and opens interactive GUI windows to display plots on your desktop:
-   ```bash
-   tokenlab --project friendocash --interactive
-   ```
-
-4. **Specify a specific script**:
-   If a client folder contains multiple simulation scripts, specify the target file:
-   ```bash
-   tokenlab --project footboard --script footboard_tokenomics_2.py
-   ```
-
-Existing source-checkout commands such as `python run_sim.py --list` remain
-supported and use the repository's own `projects/` directory.
-
-Repository status, generated-artifact policy, and the legacy GitBook status are
-documented in [Repository governance](docs/repository-governance.md).
-
-Notebook execution is optional and requires
-`python -m pip install ".[notebook]"`.
-
-## Contact & Collaboration
-
-For research partnerships, custom modeling projects, or technical support:
-
-- **Dr. Stylianos Kampakis**: https://thedatascientist.com/contact-dr-kampakis/
-- **Tesseract Academy Research Team**: https://tesseract.academy/contact/
+Every run generates an immutable, tamper-evident evidence bundle:
+* 📄 `manifest.json`: Scenario hash, seed lineage, and output checksums.
+* 📊 `results.csv` & `parameter_samples.csv`: Raw path-by-path simulation data.
+* 📈 `iteration_summary.csv`: Step-by-step summary statistics.
+* 🔍 `diagnostics.log`: Detailed execution and convergence logs.
 
 ---
 
-*TokenLab is open-source software supporting the advancement of quantitative economic analysis across traditional and digital systems.*
+## 🔧 Unified CLI for Client Projects (`tokenlab`)
+
+Execute turnkey simulations from the `projects/` directory or custom workspaces:
+
+```bash
+# List all available simulation projects
+tokenlab --list
+
+# Run a headless simulation
+tokenlab --project friendocash
+
+# Run in interactive mode with desktop plot popups
+tokenlab --project friendocash --interactive
+```
+
+---
+
+## 📂 Repository Layout
+
+```text
+TokenLab/
+├── src/TokenLab/               # Core agentic simulation framework & web studio
+│   ├── simulationcomponents/   # Agent pools, supply curves, pricing, transactions
+│   ├── analytics/              # Econometric & statistical post-processing
+│   ├── agentic/                # Declarative scenario runner & demo registry
+│   ├── dashboard.py            # Local offline studio server
+│   └── cli.py                  # Unified project runner CLI
+├── projects/                   # 20+ real client tokenomics simulation models
+├── notebooks/                  # Step-by-step tutorial Jupyter notebooks
+├── examples/scenarios/         # Declarative YAML scenario specifications
+├── resources/assets/           # Dashboard previews and topology graphics
+├── docs/                       # Presenter guide (docs/public-demo.md) & architecture docs
+└── pyproject.toml              # Build config, entrypoints, and dependencies
+```
+
+---
+
+## ⚠️ Interpretation Boundary
+
+All bundled public demos are illustrative and uncalibrated. Deterministic controls demonstrate model mechanics without claiming dispersion; stochastic demos sample illustrative priors and report modeled outcome intervals (not price forecasts). TokenLab simulations do not constitute financial, investment, legal, or launch advice. Live economic systems require qualified domain review.
+
+See the [Three-Minute Presenter Guide](docs/public-demo.md) for the recommended demonstration flow and talk track.
+
+---
+
+## 🤝 Contact & Collaboration
+
+Developed by **Dr. Stylianos Kampakis (PhD, CStat)** and the research team at **Tesseract Academy**:
+
+- **Dr. Stylianos Kampakis**: [Contact Dr. Kampakis](https://thedatascientist.com/contact-dr-kampakis/)
+- **Tesseract Academy Research**: [Contact Tesseract Academy](https://tesseract.academy/contact/)
+
+---
+
+<p align="center">
+  <sub>TokenLab is open-source software advancing quantitative economic systems and agentic tokenomics.</sub>
+</p>
+
