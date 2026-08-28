@@ -98,6 +98,25 @@ function runNode(args, cwd, extraEnv = {}) {
   }
 }
 
+function runGit(args, cwd, extraEnv = {}) {
+  try {
+    return execFileSync("git", args, {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: plannerSubprocessEnv({
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_CONFIG_SYSTEM: "/dev/null",
+        XDG_CONFIG_HOME: "/dev/null",
+        ...extraEnv,
+      }),
+    });
+  } catch (e) {
+    return "";
+  }
+}
+
 function makeTemp(name) {
   return mkdtempSync(join(tmpdir(), `planner-gates-${name}-`));
 }
@@ -2153,14 +2172,14 @@ If this fails later, the most likely cause is that a new script path is treated 
 function scenarioPlanGateAllowsCompactLowRiskStaticVerificationObligation() {
   const tmp = makeTemp("compact-low-risk-static");
   try {
-    const goal = "Build a static HTML landing page";
+    const goal = "Build a static HTML widget view";
     const planDir = seedProject(tmp, goal);
     writeExploreFindings(planDir, goal, `## Assumption Ledger
 - VERIFIED: The compact static fixture exercises only checked-in HTML/CSS artifacts and no runtime service boundary.
 `);
     writeIntentContract(planDir, {
       primary_user: "Site visitor",
-      job_to_be_done: "Review a static landing page without relying on runtime integrations",
+      job_to_be_done: "Review a static widget view without relying on runtime integrations",
       desired_outcomes: [
         "The static page artifact can be inspected against an explicit low-risk proof obligation",
       ],
@@ -2172,8 +2191,8 @@ function scenarioPlanGateAllowsCompactLowRiskStaticVerificationObligation() {
       ],
       deliverables: [
         {
-          id: "static_landing_page",
-          name: "Static landing page artifact",
+          id: "static_widget_view",
+          name: "Static widget view artifact",
           kind: "static_ui",
           purpose: "Exercise compact verification for low-risk checked-in HTML/CSS artifacts",
           quality_bars: ["Names the reviewed files, proof action, pass signal, and residual browser gap"],
@@ -2187,10 +2206,10 @@ function scenarioPlanGateAllowsCompactLowRiskStaticVerificationObligation() {
     seedStoryRegistry(tmp, [
       {
         id: "US-201",
-        title: "Static landing page artifact",
+        title: "Static widget view artifact",
         priority: "MEDIUM",
         status: "FULLY_COVERED",
-        code_refs: ["site/landing.html", "site/styles.css"],
+        code_refs: ["site/widget.html", "site/styles.css"],
         test_refs: [".agent/skills/iterative-planner/tests/test_transition_gate_flows.mjs"],
         validation_refs: [".agent/skills/iterative-planner/tests/test_transition_gate_flows.mjs"],
       },
@@ -2208,7 +2227,7 @@ ${goal}
 Static HTML/CSS artifact work should not need a full integration-style matrix when one explicit proof obligation names the artifact, story, action, pass signal, and residual browser gap.
 
 ## Files To Modify
-- site/landing.html
+- site/widget.html
 - site/styles.css
 
 ## Steps
@@ -2232,7 +2251,7 @@ ${semanticUpkeepContractBlock({
 - Derived verification obligations: One compact manual static artifact review obligation is sufficient; no integration, security, external-service, backend, migration, or data-loss boundary is touched.
 
 ## Verification Strategy
-Low-risk verification obligation: For US-201, sc_1, and static_landing_page, manually review \`site/landing.html\` and \`site/styles.css\` as static artifacts, record the rendered layout observation, and name any remaining browser gap before close.
+Low-risk verification obligation: For US-201, sc_1, and static_widget_view, manually review \`site/widget.html\` and \`site/styles.css\` as static artifacts, record the rendered layout observation, and name any remaining browser gap before close.
 
 ## Active Mistake Response
 | Mistake | Guard | Planned handling | Planned evidence |
@@ -2262,7 +2281,7 @@ Defense in depth
     assert(lint.ok, "verification_matrix lint accepts compact low-risk static obligation");
     const packet = JSON.parse(lint.stdout);
     assert(packet.compact_policy?.eligible === true, "verification matrix lint reports compact policy eligibility");
-    assert(packet.compact_obligation?.text?.includes("site/landing.html"), "compact obligation text is surfaced in lint JSON");
+    assert(packet.compact_obligation?.text?.includes("site/widget.html"), "compact obligation text is surfaced in lint JSON");
   } finally {
     // Temporarily disabled rmSync for debugging
     // try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
@@ -3618,7 +3637,7 @@ function scenarioValidateCloseScopesAsyncDriftMaintenanceToPlanFiles() {
   const plannedTmp = makeTemp("validate-close-planned-drift");
   const repeatTmp = makeTemp("validate-close-plan-scope-repeat");
   try {
-    execFileSync("git", ["init"], { cwd: ambientTmp, stdio: "ignore" });
+    runGit(["init"], ambientTmp);
     const ambientPlanDir = seedProject(ambientTmp, "ordinary documentation close scope smoke");
     prepareValidateCloseTransitionFixture(ambientTmp, ambientPlanDir, {
       filesToModify: ["notes/local.txt"],
@@ -3649,7 +3668,7 @@ function scenarioValidateCloseScopesAsyncDriftMaintenanceToPlanFiles() {
     assert(notification.ok, "notify-user succeeds for an explicitly targeted closed plan after its active pointer is already absent");
     assert(notification.stdout.includes("pointer/thread target already absent or reassigned"), "notify-user reports the absent-pointer cleanup path without mutating another target");
 
-    execFileSync("git", ["init"], { cwd: repeatTmp, stdio: "ignore" });
+    runGit(["init"], repeatTmp);
     const repeatPlanDir = seedProject(repeatTmp, "ordinary documentation close scope smoke");
     prepareValidateCloseTransitionFixture(repeatTmp, repeatPlanDir, {
       filesToModify: ["notes/local.txt"],
@@ -3696,7 +3715,7 @@ function scenarioValidateCloseEnforcesFreshTruthConvergence() {
   const blockedTmp = makeTemp("validate-close-truth-blocked");
   const passingTmp = makeTemp("validate-close-truth-passing");
   try {
-    execFileSync("git", ["init", "-q"], { cwd: blockedTmp });
+    runGit(["init", "-q"], blockedTmp);
     const blockedPlanDir = seedProject(blockedTmp, "repository truth convergence blocked close");
     prepareValidateCloseTransitionFixture(blockedTmp, blockedPlanDir, { filesToModify: ["notes/local.txt"] });
     writeFileSync(join(blockedPlanDir, "plan.md"), `${readFileSync(join(blockedPlanDir, "plan.md"), "utf-8")}
@@ -3726,9 +3745,9 @@ function scenarioValidateCloseEnforcesFreshTruthConvergence() {
     assert(!standalone.ok && standalone.stdout.includes("GATE-VAL-024"), "standalone validate-to-close agrees with the real transition verdict");
     assert(readFileSync(join(blockedPlanDir, "state.json"), "utf-8") === beforeStandalone, "standalone truth convergence verification is non-writing");
 
-    execFileSync("git", ["init", "-q"], { cwd: passingTmp });
-    execFileSync("git", ["config", "user.name", "Planner Fixture"], { cwd: passingTmp });
-    execFileSync("git", ["config", "user.email", "planner@example.test"], { cwd: passingTmp });
+    runGit(["init", "-q"], passingTmp);
+    runGit(["config", "user.name", "Planner Fixture"], passingTmp);
+    runGit(["config", "user.email", "planner@example.test"], passingTmp);
     const passingPlanDir = seedProject(passingTmp, "repository truth convergence passing close");
     prepareValidateCloseTransitionFixture(passingTmp, passingPlanDir, { filesToModify: ["notes/local.txt"] });
     writeFileSync(join(passingPlanDir, "plan.md"), `${readFileSync(join(passingPlanDir, "plan.md"), "utf-8")}
@@ -3741,9 +3760,9 @@ function scenarioValidateCloseEnforcesFreshTruthConvergence() {
     const expiresAt = "2099-01-02T00:00:00Z";
     writeJson(join(snapshotDir, "branch_snapshot.json"), { collected_at: collectedAt, expires_at: expiresAt, complete: true, branches: [] });
     writeJson(join(snapshotDir, "pr_snapshot.json"), { repository: "owner/repo", collected_at: collectedAt, expires_at: expiresAt, complete: true, pull_requests: [] });
-    execFileSync("git", ["add", "."], { cwd: passingTmp });
-    execFileSync("git", ["commit", "-qm", "truth convergence fixture"], { cwd: passingTmp });
-    const head = execFileSync("git", ["rev-parse", "HEAD"], { cwd: passingTmp, encoding: "utf-8" }).trim();
+    runGit(["add", "."], passingTmp);
+    runGit(["commit", "-qm", "truth convergence fixture"], passingTmp);
+    const head = runGit(["rev-parse", "HEAD"], passingTmp).trim();
     writeJson(join(passingTmp, "plans", "audit_log.json"), {
       audits: ["red-team", "regression", "retro", "user-story", "advisor"].map((type) => ({
         type,
@@ -5338,7 +5357,7 @@ function scenarioAmbientScopeAcknowledgementIsAdvisory() {
   const tmp = makeTemp("ambient-scope-advisory");
   try {
     const planDir = seedPlanLearnedObligationParityFixture(tmp, { futureOnly: true });
-    execFileSync("git", ["init", "-q"], { cwd: tmp });
+    runGit(["init", "-q"], tmp);
     for (let index = 0; index < 25; index += 1) {
       writeFileSync(join(tmp, `ambient-change-${index}.txt`), "unowned ambient work\n");
     }
@@ -7023,9 +7042,10 @@ function scenarioRitualLintToolErrorsStaySeparateFromGateFailures() {
 
     const large = seedRitualFixture(largeChangeTmp, "large changed-file ritual output fixture");
     writeFileSync(join(largeChangeTmp, ".gitignore"), ".agent/\n");
-    execFileSync("git", ["init", "-q"], { cwd: largeChangeTmp });
-    execFileSync("git", ["add", ".gitignore", "audit.config.json", "plans"], { cwd: largeChangeTmp });
-    execFileSync("git", ["-c", "user.name=Planner Fixture", "-c", "user.email=planner@example.test", "commit", "-qm", "fixture baseline"], { cwd: largeChangeTmp });
+    writeFileSync(join(largeChangeTmp, "audit.config.json"), "{}\n");
+    runGit(["init", "-q"], largeChangeTmp);
+    runGit(["add", "."], largeChangeTmp);
+    runGit(["-c", "user.name=Planner Fixture", "-c", "user.email=planner@example.test", "commit", "-qm", "fixture baseline"], largeChangeTmp);
     const largeDir = join(largeChangeTmp, "large-change");
     mkdirSync(largeDir, { recursive: true });
     for (let index = 0; index < 80; index += 1) {

@@ -40,6 +40,7 @@ const PROOF_ENVIRONMENT_KEYS_TO_CLEAR = Object.freeze([
 const DEFAULT_PREFLIGHT_SCOPES = [
   ".agent/skills/iterative-planner",
   ".agent/rules.md",
+  ".agent/rules",
   ".agent/scripts",
   ".agent/workflows",
   "CLAUDE.md",
@@ -75,6 +76,10 @@ export function managedUpgradeProofEnvironment(baseEnvironment = process.env) {
   }
   proofEnvironment._PLANNER_MANAGED_UPGRADE_PROOF_RUNNING = "1";
   proofEnvironment.NODE_V8_COVERAGE = "";
+  proofEnvironment.GIT_CONFIG_GLOBAL = "/dev/null";
+  proofEnvironment.GIT_CONFIG_NOSYSTEM = "1";
+  proofEnvironment.GIT_CONFIG_SYSTEM = "/dev/null";
+  proofEnvironment.XDG_CONFIG_HOME = "/dev/null";
   return proofEnvironment;
 }
 
@@ -93,12 +98,19 @@ function atomicWriteJson(path, payload) {
   renameSync(temporary, path);
 }
 
+const GIT_ENV = {
+  GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+  GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM || "1",
+  GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+};
+
 function git(targetPath, args, options = {}) {
   return execFileSync("git", ["-C", targetPath, ...args], {
     encoding: "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 64 * 1024 * 1024,
     ...options,
+    env: { ...GIT_ENV, ...(options.env || process.env) },
   }).trim();
 }
 
@@ -108,6 +120,7 @@ function gitRaw(targetPath, args, options = {}) {
     stdio: ["ignore", "pipe", "pipe"],
     maxBuffer: 64 * 1024 * 1024,
     ...options,
+    env: { ...GIT_ENV, ...(options.env || process.env) },
   });
 }
 

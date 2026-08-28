@@ -38,6 +38,13 @@ export function listObservedDirtyFiles(cwd = process.cwd()) {
       cwd,
       encoding: "utf-8",
       timeout: 10000,
+      env: {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: "/dev/null",
+        GIT_CONFIG_NOSYSTEM: "1",
+        GIT_CONFIG_SYSTEM: "/dev/null",
+        XDG_CONFIG_HOME: "/dev/null",
+      },
     });
     if (proc.status !== 0) return [];
     return parsePorcelainStatus(proc.stdout || "");

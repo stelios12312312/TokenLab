@@ -5,6 +5,7 @@
   "preflight_scopes": [
     ".agent/skills/iterative-planner",
     ".agent/rules.md",
+    ".agent/rules",
     ".agent/scripts",
     ".agent/workflows",
     "CLAUDE.md",

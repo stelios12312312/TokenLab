@@ -2968,6 +2968,37 @@ export function renderFindingsMarkdownFromLedger(ledger) {
   return `${blocks.join("\n").replace(/\n{3,}/g, "\n\n").trim()}\n`;
 }
 
+function normalizeFindingEntry(entry) {
+  if (typeof entry === "string") {
+    return { summary: entry, detail: entry };
+  }
+  if (!entry || typeof entry !== "object") {
+    return entry;
+  }
+  
+  const normalized = { ...entry };
+  if (normalized.text && !normalized.summary) {
+    normalized.summary = normalized.text;
+  }
+  if (normalized.description && !normalized.detail) {
+    normalized.detail = normalized.description;
+  }
+  
+  if (normalized.verified === true || (typeof normalized.result === "string" && normalized.result.toLowerCase() === "verified")) {
+    if (!normalized.status) {
+      normalized.status = "VERIFIED";
+    }
+  }
+  
+  if ((normalized.test || normalized.evidence) && !normalized.probe) {
+    normalized.probe = {};
+    if (normalized.test) normalized.probe.command = normalized.test;
+    if (normalized.evidence) normalized.probe.result = normalized.evidence;
+  }
+  
+  return normalized;
+}
+
 export function loadFindingsLedger(planDir) {
   const ledgerPath = join(planDir, "findings_ledger.json");
   const present = existsSync(ledgerPath);
@@ -2983,6 +3014,16 @@ export function loadFindingsLedger(planDir) {
       parsed: null,
       error: "Malformed JSON in findings_ledger.json",
     };
+  }
+
+  for (const key of ["findings", "assumptions", "adjacency", "blast_radius", "blastRadius", "root_cause", "rootCause"]) {
+    if (Array.isArray(parsed[key])) {
+      parsed[key] = parsed[key].map(normalizeFindingEntry);
+    } else if (parsed[key] && typeof parsed[key] === "object") {
+      parsed[key] = normalizeFindingEntry(parsed[key]);
+    } else if (typeof parsed[key] === "string") {
+      parsed[key] = normalizeFindingEntry(parsed[key]);
+    }
   }
 
   return { path: ledgerPath, present: true, parsed, error: null };

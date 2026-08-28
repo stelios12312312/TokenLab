@@ -411,7 +411,7 @@ function buildCandidateObligations(context) {
       },
       required_guards: mistake.required_guards || [],
       verification_hooks: mistake.verification_hooks || [],
-      default_decision: "TODO: accept, reject, waive, or mark out of scope with evidence",
+      default_decision: "SCAFFOLD: accept, reject, waive, or mark out of scope with evidence",
     });
   }
   for (const obligation of normalizeArray(context.verificationSynthesis?.obligations)) {
@@ -428,7 +428,7 @@ function buildCandidateObligations(context) {
       },
       required_proof_type: obligation.required_proof_type,
       proof_ids: obligation.proof_ids || [],
-      default_decision: "TODO: choose proof path or record explicit non-applicability",
+      default_decision: "SCAFFOLD: choose proof path or record explicit non-applicability",
     });
   }
   for (const obligation of normalizeArray(context.learnedObligations?.active_obligations)) {
@@ -445,7 +445,7 @@ function buildCandidateObligations(context) {
       },
       verification_hooks: obligation.verification_hooks || [],
       guard_types: obligation.guard_types || [],
-      default_decision: "TODO: record evidence or approved waiver",
+      default_decision: "SCAFFOLD: record evidence or approved waiver",
     });
   }
   return candidates;
@@ -455,7 +455,7 @@ function buildDecisionSlots(candidates) {
   return candidates.map((candidate) => ({
     id: `${candidate.id}:decision`,
     candidate_id: candidate.id,
-    status: "TODO",
+    status: "SCAFFOLD",
     accepted: false,
     evidence_recorded: false,
     note: candidate.default_decision,
@@ -465,7 +465,7 @@ function buildDecisionSlots(candidates) {
 function buildTruthfulnessNotes(context) {
   return [
     "gate_prepare reports are generated from workspace files, plan state, story registry, annotations, and deterministic refresh output.",
-    "Generated decisions default to TODO and generated proof fields default to UNVERIFIED.",
+    "Generated decisions default to SCAFFOLD and generated proof fields default to UNVERIFIED.",
     "Read-only refresh output is not persisted to state.json by this command.",
     `verification_strategy_path=${getVerificationStrategyPath(context.planDir)}`,
   ];

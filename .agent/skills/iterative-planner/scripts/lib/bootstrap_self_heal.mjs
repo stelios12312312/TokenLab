@@ -77,7 +77,12 @@ export function maybeRunSelfHeal(projectRoot, entryArgs) {
 
   const health = inspectInstallHealth(projectRoot);
   if (!health?.ok || !health.source_repo || resolve(health.source_repo) === resolve(projectRoot)) return;
-  if (!health.needs_repair) return;
+  if (!health.needs_repair) {
+    if (command === "status" && (health.repair_class === "class_b" || health.class_b)) {
+      console.log(`ℹ️  Planner note: working tree has uncommitted consumer/host modifications (${health.summary?.description || "install is current"}).`);
+    }
+    return;
+  }
 
   const migrateScript = join(health.source_repo, ".agent", "skills", "iterative-planner", "scripts", "migrate.mjs");
   if (!existsSync(migrateScript)) {
@@ -94,16 +99,19 @@ export function maybeRunSelfHeal(projectRoot, entryArgs) {
   console.log(`  Target repo: ${projectRoot}`);
   console.log(`  Version strata: committed=${health.committed_version || "unknown"}, tree=${health.tree_version || health.detected_version || "unknown"}, source=${health.source_version || health.current_version || "unknown"}`);
   console.log(`  Install state: ${health.install_state || "unknown"}`);
+  console.log(`  Repair class: ${health.repair_class || "class_a"}`);
   console.log(`  Detected drift: ${health.summary?.description || "planner repair required"}`);
   if (!health.source_commit) {
     console.warn("  ⚠️  Planner self-heal paused — the installed doctor cannot resolve an immutable source commit.");
     console.warn("  First hop: run the canonical migrate.mjs upgrade command manually with --source-ref <commit>, then retry.");
+    if (command !== "status") process.exit(2);
     return;
   }
 
   if (health.recovery_command) {
     console.log("  ⚠️  Planner self-heal paused — an interrupted managed upgrade must be recovered first.");
     console.log(`  Recover: ${health.recovery_command}`);
+    if (command !== "status") process.exit(2);
     return;
   }
   console.log("  ⏸️  Planner self-heal requires explicit commit consent; no target files were written.");
@@ -131,6 +139,7 @@ export function maybeHandleInstallHealth(projectRoot) {
   console.log(`  Source commit: ${health.source_commit || "unresolved"}`);
   console.log(`  Self-heal available: ${health.self_heal_available ? "YES" : "NO"}`);
   console.log(`  Needs repair: ${health.needs_repair ? "YES" : "NO"}`);
+  console.log(`  Repair class: ${health.repair_class || (health.needs_repair ? "class_a" : "none")}`);
   console.log(`  Advisories: ${(health.advisory_issues || []).length}`);
   console.log(`  Summary: ${health.summary?.description || "No summary available"}`);
   if (!health.ok) {
@@ -141,6 +150,8 @@ export function maybeHandleInstallHealth(projectRoot) {
     console.log("  Next step: planner entrypoints will diagnose drift and pause for explicit commit consent.");
     if (health.recovery_command) console.log(`  Recover first: ${health.recovery_command}`);
     console.log(`  Upgrade: ${health.repair_command || "node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade . --commit"}`);
+  } else if (health.repair_class === "class_b") {
+    console.log("  Next step: planner install is current (10.9.0). Uncommitted consumer overlays or host workflows are present but do not require a managed upgrade.");
   } else if ((health.advisory_issues || []).length > 0) {
     console.log("  Advisory drift: no self-heal will run. Sync root instruction mirrors manually if you want them aligned.");
   } else {

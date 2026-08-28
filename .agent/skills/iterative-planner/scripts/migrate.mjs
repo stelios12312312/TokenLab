@@ -55,6 +55,7 @@ import { writePlanWorkOrderProjection } from "./lib/work_order_contract.mjs";
 import { attachSemanticHealth } from "./lib/semantic_maintenance.mjs";
 import { ensureCircuitBreakersState, readStateJson as readPlanStateJson } from "./lib/determinism.mjs";
 import { ensurePlannerPolicy, loadPlannerPolicy } from "./lib/planner_policy.mjs";
+import { extractHostRuleOverlays } from "./lib/host_rule_overlays.mjs";
 import {
   ROOT_INSTRUCTION_SOURCE_OF_TRUTH,
   ROOT_INSTRUCTION_TARGETS,
@@ -559,9 +560,22 @@ function sha256Bytes(value) {
 }
 
 function gitCommand(targetPath, args, options = {}) {
-  return execFileSync("git", ["-C", targetPath, ...args], {
+  const env = {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+    GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM || "1",
+    GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+    XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME || "/dev/null",
+    ...options.env,
+  };
+  return execFileSync("git", [
+    "-c", "core.excludesfile=",
+    "-C", targetPath,
+    ...args,
+  ], {
     encoding: options.encoding === null ? null : "utf-8",
     stdio: ["ignore", "pipe", "pipe"],
+    env,
   });
 }
 
@@ -2810,27 +2824,78 @@ function buildDoctorReport(targetPath) {
   const setupIssues = collectRepairableSetupIssues(targetPath);
   const advisoryIssues = findRootInstructionSyncIssues(targetPath);
   const ritualContractReadiness = validateRitualContractReadiness(targetPath);
-  const versionMismatch = committedVersion !== CURRENT_VERSION;
+  const versionMismatch = committedVersion !== CURRENT_VERSION || treeVersion !== CURRENT_VERSION;
   const criticalMissing = missing.filter((entry) => entry.critical);
+  const blockingRitualIssues = (ritualContractReadiness.issues || []).filter((i) => i.blocking);
+  const hasUnmarkedHostWorkflows = (ritualContractReadiness.issues || []).some(
+    (i) => i.id === "workflow_markdown_missing_inventory_entry",
+  );
 
-  const repairReasons = [];
-  if (versionMismatch) repairReasons.push(`committed version ${committedVersion} -> ${CURRENT_VERSION}`);
-  if (installState !== "coherent_committed") {
-    repairReasons.push(`install state ${installState}`);
+  const isClassA = Boolean(
+    versionMismatch
+    || missing.length > 0
+    || stale.length > 0
+    || setupIssues.length > 0
+    || installState === "half_applied_payload"
+    || installState === "half_applied_upgrade"
+    || installState === "version_stratigraphy_mismatch"
+    || installState === "interrupted_transaction"
+    || blockingRitualIssues.length > 0
+  );
+
+  const hasClassB = Boolean(
+    !isClassA && (
+      installState === "managed_scope_dirty"
+      || hasUnmarkedHostWorkflows
+    ),
+  );
+
+  const hasClassC = Boolean(!isClassA && advisoryIssues.length > 0);
+
+  const repairClass = isClassA ? "class_a" : hasClassB ? "class_b" : hasClassC ? "class_c" : "none";
+
+  const engineMatchesCurrent = committedVersion === CURRENT_VERSION || treeVersion === CURRENT_VERSION;
+  const workflowsHasIssues = blockingRitualIssues.length > 0;
+  const policyHasIssues = setupIssues.some((issue) => issue.code === "incomplete_planner_policy" || issue.code === "missing_planner_policy");
+  const staleOutsideSkill = stale.filter((entry) => !entry.path.includes(".agent/skills/iterative-planner"));
+  const partialSurfaceSync = Boolean(engineMatchesCurrent && (workflowsHasIssues || policyHasIssues || staleOutsideSkill.length > 0));
+
+  const splitBrainReasons = [];
+  if (workflowsHasIssues) splitBrainReasons.push(`workflows=${ritualContractReadiness.status === "PASS" ? "ok" : "parked-exposed"}`);
+  if (policyHasIssues) splitBrainReasons.push("policy=incomplete");
+  if (staleOutsideSkill.length > 0) splitBrainReasons.push(`stale_outside_skill=${staleOutsideSkill.length}`);
+  const partialSurfaceSyncReason = partialSurfaceSync ? splitBrainReasons.join(", ") : null;
+
+  const classAReasons = [];
+  if (versionMismatch) classAReasons.push(`committed version ${committedVersion} -> ${CURRENT_VERSION}`);
+  if (installState === "half_applied_payload" || installState === "half_applied_upgrade") classAReasons.push(`install state ${installState}`);
+  else if (installState === "version_stratigraphy_mismatch") classAReasons.push(`install state ${installState}`);
+  else if (installState === "interrupted_transaction") classAReasons.push(`install state ${installState}`);
+  if (missing.length > 0) classAReasons.push(`${missing.length} missing file(s)`);
+  if (stale.length > 0) classAReasons.push(`${stale.length} stale file(s)`);
+  if (setupIssues.length > 0) classAReasons.push(`${setupIssues.length} repairable setup issue(s)`);
+  if (blockingRitualIssues.length > 0) classAReasons.push(`ritual contract readiness ${ritualContractReadiness.status}`);
+
+  const classBReasons = [];
+  if (installState === "managed_scope_dirty" && !isClassA) {
+    classBReasons.push("managed scope contains uncommitted consumer/host modifications (version 10.9.0 is current)");
   }
-  if (missing.length > 0) repairReasons.push(`${missing.length} missing file(s)`);
-  if (stale.length > 0) repairReasons.push(`${stale.length} stale file(s)`);
-  if (setupIssues.length > 0) repairReasons.push(`${setupIssues.length} repairable setup issue(s)`);
-  if (!verificationStatusIsPass(ritualContractReadiness.status, "execution")) repairReasons.push(`ritual contract readiness ${ritualContractReadiness.status}`);
+  if (hasUnmarkedHostWorkflows && !isClassA) {
+    const count = (ritualContractReadiness.issues || []).filter((i) => i.id === "workflow_markdown_missing_inventory_entry").length;
+    classBReasons.push(`${count} host workflow(s) without inventory disposition (advisory)`);
+  }
 
   const advisoryReasons = [];
   if (advisoryIssues.length > 0) advisoryReasons.push(`${advisoryIssues.length} advisory sync issue(s)`);
 
-  const description = repairReasons.length > 0
-    ? [...repairReasons, ...advisoryReasons].join(", ")
-    : advisoryReasons.length > 0
-      ? `planner install is current; ${advisoryReasons.join(", ")}`
-      : "planner install is current";
+  let description = "planner install is current";
+  if (isClassA) {
+    description = [...classAReasons, ...advisoryReasons].join(", ");
+  } else if (hasClassB) {
+    description = `planner install is current (${CURRENT_VERSION}); ${[...classBReasons, ...advisoryReasons].join(", ")}`;
+  } else if (hasClassC) {
+    description = `planner install is current; ${advisoryReasons.join(", ")}`;
+  }
 
   return {
     source_project_path: canonicalSourceProjectPath(),
@@ -2844,17 +2909,34 @@ function buildDoctorReport(targetPath) {
     source_version: CURRENT_VERSION,
     install_state: installState,
     upgrade_state: installState,
+    repair_class: repairClass,
+    class_a: isClassA,
+    class_b: hasClassB,
+    class_c: hasClassC,
+    class_a_reasons: classAReasons,
+    class_b_reasons: classBReasons,
+    install_health: {
+      partial_surface_sync: partialSurfaceSync,
+      partial_surface_sync_reason: partialSurfaceSyncReason,
+      needs_repair: isClassA,
+      repair_class: repairClass,
+      class_a_reasons: classAReasons,
+      class_b_reasons: classBReasons,
+    },
+    partial_surface_sync: partialSurfaceSync,
     version_stratigraphy: versionStratigraphy,
     active_upgrade_transaction: upgradeState.active_transaction,
     last_upgrade_receipt: upgradeState.last_receipt,
     detection,
-    needs_repair: versionMismatch || installState !== "coherent_committed" || missing.length > 0 || stale.length > 0 || setupIssues.length > 0 || !verificationStatusIsPass(ritualContractReadiness.status, "execution"),
-    repair_command: managedUpgradeConsentCommand(
-      targetPath,
-      selectedSourceCommit() || selectedSourceRef(),
-      false,
-      __filename,
-    ),
+    needs_repair: isClassA,
+    repair_command: isClassA
+      ? managedUpgradeConsentCommand(
+          targetPath,
+          selectedSourceCommit() || selectedSourceRef(),
+          false,
+          __filename,
+        )
+      : null,
     recovery_command: upgradeState.active_transaction
       ? managedUpgradeRecoveryCommand(
           targetPath,
@@ -2864,7 +2946,10 @@ function buildDoctorReport(targetPath) {
       : null,
     summary: {
       description,
+      repair_class: repairClass,
       version_mismatch: versionMismatch,
+      partial_surface_sync: partialSurfaceSync,
+      partial_surface_sync_reason: partialSurfaceSyncReason,
       missing_count: missing.length,
       critical_missing_count: criticalMissing.length,
       stale_count: stale.length,
@@ -3164,6 +3249,12 @@ function ensureManagedGitignore(targetPath, { dryRun = false, log = null } = {})
 
 function runProjectSetup(targetPath, dryRun, log) {
   const targetBase = join(targetPath, ".agent/skills/iterative-planner");
+
+  // Ensure expected directories exist
+  if (!dryRun) {
+    mkdirSync(join(targetPath, '.agent', 'rules'), { recursive: true });
+    mkdirSync(join(targetPath, '.agent', 'skills', 'iterative-planner', 'kb'), { recursive: true });
+  }
 
   // 0. Ensure .gitignore has managed planner patterns
   log.push("\n## Git Ignore");
@@ -3591,6 +3682,7 @@ function cmdDoctor(targetPath, jsonOutput) {
   console.log(`  Tree version:      ${report.tree_version}`);
   console.log(`  Source version:    ${report.source_version}`);
   console.log(`  Install state:     ${report.install_state}`);
+  console.log(`  Repair class:      ${report.repair_class || (report.needs_repair ? "class_a" : "none")}`);
   console.log(`  Needs repair:      ${report.needs_repair ? "YES" : "NO"}`);
   console.log(`  Summary:           ${report.summary.description}`);
 
@@ -3624,7 +3716,24 @@ function cmdDoctor(targetPath, jsonOutput) {
 
   if (report.needs_repair) {
     if (report.recovery_command) console.log(`\n  Interrupted transaction recovery: ${report.recovery_command}`);
-    console.log(`\n  Suggested repair: ${report.repair_command}`);
+    if (report.partial_surface_sync || report.install_health?.partial_surface_sync) {
+      let workflowsStatus = "ok";
+      if (report.ritual_contract_readiness?.status !== "PASS") {
+        const hasParked = (report.ritual_contract_readiness?.issues || []).some(
+          (i) => i.id === "workflow_parked_present_in_active_dir",
+        );
+        workflowsStatus = hasParked ? "parked-exposed" : "ritual-fail";
+      }
+      const policyStatus = (report.setup_issues || []).some((i) => i.code === "incomplete_planner_policy" || i.code === "missing_planner_policy") ? "incomplete" : "ok";
+      const engineVer = report.committed_version || report.tree_version || report.current_version;
+      console.log(`\n  Split-brain install: engine=${engineVer} workflows=${workflowsStatus} policy=${policyStatus}`);
+      console.log(`  Repair: ${report.repair_command}`);
+    } else {
+      console.log(`\n  Suggested repair: ${report.repair_command}`);
+    }
+  } else if (report.repair_class === "class_b") {
+    console.log(`\n  ℹ️  Note: Working tree has uncommitted consumer/host modifications (version ${report.source_version} is current).`);
+    console.log(`     No managed upgrade is required. Host workflows or overlays do not block planner execution.`);
   } else {
     console.log(`\n  ✅ Planner install is current and repairable setup state is intact.`);
     if ((report.advisory_issues || []).length > 0) {
@@ -3636,6 +3745,12 @@ function cmdDoctor(targetPath, jsonOutput) {
 
 function cmdUpgrade(targetPath, seedKB, dryRun) {
   const log = [];
+
+  // Ensure expected directories exist
+  if (!dryRun) {
+    mkdirSync(join(targetPath, '.agent', 'rules'), { recursive: true });
+    mkdirSync(join(targetPath, '.agent', 'skills', 'iterative-planner', 'kb'), { recursive: true });
+  }
   const targetSkillMd = join(targetPath, ".agent/skills/iterative-planner/SKILL.md");
   const { version, confidence } = detectVersion(targetSkillMd);
 
@@ -3660,7 +3775,51 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   const setupIssues = collectRepairableSetupIssues(targetPath);
   const advisoryIssues = findRootInstructionSyncIssues(targetPath);
 
-  const syncSafetyEntries = staleEntries.filter((entry) => basename(entry.path) !== ".project_registry.json");
+  let syncSafetyEntries = staleEntries.filter((entry) => basename(entry.path) !== ".project_registry.json");
+  const rulesEntry = syncSafetyEntries.find((entry) => gitPath(relative(targetPath, entry.path)) === ".agent/rules.md");
+  let extractedOverlays = [];
+  if (rulesEntry) {
+    let sourceRulesText = null;
+    const sourceCommit = selectedSourceCommit();
+    const sourceRepo = canonicalSourceProjectPath();
+    if (sourceCommit && sourceRepo) {
+      try {
+        sourceRulesText = execFileSync("git", [
+          "-c", "core.excludesfile=",
+          "-C", sourceRepo,
+          "show", `${sourceCommit}:.agent/rules.md`,
+        ], {
+          encoding: "utf-8",
+          stdio: ["ignore", "pipe", "pipe"],
+          env: {
+            ...process.env,
+            GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+            GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM || "1",
+            GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+            XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME || "/dev/null",
+          },
+        });
+      } catch {
+        sourceRulesText = null;
+      }
+    }
+    const extraction = extractHostRuleOverlays(targetPath, { dryRun, sourceText: sourceRulesText });
+    if (
+      extraction.status === "extractable"
+      && (extraction.wrote.length > 0 || extraction.skipped.length > 0 || (extraction.overlays && extraction.overlays.length > 0))
+    ) {
+      extractedOverlays = extraction.overlays;
+      for (const p of extraction.overlays) {
+        if (dryRun) {
+          log.push(`  WOULD EXTRACT: ${p.relative_path}`);
+        } else {
+          log.push(`  EXTRACTED: ${p.relative_path}`);
+        }
+      }
+      syncSafetyEntries = syncSafetyEntries.filter((entry) => gitPath(relative(targetPath, entry.path)) !== ".agent/rules.md");
+    }
+  }
+
   const syncSafety = assessManagedSyncSafety(
     targetPath,
     syncSafetyEntries,
@@ -3738,6 +3897,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   const changeParts = [];
   if (missing.length > 0) changeParts.push(`${missing.length} new`);
   if (staleCount > 0) changeParts.push(`${staleCount} stale`);
+  if (extractedOverlays.length > 0) changeParts.push(`${extractedOverlays.length} rule overlay${extractedOverlays.length === 1 ? "" : "s"}`);
   if (obsoleteWorkflowCount > 0) changeParts.push(`${obsoleteWorkflowCount} obsolete workflow${obsoleteWorkflowCount === 1 ? "" : "s"}`);
   if (unmarkedHostWorkflowCount > 0) changeParts.push(`${unmarkedHostWorkflowCount} host workflow marker${unmarkedHostWorkflowCount === 1 ? "" : "s"}`);
   if (obsoleteTestCount > 0) changeParts.push(`${obsoleteTestCount} obsolete test${obsoleteTestCount === 1 ? "" : "s"}`);

@@ -141,6 +141,10 @@ function isolatedGitEnvironment(baseEnv = process.env) {
   for (const key of Object.keys(env)) {
     if (key.startsWith("GIT_")) delete env[key];
   }
+  env.GIT_CONFIG_GLOBAL = "/dev/null";
+  env.GIT_CONFIG_NOSYSTEM = "1";
+  env.GIT_CONFIG_SYSTEM = "/dev/null";
+  env.XDG_CONFIG_HOME = "/dev/null";
   return env;
 }
 

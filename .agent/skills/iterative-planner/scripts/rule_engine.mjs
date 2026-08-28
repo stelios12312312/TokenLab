@@ -52,7 +52,12 @@ const gatesJsonPath = join(skillPath, "config", "gates.json");
 const GATE_REGISTRY = (() => {
   try {
     return JSON.parse(readFileSync(gatesJsonPath, "utf-8")).gates || {};
-  } catch {
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      console.warn(`[rule_engine] Gates config not found at ${gatesJsonPath}, using empty gates.`);
+    } else {
+      console.error(`[rule_engine] Failed to parse gates config at ${gatesJsonPath}: ${err.message}`);
+    }
     return {};
   }
 })();

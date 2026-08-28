@@ -31,6 +31,13 @@ import { inspectInstallHealth, maybeHandleInstallHealth, maybeRunSelfHeal } from
 import { createBootstrapStatusContext } from "./lib/bootstrap_status_context.mjs";
 import { emitJson } from "./lib/emit_json.mjs";
 
+// --- Node.js version gate ---
+const [major, minor] = process.versions.node.split('.').map(Number);
+if (major < 16 || (major === 16 && minor < 7)) {
+  console.error(`[FATAL] Iterative Planner requires Node.js >=16.7.0 (found ${process.versions.node}). Please upgrade.`);
+  process.exit(1);
+}
+
 const KB_INDEX_TEMPLATE = `# Knowledge Base Index
 
 | File | Topics |
@@ -351,7 +358,7 @@ const lockFile = join(plansDir, ".lock");
 
 // AV-11: Max lock age in milliseconds — prevents permanent lockout from PID recycling.
 // If a lock is older than this, it is considered stale regardless of PID liveness.
-const LOCK_MAX_AGE_MS = 60_000; // 60 seconds
+const LOCK_MAX_AGE_MS = 300_000; // 5 minutes
 const CIRCUIT_BREAKER_THRESHOLD = 10; // total_fails per gate before circuit is tripped
 
 function acquireLock(retries = 1) {
@@ -371,19 +378,34 @@ function acquireLock(retries = 1) {
         const lockTs = parseInt(tsStr) || 0;
         const lockAge = Date.now() - lockTs;
 
-        // AV-11: Time-bounded stale lock detection — expire after LOCK_MAX_AGE_MS
-        // even if PID is recycled and still alive.
-        if (lockAge > LOCK_MAX_AGE_MS) {
-          debugLog("bootstrap", `Lock expired (age ${lockAge}ms > ${LOCK_MAX_AGE_MS}ms)`);
+        let isStale = false;
+        if (pid && !isNaN(pid)) {
+          if (pid === process.pid) {
+            isStale = true;
+          } else {
+            try {
+              process.kill(pid, 0); // existence check
+              // Process is alive — check age as safety net only
+              if (lockAge > LOCK_MAX_AGE_MS) {
+                debugLog("bootstrap", `Lock expired (age ${lockAge}ms > ${LOCK_MAX_AGE_MS}ms)`);
+                isStale = true;
+              }
+            } catch {
+              // process.kill threw — PID is dead, lock is stale
+              debugLog("bootstrap", `Stale lock detected (pid ${pid} dead)`);
+              isStale = true;
+            }
+          }
+        } else {
+          // Can't read/parse PID — treat as stale
+          isStale = true;
+        }
+
+        if (isStale) {
           unlinkSync(lockFile);
           return retries > 0 ? acquireLock(retries - 1) : false; // F-027 FIX: bounded retry
         }
-
-        if (pid && pid !== process.pid) {
-          try { process.kill(pid, 0); return false; } catch { debugLog("bootstrap", `Stale lock detected (pid ${pid} dead)`); }
-        }
-        unlinkSync(lockFile);
-        return retries > 0 ? acquireLock(retries - 1) : false; // F-027 FIX: bounded retry
+        return false;
       } catch (e) { debugLog("bootstrap", `Lock check failed: ${e.message}`); return false; }
     }
     debugLog("bootstrap", `Lock acquire failed: ${e.message}`);
@@ -2012,18 +2034,23 @@ Mitigation:
   warnTelemetryInstallHealth(cwd);
   warnProjectRegistryReachability(cwd);
 
-  // Check if rules.md has been customized with project-specific rules
+  // Check if project-specific rules exist under .agent/rules/
   try {
-    const rulesPath = join(cwd, ".agent", "rules.md");
-    if (existsSync(rulesPath)) {
-      const rulesContent = readFileSync(rulesPath, "utf-8");
-      // Check if the DOMAIN placeholder is present but no rules were added after it
-      if (rulesContent.includes("<!-- DOMAIN: PROJECT-SPECIFIC RULES") &&
-          !rulesContent.match(/<!-- DOMAIN: PROJECT-SPECIFIC RULES[\s\S]*?-->\s*\n+## /)) {
+    const canonicalSource = process.env.PLANNER_CANONICAL_SOURCE_REPO?.trim()
+      ? resolve(process.env.PLANNER_CANONICAL_SOURCE_REPO.trim())
+      : resolve(join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", ".."));
+    const isCanonicalSource = resolve(cwd) === canonicalSource;
+    if (!isCanonicalSource) {
+      const rulesDir = join(cwd, ".agent", "rules");
+      const overlayFiles = existsSync(rulesDir)
+        ? readdirSync(rulesDir).filter((f) => f.endsWith(".md") && !/conflicted copy/i.test(f))
+        : [];
+      if (overlayFiles.length === 0) {
         console.log();
-        console.log(`  💡 TIP: .agent/rules.md has no project-specific rules yet.`);
-        console.log(`     Add 2-4 rules covering your project's #1 bug source,`);
-        console.log(`     data isolation, and framework conventions.`);
+        console.log(`  💡 TIP: No project-specific rules found in .agent/rules/*.md.`);
+        console.log(`     Add 2-4 rules in .agent/rules/40-<name>.md covering your`);
+        console.log(`     project's #1 bug source, data isolation, and conventions.`);
+        console.log(`     Do not append directly to .agent/rules.md.`);
         console.log(`     See: .agent/ADAPTATION-GUIDE.md → "Fill in project context"`);
       }
     }

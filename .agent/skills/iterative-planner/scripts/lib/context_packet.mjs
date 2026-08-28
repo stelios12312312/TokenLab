@@ -174,14 +174,46 @@ function packetHash(packet) {
   return createHash("sha256").update(JSON.stringify(clone)).digest("hex").slice(0, 32);
 }
 
+function findScopeRoot(startDir) {
+  let current = resolve(startDir);
+  while (true) {
+    if (existsSync(join(current, "planner.policy.yaml"))) {
+      try {
+        const policy = readFileSync(join(current, "planner.policy.yaml"), "utf-8");
+        if (/scope\.root:\s*true/.test(policy)) return current;
+      } catch {}
+    }
+    if (existsSync(join(current, ".git")) || existsSync(join(current, "package.json"))) {
+      return current;
+    }
+    const parent = dirname(current);
+    if (parent === current) return resolve(startDir);
+    current = parent;
+  }
+}
+
 function programPacketPaths(cwd, program) {
   if (asString(program)) {
     const resolved = resolveProgramPacketPath({ cwd, program });
     return resolved.path && existsSync(resolved.path) ? [resolved.path] : [];
   }
 
-  const programsDir = join(cwd, "plans", "programs");
-  if (!existsSync(programsDir)) return [];
+  const scopeRoot = findScopeRoot(cwd);
+  let current = resolve(cwd);
+  let programsDir = null;
+  while (true) {
+    const candidate = join(current, "plans", "programs");
+    if (existsSync(candidate)) {
+      programsDir = candidate;
+      break;
+    }
+    if (current === scopeRoot) break;
+    const parent = dirname(current);
+    if (parent === current) break;
+    current = parent;
+  }
+
+  if (!programsDir || !existsSync(programsDir)) return [];
   return readdirSync(programsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => join(programsDir, entry.name, "program_packet.json"))

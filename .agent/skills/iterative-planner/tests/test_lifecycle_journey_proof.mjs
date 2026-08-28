@@ -489,13 +489,66 @@ function assertTransitionHistory(planDir, gateOutputs) {
 
 console.log("\nLifecycle Journey Proof\n");
 
+function writeTinyPlannerTree(root, { sourceProjectPath, includeBackup = true } = {}) {
+  mkdirSync(join(root, ".agent", "skills", "iterative-planner", "config"), { recursive: true });
+  mkdirSync(join(root, ".agent", "skills", "iterative-planner", "scripts"), { recursive: true });
+  mkdirSync(join(root, "src"), { recursive: true });
+  writeFileSync(join(root, ".agent", "skills", "iterative-planner", "config", ".project_registry.json"), `${JSON.stringify({
+    source_project_path: sourceProjectPath,
+  }, null, 2)}\n`);
+  writeFileSync(join(root, ".agent", "skills", "iterative-planner", "scripts", "foo.mjs"), "export const plannerScript = true;\n");
+  writeFileSync(join(root, "src", "app.ts"), "export const hostApp = true;\n");
+  writeFileSync(join(root, "audit.config.json"), `${JSON.stringify({
+    roles: ["core"],
+    fail_on: ["HIGH"],
+    auto_committee: true,
+  }, null, 2)}\n`);
+  if (includeBackup) {
+    mkdirSync(join(root, ".agent.v6.backup", "skills", "iterative-planner", "scripts"), { recursive: true });
+    writeFileSync(join(root, ".agent.v6.backup", "skills", "iterative-planner", "scripts", "old.mjs"), "export const backupScript = true;\n");
+  }
+}
+
+{
+  const trackedConsumer = mkdtempSync(join(tmpdir(), "hygiene-tracked-consumer-"));
+  const canonicalFixture = mkdtempSync(join(tmpdir(), "hygiene-canonical-source-"));
+  try {
+    writeTinyPlannerTree(trackedConsumer, { sourceProjectPath: "/not/this/consumer" });
+    writeTinyPlannerTree(canonicalFixture, { sourceProjectPath: canonicalFixture });
+
+    const sourceSemanticHygiene = await import(pathToFileURL(join(skillDir, "scripts", "lib", "semantic_hygiene.mjs")).href);
+    const consumerCfg = sourceSemanticHygiene.loadSemanticHygieneConfig(trackedConsumer);
+    const canonicalCfg = sourceSemanticHygiene.loadSemanticHygieneConfig(canonicalFixture);
+    const sourceCfg = sourceSemanticHygiene.loadSemanticHygieneConfig(repoRoot);
+
+    assert(consumerCfg.skip_path_prefixes.includes(".agent/"), "tracked consumer still skips .agent/ even when git check-ignore fails");
+    assert(!canonicalCfg.skip_path_prefixes.includes(".agent/"), "canonical fixture keeps tracked planner runtime in hygiene");
+    assert(!sourceCfg.skip_path_prefixes.includes(".agent/"), "planner source keeps tracked .agent runtime inside semantic hygiene");
+
+    const consumerFiles = sourceSemanticHygiene.discoverSourceFiles(trackedConsumer).files.map((entry) => entry.path);
+    const canonicalFiles = sourceSemanticHygiene.discoverSourceFiles(canonicalFixture).files.map((entry) => entry.path);
+    assert(consumerFiles.includes("src/app.ts"), "tracked consumer still discovers host product source");
+    assert(!consumerFiles.includes(".agent/skills/iterative-planner/scripts/foo.mjs"), "tracked consumer does not discover planner install scripts");
+    assert(!consumerFiles.includes(".agent.v6.backup/skills/iterative-planner/scripts/old.mjs"), "tracked consumer does not discover planner backup scripts");
+    assert(canonicalFiles.includes("src/app.ts"), "canonical fixture still discovers host product source");
+    assert(canonicalFiles.includes(".agent/skills/iterative-planner/scripts/foo.mjs"), "canonical fixture still discovers its own planner scripts");
+    assert(!canonicalFiles.includes(".agent.v6.backup/skills/iterative-planner/scripts/old.mjs"), "canonical fixture still skips planner backup trees");
+
+    const consumerKeys = sourceSemanticHygiene.discoverConfigKeys(trackedConsumer).keys.map((entry) => entry.key);
+    assert(!consumerKeys.includes("roles"), "audit.config.json roles are not host config flags");
+    assert(!consumerKeys.includes("fail_on"), "audit.config.json fail_on is not a host config flag");
+    assert(!consumerKeys.includes("auto_committee"), "audit.config.json auto_committee is not a host config flag");
+  } finally {
+    rmSync(trackedConsumer, { recursive: true, force: true });
+    rmSync(canonicalFixture, { recursive: true, force: true });
+  }
+}
+
 const tmp = mkdtempSync(join(tmpdir(), "planner-lifecycle-"));
 const keepTemp = process.env.KEEP_PLANNER_LIFECYCLE_TEMP === "1";
 const gateOutputs = {};
 
 try {
-  const sourceSemanticHygiene = await import(pathToFileURL(join(skillDir, "scripts", "lib", "semantic_hygiene.mjs")).href);
-  assert(!sourceSemanticHygiene.loadSemanticHygieneConfig(repoRoot).skip_path_prefixes.includes(".agent/"), "planner source keeps tracked .agent runtime inside semantic hygiene");
   setupFixtureRepo(tmp);
   const localSemanticHygiene = await import(pathToFileURL(join(tmp, ".agent", "skills", "iterative-planner", "scripts", "lib", "semantic_hygiene.mjs")).href);
   assert(localSemanticHygiene.loadSemanticHygieneConfig(tmp).skip_path_prefixes.includes(".agent/"), "consumer semantic hygiene excludes its Git-ignored managed runtime");

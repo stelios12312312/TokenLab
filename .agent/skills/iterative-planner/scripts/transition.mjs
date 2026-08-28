@@ -326,10 +326,9 @@ async function loadGateFunctions() {
   }
   try {
     modules.health = await import(healthPath);
-  } catch (e) {
-    console.error(`WARNING: Cannot import project_health.mjs: ${e.message}`);
-    console.error("  Health gate checks will be skipped. Fix the import to enable health scanning.");
-    modules.health = null;
+  } catch (err) {
+    console.error(`[GATE-CRITICAL] Failed to import project_health.mjs: ${err.message}`);
+    throw new Error(`Gate-critical module import failed: project_health.mjs — ${err.message}`);
   }
   return modules;
 }
@@ -401,9 +400,9 @@ async function runHealthScan(planDir, mode, { persist = true } = {}) {
 
 
     return report;
-  } catch (e) {
-    console.log(`  ⚠️ Health scan unavailable: ${e.message}`);
-    return null;
+  } catch (err) {
+    console.error(`[GATE-CRITICAL] Failed to import project_health.mjs: ${err.message}`);
+    throw new Error(`Gate-critical module import failed: project_health.mjs — ${err.message}`);
   } finally {
     // Restore env vars
     if (origQuick !== undefined) process.env._PLANNER_HEALTH_QUICK = origQuick;
@@ -416,8 +415,13 @@ async function runHealthScan(planDir, mode, { persist = true } = {}) {
 async function persistHealthScan(planDir, mode, report) {
   if (!planDir || !report) return false;
   if (mode === "quick") {
-    const { formatMarkdown } = await import(join(skillPath, "scripts", "project_health.mjs"));
-    writeFileSync(join(planDir, "health_report.md"), formatMarkdown(report));
+    try {
+      const { formatMarkdown } = await import(join(skillPath, "scripts", "project_health.mjs"));
+      writeFileSync(join(planDir, "health_report.md"), formatMarkdown(report));
+    } catch (err) {
+      console.error(`[GATE-CRITICAL] Failed to import project_health.mjs: ${err.message}`);
+      throw new Error(`Gate-critical module import failed: project_health.mjs — ${err.message}`);
+    }
   }
   return true;
 }
@@ -470,6 +474,7 @@ async function prepareAttemptedGate({ gate, planDirName, results }) {
     console.log();
     return report;
   } catch (error) {
+    // [ENRICHMENT] gate_prepare.mjs is advisory/optional; fail-open if unavailable to not block transition
     const report = {
       status: "advisory",
       ok: false,
@@ -1359,6 +1364,7 @@ async function runTransition(gate, opts = {}) {
           .map((line) => line.replace(/^\s*[-*]\s+`?/, "").replace(/`?\s*$/, "").trim())
           .filter(Boolean);
       }
+      const stateJson = readStateJson(planDir) || {};
       const obligations = evaluateObligationGate({
         gate,
         planDir,
@@ -1380,8 +1386,11 @@ async function runTransition(gate, opts = {}) {
         }
         console.log();
       }
-    } catch {
-      // best-effort: never crash a transition on Knowledge Trigger evaluation
+    } catch (err) {
+      console.error(`[GATE-CRITICAL] Failed to import knowledge_triggers.mjs: ${err.message}`);
+      const r = withFailureCode(check("Knowledge Trigger evaluation", FAIL, `Gate-critical module import failed: knowledge_triggers.mjs — ${err.message}`), "GATE-IMPORT-001");
+      printResults([r]);
+      allResults.push(r);
     }
   }
 
@@ -1543,7 +1552,8 @@ async function runTransition(gate, opts = {}) {
         console.log(`  Coverage: ${coverage}% (${passedRules}/${totalRules} rules)`);
       }
     } catch (e) {
-      const r = check("Tool trace audit", WARN, `Trace audit error: ${e.message}`);
+      console.error(`[GATE-CRITICAL] Failed to import trace_auditor.mjs or ide_detect.mjs: ${e.message}`);
+      const r = withFailureCode(check("Tool trace audit", FAIL, `Gate-critical module import failed: trace audit — ${e.message}`), "GATE-IMPORT-001");
       printResults([r]);
       allResults.push(r);
     }
@@ -1638,7 +1648,10 @@ async function runTransition(gate, opts = {}) {
               console.log();
               console.log(block);
             }
-          } catch { /* helper unavailable — fall back to silent (data still in JSON) */ }
+          } catch {
+            // [ENRICHMENT] supervisor_runner.mjs is advisory/optional; fail-open if unavailable to not block transition
+            /* helper unavailable — fall back to silent (data still in JSON) */
+          }
         } else {
           const r = check("Semantic checks", PASS, "No semantic issues");
           printResults([r]);
@@ -1979,6 +1992,7 @@ async function runTransition(gate, opts = {}) {
           };
           console.log(`  ↳ Detected plan shape '${detected.primary}' for legacy plan (no plan_shape field present); persisting to state.json`);
         } catch (err) {
+          // [ENRICHMENT] plan_shape.mjs is advisory/optional; fail-open if unavailable to not block transition
           // best effort — never block a transition on shape detection
         }
       }
@@ -2021,6 +2035,7 @@ async function runTransition(gate, opts = {}) {
             console.log(`  ↳ Forward-scaffolded ${downstreamGate}: ${actionCount} section(s)`);
           }
         } catch (e) {
+          // [ENRICHMENT] gate_prepare.mjs is advisory/optional; fail-open if unavailable to not block transition
           // Best-effort — forward scaffolding must never block a transition.
           console.warn(`  ↳ Forward-scaffolding skipped: ${e.message}`);
         }

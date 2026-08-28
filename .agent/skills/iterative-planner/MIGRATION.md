@@ -36,6 +36,26 @@ Version 10.9.0 eliminates the four migration refusal classes blocking fleet adop
   - Ticket deferral adds `lifecycle:deferred` label.
   - Failures to reach GitHub (network offline, auth failure) are logged as non-blocking advisory records and queued for retry without failing local operations.
 
+### Fix 7 — Safe Host Rule Overlay Extraction
+- `migrate.mjs upgrade` automatically detects and extracts consumer-owned markdown rules from `.agent/rules.md` into standalone `.agent/rules/40-<name>.md` overlay files during the upgrade pre-pass.
+- Host sections are copied into overlays, then `rules.md` is replaced with selected-source snapshot bytes.
+- Upgrades proceed transactionally with full provenance safety, pruning parked workflows and merging policy defaults.
+- Direct force-overwrite remains strictly blocked to prevent silent code or rule loss.
+
+### Fix 8 — Consumer I-035 ignores planner trees and backups
+- Semantic hygiene now skips `.agent/` and `.agent.v*.backup/` on every consumer even when `.agent` is git-tracked.
+- Fixes false `validate-to-close` failures reporting hundreds of `unmapped_source_file` entries from `.agent/` or `.agent.v*.backup/` trees; this is a semantic hygiene loader fix, not a story-bootstrap problem.
+- `audit.config.json` is not treated as a host config-flag source. Planner-only JSON keys are no longer default discovery.
+- Canonical source dogfood still maps its own `.agent/skills/iterative-planner` files. I-035 remains blocking for real host product files.
+- Existing consumer `source_hygiene.json` overlays stay consumer-owned; the loader applies these skips regardless of a stale seed.
+
+### Fix 9 — Doctor / Self-Heal Classification Split & Fail-Open Host Workflows
+- Split doctor diagnostics and self-heal checks into explicit classes:
+  - **Class A (True Install Repair / Drift)**: Version mismatch, missing files, stale managed files, setup issues, half-applied payloads, version stratigraphy mismatch, interrupted transactions, or blocking ritual errors. Blocks mutating planner commands (exit 2) and prints pinned `upgrade --commit` or `recover-upgrade`.
+  - **Class B (Consumer / Host Dirt)**: Uncommitted consumer working-tree modifications (e.g. consumer rules, hygiene configs) or uninventoried host workflows on an installation already matching source version. Does not block `bootstrap new`, `resume`, or `transition`, and never outputs `upgrade --commit`.
+  - **Class C (Advisories)**: Non-blocking advisory notes (e.g. root instruction sync differences).
+- Extra `.agent/workflows/*.md` missing from `workflow_migration_inventory.json` fail-open as host-owned advisories (`severity: "warning"`, `blocking: false`), preserving ritual contract readiness `PASS`.
+
 ## 10.8.1 — Catalog Repair and Coverage Ratchet Alignment
 
 Version 10.8.1 repairs IVE test runner registrations, aligns test census denominators, updates version surfaces, and reinforces test coverage for transition, bootstrap, and program manager helpers to maintain coverage baseline floors.

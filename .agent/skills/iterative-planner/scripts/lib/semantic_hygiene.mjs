@@ -2,7 +2,7 @@
 
 import { execFileSync } from "child_process";
 import { existsSync, lstatSync, readdirSync, readFileSync, statSync } from "fs";
-import { basename, extname, join, relative } from "path";
+import { basename, extname, join, relative, resolve } from "path";
 
 import { sanitizeEnumAtom, sanitizeStrictId } from "./sanitize.mjs";
 
@@ -16,14 +16,14 @@ export const DEFAULT_SOURCE_HYGIENE_CONFIG = Object.freeze({
   skip_dirs: [
     ".cache", ".git", ".next", ".nuxt", ".turbo", ".venv", "__pycache__", "build",
     "coverage", "dist", "node_modules", "out", "reports", "tmp", "venv", "vendor",
+    ".agent.v6.backup",
   ],
-  skip_path_prefixes: ["plans/", "apps/ive-visualizer/public/"],
+  skip_path_prefixes: ["plans/", ".agent/", ".agent.v6.backup/"],
   ignored_files: [],
   ignored_globs: [
-    "apps/ive-visualizer/src/data/packInspector.generated.js",
-    "docs/ive-redesign/examples/**",
-    "docs/ive-redesign/overview.html",
     "scratch/**",
+    ".agent.v*.backup/**",
+    "**/.agent.v*.backup/**",
   ],
   ignore_header_markers: ["@planner:disabled", "@planner:ignore"],
   config_file_patterns: [
@@ -32,8 +32,8 @@ export const DEFAULT_SOURCE_HYGIENE_CONFIG = Object.freeze({
     "*.config.json", "*.config.example.json", "*.config.template.json",
     "config.json", "config.example.json", "config.template.json",
   ],
-  config_skip_patterns: [".env.local", "*.local", "*.local.*"],
-  json_property_keys: ["auto_committee", "fail_on", "role_options", "roles"],
+  config_skip_patterns: [".env.local", "*.local", "*.local.*", "audit.config.json"],
+  json_property_keys: [],
   json_env_value_key_suffixes: ["_env", "Env"],
 });
 
@@ -51,6 +51,32 @@ const GIT_ROUTING_ENV_KEYS = [
   "GIT_QUARANTINE_PATH",
   "GIT_WORK_TREE",
 ];
+
+const ALWAYS_CONSUMER_SKIP_PREFIXES = Object.freeze([
+  ".agent/",
+  ".agent/skills/iterative-planner/",
+  ".agent/workflows/",
+  ".agent/_parked/",
+  ".agent/scripts/",
+  ".agent.v6.backup/",
+]);
+
+const ALWAYS_BACKUP_DIRS = Object.freeze([
+  ".agent.v6.backup",
+]);
+
+const ALWAYS_BACKUP_PREFIXES = Object.freeze([
+  ".agent.v6.backup/",
+]);
+
+const ALWAYS_BACKUP_GLOBS = Object.freeze([
+  ".agent.v*.backup/**",
+  "**/.agent.v*.backup/**",
+]);
+
+const ALWAYS_CONFIG_SKIP_PATTERNS = Object.freeze([
+  "audit.config.json",
+]);
 
 function arrayValue(value) {
   return Array.isArray(value) ? value.filter((entry) => typeof entry === "string" && entry.trim()) : [];
@@ -111,6 +137,65 @@ function readJsonFile(filePath) {
   }
 }
 
+function isPlannerBackupSegment(part) {
+  return /^\.agent\.v[0-9a-zA-Z._-]*\.backup$/.test(String(part || ""));
+}
+
+function isCanonicalPlannerSource(cwd) {
+  if (
+    process.env._PLANNER_MANAGED_UPGRADE_PROOF_RUNNING === "1"
+    || process.env._PLANNER_PINNED_SOURCE_RUNNING === "1"
+  ) {
+    return false;
+  }
+  const registryPath = join(cwd, ".agent", "skills", "iterative-planner", "config", ".project_registry.json");
+  const registry = readJsonFile(registryPath);
+  const sourcePath = typeof registry?.source_project_path === "string"
+    ? registry.source_project_path.trim()
+    : "";
+  if (!sourcePath) return false;
+  try {
+    return resolve(sourcePath) === resolve(cwd);
+  } catch {
+    return false;
+  }
+}
+
+function uniqueStrings(values) {
+  return [...new Set((values || []).filter((entry) => typeof entry === "string" && entry.trim()))];
+}
+
+function applyAlwaysOnHygieneSkips(config, cwd) {
+  const isCanonical = isCanonicalPlannerSource(cwd);
+  const skipDirs = uniqueStrings([...(config.skip_dirs || []), ...ALWAYS_BACKUP_DIRS]);
+  let rawPrefixes = config.skip_path_prefixes || [];
+  if (isCanonical) {
+    rawPrefixes = rawPrefixes.filter(
+      (p) => p !== ".agent/" && p !== ".agent/skills/iterative-planner/"
+    );
+  }
+  const skipPrefixes = uniqueStrings([
+    ...rawPrefixes,
+    ...ALWAYS_BACKUP_PREFIXES,
+    ...(!isCanonical ? ALWAYS_CONSUMER_SKIP_PREFIXES : []),
+  ]);
+  const ignoredGlobs = uniqueStrings([
+    ...(config.ignored_globs || []),
+    ...ALWAYS_BACKUP_GLOBS,
+  ]);
+  const configSkip = uniqueStrings([
+    ...(config.config_skip_patterns || []),
+    ...ALWAYS_CONFIG_SKIP_PATTERNS,
+  ]);
+  return {
+    ...config,
+    skip_dirs: skipDirs,
+    skip_path_prefixes: skipPrefixes,
+    ignored_globs: ignoredGlobs,
+    config_skip_patterns: configSkip,
+  };
+}
+
 export function loadSemanticHygieneConfig(cwd = process.cwd(), { configPath = null } = {}) {
   const path = configPath || join(cwd, ".agent", "skills", "iterative-planner", "config", "source_hygiene.json");
   const raw = readJsonFile(path);
@@ -125,9 +210,10 @@ export function loadSemanticHygieneConfig(cwd = process.cwd(), { configPath = nu
     config.skip_path_prefixes = [...new Set([...config.skip_path_prefixes, ".agent/"])];
   } catch {
     // The planner source repository tracks .agent; non-Git workspaces and
-    // ordinary unignored source trees retain the configured discovery rules.
+    // ordinary unignored source trees retain the configured discovery rules
+    // unless applyAlwaysOnHygieneSkips classifies them as consumers.
   }
-  return config;
+  return applyAlwaysOnHygieneSkips(config, cwd);
 }
 
 function globToRegExp(pattern) {
@@ -169,7 +255,7 @@ function isSkipped(relPath, config) {
   const normalized = normalizePath(relPath);
   const parts = normalized.split("/");
   const skipDirs = new Set(config.skip_dirs || []);
-  if (parts.some((part) => skipDirs.has(part))) return true;
+  if (parts.some((part) => skipDirs.has(part) || isPlannerBackupSegment(part))) return true;
   if ((config.skip_path_prefixes || []).some((prefix) => pathStartsWith(normalized, prefix))) return true;
   return false;
 }
@@ -231,7 +317,9 @@ function walkFiles(cwd, config) {
 }
 
 export function discoverSourceFiles(cwd = process.cwd(), { config = null } = {}) {
-  const effectiveConfig = config ? mergeConfig(config) : loadSemanticHygieneConfig(cwd);
+  const effectiveConfig = config
+    ? applyAlwaysOnHygieneSkips(mergeConfig(config), cwd)
+    : loadSemanticHygieneConfig(cwd);
   const discovered = [];
   const ignored = [];
 
@@ -316,7 +404,21 @@ function jsonKeyHasEnvSuffix(key, config) {
   return (config.json_env_value_key_suffixes || []).some((suffix) => String(key || "").endsWith(suffix));
 }
 
+function isPlannerPath(relPath) {
+  const normalized = normalizePath(relPath);
+  const parts = normalized.split("/");
+  if (parts.some((part) => isPlannerBackupSegment(part))) return true;
+  const prefixes = [
+    ".agent/",
+    ".agent.v6.backup/",
+    "plans/",
+  ];
+  return prefixes.some((prefix) => pathStartsWith(normalized, prefix));
+}
+
 function parseJsonConfig(value, relPath, out, config) {
+  if (isPlannerPath(relPath)) return;
+
   function visit(node) {
     if (Array.isArray(node)) {
       for (const item of node) visit(item);
@@ -339,10 +441,13 @@ function parseJsonConfig(value, relPath, out, config) {
 }
 
 export function discoverConfigKeys(cwd = process.cwd(), { config = null } = {}) {
-  const effectiveConfig = config ? mergeConfig(config) : loadSemanticHygieneConfig(cwd);
+  const effectiveConfig = config
+    ? applyAlwaysOnHygieneSkips(mergeConfig(config), cwd)
+    : loadSemanticHygieneConfig(cwd);
   const byKey = new Map();
 
   for (const relPath of walkFiles(cwd, effectiveConfig)) {
+    if (isPlannerPath(relPath)) continue;
     const absPath = join(cwd, relPath);
     let st = null;
     try {

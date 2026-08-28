@@ -122,7 +122,7 @@ Specialist workflows below are still available, but most users should only need 
 ## Key References
 
 - **Full state machine spec**: `.agent/skills/iterative-planner/SKILL.md`
-- **Session rules**: `.agent/rules.md`
+- **Session rules**: `.agent/rules.md` (plus project overlays in `.agent/rules/*.md` in lexical order)
 - **Ontology guide**: `.agent/skills/iterative-planner/references/rule-engine-guide.md`
 - **Prolog invariants**: `.agent/skills/iterative-planner/prolog/invariants.pl`
 - **Gate definitions**: `.agent/skills/iterative-planner/config/gates.json`

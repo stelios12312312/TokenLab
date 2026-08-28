@@ -1058,10 +1058,36 @@ function checkDependencyCycles(edges) {
   return cycles;
 }
 
+function findScopeRoot(startDir) {
+  let current = resolve(startDir);
+  while (true) {
+    if (existsSync(join(current, "planner.policy.yaml"))) {
+      try {
+        const policy = readFileSync(join(current, "planner.policy.yaml"), "utf-8");
+        if (/scope\.root:\s*true/.test(policy)) return current;
+      } catch {}
+    }
+    if (existsSync(join(current, ".git")) || existsSync(join(current, "package.json"))) {
+      return current;
+    }
+    const parent = dirname(current);
+    if (parent === current) return resolve(startDir);
+    current = parent;
+  }
+}
+
 export function resolveProgramPacketPath({ cwd = process.cwd(), program = null } = {}) {
-  const root = resolve(cwd);
+  const scopeRoot = findScopeRoot(cwd);
+  let root = resolve(cwd);
+  let programsDir = join(root, "plans", "programs");
+  while (!existsSync(programsDir)) {
+    if (root === scopeRoot) break;
+    const parent = dirname(root);
+    if (parent === root) break;
+    root = parent;
+    programsDir = join(root, "plans", "programs");
+  }
   const programArg = asString(program);
-  const programsDir = join(root, "plans", "programs");
 
   const packetPaths = [];
   if (existsSync(programsDir)) {
@@ -1143,7 +1169,17 @@ export function loadProgramPacket(packetPath) {
 }
 
 function repositoryProgramPackets(cwd) {
-  const programsDir = join(resolve(cwd), "plans", "programs");
+  const scopeRoot = findScopeRoot(cwd);
+  let root = resolve(cwd);
+  let programsDir = join(root, "plans", "programs");
+  while (!existsSync(programsDir)) {
+    if (root === scopeRoot) break;
+    const parent = dirname(root);
+    if (parent === root) break;
+    root = parent;
+    programsDir = join(root, "plans", "programs");
+  }
+
   if (!existsSync(programsDir)) return [];
   const packets = [];
   for (const entry of readdirSync(programsDir, { withFileTypes: true })) {

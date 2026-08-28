@@ -226,6 +226,22 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
+    id: "host-rule-overlays",
+    category: "ci",
+    label: "Host rule overlay extraction and migration isolation",
+    command: ["node", join(TESTS_ROOT, "test_host_rule_overlays.mjs")],
+    phases: ["ci", "migration", "host-rules", "planner-core"],
+    surfaces: ["ci", "migration", "rules", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_host_rule_overlays.mjs"),
+      skillRel("scripts/lib/host_rule_overlays.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_host_rule_overlays\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/host_rule_overlays\.mjs$/,
+    ],
+  }),
+  suite({
     id: "owned-file-replacement",
     category: "structured_plan",
     label: "Ownership-returning no-overwrite planner file replacement and caller recovery",

@@ -18,12 +18,23 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
     return process.env[RESOLVED_SOURCE_REF_ENV]?.trim() || process.env.PLANNER_SOURCE_REF?.trim() || "HEAD";
   }
 
+  function gitEnv() {
+    return {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+      GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM || "1",
+      GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+      XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME || "/dev/null",
+    };
+  }
+
   function gitText(repoPath, gitArgs) {
     try {
-      return execFileSync("git", ["-C", repoPath, ...gitArgs], {
+      return execFileSync("git", ["-c", "core.excludesfile=", "-C", repoPath, ...gitArgs], {
         encoding: "utf-8",
         stdio: ["ignore", "pipe", "pipe"],
         maxBuffer: 32 * 1024 * 1024,
+        env: gitEnv(),
       }).trim();
     } catch {
       return null;
@@ -55,16 +66,18 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
     const requestedRef = sourceRefArg || process.env.PLANNER_SOURCE_REF?.trim() || "HEAD";
     let sourceCommit;
     try {
-      const gitRoot = execFileSync("git", ["-C", sourceRepo, "rev-parse", "--show-toplevel"], {
+      const gitRoot = execFileSync("git", ["-c", "core.excludesfile=", "-C", sourceRepo, "rev-parse", "--show-toplevel"], {
         encoding: "utf-8",
         stdio: ["ignore", "pipe", "pipe"],
+        env: gitEnv(),
       }).trim();
       if (resolve(gitRoot) !== resolve(sourceRepo)) {
         throw new Error(`canonical source must be a git repository root (found ${gitRoot})`);
       }
-      sourceCommit = execFileSync("git", ["-C", sourceRepo, "rev-parse", "--verify", `${requestedRef}^{commit}`], {
+      sourceCommit = execFileSync("git", ["-c", "core.excludesfile=", "-C", sourceRepo, "rev-parse", "--verify", `${requestedRef}^{commit}`], {
         encoding: "utf-8",
         stdio: ["ignore", "pipe", "pipe"],
+        env: gitEnv(),
       }).trim();
     } catch (error) {
       console.error(`ERROR: source ref '${requestedRef}' could not be resolved in ${sourceRepo}; no managed files were written.`);
@@ -75,10 +88,11 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
     const snapshotRoot = mkdtempSync(join(tmpdir(), "planner-source-snapshot-"));
     let childStatus = 1;
     try {
-      const archive = execFileSync("git", ["-C", sourceRepo, "archive", "--format=tar", sourceCommit, ".agent"], {
+      const archive = execFileSync("git", ["-c", "core.excludesfile=", "-C", sourceRepo, "archive", "--format=tar", sourceCommit, ".agent"], {
         encoding: null,
         maxBuffer: 512 * 1024 * 1024,
         stdio: ["ignore", "pipe", "pipe"],
+        env: gitEnv(),
       });
       const extract = spawnSync("tar", ["-xf", "-", "-C", snapshotRoot], {
         input: archive,
@@ -363,8 +377,22 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
       canonicalSourceProjectPath(),
       ".agent/skills/iterative-planner/scripts/migrate.mjs",
     );
-    console.log("\n  half-applied payload detected, or managed divergence requires review.");
-    console.log("  Recovery: preserve unrelated work, then stash or revert .agent/** and managed root snapshots to committed state.");
+    const rulesCommittedConflict = report.conflicts.find(
+      (conflict) => conflict.path === ".agent/rules.md" && conflict.classification === "committed_divergence",
+    );
+    const hasOtherConflict = report.conflicts.some(
+      (conflict) => conflict.path !== ".agent/rules.md" || conflict.classification !== "committed_divergence",
+    );
+
+    if (rulesCommittedConflict) {
+      console.log("\n  Host rules.md has in-place managed-section edits; not auto-extractable.");
+      console.log("  Move unique host rules to .agent/rules/<nn>-<name>.md, restore .agent/rules.md from source history, then rerun upgrade --commit.");
+      console.log("  No force-overwrite path is available.");
+    }
+    if (hasOtherConflict || !rulesCommittedConflict) {
+      console.log("\n  half-applied payload detected, or managed divergence requires review.");
+      console.log("  Recovery: preserve unrelated work, then stash or revert .agent/** and managed root snapshots to committed state.");
+    }
     console.log(`  Rerun: node ${JSON.stringify(sourceScript)} upgrade ${JSON.stringify(report.targetPath || "<target-path>")} --source-ref ${sourcePin} --commit`);
     console.log("  If doctor reports an active transaction, run its recover-upgrade command first. No force-overwrite path is available.\n");
   }

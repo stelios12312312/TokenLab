@@ -394,6 +394,7 @@ export function buildWorkflowDispositionSurface(
       issues.push(issue({
         id: "workflow_markdown_missing_inventory_entry",
         workflow: activeId,
+        severity: "warning",
         message: `${workflowMarkdownPath(projectRoot, activeId)} exists without a workflow_migration_inventory.json disposition`,
         repair_command: `Add ${activeId} to workflow_migration_inventory.json or mark a consumer-owned file with ${HOST_OWNED_WORKFLOW_MARKER}.`,
       }));
@@ -589,13 +590,35 @@ export function buildWorkflowContractSummary(projectRoot, workflowId) {
 }
 
 function gitOutput(cwd, args) {
-  const proc = spawnSync("git", args, { cwd, encoding: "utf-8", timeout: 10000 });
+  const proc = spawnSync("git", args, {
+    cwd,
+    encoding: "utf-8",
+    timeout: 10000,
+    env: {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_SYSTEM: "/dev/null",
+      XDG_CONFIG_HOME: "/dev/null",
+    },
+  });
   if (proc.status !== 0) return null;
   return String(proc.stdout || "").trim();
 }
 
 function gitRawOutput(cwd, args) {
-  const proc = spawnSync("git", args, { cwd, encoding: "utf-8", timeout: 10000 });
+  const proc = spawnSync("git", args, {
+    cwd,
+    encoding: "utf-8",
+    timeout: 10000,
+    env: {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_SYSTEM: "/dev/null",
+      XDG_CONFIG_HOME: "/dev/null",
+    },
+  });
   if (proc.status !== 0) return null;
   return String(proc.stdout || "").replace(/\r?\n$/, "");
 }
