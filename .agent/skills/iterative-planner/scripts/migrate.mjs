@@ -85,6 +85,7 @@ import {
   formatProjectOntologyProvisioning,
   formatProjectSetupCompletion,
   mergeProjectOntologyExitCode,
+  projectOntologyPresent,
   provisionProjectOntology,
 } from "./lib/project_ontology_provisioning.mjs";
 import { JOURNAL_REL_PATH, loadJournal } from "./lib/agent_journal.mjs";
@@ -471,11 +472,19 @@ function buildExpectedManifest(targetPath) {
 
   const managedWorkflowPaths = listFleetManagedWorkflowFiles(dirname(agentDir))
     .map((name) => `.agent/workflows/${name}`);
+  const managedSkillPaths = existsSync(sourceSkillsDir)
+    ? listManagedDirNames(sourceSkillsDir)
+      .filter((name) => statSync(join(sourceSkillsDir, name)).isDirectory())
+      .map((name) => `.agent/skills/${name}`)
+    : [".agent/skills/iterative-planner"];
   return entries.map((entry) => {
     const relativePath = gitPath(relative(targetPath, entry.path));
     const ownership = entry.consumer_owned
       ? MANAGED_PAYLOAD_OWNERSHIP.PROJECT
-      : classifyManagedPayloadPath(relativePath, { managedWorkflowPaths });
+      : classifyManagedPayloadPath(relativePath, {
+          managedWorkflowPaths,
+          managedSkillPaths,
+        });
     return { ...entry, ownership };
   });
 }
@@ -2990,11 +2999,14 @@ function validateTransactionApplyCandidate(targetPath) {
   const missing = manifest.filter((entry) => !existsSync(entry.path));
   const stale = findVerificationDrift(manifest, targetPath);
   const setupIssues = collectRepairableSetupIssues(targetPath);
+  const blockingSetupIssues = setupIssues.filter((issue) => (
+    !existsSync(join(targetPath, issue.path))
+  ));
   const ritualContractReadiness = validateRitualContractReadiness(targetPath);
   const issues = [];
   if (missing.length > 0) issues.push(`${missing.length} managed file(s) missing`);
   if (stale.length > 0) issues.push(`${stale.length} managed file(s) stale`);
-  if (setupIssues.length > 0) issues.push(`${setupIssues.length} setup issue(s)`);
+  if (blockingSetupIssues.length > 0) issues.push(`${blockingSetupIssues.length} missing project scaffold(s)`);
   if (!verificationStatusIsPass(ritualContractReadiness.status, "execution")) {
     issues.push(`ritual contract readiness ${ritualContractReadiness.status} (${ritualContractReadiness.issue_count} issue(s))`);
   }
@@ -3116,33 +3128,13 @@ function collectObsoletePlannerWorkflowFiles(targetPath) {
   };
 }
 
-function addHostOwnedWorkflowMarker(content) {
-  const marker = `<!-- ${HOST_OWNED_WORKFLOW_MARKER} -->`;
-  if (content.includes(HOST_OWNED_WORKFLOW_MARKER)) return content;
-  const newline = content.includes("\r\n") ? "\r\n" : "\n";
-  if (content.startsWith(`---${newline}`)) {
-    const closingDelimiter = `${newline}---`;
-    const closingIndex = content.indexOf(closingDelimiter, 3 + newline.length);
-    if (closingIndex >= 0) {
-      const insertAt = closingIndex + closingDelimiter.length;
-      return `${content.slice(0, insertAt)}${newline}${marker}${content.slice(insertAt)}`;
-    }
-  }
-  return `${marker}${newline}${content}`;
-}
-
 function pruneObsoletePlannerWorkflowFiles(targetPath, dryRun, log) {
   const { prunable, preserved } = collectObsoletePlannerWorkflowFiles(targetPath);
   for (const path of preserved) {
     if (workflowFileHasExplicitHostOwnerMarker(path)) {
       log.push(`  PRESERVED host-owned workflow: ${basename(path)} (${HOST_OWNED_WORKFLOW_MARKER})`);
-    } else if (dryRun) {
-      log.push(`  WOULD MARK host-owned workflow: ${basename(path)} (no same-path canonical source history)`);
     } else {
-      const beforeHash = fileHash(path);
-      const content = readFileSync(path, "utf-8");
-      writeFileSync(path, addHostOwnedWorkflowMarker(content));
-      log.push(`  MARKED host-owned workflow: ${gitPath(relative(targetPath, path))} before_sha256=${beforeHash || "unavailable"} after_sha256=${fileHash(path) || "unavailable"}`);
+      log.push(`  PRESERVED project-owned workflow: ${basename(path)} (no same-path canonical source history)`);
     }
   }
   if (prunable.length === 0) {
@@ -3422,9 +3414,18 @@ function runProjectSetup(targetPath, dryRun, log) {
   // 7. Provision the consumer's own canonical ontology. This invokes the
   // installed engine against targetPath; it never copies source-repo facts.
   log.push("\n## Project Ontology");
-  const ontologyReceipt = provisionProjectOntology({ cwd: targetPath, dryRun });
-  log.push(...formatProjectOntologyProvisioning(ontologyReceipt));
-  process.exitCode = mergeProjectOntologyExitCode(process.exitCode, ontologyReceipt);
+  let ontologyOk = true;
+  if (
+    process.env._PLANNER_MANAGED_UPGRADE_INTERNAL === "1"
+    && projectOntologyPresent(targetPath)
+  ) {
+    log.push("  PRESERVED: existing project-owned ontology; engine transaction does not validate or rewrite consumer semantics");
+  } else {
+    const ontologyReceipt = provisionProjectOntology({ cwd: targetPath, dryRun });
+    log.push(...formatProjectOntologyProvisioning(ontologyReceipt));
+    process.exitCode = mergeProjectOntologyExitCode(process.exitCode, ontologyReceipt);
+    ontologyOk = ontologyReceipt.ok;
+  }
 
   // 8. Run ripple check
   log.push("\n## Ripple-Through Check");
@@ -3442,7 +3443,7 @@ function runProjectSetup(targetPath, dryRun, log) {
   } else {
     log.push(`  SKIP: ripple_check.mjs not found`);
   }
-  return ontologyReceipt.ok;
+  return ontologyOk;
 }
 
 function normalizeSetupProfile(value) {
@@ -3800,6 +3801,12 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   const obsoleteTests = collectObsoletePlannerTestFiles(targetPath);
   const obsoleteTestCount = obsoleteTests.prunable.length;
   const setupIssues = collectRepairableSetupIssues(targetPath);
+  const scaffoldSetupIssues = setupIssues.filter((issue) => (
+    !existsSync(join(targetPath, issue.path))
+  ));
+  const preservedProjectSetupIssues = setupIssues.filter((issue) => (
+    existsSync(join(targetPath, issue.path))
+  ));
   const advisoryIssues = findRootInstructionSyncIssues(targetPath);
 
   let syncSafetyEntries = staleEntries.filter((entry) => (
@@ -3866,6 +3873,13 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     [...obsoleteWorkflows.prunable, ...obsoleteTests.prunable]
       .map((path) => ({ path, ownership: MANAGED_PAYLOAD_OWNERSHIP.ENGINE })),
   );
+  const engineCandidatePaths = [...new Set([
+    ...syncSafetyEntries
+      .filter((entry) => entry.ownership === MANAGED_PAYLOAD_OWNERSHIP.ENGINE)
+      .map((entry) => gitPath(relative(targetPath, entry.path))),
+    ...obsoleteWorkflows.prunable.map((path) => gitPath(relative(targetPath, path))),
+    ...obsoleteTests.prunable.map((path) => gitPath(relative(targetPath, path))),
+  ])].sort();
   if (!syncSafety.ok) {
     const stratigraphy = managedUpgradeDiagnostics(targetPath, CURRENT_VERSION);
     console.log(
@@ -3883,14 +3897,20 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
       reason: "managed-sync-conflict",
       conflicts: syncSafety.conflicts,
       engineReplacements: syncSafety.replacements,
+      engineCandidatePaths,
     };
   }
 
-  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && unmarkedHostWorkflowCount === 0 && obsoleteTestCount === 0 && setupIssues.length === 0 && !seedKB) {
+  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && obsoleteTestCount === 0 && scaffoldSetupIssues.length === 0 && !seedKB) {
     console.log(`\n  ✅ Already at version ${CURRENT_VERSION} with all ${manifest.length} files present and up to date.`);
     console.log(`  No project-level setup repair is required; upgrade is a read-only no-op.`);
     if (advisoryIssues.length > 0) {
       console.log(`  Advisory setup drift remains (${advisoryIssues.length} issue(s)); run setup explicitly to refresh root instructions or mirrors.`);
+    }
+    if (unmarkedHostWorkflowCount > 0 || preservedProjectSetupIssues.length > 0) {
+      console.log(
+        `  Project-owned setup drift remains (${unmarkedHostWorkflowCount + preservedProjectSetupIssues.length} item(s)); run setup or annotate explicitly if you want to change it.`,
+      );
     }
     console.log();
     return {
@@ -3901,11 +3921,12 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
       to: CURRENT_VERSION,
       reason: "already-current-clean",
       engineReplacements: [],
+      engineCandidatePaths: [],
     };
   }
 
-  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && unmarkedHostWorkflowCount === 0 && obsoleteTestCount === 0 && setupIssues.length > 0 && !seedKB) {
-    console.log(`\n  ⚠️  Already at version ${CURRENT_VERSION}, but ${setupIssues.length} setup repair issue(s) require project setup.`);
+  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && obsoleteTestCount === 0 && scaffoldSetupIssues.length > 0 && !seedKB) {
+    console.log(`\n  ⚠️  Already at version ${CURRENT_VERSION}, but ${scaffoldSetupIssues.length} missing project scaffold(s) require setup.`);
     console.log(`  Planner-managed files are current; setup ${dryRun ? "would run" : "will run"} as the explicit repair step.\n`);
     return {
       noOp: false,
@@ -3915,6 +3936,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
       to: CURRENT_VERSION,
       reason: "setup-repair-required",
       engineReplacements: [],
+      engineCandidatePaths: [],
     };
   }
 
@@ -3922,15 +3944,12 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${missing.length} file(s) are missing. Repairing...`);
   }
 
-  if (version === CURRENT_VERSION && setupIssues.length > 0) {
-    console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${setupIssues.length} setup repair issue(s) remain. Setup ${dryRun ? "would run" : "will run"} after file sync.`);
+  if (version === CURRENT_VERSION && scaffoldSetupIssues.length > 0) {
+    console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${scaffoldSetupIssues.length} project scaffold(s) are missing. Setup ${dryRun ? "would run" : "will run"} after file sync.`);
   }
 
   if (version === CURRENT_VERSION && obsoleteWorkflowCount > 0) {
     console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${obsoleteWorkflowCount} obsolete planner workflow file(s) remain. Pruning...`);
-  }
-  if (version === CURRENT_VERSION && unmarkedHostWorkflowCount > 0) {
-    console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${unmarkedHostWorkflowCount} preserved host workflow file(s) need ownership markers.`);
   }
   if (version === CURRENT_VERSION && obsoleteTestCount > 0) {
     console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${obsoleteTestCount} obsolete planner test file(s) remain. Pruning...`);
@@ -3943,7 +3962,6 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   if (staleCount > 0) changeParts.push(`${staleCount} stale`);
   if (extractedOverlays.length > 0) changeParts.push(`${extractedOverlays.length} rule overlay${extractedOverlays.length === 1 ? "" : "s"}`);
   if (obsoleteWorkflowCount > 0) changeParts.push(`${obsoleteWorkflowCount} obsolete workflow${obsoleteWorkflowCount === 1 ? "" : "s"}`);
-  if (unmarkedHostWorkflowCount > 0) changeParts.push(`${unmarkedHostWorkflowCount} host workflow marker${unmarkedHostWorkflowCount === 1 ? "" : "s"}`);
   if (obsoleteTestCount > 0) changeParts.push(`${obsoleteTestCount} obsolete test${obsoleteTestCount === 1 ? "" : "s"}`);
   const changeDesc = changeParts.length > 0 ? changeParts.join(", ") : "0 changes";
   console.log(`║  ${version} → ${CURRENT_VERSION}  (${changeDesc})                  ║`);
@@ -4017,25 +4035,21 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   const targetRegistryPath = join(targetBase, "config", ".project_registry.json");
   try {
     const registryBefore = existsSync(targetRegistryPath) ? readFileSync(targetRegistryPath) : null;
-    const registry = existsSync(targetRegistryPath)
-      ? JSON.parse(readFileSync(targetRegistryPath, "utf-8"))
-      : { projects: [] };
-    registry.source_project_path = canonicalSourceProjectPath();
-    const registryAfter = `${JSON.stringify(registry, null, 2)}\n`;
-    if (!registryBefore || !registryBefore.equals(Buffer.from(registryAfter))) {
-      const beforeHash = registryBefore ? createHash("sha256").update(registryBefore).digest("hex") : "missing";
+    if (registryBefore) {
+      log.push("  PRESERVED existing project-owned config: .project_registry.json");
+    } else {
+      const registry = { projects: [], source_project_path: canonicalSourceProjectPath() };
+      const registryAfter = `${JSON.stringify(registry, null, 2)}\n`;
       const afterHash = createHash("sha256").update(registryAfter).digest("hex");
       if (dryRun) {
-        log.push(`  WOULD MERGE: .project_registry.json source_project_path before_sha256=${beforeHash} after_sha256=${afterHash}`);
+        log.push(`  WOULD CREATE: .project_registry.json source_project_path before_sha256=missing after_sha256=${afterHash}`);
       } else {
         writeFileSync(targetRegistryPath, registryAfter);
-        log.push(`  UPDATED: ${managedDisplayPath(targetRegistryPath)} before_sha256=${beforeHash} after_sha256=${afterHash}`);
+        log.push(`  CREATED: ${managedDisplayPath(targetRegistryPath)} before_sha256=missing after_sha256=${afterHash}`);
       }
-    } else {
-      log.push("  OK (up to date): .project_registry.json source_project_path");
     }
   } catch (e) {
-    log.push(`  WARN: Could not update .project_registry.json source_project_path: ${e.message}`);
+    log.push(`  WARN: Could not preserve or create .project_registry.json: ${e.message}`);
   }
 
   // --- Checklists ---
@@ -4312,6 +4326,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     to: CURRENT_VERSION,
     reason: "upgrade-or-repair",
     engineReplacements: syncSafety.replacements,
+    engineCandidatePaths,
   };
 }
 
@@ -4917,6 +4932,7 @@ function cmdUpgradeAll(dryRun, commitRequested = false) {
             fromVersion: readCommittedPlannerVersion(project.path),
             toVersion: CURRENT_VERSION,
             engineReplacements: preview.engineReplacements,
+            engineCandidatePaths: preview.engineCandidatePaths,
           });
           upgradeResult = {
             noOp: false,
@@ -6742,6 +6758,7 @@ if (command === "upgrade-approval-envelope") {
               toVersion: CURRENT_VERSION,
               seedKB,
               engineReplacements: preview.engineReplacements,
+              engineCandidatePaths: preview.engineCandidatePaths,
             });
           } catch (error) {
             console.error(

@@ -6,10 +6,12 @@
   "receipt_path": ".agent/skills/iterative-planner/config/last_upgrade_receipt.json",
   "journal_git_path": "iterative-planner/managed-upgrade",
   "candidate_scopes": [
-    ".agent/skills/iterative-planner",
+    ".agent/skills",
     ".agent/rules.md",
     ".agent/rules",
     ".agent/scripts",
+    ".agent/gotchas.md",
+    ".agent/ADAPTATION-GUIDE.md",
     ".agent/workflows",
     "CLAUDE.md",
     "GEMINI.md",
@@ -21,6 +23,12 @@
     "planner.policy.yml",
     "planner.policy.json",
     "plans/knowledge"
+  ],
+  "managed_skill_paths": [
+    ".agent/skills/iterative-planner",
+    ".agent/skills/quant-researcher",
+    ".agent/skills/red-team-remediation",
+    ".agent/skills/story-verification"
   ],
   "proof_commands": [
     {

@@ -70,7 +70,11 @@ function assert(condition, label) {
 
 function testManagedPayloadOwnershipContract() {
   const managedWorkflowPaths = [".agent/workflows/safe-change.md"];
-  const classify = (path) => classifyManagedPayloadPath(path, { managedWorkflowPaths });
+  const managedSkillPaths = [".agent/skills/red-team-remediation"];
+  const classify = (path) => classifyManagedPayloadPath(path, {
+    managedWorkflowPaths,
+    managedSkillPaths,
+  });
   assert(classify(".agent/skills/iterative-planner/scripts/migrate.mjs") === MANAGED_PAYLOAD_OWNERSHIP.ENGINE, "ownership: planner runtime is engine-owned");
   assert(classify(".agent/skills/iterative-planner/config/.project_registry.json") === MANAGED_PAYLOAD_OWNERSHIP.PROJECT, "ownership: project registry is project-owned");
   assert(classify(".agent/skills/iterative-planner/config/source_hygiene.json") === MANAGED_PAYLOAD_OWNERSHIP.PROJECT, "ownership: source hygiene is project-owned");
@@ -82,6 +86,8 @@ function testManagedPayloadOwnershipContract() {
   assert(classify("audit.config.json") === MANAGED_PAYLOAD_OWNERSHIP.PROJECT, "ownership: audit config is project-owned");
   assert(classify(".agent/workflows/customer.md") === MANAGED_PAYLOAD_OWNERSHIP.PROJECT, "ownership: non-canonical workflow is project-owned");
   assert(classify(".agent/workflows/safe-change.md") === MANAGED_PAYLOAD_OWNERSHIP.ENGINE, "ownership: inventory-managed workflow is engine-owned");
+  assert(classify(".agent/skills/red-team-remediation/SKILL.md") === MANAGED_PAYLOAD_OWNERSHIP.ENGINE, "ownership: source-inventory skill is engine-owned");
+  assert(classify(".agent/skills/customer-playbook/SKILL.md") === MANAGED_PAYLOAD_OWNERSHIP.PROJECT, "ownership: consumer-only skill is project-owned");
   assert(classify(".agent/rules.md") === MANAGED_PAYLOAD_OWNERSHIP.MIXED_PROJECTION, "ownership: legacy rules projection is mixed");
   assert(classify("AGENTS.md") === MANAGED_PAYLOAD_OWNERSHIP.MIXED_PROJECTION, "ownership: root instructions are mixed projections");
   assert(classify("src/app.js") === MANAGED_PAYLOAD_OWNERSHIP.UNKNOWN, "ownership: unrelated paths stay unknown");
@@ -880,6 +886,7 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
       coverageRegistry.source_project_path = coverageTarget;
       writeJson(join(coverageTarget, projectRegistryRel), coverageRegistry);
       commitAll(coverageTarget, "fixture: coverage-only host state");
+      const coverageRegistryBytes = readFileSync(join(coverageTarget, projectRegistryRel), "utf-8");
       const coverageEnv = {
         _PLANNER_PINNED_SOURCE_RUNNING: "1",
         PLANNER_CANONICAL_SOURCE_REPO: coverageSourceRoot,
@@ -892,8 +899,8 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
       ], coverageSourceRoot, coverageEnv);
       if (
         !coverageProbe.ok
-        || !coverageProbe.stdout.includes("WOULD MERGE: .project_registry.json source_project_path")
-        || !coverageProbe.stdout.includes("WOULD MARK host-owned workflow: customer-custom-workflow.md")
+        || !coverageProbe.stdout.includes("PRESERVED existing project-owned config: .project_registry.json")
+        || !coverageProbe.stdout.includes("PRESERVED project-owned workflow: customer-custom-workflow.md")
         || !coverageProbe.stdout.includes(`PRESERVED non-canonical test asset: ${customTestRel}`)
       ) {
         throw new Error(`canonical coverage dry-run probe failed: ${coverageProbe.stdout || coverageProbe.stderr}`);
@@ -908,21 +915,22 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
       });
       if (
         !coverageApply.ok
-        || !coverageApply.stdout.includes("UPDATED: .agent/skills/iterative-planner/config/.project_registry.json")
-        || !existsSync(join(coverageTarget, customWorkflowRel))
-        || !workflowFileHasExplicitHostOwnerMarker(join(coverageTarget, customWorkflowRel))
+        || !coverageApply.stdout.includes("PRESERVED existing project-owned config: .project_registry.json")
+        || readFileSync(join(coverageTarget, projectRegistryRel), "utf-8") !== coverageRegistryBytes
+        || readFileSync(join(coverageTarget, customWorkflowRel), "utf-8") !== customWorkflowBytes
+        || workflowFileHasExplicitHostOwnerMarker(join(coverageTarget, customWorkflowRel))
         || readFileSync(join(coverageTarget, customTestRel), "utf-8") !== "{\"owner\":\"coverage-consumer\"}\n"
       ) {
         const diagnostic = `${coverageApply.stdout || ""}\n${coverageApply.stderr || ""}`;
         throw new Error(`canonical coverage write probe failed:\n${diagnostic.slice(-12000)}`);
       }
-      writeFileSync(join(coverageTarget, customWorkflowRel), customWorkflowBytes);
+      appendText(join(coverageTarget, managedRel), "\n% COVERAGE_ONLY_COMMITTED_ENGINE_FORK\n");
       commitAll(
         coverageTarget,
-        "fixture: restore unmarked host workflow for canonical apply coverage",
+        "fixture: committed engine fork for direct apply coverage",
         { noVerify: true },
       );
-      const coverageMarkerApply = runRaw([
+      const coverageDirectApply = runRaw([
         sourceMigrate,
         "upgrade", coverageTarget, "--source-ref", sourceHead, "--transaction-apply",
       ], coverageSourceRoot, {
@@ -930,11 +938,12 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
         _PLANNER_MANAGED_UPGRADE_INTERNAL: "1",
       });
       if (
-        !coverageMarkerApply.ok
-        || !coverageMarkerApply.stdout.includes("MARKED host-owned workflow:")
-        || !workflowFileHasExplicitHostOwnerMarker(join(coverageTarget, customWorkflowRel))
+        !coverageDirectApply.ok
+        || readFileSync(join(coverageTarget, managedRel), "utf-8").includes("COVERAGE_ONLY_COMMITTED_ENGINE_FORK")
+        || readFileSync(join(coverageTarget, projectRegistryRel), "utf-8") !== coverageRegistryBytes
+        || readFileSync(join(coverageTarget, customWorkflowRel), "utf-8") !== customWorkflowBytes
       ) {
-        throw new Error(`canonical host-workflow marker coverage failed: ${coverageMarkerApply.stdout || coverageMarkerApply.stderr}`);
+        throw new Error(`canonical direct engine-repair coverage failed: ${coverageDirectApply.stdout || coverageDirectApply.stderr}`);
       }
       const coverageNoOp = runRaw([
         sourceMigrate,
@@ -958,7 +967,7 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
       ], coverageSourceRoot, coverageEnv);
       if (
         !missingRegistryDryRun.ok
-        || !missingRegistryDryRun.stdout.includes("WOULD MERGE: .project_registry.json source_project_path before_sha256=missing")
+        || !missingRegistryDryRun.stdout.includes("WOULD CREATE: .project_registry.json source_project_path before_sha256=missing")
         || existsSync(join(coverageTarget, projectRegistryRel))
       ) {
         throw new Error(`canonical coverage missing-registry dry-run failed: ${missingRegistryDryRun.stdout || missingRegistryDryRun.stderr}`);
@@ -1041,10 +1050,10 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
     ], sourceRoot));
     assert(
       staleDryRun.ok
-        && staleDryRun.stdout.includes("WOULD MERGE: .project_registry.json source_project_path")
-        && staleDryRun.stdout.includes("WOULD MARK host-owned workflow: customer-custom-workflow.md")
+        && staleDryRun.stdout.includes("PRESERVED existing project-owned config: .project_registry.json")
+        && staleDryRun.stdout.includes("PRESERVED project-owned workflow: customer-custom-workflow.md")
         && staleDryRun.stdout.includes(`PRESERVED non-canonical test asset: ${customTestRel}`),
-      "dry-run reports registry merge, host-workflow ownership marking, and test preservation",
+      "dry-run reports project registry, custom workflow, and test preservation",
     );
     assert(readFileSync(join(stale, managedRel), "utf-8") === staleBefore, "dry-run leaves stale managed bytes unchanged");
     assert(
@@ -1056,6 +1065,10 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
       join(sourceRoot, ".agent/skills/iterative-planner/scripts/migrate.mjs"),
       "upgrade", stale, "--source-ref", sourceCommit, "--commit",
     ], sourceRoot));
+    const staleCommitPaths = runGit(
+      stale,
+      ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+    ).split("\n").filter(Boolean);
     const staleAfter = readFileSync(join(stale, managedRel), "utf-8");
     assert(staleResult.ok, "genuinely stale target updates cleanly from the selected source commit");
     assert(staleAfter.includes(committedV2) && !staleAfter.includes(dirtySentinel), "stale target receives committed bytes and never dirty upstream bytes");
@@ -1065,24 +1078,30 @@ function testCommittedSourceAndThreeWaySelfHealSafety() {
     assert(!existsSync(join(stale, retiredTestRel)), "unchanged planner-owned test retired by the selected source commit is removed atomically with the census");
     assert(
       existsSync(join(stale, customWorkflowRel))
-        && workflowFileHasExplicitHostOwnerMarker(join(stale, customWorkflowRel))
-        && readFileSync(join(stale, customWorkflowRel), "utf-8").startsWith("---\ndescription: Consumer-owned workflow fixture\n---\n")
-        && readFileSync(join(stale, customWorkflowRel), "utf-8").includes("# Customer workflow"),
-      "non-canonical host workflow keeps its frontmatter and body while receiving explicit ownership",
+        && !workflowFileHasExplicitHostOwnerMarker(join(stale, customWorkflowRel))
+        && readFileSync(join(stale, customWorkflowRel), "utf-8") === customWorkflowBytes,
+      "non-canonical project workflow survives byte-for-byte without engine annotation",
     );
     assert(
       readFileSync(join(stale, customTestRel), "utf-8") === "{\"owner\":\"consumer\"}\n",
       "non-canonical consumer test asset is preserved byte-for-byte",
     );
-    const staleRegistryAfter = JSON.parse(readFileSync(join(stale, projectRegistryRel), "utf-8"));
+    const staleRegistryAfterBytes = readFileSync(join(stale, projectRegistryRel), "utf-8");
+    const staleRegistryAfter = JSON.parse(staleRegistryAfterBytes);
     assert(
       staleRegistryAfter.projects?.length === 1
         && staleRegistryAfter.projects[0]?.path === "/consumer-only-project",
       "project-local fleet registry entries survive managed upgrade",
     );
     assert(
-      realpathSync(staleRegistryAfter.source_project_path) === realpathSync(sourceRoot),
-      "project-local fleet registry source pointer is merged to canonical source",
+      staleRegistryAfterBytes === staleRegistryBefore
+        && realpathSync(staleRegistryAfter.source_project_path) === realpathSync(stale),
+      "project-local fleet registry survives byte-for-byte without source-pointer rewriting",
+    );
+    assert(
+      !staleCommitPaths.includes(projectRegistryRel)
+        && !staleCommitPaths.includes(customWorkflowRel),
+      "engine candidate excludes existing clean project registry and workflow paths",
     );
     assert(/before_sha256=[a-f0-9]{64}.*after_sha256=[a-f0-9]{64}/s.test(staleResult.stdout), "stale overwrite discloses full before and after SHA-256 hashes");
     assert(staleResult.stdout.includes(`Source commit: ${sourceCommit}`), "migration output discloses the selected source commit");
@@ -1460,6 +1479,8 @@ function testManagedUpgradeTransactionContract() {
   const receiptRel = ".agent/skills/iterative-planner/config/last_upgrade_receipt.json";
   const transactionConfigRel = ".agent/skills/iterative-planner/config/managed_upgrade_transaction.json";
   const rootTemplateRel = ".agent/skills/iterative-planner/references/CLAUDE.template.md";
+  const agentGuideRel = ".agent/ADAPTATION-GUIDE.md";
+  const agentGotchasRel = ".agent/gotchas.md";
   const rootInstructionFiles = ["CLAUDE.md", "GEMINI.md", "AGENTS.md"];
   const symlinkRootMarker = "TRANSACTIONAL_SYMLINK_ROOT_V2";
   const proofAssetRel =
@@ -1514,6 +1535,8 @@ function testManagedUpgradeTransactionContract() {
 
     appendText(join(sourceRoot, managedRel), "<!-- TRANSACTIONAL_UPGRADE_V2 -->");
     appendText(join(sourceRoot, rootTemplateRel), `- **Transaction fixture**: ${symlinkRootMarker}`);
+    appendText(join(sourceRoot, agentGuideRel), "<!-- TRANSACTION_ENGINE_GUIDE_V2 -->");
+    appendText(join(sourceRoot, agentGotchasRel), "<!-- TRANSACTION_ENGINE_GOTCHAS_V2 -->");
     writeFileSync(join(sourceRoot, proofAssetRel), '{"fixture":"transaction-proof-asset"}\n');
     for (const relPath of truthSurfaceManagedRels) {
       const marker = relPath.endsWith(".json")
@@ -1549,6 +1572,15 @@ function testManagedUpgradeTransactionContract() {
         symlinkSync(join("instructions", rootInstruction), join(consumer, rootInstruction));
       }
       commitAll(consumer, "fixture: symlink managed root instructions");
+      return consumer;
+    }
+
+    function makeSymlinkedAgentConsumer(label) {
+      const consumer = cloneConsumer(sourceRoot, baseCommit, label);
+      consumers.push(consumer);
+      runGit(consumer, ["mv", ".agent", "consumer-agent"]);
+      symlinkSync("consumer-agent", join(consumer, ".agent"));
+      commitAll(consumer, "fixture: symlink complete agent directory");
       return consumer;
     }
 
@@ -1617,6 +1649,17 @@ function testManagedUpgradeTransactionContract() {
         && runGit(dirtyRoot, ["status", "--porcelain=v1", "--untracked-files=all"]) === dirtyRootStatus,
       "dirty project-owned policy bytes and status survive exact engine commit",
     );
+    const dirtyRootCommitPaths = runGit(
+      dirtyRoot,
+      ["diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"],
+    ).split("\n").filter(Boolean);
+    assert(
+      dirtyRootCommitPaths.includes(agentGuideRel)
+        && dirtyRootCommitPaths.includes(agentGotchasRel)
+        && readFileSync(join(dirtyRoot, agentGuideRel), "utf-8").includes("TRANSACTION_ENGINE_GUIDE_V2")
+        && readFileSync(join(dirtyRoot, agentGotchasRel), "utf-8").includes("TRANSACTION_ENGINE_GOTCHAS_V2"),
+      "transaction candidate includes source-managed root agent documentation",
+    );
 
     const dirtyProject = cloneConsumer(sourceRoot, baseCommit, "transaction-dirty-project");
     consumers.push(dirtyProject);
@@ -1655,6 +1698,34 @@ function testManagedUpgradeTransactionContract() {
     );
     const refreshedGeneratedReceipt = JSON.parse(readFileSync(join(dirtyProject, receiptRel), "utf-8"));
     assert(refreshedGeneratedReceipt.status === "committed", "pre-existing generated receipt is replaced by the successful transaction receipt");
+
+    const invalidProjectOntology = cloneConsumer(sourceRoot, baseCommit, "transaction-invalid-project-ontology");
+    consumers.push(invalidProjectOntology);
+    const invalidOntologyPath = ".agent/ontology/facts/verification.yaml";
+    const invalidOntologyBytes = "version: 1\nverification:\n  test_runs:\n    - plan_id: ''\n";
+    mkdirSync(dirname(join(invalidProjectOntology, invalidOntologyPath)), { recursive: true });
+    writeFileSync(join(invalidProjectOntology, invalidOntologyPath), invalidOntologyBytes);
+    const invalidOntologyStatus = runGit(
+      invalidProjectOntology,
+      ["status", "--porcelain=v1", "--untracked-files=all", "--", invalidOntologyPath],
+    );
+    const invalidProjectOntologyResult = debugRaw("transaction-invalid-project-ontology", runFixtureRaw([
+      join(sourceRoot, ".agent/skills/iterative-planner/scripts/migrate.mjs"),
+      "upgrade", invalidProjectOntology, "--source-ref", sourceCommit, "--commit",
+    ], sourceRoot));
+    assert(
+      invalidProjectOntologyResult.ok
+        && invalidProjectOntologyResult.stdout.includes("PRESERVED: existing project-owned ontology"),
+      "engine transaction does not validate existing consumer-owned ontology",
+    );
+    assert(
+      readFileSync(join(invalidProjectOntology, invalidOntologyPath), "utf-8") === invalidOntologyBytes
+        && runGit(
+          invalidProjectOntology,
+          ["status", "--porcelain=v1", "--untracked-files=all", "--", invalidOntologyPath],
+        ) === invalidOntologyStatus,
+      "invalid consumer ontology bytes and status survive engine advancement",
+    );
 
     const symlinkedRoot = makeSymlinkedRootConsumer("transaction-symlink-root");
     const symlinkedRootBefore = runGit(symlinkedRoot, ["rev-parse", "HEAD"]);
@@ -1695,6 +1766,30 @@ function testManagedUpgradeTransactionContract() {
         "instructions",
       ]) === "",
       "symlink-aware transaction leaves every managed root path clean",
+    );
+
+    const symlinkedAgent = makeSymlinkedAgentConsumer("transaction-symlink-agent");
+    const symlinkedAgentBefore = runGit(symlinkedAgent, ["rev-parse", "HEAD"]);
+    const symlinkedAgentResult = debugRaw("transaction-symlink-agent", runFixtureRaw([
+      join(sourceRoot, ".agent/skills/iterative-planner/scripts/migrate.mjs"),
+      "upgrade", symlinkedAgent, "--source-ref", sourceCommit, "--commit",
+    ], sourceRoot));
+    const symlinkedAgentAfter = runGit(symlinkedAgent, ["rev-parse", "HEAD"]);
+    const symlinkedAgentPaths = runGit(
+      symlinkedAgent,
+      ["diff-tree", "--no-commit-id", "--name-only", "-r", symlinkedAgentAfter],
+    ).split("\n").filter(Boolean);
+    assert(
+      symlinkedAgentResult.ok
+        && symlinkedAgentAfter !== symlinkedAgentBefore
+        && !`${symlinkedAgentResult.stdout}\n${symlinkedAgentResult.stderr}`.includes("unknown ownership"),
+      "transaction preserves logical ownership behind an in-repository agent-directory symlink",
+    );
+    assert(
+      lstatSync(join(symlinkedAgent, ".agent")).isSymbolicLink()
+        && symlinkedAgentPaths.includes("consumer-agent/skills/iterative-planner/MIGRATION.md")
+        && !symlinkedAgentPaths.includes(".agent/skills/iterative-planner/MIGRATION.md"),
+      "agent-directory symlink candidate commits resolved target paths without replacing the symlink",
     );
 
     const dirtySymlinkRoot = makeSymlinkedRootConsumer("transaction-dirty-symlink-root");

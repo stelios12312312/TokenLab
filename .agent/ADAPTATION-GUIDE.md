@@ -5,7 +5,7 @@ How to adapt this agent kit to any new project.
 ## Quick Start (5 minutes)
 
 1. **Copy the `.agent/` folder** into your project root
-2. **Edit `rules.md`** — fill in the `PROJECT-SPECIFIC RULES` section
+2. **Add project-specific rules** — create `.agent/rules/40-<name>.md` overlay files
 3. **Create root instruction files** — tells your AI IDE to use the planner. Run once from the project root:
    ```bash
    bash .agent/scripts/sync-instructions.sh
@@ -62,9 +62,9 @@ Both should exit 0. If `check-invariants` reports `capability_without_story` vio
 
 ### Step 1: Fill in project context
 
-#### `rules.md` (HIGH PRIORITY)
+#### `rules.md` and Project Overlays (HIGH PRIORITY)
 
-**This is the single most impactful customization.** Projects that skip rules.md customization consistently underperform — the planner's gates catch generic issues but miss domain-specific traps. Add 2-4 rules covering:
+**This is the single most impactful customization.** Projects that skip rules customization consistently underperform — the planner's gates catch generic issues but miss domain-specific traps. Add 2-4 rules covering:
 
 - **Your project's #1 source of bugs** (e.g., "Never cache options in constructors" for WP, "No look-ahead bias" for quant)
 - **Data isolation rules** (multi-tenant scoping, environment separation)
@@ -73,15 +73,15 @@ Both should exit 0. If `check-invariants` reports `capability_without_story` vio
 
 **Pro tip**: Check your `plans/knowledge/gotchas.md` and `mistakes.md` — if you already have KB entries, promote the most critical ones to rules. Rules are enforced every session; KB entries are only read during EXPLORE.
 
-**Where to add**: Search for `<!-- DOMAIN: PROJECT-SPECIFIC RULES` in `.agent/rules.md` and add your rules after the closing `-->` comment.
+**Where to add**: Add `.agent/rules/40-<name>.md` as a standalone markdown file (e.g. `.agent/rules/40-data-validation.md`). Do NOT edit managed sections in `.agent/rules.md` or append directly after the DOMAIN comment; keep project rules in standalone `.agent/rules/*.md` overlays so fleet upgrades remain fully automated without merge conflicts.
 
-Example for a sport betting project:
+Example overlay (`.agent/rules/40-data-validation.md`):
 ```markdown
-## 9. Data Validation at Ingestion Boundary
+## 40. Data Validation at Ingestion Boundary
 Never trust raw API data from bookmakers. Validate odds ranges (1.01-1000),
 timestamps (not in future), and market status before processing.
 
-## 10. No Silent Data Drops
+## 41. No Silent Data Drops
 If a record fails validation, log it to the rejected queue — never silently skip it.
 Missing data causes silent model drift that's hard to diagnose.
 ```

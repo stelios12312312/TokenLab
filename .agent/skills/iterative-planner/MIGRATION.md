@@ -9,14 +9,18 @@ semantics with one authoritative path classifier used by manifest construction,
 source-pin safety, scratch candidate selection, transaction preflight, and
 receipts.
 
-- `engine` covers planner runtime, tests, state-machine Prolog, and
-  inventory-managed workflows. A committed engine fork is replaced from the
-  immutable source pin and recorded in `engine_replacements`; target Git history
-  and the transaction journal retain recovery evidence.
+- `engine` covers planner runtime, tests, state-machine Prolog, root agent
+  documentation, inventory-managed workflows, and source-inventory auxiliary
+  skills. A committed engine fork is replaced from the immutable source pin and
+  recorded in `engine_replacements`; target Git history and the transaction
+  journal retain recovery evidence.
 - `project` covers consumer ontology, rule overlays, custom workflows, policy,
   registry, and knowledge. Existing project bytes are never source-copied or
-  removed. Dirty project paths do not block an engine upgrade; absent setup
-  scaffolds may still be seeded. `source_hygiene.json` is seed-once.
+  removed, whether clean or dirty. Engine transactions restore those exact
+  bytes into the scratch proof tree and exclude them from the candidate commit;
+  absent setup scaffolds may still be seeded. Project semantic drift is handled
+  only by an explicit project setup/annotation workflow. `source_hygiene.json`
+  is seed-once.
 - `mixed_projection` covers `.agent/rules.md` and root instruction snapshots.
   Rules are reconstructed against current and historical canonical snapshots;
   project-only sections and committed section overrides move to deterministic,
@@ -36,6 +40,12 @@ must pass the complete `core-release` profile, including project-semantic
 proof: gate/delete census, migration bootstrap, and preplanning scaffolding.
 It does not evaluate the source project's lifecycle expectations against the
 consumer's independently owned ontology, telemetry, stories, or policies.
+For the same reason, an engine transaction preserves an existing consumer
+ontology without rebuilding or validating it. Missing project scaffolds may be
+seeded, but project semantic repair runs in the consumer's own workflow. Paths
+behind an in-repository `.agent` symlink inherit the ownership of their logical
+`.agent` path rather than becoming unknown merely because Git reports the
+resolved target path.
 
 Compatibility is read-old/write-new: transaction config reads legacy
 `preflight_scopes` but writes and ships `candidate_scopes`. Older receipts remain

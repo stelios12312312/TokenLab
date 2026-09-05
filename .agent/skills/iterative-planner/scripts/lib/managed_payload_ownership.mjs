@@ -37,7 +37,10 @@ function isPathOrChild(path, prefix) {
   return path === prefix || path.startsWith(`${prefix}/`);
 }
 
-export function classifyManagedPayloadPath(path, { managedWorkflowPaths = [] } = {}) {
+export function classifyManagedPayloadPath(
+  path,
+  { managedWorkflowPaths = [], managedSkillPaths = [] } = {},
+) {
   const normalized = normalizeManagedPayloadPath(path);
   if (!normalized) return MANAGED_PAYLOAD_OWNERSHIP.UNKNOWN;
 
@@ -99,11 +102,12 @@ export function classifyManagedPayloadPath(path, { managedWorkflowPaths = [] } =
     return MANAGED_PAYLOAD_OWNERSHIP.ENGINE;
   }
 
-  // Only source-inventory entries under other skill directories are proposed
-  // by migration. Classifying that declared distribution surface as engine
-  // does not make arbitrary consumer-only skills migration candidates.
   if (isPathOrChild(normalized, ".agent/skills")) {
-    return MANAGED_PAYLOAD_OWNERSHIP.ENGINE;
+    return [...normalizedPathSet(managedSkillPaths)].some((prefix) => (
+      isPathOrChild(normalized, prefix)
+    ))
+      ? MANAGED_PAYLOAD_OWNERSHIP.ENGINE
+      : MANAGED_PAYLOAD_OWNERSHIP.PROJECT;
   }
 
   const engineExactPaths = new Set([

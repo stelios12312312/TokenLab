@@ -3,6 +3,7 @@
 
 import {
   chmodSync,
+  cpSync,
   copyFileSync,
   existsSync,
   lstatSync,
@@ -24,6 +25,7 @@ import {
   MANAGED_PAYLOAD_OWNERSHIP,
   classifyManagedPayloadPath,
 } from "./managed_payload_ownership.mjs";
+import { listFleetManagedWorkflowFiles } from "./workflow_contracts.mjs";
 import { CONSUMER_PORTABLE_PROOF_SUITE_IDS } from "./managed_upgrade_proof_contract.mjs";
 
 export { CONSUMER_PORTABLE_PROOF_SUITE_IDS } from "./managed_upgrade_proof_contract.mjs";
@@ -46,10 +48,12 @@ const PROOF_ENVIRONMENT_KEYS_TO_CLEAR = Object.freeze([
   "PLANNER_PROJECT_REGISTRY_PATH",
 ]);
 const DEFAULT_CANDIDATE_SCOPES = [
-  ".agent/skills/iterative-planner",
+  ".agent/skills",
   ".agent/rules.md",
   ".agent/rules",
   ".agent/scripts",
+  ".agent/gotchas.md",
+  ".agent/ADAPTATION-GUIDE.md",
   ".agent/workflows",
   "CLAUDE.md",
   "GEMINI.md",
@@ -143,6 +147,7 @@ function gitDir(targetPath) {
 
 function sourceConfig(sourceScript) {
   const configPath = resolve(dirname(sourceScript), "..", "config", "managed_upgrade_transaction.json");
+  const sourceRoot = resolve(dirname(sourceScript), "../../../..");
   const parsed = readJson(configPath, {});
   const proofCommands = Array.isArray(parsed?.proof_commands)
     ? parsed.proof_commands
@@ -169,6 +174,11 @@ function sourceConfig(sourceScript) {
       : (Array.isArray(parsed?.preflight_scopes)
           ? parsed.preflight_scopes
           : DEFAULT_CANDIDATE_SCOPES),
+    managed_workflow_paths: listFleetManagedWorkflowFiles(sourceRoot)
+      .map((name) => `.agent/workflows/${name}`),
+    managed_skill_paths: Array.isArray(parsed?.managed_skill_paths)
+      ? parsed.managed_skill_paths
+      : [".agent/skills/iterative-planner"],
     proof_commands: proofCommands,
   };
 }
@@ -187,6 +197,11 @@ function targetConfig(targetPath) {
       : (Array.isArray(parsed?.preflight_scopes)
           ? parsed.preflight_scopes
           : DEFAULT_CANDIDATE_SCOPES),
+    managed_workflow_paths: listFleetManagedWorkflowFiles(targetPath)
+      .map((name) => `.agent/workflows/${name}`),
+    managed_skill_paths: Array.isArray(parsed?.managed_skill_paths)
+      ? parsed.managed_skill_paths
+      : [".agent/skills/iterative-planner"],
   };
 }
 
@@ -262,9 +277,18 @@ export function readCommittedPlannerVersion(targetPath) {
   }
 }
 
-function managedCandidateScopes(targetPath, scopes = DEFAULT_CANDIDATE_SCOPES) {
+function managedCandidateScopeContract(targetPath, scopes = DEFAULT_CANDIDATE_SCOPES) {
   const targetRoot = resolve(targetPath);
   const expanded = new Set();
+  const aliases = [];
+  const addAlias = (path, logicalPath) => {
+    const normalizedPath = path.split(sep).join("/");
+    const normalizedLogicalPath = logicalPath.split(sep).join("/");
+    expanded.add(normalizedPath);
+    if (!aliases.some((entry) => entry.path === normalizedPath && entry.logical_path === normalizedLogicalPath)) {
+      aliases.push({ path: normalizedPath, logical_path: normalizedLogicalPath });
+    }
+  };
   for (const scope of scopes) {
     const absoluteScope = resolve(targetRoot, scope);
     const normalizedScope = relative(targetRoot, absoluteScope);
@@ -276,7 +300,7 @@ function managedCandidateScopes(targetPath, scopes = DEFAULT_CANDIDATE_SCOPES) {
     ) {
       throw new Error(`managed upgrade preflight scope escapes target repository: ${scope}`);
     }
-    expanded.add(normalizedScope.split(sep).join("/"));
+    addAlias(normalizedScope, normalizedScope);
 
     if (existsSync(absoluteScope)) {
       let resolvedTarget;
@@ -297,11 +321,14 @@ function managedCandidateScopes(targetPath, scopes = DEFAULT_CANDIDATE_SCOPES) {
             `managed upgrade refuses managed symlink outside target repository: ${scope} -> ${resolvedTarget}`,
           );
         }
-        expanded.add(relativeTarget.split(sep).join("/"));
+        addAlias(relativeTarget, normalizedScope);
       }
     }
   }
-  return [...expanded];
+  return {
+    paths: [...expanded],
+    aliases: aliases.sort((left, right) => right.path.length - left.path.length),
+  };
 }
 
 function pathMatchesScope(relPath, scopes) {
@@ -315,19 +342,44 @@ function pathMatchesScope(relPath, scopes) {
   return false;
 }
 
-function candidatePathOwnership(relPath, expandedScopes) {
-  const ownership = classifyManagedPayloadPath(relPath);
-  if (ownership !== MANAGED_PAYLOAD_OWNERSHIP.UNKNOWN) return ownership;
+function candidatePathOwnership(
+  relPath,
+  aliases,
+  managedWorkflowPaths = [],
+  managedSkillPaths = [],
+  approvedEnginePaths = [],
+) {
+  const approved = new Set(approvedEnginePaths.map((path) => String(path).replace(/\\/g, "/")));
   const normalized = String(relPath || "").replace(/\\/g, "/").replace(/^\.\//, "");
-  // managedCandidateScopes adds exact, in-repository symlink targets alongside
-  // their declared projection path. Those aliases inherit mixed ownership.
-  return expandedScopes.includes(normalized)
-    ? MANAGED_PAYLOAD_OWNERSHIP.MIXED_PROJECTION
-    : MANAGED_PAYLOAD_OWNERSHIP.UNKNOWN;
+  if (approved.has(normalized)) return MANAGED_PAYLOAD_OWNERSHIP.ENGINE;
+  const ownership = classifyManagedPayloadPath(relPath, {
+    managedWorkflowPaths,
+    managedSkillPaths,
+  });
+  if (ownership !== MANAGED_PAYLOAD_OWNERSHIP.UNKNOWN) return ownership;
+  for (const alias of aliases) {
+    if (normalized !== alias.path && !normalized.startsWith(`${alias.path}/`)) continue;
+    const suffix = normalized.slice(alias.path.length);
+    const logicalPath = `${alias.logical_path}${suffix}`;
+    if (approved.has(logicalPath)) return MANAGED_PAYLOAD_OWNERSHIP.ENGINE;
+    const logicalOwnership = classifyManagedPayloadPath(logicalPath, {
+      managedWorkflowPaths,
+      managedSkillPaths,
+    });
+    if (logicalOwnership !== MANAGED_PAYLOAD_OWNERSHIP.UNKNOWN) return logicalOwnership;
+    if (normalized === alias.path) return MANAGED_PAYLOAD_OWNERSHIP.MIXED_PROJECTION;
+  }
+  return MANAGED_PAYLOAD_OWNERSHIP.UNKNOWN;
 }
 
-function managedStatus(targetPath, scopes = DEFAULT_CANDIDATE_SCOPES) {
-  const expandedScopes = managedCandidateScopes(targetPath, scopes);
+function managedStatus(
+  targetPath,
+  scopes = DEFAULT_CANDIDATE_SCOPES,
+  managedWorkflowPaths = [],
+  managedSkillPaths = [],
+) {
+  const scopeContract = managedCandidateScopeContract(targetPath, scopes);
+  const expandedScopes = scopeContract.paths;
   const output = gitRaw(targetPath, [
     "status",
     "--porcelain=v1",
@@ -348,7 +400,12 @@ function managedStatus(targetPath, scopes = DEFAULT_CANDIDATE_SCOPES) {
     }
     if (paths.some((p) => {
       if (!pathMatchesScope(p, expandedScopes)) return false;
-      const ownership = candidatePathOwnership(p, expandedScopes);
+      const ownership = candidatePathOwnership(
+        p,
+        scopeContract.aliases,
+        managedWorkflowPaths,
+        managedSkillPaths,
+      );
       return ownership === MANAGED_PAYLOAD_OWNERSHIP.ENGINE
         || ownership === MANAGED_PAYLOAD_OWNERSHIP.MIXED_PROJECTION;
     })) {
@@ -528,7 +585,15 @@ function runInternalApply({
   }
 }
 
-function scratchCandidatePaths(scratchPath, targetPath, scopes) {
+function scratchCandidatePaths(
+  scratchPath,
+  targetPath,
+  scopes,
+  aliases,
+  managedWorkflowPaths = [],
+  managedSkillPaths = [],
+  approvedEnginePaths = [],
+) {
   const tracked = gitRaw(scratchPath, [
     "diff",
     "--name-only",
@@ -556,16 +621,23 @@ function scratchCandidatePaths(scratchPath, targetPath, scopes) {
   ]).split("\0").filter(Boolean);
   const candidates = [...new Set([...tracked, ...untracked, ...ignored])].sort();
   return candidates.filter((relativePath) => {
-    const ownership = candidatePathOwnership(relativePath, scopes);
+    const ownership = candidatePathOwnership(
+      relativePath,
+      aliases,
+      managedWorkflowPaths,
+      managedSkillPaths,
+      approvedEnginePaths,
+    );
     if (ownership === MANAGED_PAYLOAD_OWNERSHIP.GENERATED) return false;
     if (ownership === MANAGED_PAYLOAD_OWNERSHIP.UNKNOWN) {
       throw new Error(`managed upgrade candidate has unknown ownership: ${relativePath}`);
     }
     if (ownership !== MANAGED_PAYLOAD_OWNERSHIP.PROJECT) return true;
 
-    // Project setup may bootstrap an absent project-owned path or annotate a
-    // clean one, but it never displaces live project work. Existing dirty
-    // bytes are left outside the engine candidate and survive the fast-forward.
+    // Engine transactions may bootstrap a genuinely absent project path, but
+    // they never rewrite an existing project-owned path merely because it is
+    // clean. Restore live bytes into the scratch proof tree before staging so
+    // proof observes the exact consumer semantics that survive the commit.
     const liveStatus = git(targetPath, [
       "status",
       "--porcelain=v1",
@@ -573,24 +645,23 @@ function scratchCandidatePaths(scratchPath, targetPath, scopes) {
       "--",
       relativePath,
     ]);
-    if (liveStatus) {
-      const scratchProjectPath = join(scratchPath, relativePath);
-      const liveProjectPath = join(targetPath, relativePath);
-      if (existsSync(liveProjectPath)) {
-        const liveStat = lstatSync(liveProjectPath);
-        if (!liveStat.isFile()) {
-          throw new Error(
-            `managed upgrade cannot project non-file dirty project path into proof: ${relativePath}`,
-          );
-        }
-        mkdirSync(dirname(scratchProjectPath), { recursive: true });
-        copyFileSync(liveProjectPath, scratchProjectPath);
-        chmodSync(scratchProjectPath, liveStat.mode & 0o777);
-      } else {
-        rmSync(scratchProjectPath, { recursive: true, force: true });
-      }
+    const scratchProjectPath = join(scratchPath, relativePath);
+    const liveProjectPath = join(targetPath, relativePath);
+    if (existsSync(liveProjectPath)) {
+      rmSync(scratchProjectPath, { recursive: true, force: true });
+      mkdirSync(dirname(scratchProjectPath), { recursive: true });
+      cpSync(liveProjectPath, scratchProjectPath, {
+        recursive: true,
+        dereference: false,
+        preserveTimestamps: true,
+      });
+      return false;
     }
-    return !liveStatus;
+    if (liveStatus) {
+      rmSync(scratchProjectPath, { recursive: true, force: true });
+      return false;
+    }
+    return true;
   });
 }
 
@@ -927,10 +998,12 @@ export function runManagedUpgradeTransaction({
   toVersion,
   seedKB = false,
   engineReplacements = [],
+  engineCandidatePaths = [],
 }) {
   const target = gitRoot(targetPath);
   const config = sourceConfig(sourceScript);
-  const candidateScopes = managedCandidateScopes(target, config.candidate_scopes);
+  const candidateScopeContract = managedCandidateScopeContract(target, config.candidate_scopes);
+  const candidateScopes = candidateScopeContract.paths;
   const activePath = journalPath(target, config);
   const previous = readJson(activePath);
   if (previous && ACTIVE_PHASES.has(previous.status)) {
@@ -945,7 +1018,12 @@ export function runManagedUpgradeTransaction({
     throw error;
   }
 
-  const dirtyManaged = managedStatus(target, candidateScopes);
+  const dirtyManaged = managedStatus(
+    target,
+    config.candidate_scopes,
+    config.managed_workflow_paths,
+    config.managed_skill_paths,
+  );
   if (dirtyManaged) {
     const committed = readCommittedPlannerVersion(target);
     const tree = treePlannerVersion(target) || "unknown";
@@ -984,6 +1062,7 @@ export function runManagedUpgradeTransaction({
     updated_at: now,
     candidate_scopes: candidateScopes,
     engine_replacements: Array.isArray(engineReplacements) ? engineReplacements : [],
+    engine_candidate_paths: Array.isArray(engineCandidatePaths) ? engineCandidatePaths : [],
   };
   persistJournal(journal);
   preflightDiskSpace(target);
@@ -1009,6 +1088,10 @@ export function runManagedUpgradeTransaction({
       scratchPath,
       target,
       candidateScopes,
+      candidateScopeContract.aliases,
+      config.managed_workflow_paths,
+      config.managed_skill_paths,
+      journal.engine_candidate_paths,
     );
     if (candidatePaths.length === 0) {
       throw new Error("scratch apply produced no candidate changes");
@@ -1139,7 +1222,13 @@ export function managedUpgradeDiagnostics(targetPath, sourceVersion) {
   let managedDirty = false;
   try {
     const target = gitRoot(targetPath);
-    managedDirty = !!managedStatus(target, targetConfig(target).candidate_scopes);
+    const config = targetConfig(target);
+    managedDirty = !!managedStatus(
+      target,
+      config.candidate_scopes,
+      config.managed_workflow_paths,
+      config.managed_skill_paths,
+    );
   } catch {
     managedDirty = true;
   }

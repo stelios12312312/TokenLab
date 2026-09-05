@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "id": "T-INTAKE-AE7E117D",
-  "generated_at": "2026-09-05T11:15:00.395Z",
+  "generated_at": "2026-09-05T14:49:28.782Z",
   "generator": {
     "tool": "c8",
     "version": "11.0.0",
@@ -112,31 +112,31 @@
     },
     {
       "file": ".agent/skills/iterative-planner/scripts/migrate.mjs",
-      "source_hash": "181fa812a1e69a6a5b69d787f112ec2cc0c1b6e4fb5cf561b3f3e873d5e9ad74",
+      "source_hash": "39bf944a9802af89341d21b34dd55da1d68c4566265f01e3b2b3b18cc326442f",
       "metrics": {
         "lines": {
-          "total": 6848,
-          "covered": 3710,
+          "total": 6865,
+          "covered": 3736,
           "skipped": 0,
-          "pct": 54.18
+          "pct": 54.42
         },
         "branches": {
-          "total": 1119,
-          "covered": 734,
+          "total": 1124,
+          "covered": 749,
           "skipped": 0,
-          "pct": 65.59
+          "pct": 66.64
         },
         "functions": {
-          "total": 175,
+          "total": 174,
           "covered": 110,
           "skipped": 0,
-          "pct": 62.86
+          "pct": 63.22
         },
         "statements": {
-          "total": 6848,
-          "covered": 3710,
+          "total": 6865,
+          "covered": 3736,
           "skipped": 0,
-          "pct": 54.18
+          "pct": 54.42
         }
       }
     },

@@ -44,6 +44,10 @@ function governedPaths(cwd) {
   ];
 }
 
+export function projectOntologyPresent(cwd = process.cwd()) {
+  return governedPaths(cwd).some((path) => existsSync(path));
+}
+
 function snapshot(paths) {
   return new Map(paths.map((path) => [path, existsSync(path) ? readFileSync(path) : null]));
 }

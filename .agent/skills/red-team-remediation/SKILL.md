@@ -295,6 +295,13 @@ Assign each finding an execution mode:
    d. When transcripts are intentionally ephemeral, persist a sanitized structural diagnostic summary (event classes, exit/timing, usage, and stable error codes) without commands, messages, tool output, thread identifiers, or secrets.
    e. Regression proof must include one deterministic blocker that reaches a complete idempotent receipt with zero executor calls and one admitted control that reaches the existing execution boundary.
 
+5f. **Long-Running Proof Admission and Resume Scan** (MANDATORY when hooks, releases, migrations, or conformance catalogs can run multiple suites) — attack the orchestration boundary before accepting a larger timeout:
+   a. Forecast the exact selected suite set before spawn from fresh digest-bound history or an explicitly conservative fallback; include cleanup headroom and prove a too-small outer deadline launches zero suites.
+   b. Stream bounded redacted suite/wave start, completion, heartbeat, ETA, and last-active diagnostics outside the machine-readable result channel. Prove stdout remains one parseable document on success and failure.
+   c. Interrupt during a suite. Only previously completed required PASS rows may survive; in-flight, WARN, failed, stale, tampered, changed-tree/base/config/catalog/fixture, or corrupt rows must rerun with a typed reason.
+   d. Exercise the direct runner and every hook/mirror consumer against the same receipt, checkpoint, timeout, progress, cleanup, and final-manifest authority contract. A hook-specific shortcut or repeated equivalent work is a contract split.
+   e. Inventory staged evidence before proof spawn. Over-budget transient output must refuse with counts, bytes, and an explicit report-only compaction plan; never auto-delete canonical or durable evidence to make a release pass.
+
 
 6. **Optimization Adequacy Scan** (MANDATORY for quant/model/strategy findings) — if a finding involves Optuna, hyperparameter search, model-family comparison, strategy selection, staking optimization, or profitability claims from an optimizer artifact:
    a. Count the optimizer's unique parameter names and active parameters per trial where the code/artifacts expose them.
@@ -328,6 +335,15 @@ Assign each finding an execution mode:
    | Historical shipped proof / staged proof | Use a genuine unrelated historical negative and a deterministic staged positive; token or title overlap alone is not proof. |
 
    Record every applicable evaluator as `producer`, `canonical_consumer`, or `mirror_consumer`, plus command, fixture, expected outcome, and observed outcome. A newly exposed red is a separate finding or intake item: stop the closeout, preserve its evidence, and do not widen the current repair, relabel the result, waive freshness, edit lifecycle/integrity state, or fabricate non-applicability.
+
+7b. **Bounded Verifier Propagation Scan** (MANDATORY when a rule engine,
+ontology query, parser, or evidence verifier has a deadline) — force the nested
+verifier to exceed its budget and assert the outermost lifecycle returns a
+typed non-success result. Inventory point queries and broad diagnostic fan-out
+separately: each broad caller must declare a finite budget appropriate to the
+real repository path, while timeout, malformed output, and dependency failure
+must still propagate. Treat an empty result, omitted finding, or success-adjacent
+fallback after verifier failure as `SILENT_DEGRADATION`.
 
 8. **Define the invariant test** — write the test assertion in abstract terms:
    ```
