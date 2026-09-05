@@ -2,7 +2,7 @@
 // test_ive_conformance_runner.mjs — IVE conformance runner contracts.
 
 import { execFileSync, spawn as spawnChild } from "child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath, pathToFileURL } from "url";
@@ -11,6 +11,7 @@ import {
   DEFAULT_SUITES,
   DIRECT_SUITE_WAVE_IDS,
   executeDirectSuiteWave,
+  forecastConformance,
   listSuites,
   parseArgs,
   prepareDirectConformanceResults,
@@ -18,9 +19,24 @@ import {
   resolveReleaseProfile,
   runVisualizerBrowserProof,
   runConformance,
+  runConformanceLive,
   selectSuites,
   visualizerProofPortCandidates,
 } from "./ive/run.mjs";
+import {
+  admitConformanceWorkload,
+  buildConformanceIdentity,
+  createConformanceReceipt,
+  createProgressEmitter,
+  forecastSelectedWorkload,
+  readConformanceCheckpoint,
+  selectReusableSuiteResults,
+  writeConformanceCheckpoint,
+} from "../scripts/lib/conformance_session.mjs";
+import {
+  classifyReleaseArtifacts,
+  planAuditLogCompaction,
+} from "../scripts/lib/release_artifact_policy.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -135,6 +151,11 @@ assert(coverageRatchetSuite?.display_command.includes("test_coverage_baseline.mj
 assert(coverageRatchetSuite?.fixtures.includes(".agent/skills/iterative-planner/config/coverage_baseline.json"), "planner-core coverage ratchet owns the committed baseline fixture");
 assert(coverageRatchetSuite?.fixtures.includes(".agent/skills/iterative-planner/package-lock.json"), "planner-core coverage ratchet owns the locked c8 dependency fixture");
 assert((coverageRatchetSuite?.changed_file_patterns || []).some((pattern) => pattern.test(".agent/skills/iterative-planner/scripts/transition.mjs")), "planner-core coverage ratchet selects a modified declared target");
+const mlOntologySuite = DEFAULT_SUITES.find((suite) => suite.id === "ml-ontology-invariants");
+assert(mlOntologySuite?.required === true, "ML ontology invariant suite is required by default");
+assert(mlOntologySuite?.display_command.includes("test_ml_ontology_invariants.mjs"), "ML ontology invariant suite directly executes its governed test");
+assert(mlOntologySuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/lib/clause_index.mjs"), "ML ontology invariant suite owns the bounded clause index fixture");
+assert((mlOntologySuite?.changed_file_patterns || []).some((pattern) => pattern.test(".agent/skills/iterative-planner/scripts/transition.mjs")), "ML ontology invariant suite selects transition ontology changes");
 const testGateCensusSuite = DEFAULT_SUITES.find((suite) => suite.id === "gate-or-delete-census");
 assert(testGateCensusSuite?.required === true, "gate-or-delete census suite is required by default");
 assert(testGateCensusSuite?.display_command.includes("test_gate_or_delete_census.mjs"), "gate-or-delete census suite directly executes its guard test");
@@ -157,8 +178,19 @@ const managedUpgradeTransitionProof = managedUpgradeConfig.proof_commands.find(
   (proof) => proof.id === "transition-gate-flows",
 );
 assert(
-  managedUpgradeTransitionProof?.timeout_ms === transitionGateSuite?.timeout_ms,
-  "managed upgrade transition proof preserves the governed suite timeout budget",
+  managedUpgradeTransitionProof === undefined,
+  "consumer managed-upgrade proof excludes project-semantic transition gates",
+);
+assert(
+  managedUpgradeConfig.proof_scope === "consumer_portable_engine_install"
+    && managedUpgradeConfig.source_release_profile === "core-release"
+    && managedUpgradeConfig.source_release_only_suites.includes("transition-gate-flows"),
+  "managed upgrade config separates portable consumer proof from canonical source-release proof",
+);
+assert(
+  managedUpgradeConfig.proof_commands.map((proof) => proof.id).join(",")
+    === "gate-or-delete-census,migration-bootstrap,preplanning-scaffolding",
+  "consumer managed-upgrade proof contains exactly the three portable install suites",
 );
 assert(transitionGateSuite?.fixtures.includes(".agent/skills/iterative-planner/scripts/lib/gate_verdict.mjs"), "transition gate flow suite owns the authoritative receipt and verdict helper");
 assert(transitionGateSuite?.fixtures.includes(".agent/skills/iterative-planner/config/failure-codes.json"), "transition gate flow suite owns failure classification policy");
@@ -507,7 +539,7 @@ assert(visualizerContractSuite?.fixtures.includes("apps/ive-visualizer/scripts/l
 assert(visualizerContractSuite?.fixtures.includes("apps/ive-visualizer/scripts/generate-live-payload.mjs"), "visualizer contract suite owns live-payload generator fixture");
 
 let selected = selectSuites(DEFAULT_SUITES, ["ontology"]);
-assert(sameIds(selected, ["ontology-cli-source-truth", "ontology-invariants", "prolog-value-audit", "trace-coverage-maturity"]), "--only category selects matching suites");
+assert(sameIds(selected, ["ml-ontology-invariants", "ontology-adoption", "ontology-cli-source-truth", "ontology-invariants", "prolog-value-audit", "trace-coverage-maturity"]), "--only category selects matching suites");
 
 selected = selectSuites(DEFAULT_SUITES, ["ripple-check"]);
 assert(selected.length === 1 && selected[0].category === "ripple", "--only id selects one suite");
@@ -904,7 +936,7 @@ selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-pla
 assert(sameIds(selected, ["annotation-discipline-gate", "capability-connectivity", "ripple-check"]), "--changed-files selects exactly annotation discipline, connectivity, and ripple suites");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/plan_utils.mjs"]);
-assert(sameIds(selected, ["capability-connectivity", "plan-target-ownership", "preplanning-scaffolding", "red-team-depth-gate", "ripple-check", "seeded-defect-harness", "transition-dry-run-equivalence"]), "--changed-files selects exactly plan-target ownership, preplanning, red-team depth, seeded-defect harness, dry-run equivalence, connectivity, and ripple suites for plan_utils");
+assert(sameIds(selected, ["capability-connectivity", "ml-ontology-invariants", "plan-target-ownership", "preplanning-scaffolding", "red-team-depth-gate", "ripple-check", "seeded-defect-harness", "transition-dry-run-equivalence"]), "--changed-files selects exactly ML ontology, plan-target ownership, preplanning, red-team depth, seeded-defect harness, dry-run equivalence, connectivity, and ripple suites for plan_utils");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/plan_artifact_renderer.mjs"]);
 assert(sameIds(selected, ["capability-connectivity", "plan-artifact-renderer", "ripple-check"]), "--changed-files selects exactly plan artifact renderer, connectivity, and ripple for renderer library");
@@ -952,7 +984,7 @@ selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-pla
 assert(sameIds(selected, ["harvest-real-telemetry", "harvest-real-telemetry-host", "ripple-check", "workspace-artifact-inventory"]), "--changed-files selects both telemetry proof layers, workspace inventory, and ripple for registered project inventory config");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/bootstrap.mjs"]);
-assert(sameIds(selected, ["harvest-real-telemetry", "harvest-real-telemetry-host", "lifecycle-journey-proof", "lifecycle-reconciler", "migration-bootstrap", "owned-file-replacement", "persona-authority-project-health", "planner-core-coverage-ratchet", "quant-archetype-accomplices", "ripple-check", "transition-gate-flows"]), "--changed-files selects exactly the bootstrap consumers, owned replacement proof, and both telemetry proof layers");
+assert(sameIds(selected, ["cli-determinism", "harvest-real-telemetry", "harvest-real-telemetry-host", "lifecycle-journey-proof", "lifecycle-reconciler", "migration-bootstrap", "owned-file-replacement", "persona-authority-project-health", "planner-core-coverage-ratchet", "preplanning-scaffolding", "quant-archetype-accomplices", "ripple-check", "transition-gate-flows"]), "--changed-files selects exactly the bootstrap consumers, owned replacement proof, and both telemetry proof layers");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/truth_surface_reconciler.mjs"]);
 assert(sameIds(selected, ["cli-determinism", "ripple-check", "truth-surface-convergence"]), "--changed-files selects truth convergence, CLI transport, and ripple for the reconciler CLI");
@@ -979,7 +1011,7 @@ selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-pla
 assert(sameIds(selected, ["reflection-verdict-routing", "ripple-check"]), "--changed-files selects exactly reflection verdict routing and ripple for its focused test");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/transition.mjs"]);
-assert(sameIds(selected, ["autonomous-driver", "lifecycle-journey-proof", "owned-file-replacement", "plan-artifact-renderer", "planner-core-coverage-ratchet", "preplanning-scaffolding", "ripple-check", "transition-dry-run-equivalence", "transition-env-cleanup", "transition-gate-flows"]), "--changed-files selects exactly owned replacement, coverage ratchet, preplanning, lifecycle journey proof, dry-run equivalence, transition env cleanup, transition gate flows, autonomous driver, plan artifact renderer, and ripple for transition.mjs");
+assert(sameIds(selected, ["autonomous-driver", "lifecycle-journey-proof", "ml-ontology-invariants", "owned-file-replacement", "plan-artifact-renderer", "planner-core-coverage-ratchet", "preplanning-scaffolding", "ripple-check", "transition-dry-run-equivalence", "transition-env-cleanup", "transition-gate-flows"]), "--changed-files selects exactly ML ontology, owned replacement, coverage ratchet, preplanning, lifecycle journey proof, dry-run equivalence, transition env cleanup, transition gate flows, autonomous driver, plan artifact renderer, and ripple for transition.mjs");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/knowledge_triggers.mjs"]);
 assert(sameIds(selected, ["knowledge-triggers", "ripple-check"]), "--changed-files selects exactly knowledge triggers and ripple for the Knowledge Trigger CLI");
@@ -1418,12 +1450,18 @@ assert(list.ok && list.status === "LIST" && list.suite_count === DEFAULT_SUITES.
 assert(Array.isArray(list.suites?.[0]?.fixtures), "listSuites includes fixture metadata");
 assert(["functional_proof_test", "quality_score_evaluation"].includes(list.suites?.[0]?.test_class), "listSuites includes test_class metadata");
 
-const parsedArgs = parseArgs(["--json", "--only", "ontology", "--only=ripple", "--changed-files", "a.js,b.js", "--run-id=stable", "--timeout-ms=5000", "--minimum-timeout-ms=900000", "--no-manifest"]);
+const parsedArgs = parseArgs(["--json", "--only", "ontology", "--only=ripple", "--changed-files", "a.js,b.js", "--run-id=stable", "--timeout-ms=5000", "--minimum-timeout-ms=900000", "--outer-timeout-ms=1200000", "--base-sha=abc123", "--no-reuse", "--no-resume", "--progress", "--forecast", "--no-manifest"]);
 assert(
   parsedArgs.json
     && parsedArgs.only.length === 2
     && parsedArgs.timeoutMs === 5000
-    && parsedArgs.minimumTimeoutMs === 900000,
+    && parsedArgs.minimumTimeoutMs === 900000
+    && parsedArgs.outerTimeoutMs === 1200000
+    && parsedArgs.baseSha === "abc123"
+    && parsedArgs.allowReuse === false
+    && parsedArgs.allowResume === false
+    && parsedArgs.progress
+    && parsedArgs.forecast,
   "parseArgs handles json, repeated only filters, and timeout budgets",
 );
 assert(parsedArgs.changedFiles.length === 1 && parsedArgs.runId === "stable" && parsedArgs.writeManifest === false, "parseArgs handles changed-files, run-id, and no-manifest");
@@ -1599,9 +1637,9 @@ const transitionGateIndex = DEFAULT_SUITES.findIndex((suite) => suite.id === "tr
 const programManagerWaveSuite = DEFAULT_SUITES[programManagerIndex];
 const migrationBootstrapWaveSuite = DEFAULT_SUITES[migrationBootstrapIndex];
 assert(
-  DEFAULT_SUITES.length === 140
-    && DEFAULT_SUITES.filter((suite) => suite.required).length === 139
-    && programManagerIndex === 27 && migrationBootstrapIndex === 116 && transitionGateIndex === 9
+  DEFAULT_SUITES.length === 144
+    && DEFAULT_SUITES.filter((suite) => suite.required).length === 143
+    && programManagerIndex === 30 && migrationBootstrapIndex === 119 && transitionGateIndex === 12
     && programManagerWaveSuite?.timeout_ms === 300000 && migrationBootstrapWaveSuite?.timeout_ms === 900000,
   "live catalog denominator, required count, wave positions, serial control, and declared timeouts remain canonical",
 );
@@ -1858,6 +1896,186 @@ try {
   assert(await waitFor(() => ownedPids.every((pid) => !pidExists(pid)), 2000), "external wrapper-style termination leaves zero owned descendants");
 } finally {
   rmSync(directFixtureRoot, { recursive: true, force: true });
+}
+
+const releasePolicyFixture = {
+  schema_version: 1,
+  classes: [
+    { id: "explicitly_waived", patterns: [] },
+    { id: "transient_evidence", patterns: ["reports/ive/test_runs/**", "reports/ive_visualizer/**"] },
+    { id: "durable_evidence", patterns: ["plans/**", "reports/user_story_audit/**"] },
+    { id: "product", fallback: true, patterns: [] },
+  ],
+  budgets: {
+    transient_evidence: { max_files: 1, max_bytes: 100 },
+    durable_evidence: { max_files: 3, max_bytes: 1000 },
+    total_evidence: { max_files: 3, max_bytes: 1000 },
+  },
+  waivers: [
+    { path: "reports/ive/test_runs/keep.json", reason: "release fixture", expires_at: "2026-09-30T00:00:00.000Z" },
+  ],
+  audit_log: { path: "plans/audit_log.json", max_live_bytes: 100, archive_dir: "plans/audit_archive" },
+};
+const releaseCensus = classifyReleaseArtifacts([
+  { path: "src/index.mjs", bytes: 10 },
+  { path: "plans/plan-a/verification.md", bytes: 20 },
+  { path: "reports/ive/test_runs/keep.json", bytes: 200 },
+  { path: "reports/ive/test_runs/drop.json", bytes: 80 },
+], { policy: releasePolicyFixture, now: new Date("2026-08-31T00:00:00.000Z") });
+assert(releaseCensus.entries.length === 4 && releaseCensus.entries.every((entry) => entry.classification), "release artifact census classifies every staged path exactly once");
+assert(releaseCensus.by_class.explicitly_waived.file_count === 1 && releaseCensus.by_class.transient_evidence.file_count === 1, "release artifact census separates live waivers from transient evidence");
+assert(releaseCensus.ok && releaseCensus.violations.length === 0, "waived evidence is excluded from transient budgets without deleting durable evidence");
+const expiredCensus = classifyReleaseArtifacts([
+  { path: "reports/ive/test_runs/keep.json", bytes: 60 },
+  { path: "reports/ive/test_runs/drop.json", bytes: 60 },
+], { policy: releasePolicyFixture, now: new Date("2026-10-01T00:00:00.000Z") });
+assert(!expiredCensus.ok && expiredCensus.violations.some((entry) => entry.code === "release_artifact_budget_exceeded") && expiredCensus.entries.some((entry) => entry.waiver_status === "expired"), "expired waiver returns to its governed class and fails the pre-spawn budget");
+const compactionPlan = planAuditLogCompaction({ bytes: 450, path: "plans/audit_log.json" }, { policy: releasePolicyFixture });
+assert(compactionPlan.required && compactionPlan.preserve_digest && compactionPlan.archive_path.startsWith("plans/audit_archive/"), "oversized audit log yields an explicit digest-preserving compaction plan rather than deletion");
+const stagedAuditCensus = classifyReleaseArtifacts([{ path: "plans/audit_log.json", bytes: 450 }], { policy: releasePolicyFixture });
+assert(!stagedAuditCensus.ok && stagedAuditCensus.violations.some((entry) => entry.code === "release_audit_log_compaction_required"), "staged oversized audit log is refused until explicit digest-preserving compaction");
+
+const identityFixture = buildConformanceIdentity({
+  tree_sha: "tree-a",
+  base_sha: "base-a",
+  dirty_state_digest: "clean-a",
+  catalog_digest: "catalog-a",
+  config_digest: "config-a",
+  planner_version: "10.13.1",
+  command_contract_digest: "command-a",
+  suites: [
+    { id: "alpha", fixture_digest: "fixture-a", command_digest: "command-alpha" },
+    { id: "beta", fixture_digest: "fixture-b", command_digest: "command-beta" },
+  ],
+});
+const identityRepeat = buildConformanceIdentity({
+  tree_sha: "tree-a",
+  base_sha: "base-a",
+  dirty_state_digest: "clean-a",
+  catalog_digest: "catalog-a",
+  config_digest: "config-a",
+  planner_version: "10.13.1",
+  command_contract_digest: "command-a",
+  suites: [
+    { id: "alpha", fixture_digest: "fixture-a", command_digest: "command-alpha" },
+    { id: "beta", fixture_digest: "fixture-b", command_digest: "command-beta" },
+  ],
+});
+assert(identityFixture.identity_digest === identityRepeat.identity_digest && identityFixture.suite_identities.alpha, "conformance identity is deterministic and binds per-suite fixture/command inputs");
+const changedIdentity = buildConformanceIdentity({ ...identityFixture.inputs, suites: [{ id: "alpha", fixture_digest: "fixture-mutated", command_digest: "command-alpha" }] });
+assert(changedIdentity.context_digest === identityFixture.context_digest && changedIdentity.suite_identities.alpha !== identityFixture.suite_identities.alpha, "fixture mutation invalidates only the affected suite identity under the same session context");
+
+const workloadForecast = forecastSelectedWorkload({
+  selectedSuites: [{ id: "alpha", timeout_ms: 1000 }, { id: "beta", timeout_ms: 2000 }],
+  history: [
+    { suite_id: "alpha", status: "PASS", duration_ms: 400 },
+    { suite_id: "alpha", status: "PASS", duration_ms: 600 },
+    { suite_id: "alpha", duration_ms: 9_999 },
+  ],
+  config: { fallback_suite_ms: 900, duration_multiplier: 1.5, cleanup_cushion_ms: 300, min_outer_timeout_ms: 500, max_outer_timeout_ms: 10_000 },
+});
+assert(workloadForecast.ok && workloadForecast.suite_forecasts.find((row) => row.suite_id === "alpha")?.source === "history_p95" && workloadForecast.suite_forecasts.find((row) => row.suite_id === "beta")?.source === "configured_fallback", "selected-workload forecast records history and conservative fallback provenance");
+assert(workloadForecast.suite_forecasts.find((row) => row.suite_id === "alpha")?.raw_ms === 600, "statusless history cannot silently enter the PASS-only runtime forecast");
+assert(!admitConformanceWorkload({ forecast: workloadForecast, outerTimeoutMs: workloadForecast.required_outer_timeout_ms - 1 }).ok, "outer timeout below selected workload plus cleanup cushion fails before spawn");
+assert(admitConformanceWorkload({ forecast: workloadForecast, outerTimeoutMs: workloadForecast.required_outer_timeout_ms }).ok, "outer timeout equal to the admitted selected-workload bound passes");
+
+const receiptFixture = createConformanceReceipt({
+  identity: identityFixture,
+  status: "PASS",
+  created_at: "2026-08-31T00:00:00.000Z",
+  freshness_ms: 86_400_000,
+  results: [
+    { id: "alpha", status: "PASS", duration_ms: 400 },
+    { id: "beta", status: "PASS", duration_ms: 700 },
+  ],
+});
+const reusableFixture = selectReusableSuiteResults({ receipt: receiptFixture, identity: identityFixture, now: new Date("2026-08-31T01:00:00.000Z") });
+assert(reusableFixture.reusable_results.length === 2 && reusableFixture.rerun.length === 0, "fresh exact PASS receipt reuses every covered suite row");
+const tamperedReceipt = JSON.parse(JSON.stringify(receiptFixture));
+tamperedReceipt.results[0].duration_ms = 1;
+const tamperedReuse = selectReusableSuiteResults({ receipt: tamperedReceipt, identity: identityFixture, now: new Date("2026-08-31T01:00:00.000Z") });
+assert(tamperedReuse.reusable_results.length === 0 && tamperedReuse.rerun.every((row) => row.reason === "receipt_digest_mismatch"), "tampered receipt fails closed and explains why every suite reruns");
+const subsetIdentity = buildConformanceIdentity({ ...identityFixture.inputs, suites: [{ id: "alpha", fixture_digest: "fixture-a", command_digest: "command-alpha" }] });
+const subsetReuse = selectReusableSuiteResults({ receipt: receiptFixture, identity: subsetIdentity, now: new Date("2026-08-31T01:00:00.000Z") });
+assert(subsetReuse.reusable_results.length === 1 && subsetReuse.reusable_results[0].id === "alpha", "later hook can reuse the exact covered subset without requiring identical suite selection");
+
+const sessionTmp = mkdtempSync(join(tmpdir(), "ive-session-checkpoint-"));
+try {
+  const checkpointWrite = writeConformanceCheckpoint({
+    gitDir: sessionTmp,
+    identity: identityFixture,
+    run_id: "run-interrupted",
+    status: "interrupted",
+    active_suite_id: "beta",
+    completed_results: [{ id: "alpha", status: "PASS", duration_ms: 400 }, { id: "beta", status: "FAIL", duration_ms: 5 }],
+  });
+  const checkpointRead = readConformanceCheckpoint({ path: checkpointWrite.path });
+  assert(checkpointRead.ok && checkpointRead.checkpoint.completed_results.length === 1 && checkpointRead.checkpoint.completed_results[0].id === "alpha", "checkpoint atomically preserves completed PASS rows and never promotes in-flight or failed work");
+} finally {
+  rmSync(sessionTmp, { recursive: true, force: true });
+}
+
+const progressLines = [];
+let progressNow = 0;
+const progress = createProgressEmitter({
+  write: (line) => progressLines.push(line),
+  now: () => progressNow,
+  heartbeatIntervalMs: 10,
+  setIntervalFn: () => 1,
+  clearIntervalFn: () => {},
+});
+progress.runStarted({ run_id: "run-1", selected_count: 2, eta_ms: 100, secret: "do-not-print" });
+progress.suiteStarted({ suite_id: "alpha", index: 1, total: 2, eta_ms: 100 });
+progressNow = 25;
+progress.heartbeat();
+progress.suiteFinished({ suite_id: "alpha", status: "PASS", duration_ms: 25, remaining_eta_ms: 75 });
+progress.stop();
+assert(progressLines.some((line) => line.includes('"event":"heartbeat"')) && progressLines.every((line) => !line.includes("do-not-print")), "progress streams start/heartbeat/completion events with a secret-free bounded schema");
+
+const liveSessionTmp = mkdtempSync(join(tmpdir(), "ive-live-session-"));
+try {
+  const configDir = join(liveSessionTmp, ".agent/skills/iterative-planner/config");
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(join(configDir, "conformance_session.json"), readFileSync(join(repoRoot, ".agent/skills/iterative-planner/config/conformance_session.json")));
+  writeFileSync(join(configDir, "version.json"), JSON.stringify({ version: "10.13.1" }));
+  writeFileSync(join(liveSessionTmp, "fixture.txt"), "fixture-a\n");
+  execFileSync("git", ["init", "-q"], { cwd: liveSessionTmp });
+  execFileSync("git", ["add", "."], { cwd: liveSessionTmp });
+  const liveSuites = [{
+    id: "alpha",
+    category: "core",
+    test_class: "functional_proof_test",
+    test_class_label: "Functional proof test",
+    label: "Alpha",
+    required: true,
+    phases: ["all"],
+    surfaces: ["core"],
+    fixtures: ["fixture.txt"],
+    changed_file_patterns: [/fixture\.txt$/],
+    command: [NODE, "fixture.txt"],
+    display_command: "node fixture.txt",
+    timeout_ms: 1000,
+  }];
+  const liveForecast = forecastConformance({ suites: liveSuites, repoRoot: liveSessionTmp });
+  assert(liveForecast.status === "FORECAST" && liveForecast.selected_suite_ids[0] === "alpha", "runner forecast exposes the exact selected suite set before spawn");
+  let liveExecutions = 0;
+  const executeLive = (item) => {
+    liveExecutions += 1;
+    return { id: item.id, status: "PASS", exit_code: 0, timed_out: false, duration_ms: 5, started_at: new Date().toISOString(), finished_at: new Date().toISOString(), stdout_excerpt: "ok", stderr_excerpt: "", raw_stdout: "ok", raw_stderr: "" };
+  };
+  const firstLive = await runConformanceLive({ suites: liveSuites, repoRoot: liveSessionTmp, reportRoot: join(liveSessionTmp, "outside-reports"), writeManifest: false, executeCommand: executeLive, outerTimeoutMs: liveForecast.forecast.required_outer_timeout_ms });
+  const secondLive = await runConformanceLive({ suites: liveSuites, repoRoot: liveSessionTmp, reportRoot: join(liveSessionTmp, "outside-reports"), writeManifest: false, executeCommand: executeLive, outerTimeoutMs: liveForecast.forecast.required_outer_timeout_ms });
+  assert(firstLive.status === "PASS" && secondLive.status === "PASS" && liveExecutions === 1 && secondLive.results[0]?.reused === true, "live runner publishes and reuses an exact fresh PASS receipt without respawning the suite");
+  assert(
+    firstLive.receipt_path?.startsWith("git-metadata:")
+      && !JSON.stringify(firstLive.conformance_session).includes(liveSessionTmp),
+    "persisted conformance reports expose portable Git-metadata locators without leaking host-absolute paths",
+  );
+  writeFileSync(join(liveSessionTmp, "fixture.txt"), "fixture-mutated\n");
+  const invalidatedLive = await runConformanceLive({ suites: liveSuites, repoRoot: liveSessionTmp, reportRoot: join(liveSessionTmp, "outside-reports"), writeManifest: false, executeCommand: executeLive, outerTimeoutMs: liveForecast.forecast.required_outer_timeout_ms });
+  assert(invalidatedLive.status === "PASS" && liveExecutions === 2 && invalidatedLive.results[0]?.reused !== true, "live runner reruns after selected fixture bytes change");
+} finally {
+  rmSync(liveSessionTmp, { recursive: true, force: true });
 }
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);

@@ -105,6 +105,21 @@ function runCli(scriptPath, args, cwd) {
   }
 }
 
+function runGit(args, cwd) {
+  return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+}
+
+function repositorySourceDigest(cwd) {
+  const hash = createHash("sha256");
+  for (const file of runGit(["ls-files"], cwd).split("\n").filter((value) =>
+    /\.(?:mjs|cjs|js|jsx|ts|tsx|pl)$/.test(value) &&
+    value !== ".agent/ontology/facts.pl"
+  ).sort()) {
+    hash.update(file).update("\0").update(readFileSync(join(cwd, file))).update("\0");
+  }
+  return `sha256:${hash.digest("hex")}`;
+}
+
 function parseJson(text) {
   try {
     return JSON.parse(text);
@@ -1303,6 +1318,73 @@ function scenarioValidateFlagsPlantedDanglingTestReference() {
   }
 }
 
+function scenarioAuthorityStructuralAndExecutedEvidence() {
+  const tmp = makeTemp("authority-observations");
+  try {
+    seedAllSources(tmp);
+    writeText(join(tmp, "src", "dependency.mjs"), "export function dependency() { return true; }\n");
+    writeText(join(tmp, "src", "service.mjs"), "import { dependency } from './dependency.mjs';\nexport class Service {}\nexport function runService() { return dependency(); }\n");
+    runGit(["init", "-q"], tmp);
+    runGit(["config", "user.email", "ontology@example.test"], tmp);
+    runGit(["config", "user.name", "Ontology Test"], tmp);
+    runGit(["add", "."], tmp);
+    runGit(["commit", "-qm", "fixture"], tmp);
+    const revision = runGit(["rev-parse", "HEAD"], tmp);
+    writeJson(join(tmp, "reports", "test_runs", "plan_fixture_current.yaml"), {
+      test_run: {
+        id: "run-current",
+        plan_id: "plan_fixture",
+        generated_at: "2026-08-29T20:00:00.000Z",
+        command: "node .agent/skills/iterative-planner/tests/test_ontology_cli.mjs",
+        revision,
+        source_digest: repositorySourceDigest(tmp),
+        tool_version: "node-test-v1",
+        provenance: "test_run_record",
+        summary: { total: 1, passed: 1, failed: 0, skipped: 0 },
+        tests: [{ name: "scenarioBuildInducesAllOntologyClasses", outcome: "pass" }],
+      },
+    });
+
+    const build = buildOntologyFacts({ cwd: tmp, induce: true });
+    assert(build.ok, "authority/observation fixture builds successfully");
+    assert(build.authority_receipt?.authority === "canonical_yaml", "authority receipt names canonical YAML as sole authority");
+    assert(build.authority_receipt?.source_digest?.startsWith("sha256:"), "authority receipt exposes canonical source digest");
+    assert(build.authority_receipt?.projections?.compiled_prolog?.status === "current", "fresh compiled projection is current");
+    assert(build.counts.code.classes > 0 && build.counts.code.functions > 0 && build.counts.code.file_dependencies > 0, "structural adapter induces classes, functions, and imports");
+    assert(build.counts.verification.test_runs > 0, "executed-evidence adapter induces test runs");
+    assert(build.documents.verification.test_runs.some((run) => run.id === "run-current" && run.current === true), "revision-matched observation is current");
+    assert(build.facts.includes("test_run_current('run-current', 'true')."), "compiled facts expose observation currentness");
+    const steadyGateBuild = buildOntologyFacts({ cwd: tmp, projectionProfile: "gate" });
+    assert(steadyGateBuild.facts.includes("test_run_current('run-current', 'true')."), "derived facts.pl regeneration does not stale a current source-bound receipt");
+    writeText(join(tmp, "src", "service.mjs"), "import { dependency } from './dependency.mjs';\nexport class Service {}\nexport function runService() { return dependency() && true; }\n");
+    const liveGateBuild = buildOntologyFacts({ cwd: tmp, projectionProfile: "gate" });
+    assert(liveGateBuild.facts.includes("test_run_current('run-current', 'false')."), "gate projection invalidates persisted currentness immediately after a source edit");
+    assert(!liveGateBuild.facts.includes("test_run_current('run-current', 'true')."), "gate projection cannot retain a stale persisted current verdict");
+    assert(build.facts.includes("plan_criterion_story('plan_fixture', 'CRIT-001', 'US-900')."), "compiled facts link plan criterion to its story");
+
+    const overlay = "current_state(validate). success_criterion('sc_1'). criterion_story('sc_1', 'US-900'). code_ref('US-900', 'src/service.mjs'). test_ref('US-900', '.agent/skills/iterative-planner/tests/test_ontology_cli.mjs'). validation_ref('US-900', 'reports/test_runs/plan_fixture_current.yaml').";
+    const currentSession = createSession();
+    currentSession.consult(readFileSync(join(plannerSkillPath, "prolog", "invariants.pl"), "utf-8"));
+    currentSession.consult(build.facts);
+    currentSession.consult(overlay);
+    assert(currentSession.check("canonical_story_observed('US-900')"), "current linked pass is gate-authoritative observed proof");
+    assert(currentSession.check("full_evidence_chain('sc_1')"), "current linked pass strengthens the full evidence chain");
+
+    const staleSession = createSession();
+    staleSession.consult(readFileSync(join(plannerSkillPath, "prolog", "invariants.pl"), "utf-8"));
+    staleSession.consult(liveGateBuild.facts);
+    staleSession.consult(overlay);
+    assert(!staleSession.check("canonical_story_observed('US-900')"), "stale observation cannot satisfy canonical proof");
+    assert(!staleSession.check("full_evidence_chain('sc_1')"), "tracked stale evidence cannot fall back to declared-only proof");
+
+    writeText(getOntologyCompiledFactPath(tmp), `${build.facts}\n% tampered\n`);
+    const checked = buildOntologyFacts({ cwd: tmp, dryRun: true });
+    assert(checked.authority_receipt?.projections?.compiled_prolog?.status === "stale_or_tampered", "tampered projection is detected without becoming authority");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
 scenarioBuildCliWritesGeneratedRepoFacts();
 scenarioPlanCriterionIdentityIsScopedAndExplicit();
 scenarioCrossPlanCriterionReuseRemainsValid();
@@ -1317,6 +1399,7 @@ scenarioQueryAndFactsSurfaceStructuredOntologyData();
 scenarioValidateFlagsPlantedDanglingTestReference();
 scenarioSemanticEngineLoadsGeneratedRepoFacts();
 scenarioRuleEngineIgnoresHandEditedCompiledRepoFacts();
+scenarioAuthorityStructuralAndExecutedEvidence();
 
 console.log(`\nOntology CLI tests: ${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

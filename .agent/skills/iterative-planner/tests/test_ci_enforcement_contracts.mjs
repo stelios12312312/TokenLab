@@ -96,6 +96,10 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 const mode = process.env.TEST_IVE_CONFORMANCE_MODE || "pass";
+if (process.argv.includes("--forecast")) {
+  console.log(JSON.stringify({ status: "FORECAST", selected_count: 1, forecast: { required_outer_timeout_ms: Number(process.env.TEST_IVE_FORECAST_REQUIRED_MS || 1) } }));
+  process.exit(0);
+}
 if (mode === "sleep") {
   const sleepMs = Number(process.env.TEST_IVE_CONFORMANCE_SLEEP_MS || 250);
   await new Promise((resolveSleep) => setTimeout(resolveSleep, sleepMs));
@@ -284,6 +288,11 @@ function scenarioLocalEnforcementReplacementSurface() {
   const prePush = readText(".agent/skills/iterative-planner/scripts/hooks/pre-push");
 
   assert(Boolean(profiles?.profiles?.["core-release"]), "governed core-release profile ships");
+  assert(Boolean(profiles?.profiles?.["pre-commit-core"]), "staged-candidate pre-commit profile ships");
+  assert(
+    profiles?.profiles?.["pre-commit-core"]?.exclusions?.some((entry) => entry?.suite_id === "clean-checkout-conformance"),
+    "pre-commit profile defers exact committed-tree proof until pre-push"
+  );
   assert(
     Boolean(cleanCheckout) && release.includes("clean_checkout_conformance.mjs --ref HEAD") && release.includes("--require-profile core-release"),
     "release workflow binds exact-revision clean-checkout proof to core-release"
@@ -333,6 +342,7 @@ function scenarioPrePushHookBlocksMainOnly() {
   assert(helperContent.includes("DEFAULT_IVE_PRE_PUSH_TIMEOUT_MS = 900_000"), "pre-push helper preserves the governed measured fifteen-minute default budget");
   assert(helperContent.includes("process.env.IVE_PRE_PUSH_TIMEOUT_MS"), "pre-push helper retains the explicit timeout override");
   assert(helperContent.includes("git\", [") && helperContent.includes("--changed-files") && helperContent.includes("trusted_ref_diff"), "pre-push helper scopes trustworthy main updates through the governed IVE changed-file selector");
+  assert(helperContent.includes('CORE_RELEASE_PROFILE_ID = "core-release"') && helperContent.includes("governed_release_surface"), "pre-push helper bounds central runner changes to the canonical core-release profile");
   assert(helperContent.includes("invalid_ref_boundary") && helperContent.includes("git_diff_unavailable") && helperContent.includes("new_main_ref"), "pre-push helper retains explicit full-catalog fallback reasons for uncertain Git boundaries");
   const parentGitRoutingKeys = [
     "GIT_ALTERNATE_OBJECT_DIRECTORIES",

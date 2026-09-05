@@ -1,8 +1,11 @@
 {
   "schema_version": 1,
+  "proof_scope": "consumer_portable_engine_install",
+  "source_release_profile": "core-release",
+  "source_release_only_suites": ["transition-gate-flows"],
   "receipt_path": ".agent/skills/iterative-planner/config/last_upgrade_receipt.json",
   "journal_git_path": "iterative-planner/managed-upgrade",
-  "preflight_scopes": [
+  "candidate_scopes": [
     ".agent/skills/iterative-planner",
     ".agent/rules.md",
     ".agent/rules",
@@ -34,11 +37,6 @@
       "id": "preplanning-scaffolding",
       "args": [".agent/skills/iterative-planner/tests/ive/run.mjs", "--only", "preplanning-scaffolding", "--json", "--no-manifest"],
       "timeout_ms": 300000
-    },
-    {
-      "id": "transition-gate-flows",
-      "args": [".agent/skills/iterative-planner/tests/ive/run.mjs", "--only", "transition-gate-flows", "--json", "--no-manifest"],
-      "timeout_ms": 420000
     }
   ]
 }

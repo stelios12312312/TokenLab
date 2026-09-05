@@ -22,7 +22,22 @@ import { dirname, join, resolve } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
 import { plannerSubprocessEnv } from "./helpers/env.mjs";
-import { buildTransitionReceipt } from "../scripts/lib/gate_verdict.mjs";
+import {
+  buildTransitionReceipt,
+  readLatestTransitionReceipt,
+  selectTransitionResultsForOutput,
+  writeTransitionReceipt,
+} from "../scripts/lib/gate_verdict.mjs";
+import {
+  createGateEvaluationSessionReceipt,
+  validateGateEvaluationSession,
+  classifyCheckDisposition,
+} from "../scripts/lib/gate_evaluation_session.mjs";
+import {
+  createInitialStateJson,
+  resolveScriptVersions,
+  writeScriptBundleManifest,
+} from "../scripts/lib/determinism.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -88,6 +103,7 @@ function hashTree(root) {
     if (stat.isDirectory()) {
       hash.update(`D\0${relativePath}\0`);
       for (const entry of readdirSync(path).sort()) {
+        if (!relativePath && entry === ".git") continue;
         visit(join(path, entry), relativePath ? `${relativePath}/${entry}` : entry);
       }
       return;
@@ -110,6 +126,7 @@ function treeManifest(root) {
     }
     if (stat.isDirectory()) {
       for (const entry of readdirSync(path).sort()) {
+        if (!relativePath && entry === ".git") continue;
         visit(join(path, entry), relativePath ? `${relativePath}/${entry}` : entry);
       }
       return;
@@ -158,6 +175,7 @@ function seedStoryRegistry(projectRoot) {
 
 function seedProject({ state = "EXPLORE", goal = "Internal planner maintenance dry-run equivalence control" } = {}) {
   const projectRoot = mkdtempSync(join(tmpdir(), "planner-dry-run-equivalence-"));
+  execFileSync("git", ["init", "-q"], { cwd: projectRoot });
   symlinkSync(agentDir, join(projectRoot, ".agent"), "dir");
   writeJson(join(projectRoot, "audit.config.json"), {
     roles: ["core", "assumptions_challenger", "wiring_auditor", "config_integrity", "traceability"],
@@ -281,7 +299,7 @@ function scenarioEveryRegisteredGate() {
       assert(pair.before === pair.afterDry, `${gate} dry-run is byte-non-writing`, pair.dryDelta || `${pair.before} != ${pair.afterDry}`);
       assert(pair.dryProjection !== null, `${gate} dry-run emits stable equivalence truth`);
       assert(pair.actualProjection !== null, `${gate} actual emits stable equivalence truth`);
-      assert(pair.dryProjection === pair.actualProjection, `${gate} dry-run/actual stable truth is byte-equivalent`);
+      assert(pair.dryProjection === pair.actualProjection, `${gate} dry-run/actual stable truth is byte-equivalent`, `${pair.dryProjection} != ${pair.actualProjection}`);
       assert(!pair.dry.ok && !pair.actual.ok, `${gate} wrong-source control blocks in both modes`);
     } finally {
       rmSync(fixture.projectRoot, { recursive: true, force: true });
@@ -294,9 +312,12 @@ function scenarioFreshPassAndSeededFail() {
   try {
     const pair = pairedTransition({ ...passFixture, gate: "explore-to-plan", env: { _PLANNER_FAST_TRACK: "1" } });
     assert(pair.before === pair.afterDry, "fresh PASS dry-run writes nothing", pair.dryDelta);
-    assert(pair.dry.ok && pair.actual.ok, "fresh real plan dry-run PASS is immediately followed by actual PASS");
-    assert(pair.dryProjection === pair.actualProjection, "fresh PASS pair has byte-equivalent stable truth");
+    assert(pair.dry.ok && pair.actual.ok, "fresh real plan dry-run PASS is immediately followed by actual PASS", `${pair.dry.status}/${pair.actual.status}: ${pair.actual.stdout}\n${pair.actual.stderr}`);
+    assert(pair.dryProjection === pair.actualProjection, "fresh PASS pair has byte-equivalent stable truth", `${pair.dryProjection} != ${pair.actualProjection}`);
     assert(JSON.parse(readFileSync(join(pair.planDir, "state.json"), "utf-8")).state === "PLAN", "fresh PASS actual advances canonical state");
+    const metrics = JSON.parse(readFileSync(join(pair.planDir, "metrics.json"), "utf-8"));
+    assert(metrics.gate_attempt_ledger?.some((row) => row.mode === "dry-run") && metrics.gate_attempt_ledger?.some((row) => row.mode === "actual"),
+      "matching actual merges disposable dry-run telemetry into the canonical attempt ledger");
   } finally {
     rmSync(passFixture.projectRoot, { recursive: true, force: true });
   }
@@ -306,10 +327,35 @@ function scenarioFreshPassAndSeededFail() {
     const pair = pairedTransition({ ...failFixture, gate: "explore-to-plan", env: { _PLANNER_FAST_TRACK: "1" } });
     assert(pair.before === pair.afterDry, "seeded FAIL dry-run writes nothing", pair.dryDelta);
     assert(!pair.dry.ok && !pair.actual.ok, "seeded dry-run FAIL is immediately followed by actual FAIL");
-    assert(pair.dryProjection === pair.actualProjection, "seeded FAIL pair has byte-equivalent stable truth");
+    assert(pair.dryProjection === pair.actualProjection, "seeded FAIL pair has byte-equivalent stable truth", `${pair.dryProjection} != ${pair.actualProjection}`);
     assert(pair.dryProjection?.includes("GATE-SRC-001"), "seeded FAIL pair preserves its exact hard-block code");
   } finally {
     rmSync(failFixture.projectRoot, { recursive: true, force: true });
+  }
+}
+
+function scenarioInvalidatedActualMatchesForcedFresh() {
+  const cachedFixture = seedProject({ state: "EXPLORE", goal: "Internal planner maintenance invalidated actual control" });
+  const forcedFixture = seedProject({ state: "EXPLORE", goal: "Internal planner maintenance invalidated actual control" });
+  try {
+    const cachedDry = runNode([transitionScript, "explore-to-plan", "--dry-run", "--plan", cachedFixture.planName], cachedFixture.projectRoot, { _PLANNER_FAST_TRACK: "1" });
+    const forcedDry = runNode([transitionScript, "explore-to-plan", "--dry-run", "--plan", forcedFixture.planName], forcedFixture.projectRoot, { _PLANNER_FAST_TRACK: "1" });
+    writeFileSync(join(cachedFixture.projectRoot, "authority-mutation.txt"), "changed after dry-run\n");
+    writeFileSync(join(forcedFixture.projectRoot, "authority-mutation.txt"), "changed after dry-run\n");
+    const invalidated = runNode([transitionScript, "explore-to-plan", "--plan", cachedFixture.planName], cachedFixture.projectRoot, { _PLANNER_FAST_TRACK: "1" });
+    const forced = runNode([transitionScript, "explore-to-plan", "--plan", forcedFixture.planName], forcedFixture.projectRoot, {
+      _PLANNER_FAST_TRACK: "1",
+      PLANNER_DISABLE_GATE_REUSE: "1",
+    });
+    assert(cachedDry.ok && forcedDry.ok, "invalidation parity controls begin from PASS dry-runs");
+    assert(invalidated.ok && forced.ok, "untracked-content invalidation reruns and preserves the PASS verdict");
+    assert(invalidated.stdout.includes("Cache invalidated: git_untracked_changed"), "actual transition names the invalidation family");
+    assert(!invalidated.stdout.includes("Exact fresh PASS dry-run reused"), "invalidated actual does not reuse evaluator results");
+    assert(extractEquivalence(invalidated.stdout) === extractEquivalence(forced.stdout),
+      "invalidated actual has the same semantic receipt as a forced-uncached evaluation");
+  } finally {
+    rmSync(cachedFixture.projectRoot, { recursive: true, force: true });
+    rmSync(forcedFixture.projectRoot, { recursive: true, force: true });
   }
 }
 
@@ -466,6 +512,177 @@ function scenarioExplainedDivergenceProjection() {
   assert(Array.isArray(legacyShape.equivalence.explained_divergences) && legacyShape.equivalence.explained_divergences.length === 0, "equivalence absence normalizes explained divergences to an empty array");
 }
 
+function scenarioGateEvaluationSessionInvalidationMatrix() {
+  const identity = {
+    version: 1,
+    plan_id: "plan_reuse_fixture",
+    gate: "plan-to-execute",
+    source_state: "PLAN",
+    plan_digest: "plan-a",
+    git: { head: "head-a", index: "index-a", unstaged: "unstaged-a", untracked: "untracked-a" },
+    bundles: { evaluator: "bundle-a", rules: "rules-a", config: "config-a", checklists: "checklists-a" },
+    evidence_digest: "evidence-a",
+  };
+  const session = createGateEvaluationSessionReceipt({
+    identity,
+    gateReceipt: { status: "PASS", gate: identity.gate, hard_block_count: 0 },
+    createdAt: "2026-07-16T00:00:00.000Z",
+    ttlMs: 60_000,
+  });
+  const fresh = validateGateEvaluationSession({ session, identity, now: "2026-07-16T00:00:30.000Z" });
+  assert(fresh.reusable === true && fresh.reason === "exact_fresh_pass", "exact fresh PASS dry-run is reusable");
+
+  const mutations = [
+    ["plan_changed", (value) => { value.plan_digest = "plan-b"; }],
+    ["source_state_changed", (value) => { value.source_state = "EXECUTE"; }],
+    ["git_head_changed", (value) => { value.git.head = "head-b"; }],
+    ["git_index_changed", (value) => { value.git.index = "index-b"; }],
+    ["git_unstaged_changed", (value) => { value.git.unstaged = "unstaged-b"; }],
+    ["git_untracked_changed", (value) => { value.git.untracked = "untracked-b"; }],
+    ["evaluator_bundle_changed", (value) => { value.bundles.evaluator = "bundle-b"; }],
+    ["rule_bundle_changed", (value) => { value.bundles.rules = "rules-b"; }],
+    ["config_bundle_changed", (value) => { value.bundles.config = "config-b"; }],
+    ["checklist_bundle_changed", (value) => { value.bundles.checklists = "checklists-b"; }],
+    ["evidence_changed", (value) => { value.evidence_digest = "evidence-b"; }],
+    ["target_plan_changed", (value) => { value.plan_id = "plan-other"; }],
+    ["wrong_gate", (value) => { value.gate = "execute-to-reflect"; }],
+  ];
+  for (const [reason, mutate] of mutations) {
+    const changed = structuredClone(identity);
+    mutate(changed);
+    const verdict = validateGateEvaluationSession({ session, identity: changed, now: "2026-07-16T00:00:30.000Z" });
+    assert(verdict.reusable === false && verdict.reason === reason, `${reason} invalidates gate reuse`);
+  }
+
+  const expired = validateGateEvaluationSession({ session, identity, now: "2026-07-16T00:01:00.001Z" });
+  assert(expired.reusable === false && expired.reason === "expired", "clock expiry invalidates gate reuse");
+  const failed = createGateEvaluationSessionReceipt({ identity, gateReceipt: { status: "FAIL", gate: identity.gate }, createdAt: "2026-07-16T00:00:00.000Z", ttlMs: 60_000 });
+  assert(validateGateEvaluationSession({ session: failed, identity, now: "2026-07-16T00:00:30.000Z" }).reason === "dry_run_not_passed",
+    "a failed dry-run can never be reused");
+  const corrupt = structuredClone(session);
+  corrupt.integrity_digest = "tampered";
+  assert(validateGateEvaluationSession({ session: corrupt, identity, now: "2026-07-16T00:00:30.000Z" }).reason === "corrupt_session",
+    "session tampering fails closed");
+
+  assert(classifyCheckDisposition({ definition: null, changedInputs: [] }).disposition === "ran",
+    "missing applicability metadata defaults to ran");
+  assert(classifyCheckDisposition({ definition: { applicability: false }, changedInputs: [] }).disposition === "not_applicable",
+    "an explicit false applicability rule is reported as not_applicable");
+  assert(classifyCheckDisposition({ definition: { cacheable: true, inputs: ["plan"] }, changedInputs: [], cachedResult: { status: "PASS" } }).disposition === "reused",
+    "an unchanged cacheable PASS check is reported as reused");
+  assert(classifyCheckDisposition({ definition: { cacheable: true, inputs: ["plan"] }, changedInputs: ["plan"], cachedResult: { status: "PASS" } }).disposition === "ran",
+    "a changed declared dependency reruns the check");
+}
+
+function scenarioReceiptPointersAndScriptBundleCompatibility() {
+  const tmp = mkdtempSync(join(tmpdir(), "planner-compact-receipts-"));
+  try {
+    const planDir = join(tmp, "plans", "plan_compact");
+    mkdirSync(planDir, { recursive: true });
+    const receipt = buildTransitionReceipt({
+      planId: "plan_compact",
+      gate: "plan-to-execute",
+      sourceState: "PLAN",
+      targetState: "EXECUTE",
+      results: [{ name: "fixture", status: "PASS", detail: "ok" }],
+      generatedAt: "2026-07-16T00:00:00.000Z",
+    });
+    const written = writeTransitionReceipt(planDir, receipt, { projectRoot: tmp });
+    const latestRaw = JSON.parse(readFileSync(written.latest_path, "utf-8"));
+    const compactPointerBytes = Buffer.byteLength(readFileSync(written.latest_path));
+    assert(latestRaw.pointer_version === 1 && typeof latestRaw.target === "string" && /^[a-f0-9]{64}$/.test(latestRaw.digest || ""),
+      "latest transition receipt is a compact digest-bound pointer");
+    assert(readLatestTransitionReceipt(planDir, "plan-to-execute")?.status === "PASS",
+      "latest receipt reader resolves the compact pointer transparently");
+
+    writeJson(written.latest_path, written.receipt);
+    assert(readLatestTransitionReceipt(planDir, "plan-to-execute")?.status === "PASS",
+      "latest receipt reader still accepts the legacy full-receipt shape");
+
+    writeJson(written.latest_path, latestRaw);
+    writeFileSync(written.immutable_path, "{}\n");
+    assert(readLatestTransitionReceipt(planDir, "plan-to-execute") === null,
+      "latest receipt pointer rejects a target digest mismatch");
+    writeJson(written.latest_path, { ...latestRaw, target: "../../outside.json" });
+    assert(readLatestTransitionReceipt(planDir, "plan-to-execute") === null,
+      "latest receipt pointer rejects traversal outside the receipt directory");
+    writeJson(written.latest_path, { ...latestRaw, target: "missing.json" });
+    assert(readLatestTransitionReceipt(planDir, "plan-to-execute") === null,
+      "latest receipt pointer rejects a missing target");
+    writeFileSync(written.latest_path, "{ malformed\n");
+    assert(readLatestTransitionReceipt(planDir, "plan-to-execute") === null,
+      "latest receipt pointer rejects malformed content");
+
+    const versions = { "transition.mjs": "aaa", "lib/gate_verdict.mjs": "bbb" };
+    const initialState = createInitialStateJson("plan_2026-07-16_abcdef12", "compact initial state", { projectRoot: tmp });
+    assert(!Object.prototype.hasOwnProperty.call(initialState, "script_versions")
+      && !Object.prototype.hasOwnProperty.call(initialState.transitions[0], "script_versions"),
+    "new initial state writes do not seed redundant legacy script maps");
+    const bundle = writeScriptBundleManifest({ projectRoot: tmp, planDir, scriptVersions: versions });
+    assert(bundle.count === 2 && /^[a-f0-9]{64}$/.test(bundle.digest || "") && existsSync(join(tmp, bundle.manifest_path)),
+      "new script-version writes produce one compact digest manifest reference");
+    const compactResolved = resolveScriptVersions({ projectRoot: tmp, planDir, record: { script_bundle: bundle } });
+    assert(compactResolved?.["transition.mjs"] === "aaa" && compactResolved?.["lib/gate_verdict.mjs"] === "bbb",
+      "script-version reader resolves the compact manifest shape");
+    const legacyResolved = resolveScriptVersions({ projectRoot: tmp, planDir, record: { script_versions: versions } });
+    assert(legacyResolved?.["transition.mjs"] === "aaa" && legacyResolved?.["lib/gate_verdict.mjs"] === "bbb",
+      "script-version reader preserves the legacy full-map shape");
+
+    const largeVersions = Object.fromEntries(Array.from({ length: 300 }, (_, index) => [
+      `lib/script_${String(index).padStart(3, "0")}.mjs`,
+      createHash("sha256").update(String(index)).digest("hex"),
+    ]));
+    const largeBundle = writeScriptBundleManifest({ projectRoot: tmp, planDir, scriptVersions: largeVersions });
+    const legacyState = {
+      script_versions: largeVersions,
+      transitions: Array.from({ length: 6 }, () => ({ script_versions: largeVersions })),
+    };
+    const compactState = {
+      script_bundle: largeBundle,
+      transitions: Array.from({ length: 6 }, () => ({ script_bundle: largeBundle })),
+    };
+    const immutableReceiptBytes = Buffer.byteLength(readFileSync(written.immutable_path));
+    const legacyBytes = Buffer.byteLength(JSON.stringify(legacyState)) + (immutableReceiptBytes * 2);
+    const compactBytes = Buffer.byteLength(JSON.stringify(compactState))
+      + Buffer.byteLength(readFileSync(join(tmp, largeBundle.manifest_path)))
+      + immutableReceiptBytes
+      + compactPointerBytes;
+    assert(compactBytes / legacyBytes <= 0.35,
+      "compact state and latest-receipt storage remains within 35 percent of the legacy equivalent");
+
+    for (let index = 0; index < 12; index++) {
+      writeScriptBundleManifest({
+        projectRoot: tmp,
+        planDir,
+        scriptVersions: { [`ephemeral_${index}.mjs`]: createHash("sha256").update(`ephemeral-${index}`).digest("hex") },
+      });
+    }
+    const manifestCount = readdirSync(join(planDir, "artifacts", "script_manifests"))
+      .filter((name) => /^[a-f0-9]{64}\.json$/.test(name)).length;
+    assert(manifestCount <= 9, "unreferenced script manifests are retained within the bounded disposable budget");
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+}
+
+function scenarioTransitionOutputPolicy() {
+  const rows = [
+    { name: "pass row", status: "PASS" },
+    { name: "warn row", status: "WARN" },
+    { name: "fail row", status: "FAIL" },
+    { name: "skip row", status: "SKIP" },
+  ];
+  const minimal = selectTransitionResultsForOutput(rows, { mode: "minimal" });
+  assert(JSON.stringify(minimal.rows.map((row) => row.status)) === JSON.stringify(["WARN", "FAIL"]),
+    "minimal transition output retains every WARN and FAIL while collapsing PASS/SKIP rows");
+  assert(minimal.summary.pass === 1 && minimal.summary.skip === 1 && minimal.summary.warn === 1 && minimal.summary.fail === 1,
+    "minimal transition output reports complete section counts");
+  assert(selectTransitionResultsForOutput(rows, { mode: "full" }).rows.length === 4,
+    "explicit full transition output retains every row");
+  assert(selectTransitionResultsForOutput(rows, { mode: "minimal", verbose: true }).rows.length === 4,
+    "verbose override retains every row independently of policy mode");
+}
+
 console.log("\nTransition Dry-Run Equivalence Test\n");
 
 const help = runNode([transitionScript, "--help"], repoRoot);
@@ -474,14 +691,21 @@ assert(dryRunAdvertised, "transition CLI advertises --dry-run");
 const verifierHelp = runNode([verifyGateScript, "--help"], repoRoot);
 assert(verifierHelp.ok && verifierHelp.stdout.includes("delegates to transition.mjs"), "verify_gate help declares delegated preflight authority");
 scenarioExplainedDivergenceProjection();
+scenarioGateEvaluationSessionInvalidationMatrix();
+scenarioReceiptPointersAndScriptBundleCompatibility();
+scenarioTransitionOutputPolicy();
 
 // Test-before-fix fast failure: do not spend the full fixture matrix until the
 // public contract exists. Once implemented, every structural control below runs.
 if (dryRunAdvertised) {
-  scenarioEveryRegisteredGate();
-  scenarioFreshPassAndSeededFail();
-  scenarioSuccessorThreeControl();
-  scenarioMirrorDemotionAndAuthorityCensus();
+  const scenarioOnly = process.env.PLANNER_EQUIVALENCE_SCENARIO || "all";
+  if (["all", "registered"].includes(scenarioOnly)) scenarioEveryRegisteredGate();
+  if (["all", "fresh"].includes(scenarioOnly)) {
+    scenarioFreshPassAndSeededFail();
+    scenarioInvalidatedActualMatchesForcedFresh();
+  }
+  if (["all", "successor"].includes(scenarioOnly)) scenarioSuccessorThreeControl();
+  if (["all", "authority"].includes(scenarioOnly)) scenarioMirrorDemotionAndAuthorityCensus();
 }
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);

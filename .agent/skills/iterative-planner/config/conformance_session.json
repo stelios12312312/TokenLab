@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "receipt_freshness_ms": 21600000,
+  "heartbeat_interval_ms": 30000,
+  "retention_count": 20,
+  "forecast": {
+    "fallback_suite_ms": 30000,
+    "duration_multiplier": 1.5,
+    "cleanup_cushion_ms": 120000,
+    "min_outer_timeout_ms": 900000,
+    "max_outer_timeout_ms": 14400000
+  }
+}

@@ -45,6 +45,7 @@ import {
   resolvePersonaAuthorityPlanContext,
   summarizePersonaAuthority,
 } from "./lib/persona_activation_authority.mjs";
+import { resolveModelAssurance } from "./lib/model_assurance.mjs";
 
 const args = process.argv.slice(2);
 const flags = {
@@ -396,6 +397,19 @@ payload.recommended_path_reason = (
 ) ? `Anti-ritual contract: ${antiRitual.detail}` : (knowledgeResolution?.recommended_path_reason || postureRoute.reason);
 payload.anti_ritual = antiRitual;
 payload.ritual_ladder = ritualLadder;
+const explicitAssuranceFloor = readFlagValue("--assurance-floor");
+const explicitModelProfile = readFlagValue("--model-profile");
+const explicitModelProvenance = readFlagValue("--model-provenance");
+const observedContractFailures = Number(readFlagValue("--observed-contract-failures") || 0);
+const taskRisk = classification?.flow?.mode === "full" || classification?.escalation_reason === "high_risk"
+  ? "critical"
+  : classification?.flow?.mode === "lightweight" ? "standard" : "enhanced";
+payload.model_assurance = resolveModelAssurance({
+  configuredFloor: explicitAssuranceFloor || undefined,
+  taskRisk,
+  capability: explicitModelProfile ? { profile: explicitModelProfile, provenance: explicitModelProvenance || "unknown" } : null,
+  observedFailures: observedContractFailures,
+});
 payload.persona_activation_authority = summarizePersonaAuthority(
   uniqueList([...(auditConfig.roles || []), ...(auditConfig.force_packs || [])])
     .filter((role) => role !== "core")
@@ -431,6 +445,7 @@ if (flags.json) {
   console.log(`Workflow: ${payload.workflow.recommended} [${payload.escalation_reason}]`);
   console.log(`Authority / posture / path: ${payload.authority_profile.phase} / ${payload.audit_posture} / ${payload.recommended_path}`);
   console.log(`Ritual ladder: ${payload.ritual_ladder.selected_step} (${payload.ritual_ladder.status}) - ${payload.ritual_ladder.summary}`);
+  console.log(`Model assurance: ${payload.model_assurance.effective_profile} (provider/model/generation/tools unchanged)`);
   if (payload.ritual_ladder.non_skippable.length > 0) {
     console.log(`Non-skippable proof: ${payload.ritual_ladder.non_skippable.map((entry) => entry.id).join(", ")}`);
   }

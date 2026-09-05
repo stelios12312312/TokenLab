@@ -1,15 +1,17 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { dirname } from "path";
+import { createHash } from "crypto";
+import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "fs";
+import { dirname, join } from "path";
 
 import {
   ONTOLOGY_ENTITY_CLASSES,
+  ONTOLOGY_VERSION,
   getOntologyCompiledFactPath,
   getOntologyFactPath,
   loadOntologyDocuments,
   renderOntologyDocument,
 } from "./ontology_schema.mjs";
 import { sanitizeAtom, sanitizeEnumAtom, sanitizeStrictId } from "./sanitize.mjs";
-import { induceOntologyDocuments } from "../ontology_inducer.mjs";
+import { gitRevision, induceOntologyDocuments, repositorySourceDigest } from "../ontology_inducer.mjs";
 
 function firstNonEmptyString(...values) {
   for (const value of values) {
@@ -38,8 +40,98 @@ function stableDocumentString(document) {
   return JSON.stringify(document, null, 2);
 }
 
+function readPlannerVersion(cwd) {
+  try {
+    return JSON.parse(readFileSync(join(cwd, ".agent/skills/iterative-planner/config/version.json"), "utf-8")).version || "unknown";
+  } catch {
+    return "unknown";
+  }
+}
+
+export function buildAuthorityReceipt({ cwd, documents, facts = null }) {
+  const sources = ONTOLOGY_ENTITY_CLASSES.map((entityClass) => {
+    const path = getOntologyFactPath(entityClass, cwd);
+    const content = renderOntologyDocument({ [entityClass]: documents[entityClass] });
+    return {
+      entity_class: entityClass,
+      path: `.agent/ontology/facts/${entityClass}.yaml`,
+      sha256: createHash("sha256").update(content).digest("hex"),
+      bytes: Buffer.byteLength(content),
+      modified_at: existsSync(path) ? statSync(path).mtime.toISOString() : null,
+    };
+  });
+  const sourceDigest = `sha256:${createHash("sha256")
+    .update(sources.map((source) => `${source.path}\0${source.sha256}`).join("\n"))
+    .digest("hex")}`;
+  const generatedAt = sources.map((source) => source.modified_at).filter(Boolean).sort().at(-1) || null;
+  const compiledPath = getOntologyCompiledFactPath(cwd);
+  const persisted = existsSync(compiledPath) ? readFileSync(compiledPath, "utf-8") : null;
+  const projectionStatus = persisted === null ? "missing" : (facts === null ? "unchecked" : persisted === facts ? "current" : "stale_or_tampered");
+  return {
+    authority: "canonical_yaml",
+    source_digest: sourceDigest,
+    schema_version: ONTOLOGY_VERSION,
+    engine_version: readPlannerVersion(cwd),
+    generated_at: generatedAt,
+    provenance: "project_owned_canonical_yaml",
+    sources,
+    projections: {
+      canonical_yaml: { role: "authoritative", status: "current" },
+      compiled_prolog: { role: "derived", status: projectionStatus, path: ".agent/ontology/facts.pl" },
+      runtime_overlay: { role: "derived_ephemeral", status: "session_scoped" },
+      ttl_export: { role: "export_only", status: "non_authoritative" },
+    },
+  };
+}
+
 function compareDocuments(left, right) {
   return stableDocumentString(left) === stableDocumentString(right);
+}
+
+const COLLECTION_ID_FIELDS = Object.freeze({
+  code: { modules: ["id"], files: ["path"], classes: ["file", "name"], functions: ["file", "name"], file_dependencies: ["source", "target"] },
+  specification: { domains: ["name"], stories: ["id"], plans: ["id"] },
+  verification: { criteria: ["plan_id", "id"], tests: ["name"], artifacts: ["path"], test_runs: ["id"], coverage_reports: ["id", "file"] },
+  process: { mistakes: ["id"], patterns: ["id"], gotchas: ["id"], retros: ["id"], adrs: ["id"], workflows: ["name"], mirror_readers: ["reader", "artifact"], edge_cases: ["domain", "label"], invariants: ["id"] },
+});
+
+function recordIdentity(record, fields) {
+  return fields.map((field) => String(record?.[field] || "")).join("\0");
+}
+
+function loadOntologyExclusions(cwd) {
+  const path = join(cwd, ".agent/ontology/exclusions.json");
+  if (!existsSync(path)) return { ok: true, path, exclusions: {} };
+  try {
+    const document = JSON.parse(readFileSync(path, "utf8"));
+    if (document.schema_version !== 1 || !document.exclusions || typeof document.exclusions !== "object" || Array.isArray(document.exclusions)) {
+      return { ok: false, path, exclusions: {}, issues: ["ontology exclusions require schema_version=1 and an exclusions object"] };
+    }
+    for (const [collection, identities] of Object.entries(document.exclusions)) {
+      if (!Array.isArray(identities) || identities.some((identity) => typeof identity !== "string" || !identity.trim())) {
+        return { ok: false, path, exclusions: {}, issues: [`ontology exclusion '${collection}' must be an array of non-empty identities`] };
+      }
+    }
+    return { ok: true, path, exclusions: document.exclusions };
+  } catch (error) {
+    return { ok: false, path, exclusions: {}, issues: [`ontology exclusions unreadable: ${error instanceof Error ? error.message : String(error)}`] };
+  }
+}
+
+export function mergeProjectOwnedDocuments(current, induced, exclusions = {}) {
+  const merged = { ...induced };
+  for (const [entityClass, collections] of Object.entries(COLLECTION_ID_FIELDS)) {
+    merged[entityClass] = { ...induced[entityClass] };
+    for (const [collection, fields] of Object.entries(collections)) {
+      const excluded = new Set(exclusions[`${entityClass}.${collection}`] || []);
+      const records = new Map();
+      for (const record of current?.[entityClass]?.[collection] || []) records.set(recordIdentity(record, fields), record);
+      for (const record of induced?.[entityClass]?.[collection] || []) records.set(recordIdentity(record, fields), record);
+      for (const identity of excluded) records.delete(identity);
+      merged[entityClass][collection] = [...records.entries()].sort(([left], [right]) => left.localeCompare(right)).map(([, record]) => record);
+    }
+  }
+  return merged;
 }
 
 function emitFact(lines, seen, predicate, args) {
@@ -196,27 +288,45 @@ export function resolveOntologyDocuments({
 
     const current = loadOntologyDocuments({ cwd, allowMissing: true });
     const currentRoots = documentRootsFromLoadResult(current);
+    const exclusionPolicy = loadOntologyExclusions(cwd);
+    if (!exclusionPolicy.ok) {
+      return {
+        ok: false,
+        cwd,
+        documents: null,
+        warnings: induced.warnings || [],
+        issues: exclusionPolicy.issues,
+        changed_fact_documents: [],
+        wrote_fact_documents: [],
+        document_source: "induced",
+        counts: induced.counts || null,
+      };
+    }
+    const projectOwnedDocuments = mergeProjectOwnedDocuments(currentRoots, induced.documents, exclusionPolicy.exclusions);
     const changedEntityClasses = ONTOLOGY_ENTITY_CLASSES.filter((entityClass) =>
-      !compareDocuments(currentRoots[entityClass] || null, induced.documents[entityClass])
+      !compareDocuments(currentRoots[entityClass] || null, projectOwnedDocuments[entityClass])
     );
     const wroteEntityClasses = dryRun
       ? []
       : writeCanonicalOntologyDocuments({
           cwd,
-          documents: induced.documents,
+          documents: projectOwnedDocuments,
           changedEntityClasses,
         });
 
     return {
       ok: true,
       cwd,
-      documents: induced.documents,
-      warnings: induced.warnings || [],
+      documents: projectOwnedDocuments,
+      warnings: [
+        ...(induced.warnings || []),
+        ...(Object.keys(exclusionPolicy.exclusions).length ? [`Applied project-owned ontology exclusions from ${exclusionPolicy.path}`] : []),
+      ],
       issues: [],
       changed_fact_documents: changedEntityClasses,
       wrote_fact_documents: wroteEntityClasses,
       document_source: "induced",
-      counts: induced.counts,
+      counts: collectDocumentCounts(projectOwnedDocuments),
     };
   }
 
@@ -249,7 +359,7 @@ export function resolveOntologyDocuments({
   };
 }
 
-export function renderOntologyProlog(documents) {
+export function renderOntologyProlog(documents, authorityReceipt = null, { profile = "full" } = {}) {
   const lines = [
     "% Generated by planner ontology build",
     "% Source of truth: .agent/ontology/facts/*.yaml",
@@ -258,13 +368,48 @@ export function renderOntologyProlog(documents) {
     "% Code entities",
   ];
   const seen = new Set();
+  if (authorityReceipt) {
+    emitFact(lines, seen, "ontology_authority", [quotedEnum(authorityReceipt.authority)]);
+    emitFact(lines, seen, "ontology_source_digest", [quotedText(authorityReceipt.source_digest)]);
+    emitFact(lines, seen, "ontology_schema_version", [numericOrAtom(authorityReceipt.schema_version)]);
+    emitFact(lines, seen, "ontology_engine_version", [quotedText(authorityReceipt.engine_version)]);
+    emitFact(lines, seen, "ontology_provenance", [quotedEnum(authorityReceipt.provenance)]);
+    for (const [projection, disposition] of sortObjectEntries(authorityReceipt.projections)) {
+      emitFact(lines, seen, "ontology_projection_role", [quotedEnum(projection), quotedEnum(disposition.role)]);
+    }
+    lines.push("");
+  }
+  const allStories = documents.specification?.stories || [];
+  const allPlans = documents.specification?.plans || [];
+  const gateRelevantPlanIds = new Set(
+    allPlans
+      .filter((record) => !["close", "closed", "abandoned"].includes(String(record.phase || "").toLowerCase()))
+      .map((record) => record.id)
+  );
+  const gateObservedPlans = new Set(
+    (documents.verification?.test_runs || [])
+      .map((record) => record.plan_id)
+      .filter((planId) => planId && gateRelevantPlanIds.has(planId))
+  );
+  const gateStoryIds = new Set([
+    ...allPlans
+      .filter((record) => gateObservedPlans.has(record.id))
+      .flatMap((record) => Array.isArray(record.story_ids) ? record.story_ids : []),
+    ...(documents.verification?.criteria || [])
+      .filter((record) => gateObservedPlans.has(record.plan_id))
+      .map((record) => record.story_id)
+      .filter(Boolean),
+  ]);
+  const projectedStories = allStories.filter((record) => profile === "full" || gateStoryIds.has(record.id));
+  const projectedPlans = allPlans.filter((record) => profile === "full" || gateObservedPlans.has(record.id));
   const storyCriterionIds = new Set(
-    (documents.specification?.stories || [])
+    projectedStories
       .flatMap((storyRecord) => Array.isArray(storyRecord.acceptance_criteria) ? storyRecord.acceptance_criteria : [])
       .map((criterionRecord) => criterionRecord?.id)
       .filter(Boolean)
   );
 
+  if (profile === "full") {
   for (const moduleRecord of sortBy(documents.code?.modules, (record) => record.id)) {
     emitFact(lines, seen, "module", [quotedId(moduleRecord.id)]);
     if (moduleRecord.path) emitFact(lines, seen, "module_path", [quotedId(moduleRecord.id), quotedId(moduleRecord.path)]);
@@ -296,6 +441,7 @@ export function renderOntologyProlog(documents) {
       emitFact(lines, seen, "file_dependency_type", [quotedId(dependencyRecord.source), quotedId(dependencyRecord.target), quotedEnum(dependencyRecord.type)]);
     }
   }
+  }
 
   lines.push("", "% Specification entities");
   for (const domainRecord of sortBy(documents.specification?.domains, (record) => record.name)) {
@@ -303,7 +449,7 @@ export function renderOntologyProlog(documents) {
     if (domainRecord.description) emitFact(lines, seen, "domain_description", [quotedEnum(domainRecord.name), quotedText(domainRecord.description)]);
   }
 
-  for (const storyRecord of sortBy(documents.specification?.stories, (record) => record.id)) {
+  for (const storyRecord of sortBy(projectedStories, (record) => record.id)) {
     emitFact(lines, seen, "story", [quotedId(storyRecord.id)]);
     emitFact(lines, seen, "story_title", [quotedId(storyRecord.id), quotedText(storyRecord.title)]);
     emitFact(lines, seen, "story_status", [quotedId(storyRecord.id), quotedEnum(storyRecord.status)]);
@@ -314,7 +460,7 @@ export function renderOntologyProlog(documents) {
     }
   }
 
-  for (const planRecord of sortBy(documents.specification?.plans, (record) => record.id)) {
+  for (const planRecord of sortBy(projectedPlans, (record) => record.id)) {
     emitFact(lines, seen, "plan", [quotedId(planRecord.id)]);
     if (planRecord.phase) emitFact(lines, seen, "plan_phase", [quotedId(planRecord.id), quotedEnum(planRecord.phase)]);
     for (const storyId of sortBy(planRecord.story_ids, (value) => value)) {
@@ -323,8 +469,33 @@ export function renderOntologyProlog(documents) {
   }
 
   lines.push("", "% Verification entities");
-  for (const criterionRecord of sortBy(documents.verification?.criteria, (record) => `${record.plan_id}:${record.id}`)) {
+  const projectedTestRuns = (documents.verification?.test_runs || []).filter((record) => profile === "full" || gateObservedPlans.has(record.plan_id));
+  const observedPlanIds = new Set(projectedTestRuns.map((record) => record.plan_id).filter(Boolean));
+  const currentPassingTestsByPlan = new Map();
+  for (const runRecord of projectedTestRuns) {
+    if (runRecord.current !== true || !runRecord.plan_id) continue;
+    if (!currentPassingTestsByPlan.has(runRecord.plan_id)) currentPassingTestsByPlan.set(runRecord.plan_id, new Set());
+    const passingTests = currentPassingTestsByPlan.get(runRecord.plan_id);
+    for (const resultRecord of runRecord.results || []) {
+      if (["pass", "passed"].includes(String(resultRecord.outcome || "").toLowerCase())) passingTests.add(resultRecord.test_name);
+    }
+  }
+  const projectedCriteria = (documents.verification?.criteria || []).filter((record) => profile === "full" || gateObservedPlans.has(record.plan_id));
+  for (const criterionRecord of sortBy(projectedCriteria, (record) => `${record.plan_id}:${record.id}`)) {
     emitFact(lines, seen, "verification_criterion", [quotedId(criterionRecord.id), quotedId(criterionRecord.plan_id)]);
+    if (criterionRecord.story_id) {
+      emitFact(lines, seen, "plan_criterion_story", [quotedId(criterionRecord.plan_id), quotedId(criterionRecord.id), quotedId(criterionRecord.story_id)]);
+      emitFact(lines, seen, "story_plan_criterion", [quotedId(criterionRecord.story_id), quotedId(criterionRecord.plan_id), quotedId(criterionRecord.id)]);
+      if (observedPlanIds.has(criterionRecord.plan_id)) {
+        emitFact(lines, seen, "canonical_story_observation_tracking", [quotedId(criterionRecord.story_id)]);
+        emitFact(lines, seen, "canonical_criterion_observation_tracking", [quotedId(criterionRecord.story_id), quotedId(criterionRecord.id)]);
+      }
+      const passingTests = currentPassingTestsByPlan.get(criterionRecord.plan_id);
+      if (passingTests && (criterionRecord.test_refs || []).some((testRef) => passingTests.has(testRef))) {
+        emitFact(lines, seen, "canonical_story_observation_pass", [quotedId(criterionRecord.story_id)]);
+        emitFact(lines, seen, "canonical_criterion_observation_pass", [quotedId(criterionRecord.story_id), quotedId(criterionRecord.id)]);
+      }
+    }
     if (criterionRecord.story_criterion_id) {
       emitFact(lines, seen, "plan_criterion_verifies_story_criterion", [
         quotedId(criterionRecord.plan_id),
@@ -338,6 +509,7 @@ export function renderOntologyProlog(documents) {
         quotedId(criterionRecord.plan_id),
         quotedId(criterionRecord.id),
       ]);
+      emitFact(lines, seen, "plan_criterion_test", [quotedId(criterionRecord.plan_id), quotedId(criterionRecord.id), quotedId(testRef)]);
     }
     for (const artifactRef of sortBy(criterionRecord.artifact_refs, (value) => value)) {
       emitFact(lines, seen, "artifact_proves_plan_criterion", [
@@ -348,6 +520,7 @@ export function renderOntologyProlog(documents) {
     }
   }
 
+  if (profile === "full") {
   for (const testRecord of sortBy(documents.verification?.tests, (record) => `${record.file}:${record.name}`)) {
     emitFact(lines, seen, "test", [quotedId(testRecord.name)]);
     emitFact(lines, seen, "test_in_file", [quotedId(testRecord.name), quotedId(testRecord.file)]);
@@ -371,15 +544,29 @@ export function renderOntologyProlog(documents) {
       }
     }
   }
+  }
 
-  for (const testRunRecord of sortBy(documents.verification?.test_runs, (record) => record.id)) {
+  for (const testRunRecord of sortBy(projectedTestRuns, (record) => record.id)) {
     emitFact(lines, seen, "test_run", [quotedId(testRunRecord.id)]);
     if (testRunRecord.plan_id) emitFact(lines, seen, "test_run_plan", [quotedId(testRunRecord.id), quotedId(testRunRecord.plan_id)]);
+    if (testRunRecord.plan_id) emitFact(lines, seen, "plan_observed_run", [quotedId(testRunRecord.plan_id), quotedId(testRunRecord.id)]);
+    if (profile === "full") {
+    if (testRunRecord.generated_at) emitFact(lines, seen, "test_run_generated_at", [quotedId(testRunRecord.id), quotedText(testRunRecord.generated_at)]);
+    if (testRunRecord.command) emitFact(lines, seen, "test_run_command", [quotedId(testRunRecord.id), quotedText(testRunRecord.command)]);
+    if (testRunRecord.revision) emitFact(lines, seen, "test_run_revision", [quotedId(testRunRecord.id), quotedText(testRunRecord.revision)]);
+    if (testRunRecord.source_digest) emitFact(lines, seen, "test_run_source_digest", [quotedId(testRunRecord.id), quotedText(testRunRecord.source_digest)]);
+    if (testRunRecord.tool_version) emitFact(lines, seen, "test_run_tool_version", [quotedId(testRunRecord.id), quotedText(testRunRecord.tool_version)]);
+    if (testRunRecord.provenance) emitFact(lines, seen, "test_run_provenance", [quotedId(testRunRecord.id), quotedEnum(testRunRecord.provenance)]);
+    }
+    if (testRunRecord.current !== undefined) emitFact(lines, seen, "test_run_current", [quotedId(testRunRecord.id), quotedEnum(testRunRecord.current ? "true" : "false")]);
+    if (profile === "full" || testRunRecord.current === true) {
     for (const resultRecord of sortBy(testRunRecord.results, (record) => record.test_name)) {
       emitFact(lines, seen, "test_run_result", [quotedId(testRunRecord.id), quotedId(resultRecord.test_name), quotedEnum(resultRecord.outcome)]);
     }
+    }
   }
 
+  if (profile === "full") {
   for (const coverageRecord of sortBy(documents.verification?.coverage_reports, (record) => record.id)) {
     emitFact(lines, seen, "coverage_report", [
       quotedId(coverageRecord.id),
@@ -387,6 +574,13 @@ export function renderOntologyProlog(documents) {
       numericOrAtom(coverageRecord.line_pct),
       numericOrAtom(coverageRecord.branch_pct),
     ]);
+    if (coverageRecord.generated_at) emitFact(lines, seen, "coverage_generated_at", [quotedId(coverageRecord.id), quotedText(coverageRecord.generated_at)]);
+    if (coverageRecord.revision) emitFact(lines, seen, "coverage_revision", [quotedId(coverageRecord.id), quotedText(coverageRecord.revision)]);
+    if (coverageRecord.source_digest) emitFact(lines, seen, "coverage_source_digest", [quotedId(coverageRecord.id), quotedText(coverageRecord.source_digest)]);
+    if (coverageRecord.tool_version) emitFact(lines, seen, "coverage_tool_version", [quotedId(coverageRecord.id), quotedText(coverageRecord.tool_version)]);
+    if (coverageRecord.provenance) emitFact(lines, seen, "coverage_provenance", [quotedId(coverageRecord.id), quotedEnum(coverageRecord.provenance)]);
+    if (coverageRecord.current !== undefined) emitFact(lines, seen, "coverage_current", [quotedId(coverageRecord.id), quotedEnum(coverageRecord.current ? "true" : "false")]);
+  }
   }
 
   lines.push("", "% Proof weight entities");
@@ -519,6 +713,7 @@ export function buildOntologyFacts({
   induce = false,
   incremental = false,
   dryRun = false,
+  projectionProfile = "full",
 } = {}) {
   const resolved = resolveOntologyDocuments({ cwd, induce, dryRun });
   if (!resolved.ok) {
@@ -532,11 +727,36 @@ export function buildOntologyFacts({
     };
   }
 
-  const facts = renderOntologyProlog(resolved.documents);
+  const authoritySeed = buildAuthorityReceipt({ cwd, documents: resolved.documents });
+  let projectionDocuments = resolved.documents;
+  if (projectionProfile === "gate") {
+    const liveRevision = gitRevision(cwd);
+    const liveSourceDigest = repositorySourceDigest(cwd);
+    projectionDocuments = {
+      ...resolved.documents,
+      verification: {
+        ...resolved.documents.verification,
+        test_runs: (resolved.documents.verification?.test_runs || []).map((record) => ({
+          ...record,
+          // Currentness is an ephemeral gate judgment. Re-evaluate it against
+          // the live code tree so a source edit cannot leave persisted YAML
+          // observations falsely current until the next induction.
+          current: Boolean(
+            record.provenance === "test_run_record" &&
+            record.revision && liveRevision && record.revision === liveRevision &&
+            record.source_digest && liveSourceDigest && record.source_digest === liveSourceDigest
+          ),
+        })),
+      },
+    };
+  }
+  const facts = renderOntologyProlog(projectionDocuments, authoritySeed, { profile: projectionProfile });
   const factsPath = getOntologyCompiledFactPath(cwd);
   const previous = existsSync(factsPath) ? readFileSync(factsPath, "utf-8") : null;
-  const changedGeneratedFacts = previous !== facts;
-  const shouldWriteGeneratedFacts = !dryRun && changedGeneratedFacts;
+  const changedGeneratedFacts = projectionProfile === "full" && previous !== facts;
+  const shouldWriteGeneratedFacts = projectionProfile === "full" && !dryRun && changedGeneratedFacts;
+
+  const authorityReceipt = buildAuthorityReceipt({ cwd, documents: resolved.documents, facts });
 
   if (shouldWriteGeneratedFacts) {
     mkdirSync(dirname(factsPath), { recursive: true });
@@ -553,7 +773,11 @@ export function buildOntologyFacts({
       .length,
     incremental,
     dryRun,
+    projection_profile: projectionProfile,
     changed_generated_facts: changedGeneratedFacts,
     wrote_generated_facts: shouldWriteGeneratedFacts,
+    authority_receipt: shouldWriteGeneratedFacts
+      ? { ...authorityReceipt, projections: { ...authorityReceipt.projections, compiled_prolog: { ...authorityReceipt.projections.compiled_prolog, status: "current" } } }
+      : authorityReceipt,
   };
 }

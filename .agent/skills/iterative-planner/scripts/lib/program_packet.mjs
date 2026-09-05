@@ -5,7 +5,7 @@
 // iterative planner state machine.
 
 import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "fs";
-import { extname, isAbsolute, join, relative, resolve } from "path";
+import { dirname, extname, isAbsolute, join, relative, resolve } from "path";
 import { sanitizeAtom, sanitizeStrictId, sanitizeEnumAtom } from "./sanitize.mjs";
 import { parseAnnotations } from "../annotation_parser.mjs";
 import { extractFilesToModify } from "./plan_utils.mjs";

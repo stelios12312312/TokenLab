@@ -8,6 +8,8 @@
 // for its plan shape. Each item carries the requirement AND the consequence, so a later
 // gate failure is never a surprise — it was previewed.
 
+import { compileLifecycleContract } from "./lifecycle_contract.mjs";
+
 function norm(p) {
   return String(p || "").replace(/\\/g, "/").replace(/^\.agent\/skills\/iterative-planner\//, "").replace(/^\.\//, "");
 }
@@ -85,14 +87,25 @@ export function previewShapeInvariants(planShape) {
   return SHAPE_INVARIANTS[key] || [];
 }
 
-export function previewContract({ plannedFiles = [], planShape = null, triagePath = null } = {}) {
+export function previewContract({
+  plannedFiles = [],
+  planShape = null,
+  triagePath = null,
+  cwd = process.cwd(),
+  planDir = null,
+  workflowId = null,
+} = {}) {
   const meta = previewMetaRules(plannedFiles);
   const ritual = previewRitualBudget(triagePath);
   if (ritual) meta.push(ritual);
+  const lifecycle = planDir
+    ? compileLifecycleContract({ cwd, planDir, workflowId })
+    : null;
   return {
     routing: triagePath,
     meta_rules: meta,
     shape_invariants: previewShapeInvariants(planShape),
+    lifecycle,
   };
 }
 
@@ -109,6 +122,12 @@ export function renderContractPreview(contract) {
   if (contract.shape_invariants.length) {
     lines.push("  Invariants that will be checked for this shape:");
     for (const inv of contract.shape_invariants) lines.push(`    • ${inv.family} — ${inv.requires}`);
+  }
+  if (contract.lifecycle) {
+    const validation = contract.lifecycle.validation || {};
+    lines.push("  Lifecycle finish line:");
+    lines.push(`    • ${contract.lifecycle.graph?.gates?.length || 0} gates, ${contract.lifecycle.graph?.checks?.length || 0} checks, ${contract.lifecycle.graph?.artifacts?.length || 0} artifacts`);
+    lines.push(`    • terminal=${contract.lifecycle.terminal_gate || "missing"}, validation=${validation.ok ? "PASS" : "FAIL"}, issues=${validation.issue_count || 0}`);
   }
   if (contract.meta_rules.length === 0 && contract.shape_invariants.length === 0) {
     lines.push("  No special meta-rules or shape invariants triggered by the declared files/shape.");

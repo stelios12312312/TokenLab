@@ -17,6 +17,11 @@ import {
   normalizeVerificationStatus,
   verificationStatusIsPass,
 } from "./lib/verification_status_vocabulary.mjs";
+import {
+  classifyReleaseArtifacts,
+  writeArtifactCensusReceipt,
+} from "./lib/release_artifact_policy.mjs";
+import { CONSUMER_PORTABLE_PROOF_SUITE_IDS } from "./lib/managed_upgrade_proof_contract.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -35,15 +40,14 @@ const IVE_RUNNER_PATH = join(skillDir, "tests", "ive", "run.mjs");
 const AFFECTED_TEST_TIMEOUT_MS = 900_000;
 const AFFECTED_TEST_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
 const PROOF_ATTESTATION_ENV = "_PLANNER_MANAGED_UPGRADE_PROOF_ATTESTATION";
-const REQUIRED_MANAGED_UPGRADE_PROOFS = Object.freeze([
-  "gate-or-delete-census",
-  "migration-bootstrap",
-  "preplanning-scaffolding",
-  "transition-gate-flows",
-]);
-const GOVERNED_RELEASE_PROFILE_ID = "core-release";
+const GOVERNED_RELEASE_PROFILE_ID = "pre-commit-core";
 const GOVERNED_RELEASE_PROFILE_SURFACES = new Set([
   `${SKILL_PREFIX}config/ive_release_profiles.json`,
+  `${SKILL_PREFIX}config/conformance_session.json`,
+  `${SKILL_PREFIX}config/release_artifact_policy.json`,
+  `${SKILL_PREFIX}scripts/lib/conformance_session.mjs`,
+  `${SKILL_PREFIX}scripts/lib/release_artifact_policy.mjs`,
+  `${SKILL_PREFIX}scripts/hooks/pre_push_conformance.mjs`,
   `${SKILL_PREFIX}scripts/pre_commit_policy.mjs`,
   `${SKILL_PREFIX}tests/ive/run.mjs`,
   `${SKILL_PREFIX}tests/ive/test_run.mjs`,
@@ -126,27 +130,45 @@ function runAffectedIveTests(stagedFiles) {
   const planTargetArgs = explicitPlanTarget
     ? ["--plan-target", explicitPlanTarget]
     : [];
-  const args = useGovernedProfile
+  const selectionArgs = useGovernedProfile
     ? [
-        IVE_RUNNER_PATH,
         "--profile",
         GOVERNED_RELEASE_PROFILE_ID,
         ...planTargetArgs,
-        "--json",
+        "--no-manifest",
       ]
     : [
-        IVE_RUNNER_PATH,
         ...stagedFiles.flatMap((file) => ["--changed-files", file]),
         ...planTargetArgs,
-        "--json",
         "--no-manifest",
       ];
-  const result = spawnSync(process.execPath, args, {
+  const forecast = spawnSync(process.execPath, [IVE_RUNNER_PATH, ...selectionArgs, "--forecast", "--json"], {
     cwd,
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
     env: isolatedChildEnv(),
-    timeout: AFFECTED_TEST_TIMEOUT_MS,
+    timeout: 60_000,
+    maxBuffer: AFFECTED_TEST_MAX_BUFFER_BYTES,
+  });
+  let forecastReport = null;
+  try { forecastReport = JSON.parse(forecast.stdout || "{}"); } catch {}
+  const outerTimeoutMs = Number(forecastReport?.forecast?.required_outer_timeout_ms);
+  if (forecast.status !== 0 || forecastReport?.status !== "FORECAST" || !Number.isInteger(outerTimeoutMs) || outerTimeoutMs <= 0) {
+    return {
+      ok: false,
+      status: "FAIL",
+      selection_mode: useGovernedProfile ? `profile:${GOVERNED_RELEASE_PROFILE_ID}` : "changed-files",
+      selected_count: Number(forecastReport?.selected_count || 0),
+      error: forecast.stderr?.trim() || forecastReport?.issues?.[0]?.message || "IVE selected-workload forecast failed before suite spawn",
+    };
+  }
+  const args = [IVE_RUNNER_PATH, ...selectionArgs, "--outer-timeout-ms", String(outerTimeoutMs), "--progress", "--json"];
+  const result = spawnSync(process.execPath, args, {
+    cwd,
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "inherit"],
+    env: isolatedChildEnv(),
+    timeout: Math.max(AFFECTED_TEST_TIMEOUT_MS, outerTimeoutMs),
     maxBuffer: AFFECTED_TEST_MAX_BUFFER_BYTES,
   });
   let parsed = null;
@@ -165,7 +187,6 @@ function runAffectedIveTests(stagedFiles) {
     selection_mode: useGovernedProfile ? `profile:${GOVERNED_RELEASE_PROFILE_ID}` : "changed-files",
     selected_count: Array.isArray(parsed?.results) ? parsed.results.length : Number(parsed?.summary?.total || 0),
     error: ok ? null : (
-      result.stderr?.trim() ||
       parsed?.issues?.[0]?.message ||
       result.error?.message ||
       (parseError ? `IVE affected-test JSON parse failed after ${Buffer.byteLength(result.stdout || "", "utf8")} byte(s): ${parseError.message}` : null) ||
@@ -226,7 +247,7 @@ function validateManagedUpgradeProofAttestation() {
       .filter((entry) => verificationStatusIsPass(entry?.status, "execution"))
       .map((entry) => entry.id),
   );
-  const complete = REQUIRED_MANAGED_UPGRADE_PROOFS.every((id) => passedIds.has(id));
+  const complete = CONSUMER_PORTABLE_PROOF_SUITE_IDS.every((id) => passedIds.has(id));
   const testParentOwned = attestation.test_parent_owned === true
     && process.env._PLANNER_MANAGED_UPGRADE_TEST_MODE === "1"
     && passedIds.has("parent-proof-owner");
@@ -316,12 +337,54 @@ function getStagedPlannerFiles() {
     };
   }
 
-  const files = (result.stdout || "")
+  const allFiles = (result.stdout || "")
     .split("\n")
     .map((line) => normalizePath(line))
-    .filter((line) => line.startsWith(SKILL_PREFIX));
+    .filter(Boolean);
+  const files = allFiles.filter((line) => line.startsWith(SKILL_PREFIX));
 
-  return { ok: true, files };
+  return { ok: true, files, all_files: allFiles };
+}
+
+function enforceReleaseArtifactPolicy(stagedFiles) {
+  const entries = stagedFiles.map((path) => {
+    const size = spawnSync("git", ["cat-file", "-s", `:${path}`], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const bytes = size.status === 0 ? Number.parseInt(size.stdout.trim(), 10) : 0;
+    return { path, bytes: Number.isFinite(bytes) ? bytes : 0 };
+  });
+  let census;
+  try {
+    census = classifyReleaseArtifacts(entries, { repoRoot: cwd });
+    const gitDir = spawnSync("git", ["rev-parse", "--absolute-git-dir"], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    if (gitDir.status !== 0) throw new Error("cannot resolve Git metadata for artifact census receipt");
+    writeArtifactCensusReceipt(census, {
+      repoRoot: cwd,
+      path: join(gitDir.stdout.trim(), "iterative-planner", "release-artifact-census.json"),
+    });
+  } catch (error) {
+    console.error(`  ❌ pre-commit: release artifact census failed (${error.message})`);
+    return false;
+  }
+  const summary = Object.entries(census.by_class)
+    .map(([id, value]) => `${id}=${value.file_count}/${value.bytes}B`)
+    .join(" ");
+  console.log(`  [pre-commit] Release artifact census: ${summary}`);
+  if (!census.ok) {
+    console.error("  ❌ pre-commit: staged release artifact budget refused before IVE suite spawn");
+    for (const violation of census.violations.slice(0, 8)) console.error(`  ${violation.code}: ${violation.message}`);
+    for (const line of census.remediation) console.error(`  Recovery: ${line}`);
+    return false;
+  }
+  console.log(`  ✅ pre-commit: all ${entries.length} staged path(s) classified within release budgets`);
+  return true;
 }
 
 function impactedPathsForGap(gate, gap) {
@@ -404,6 +467,8 @@ function cmdPreCommit() {
     console.error(`  ${staged.error}`);
     process.exit(1);
   }
+
+  if (!enforceReleaseArtifactPolicy(staged.all_files || [])) process.exit(1);
 
   if (staged.files.length === 0) {
     process.exit(0);

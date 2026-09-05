@@ -30,7 +30,9 @@ import {
 import {
   initializePlanMetrics,
   readPlanMetrics,
+  recordGateAttemptTelemetry,
   recordGateMetrics,
+  summarizeGateAttemptTelemetry,
 } from "../scripts/lib/plan_metrics.mjs";
 import { buildRepoStateStamp } from "../scripts/lib/repo_state_stamp.mjs";
 
@@ -531,6 +533,54 @@ try {
   assert(metrics.gate_failures.length === 2 && metrics.tool_errors?.length === 1, "plan metrics keep tool errors separate from semantic gate failures");
   assert(metrics.transition_friction.tool_errors === 1, "plan metrics count transition tool errors independently");
   assert(metrics.transition_friction.tool_error_codes?.["TOOL-RIT-001"] === 1, "plan metrics retain per-code tool-error counts");
+
+  const unavailable = summarizeGateAttemptTelemetry(metrics);
+  assert(unavailable.status === "unavailable" && unavailable.reason === "dry_run_telemetry_missing",
+    "ritual attempt telemetry is explicitly unavailable when dry-run evidence is missing");
+  recordGateAttemptTelemetry({
+    projectRoot: frictionTmp,
+    planDirName: "plan_fixture",
+    planDir,
+    gate: "plan-to-execute",
+    mode: "dry-run",
+    attemptId: "attempt-dry-1",
+    startedAt: "2026-07-14T00:04:00.000Z",
+    endedAt: "2026-07-14T00:04:02.000Z",
+    componentDurationsMs: { health: 600, semantic: 900 },
+    dispositions: { ran: 12, reused: 0, not_applicable: 2 },
+    cache: { identity: "cache-a", outcome: "stored", invalidation_reason: null },
+    failureCodes: ["GATE-PLN-099"],
+    retryOf: null,
+    lateRequirementCount: 1,
+    artifactBytes: 2048,
+  });
+  recordGateAttemptTelemetry({
+    projectRoot: frictionTmp,
+    planDirName: "plan_fixture",
+    planDir,
+    gate: "plan-to-execute",
+    mode: "actual",
+    attemptId: "attempt-actual-1",
+    startedAt: "2026-07-14T00:04:03.000Z",
+    endedAt: "2026-07-14T00:04:03.200Z",
+    componentDurationsMs: { persistence: 150 },
+    dispositions: { ran: 0, reused: 12, not_applicable: 2 },
+    cache: { identity: "cache-a", outcome: "reused", invalidation_reason: null },
+    failureCodes: [],
+    retryOf: "attempt-dry-1",
+    lateRequirementCount: 0,
+    artifactBytes: 512,
+  });
+  const attemptMetrics = readPlanMetrics(planDir);
+  const telemetry = summarizeGateAttemptTelemetry(attemptMetrics);
+  assert(attemptMetrics.gate_attempt_ledger.length === 2 && telemetry.status === "collected",
+    "dry-run and actual attempts are retained in an append-safe attempt ledger");
+  assert(attemptMetrics.gate_attempt_ledger[0].duration_ms === 2000 && attemptMetrics.gate_attempt_ledger[1].duration_ms === 200,
+    "attempt telemetry derives stable wall durations from start/end timestamps");
+  assert(telemetry.dispositions.ran === 12 && telemetry.dispositions.reused === 12 && telemetry.late_requirement_count === 1,
+    "attempt summary retains dispositions and late-requirement evidence without false-clean coercion");
+  assert(attemptMetrics.gate_attempt_ledger[1].retry_of === "attempt-dry-1" && attemptMetrics.gate_attempt_ledger[1].cache.outcome === "reused",
+    "actual telemetry preserves retry lineage and cache outcome");
 } finally {
   rmSync(frictionTmp, { recursive: true, force: true });
 }

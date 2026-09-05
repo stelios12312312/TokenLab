@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "classes": [
+    {
+      "id": "explicitly_waived",
+      "patterns": []
+    },
+    {
+      "id": "transient_evidence",
+      "patterns": [
+        "reports/ive/test_runs/**",
+        "reports/ive_visualizer/**",
+        "reports/**/screenshots/**",
+        "plans/**/artifacts/gate_input_snapshots/**"
+      ]
+    },
+    {
+      "id": "durable_evidence",
+      "patterns": [
+        "plans/**",
+        "reports/user_story_audit/**",
+        "reports/red_team_audit/**",
+        "reports/regression_audit/**"
+      ]
+    },
+    {
+      "id": "product",
+      "fallback": true,
+      "patterns": []
+    }
+  ],
+  "budgets": {
+    "transient_evidence": {
+      "max_files": 80,
+      "max_bytes": 52428800
+    },
+    "durable_evidence": {
+      "max_files": 180,
+      "max_bytes": 33554432
+    },
+    "total_evidence": {
+      "max_files": 200,
+      "max_bytes": 67108864
+    }
+  },
+  "waivers": [],
+  "audit_log": {
+    "path": "plans/audit_log.json",
+    "max_live_bytes": 1048576,
+    "archive_dir": "plans/audit_archive",
+    "digest_algorithm": "sha256"
+  }
+}

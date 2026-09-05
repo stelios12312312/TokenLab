@@ -36,6 +36,7 @@ const COVERAGE_WORKLOAD = "governed core-release IVE profile except cli-determin
 export const COVERAGE_TARGETS = Object.freeze([
   ".agent/skills/iterative-planner/scripts/transition.mjs",
   ".agent/skills/iterative-planner/scripts/bootstrap.mjs",
+  ".agent/skills/iterative-planner/scripts/planner_latency_benchmark.mjs",
   ".agent/skills/iterative-planner/scripts/migrate.mjs",
   ".agent/skills/iterative-planner/scripts/rule_engine.mjs",
   ".agent/skills/iterative-planner/scripts/verify_gate.mjs",
@@ -50,6 +51,8 @@ export const COVERAGE_TARGETS = Object.freeze([
   ".agent/skills/iterative-planner/scripts/pre_commit_policy.mjs",
   ".agent/skills/iterative-planner/scripts/lib/plan_refresh.mjs",
   ".agent/skills/iterative-planner/scripts/lib/evidence_preflight.mjs",
+  ".agent/skills/iterative-planner/scripts/lib/gate_evaluation_session.mjs",
+  ".agent/skills/iterative-planner/scripts/lib/lifecycle_contract.mjs",
   ".agent/skills/iterative-planner/scripts/lib/preplanning_scaffolding.mjs",
   ".agent/skills/iterative-planner/scripts/lib/lifecycle_reconciler.mjs",
   ".agent/skills/iterative-planner/scripts/lib/verification_truth.mjs",
@@ -71,6 +74,24 @@ export async function resolveCoverageWorkloadSuiteIds({
     throw new Error(`IVE release profile ${profileId} returned no coverage workload suites`);
   }
   return suiteIds;
+}
+
+export function buildCoverageRunnerArgs({ reportDir, suiteIds, planTarget = null } = {}) {
+  const runnerPath = ".agent/skills/iterative-planner/tests/ive/run.mjs";
+  const c8Args = ["--all", "--reporter=json", `--reports-dir=${reportDir}`];
+  for (const target of COVERAGE_TARGETS) c8Args.push("--include", target);
+  c8Args.push(
+    process.execPath,
+    runnerPath,
+    "--json",
+    "--no-manifest",
+    "--no-reuse",
+    "--minimum-timeout-ms",
+    String(COVERAGE_SUITE_TIMEOUT_MS),
+  );
+  if (planTarget) c8Args.push("--plan-target", planTarget);
+  for (const id of suiteIds || []) c8Args.push("--only", id);
+  return c8Args;
 }
 
 function normalizePath(value) {
@@ -246,7 +267,9 @@ export function auditCoverageRatchet({
         continue;
       }
       if (!previous) {
-        issues.push(`modified target missing HEAD baseline row: ${file}`);
+        // A target newly added to the declared coverage surface has no
+        // historical floor. Its first source-fresh measurement establishes
+        // that floor; subsequent changes are compared normally.
         continue;
       }
       for (const metric of METRICS) {
@@ -321,23 +344,12 @@ async function measureCoverage(args) {
   if (!existsSync(C8_BIN)) throw new Error(`c8 is not installed; run npm install in ${normalizePath(relative(REPO_ROOT, SKILL_DIR))}`);
   const reportDir = mkdtempSync(join(tmpdir(), "planner-c8-"));
   try {
-    const runnerPath = ".agent/skills/iterative-planner/tests/ive/run.mjs";
     const suiteIds = await resolveCoverageWorkloadSuiteIds();
-
-    const c8Args = ["--all", "--reporter=json", `--reports-dir=${reportDir}`];
-    for (const target of COVERAGE_TARGETS) c8Args.push("--include", target);
-    c8Args.push(
-      process.execPath,
-      runnerPath,
-      "--json",
-      "--no-manifest",
-      "--minimum-timeout-ms",
-      String(COVERAGE_SUITE_TIMEOUT_MS),
-    );
-    if (process.env._PLANNER_PLAN_TARGET) {
-      c8Args.push("--plan-target", process.env._PLANNER_PLAN_TARGET);
-    }
-    for (const id of suiteIds) c8Args.push("--only", id);
+    const c8Args = buildCoverageRunnerArgs({
+      reportDir,
+      suiteIds,
+      planTarget: process.env._PLANNER_PLAN_TARGET || null,
+    });
     const run = spawnSync(C8_BIN, c8Args, { cwd: REPO_ROOT, encoding: "utf8", timeout: COVERAGE_RUN_TIMEOUT_MS, maxBuffer: 64 * 1024 * 1024 });
     if (run.error) throw run.error;
     if (run.status !== 0) {

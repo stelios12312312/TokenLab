@@ -74,17 +74,28 @@ function runBin(bin, args, cwd) {
   }
 }
 
+const trackedTempDirs = new Set();
+
 export function makeTemp(name) {
-  return mkdtempSync(join(tmpdir(), `planner-archetype-matrix-${name}-`));
+  const p = mkdtempSync(join(tmpdir(), `planner-archetype-matrix-${name}-`));
+  trackedTempDirs.add(p);
+  return p;
 }
 
 export function cleanupTemp(path) {
+  trackedTempDirs.delete(path);
   try {
     rmSync(path, { recursive: true, force: true });
   } catch {
     // Best effort cleanup.
   }
 }
+
+process.on("exit", () => {
+  for (const p of trackedTempDirs) {
+    try { rmSync(p, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+});
 
 function seedAgentLink(projectRoot) {
   const linkPath = join(projectRoot, ".agent");

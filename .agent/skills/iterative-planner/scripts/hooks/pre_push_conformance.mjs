@@ -2,12 +2,26 @@
 // pre_push_conformance.mjs
 // Refuse pushes to main when the affected governed IVE conformance is red.
 
-import { execFileSync, spawn } from "child_process";
+import { execFileSync, spawn, spawnSync } from "child_process";
 import { existsSync, realpathSync, statSync } from "fs";
 import { isAbsolute, join, relative, resolve, sep } from "path";
 import { verificationStatusIsHardFailure } from "../lib/verification_status_vocabulary.mjs";
 
 const DEFAULT_IVE_PRE_PUSH_TIMEOUT_MS = 900_000;
+const CORE_RELEASE_PROFILE_ID = "core-release";
+const SKILL_PREFIX = ".agent/skills/iterative-planner/";
+const CORE_RELEASE_PROFILE_SURFACES = new Set([
+  `${SKILL_PREFIX}config/ive_release_profiles.json`,
+  `${SKILL_PREFIX}config/conformance_session.json`,
+  `${SKILL_PREFIX}config/release_artifact_policy.json`,
+  `${SKILL_PREFIX}scripts/hooks/pre_push_conformance.mjs`,
+  `${SKILL_PREFIX}scripts/lib/conformance_session.mjs`,
+  `${SKILL_PREFIX}scripts/lib/release_artifact_policy.mjs`,
+  `${SKILL_PREFIX}scripts/pre_commit_policy.mjs`,
+  `${SKILL_PREFIX}tests/ive/run.mjs`,
+  `${SKILL_PREFIX}tests/ive/test_run.mjs`,
+  `${SKILL_PREFIX}tests/test_ive_conformance_runner.mjs`,
+]);
 const GIT_OBJECT_ID = /^[0-9a-f]{40,64}$/i;
 const PARENT_GIT_ENV_KEYS = Object.freeze([
   "GIT_ALTERNATE_OBJECT_DIRECTORIES",
@@ -55,8 +69,17 @@ function isZeroObjectId(value) {
   return typeof value === "string" && value.length > 0 && /^0+$/.test(value);
 }
 
+function normalizePath(value) {
+  return String(value || "").replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+function requiresCoreReleaseProfile(paths) {
+  return paths.some((path) => CORE_RELEASE_PROFILE_SURFACES.has(normalizePath(path)));
+}
+
 function mainPushSelection(root, updates) {
   const changedFiles = new Set();
+  const baseShas = new Set();
   for (const update of updates) {
     if (isZeroObjectId(update?.localSha)) {
       return { mode: "full", changed_files: [], reason: "main_deletion" };
@@ -67,6 +90,7 @@ function mainPushSelection(root, updates) {
     if (!GIT_OBJECT_ID.test(update?.localSha || "") || !GIT_OBJECT_ID.test(update?.remoteSha || "")) {
       return { mode: "full", changed_files: [], reason: "invalid_ref_boundary" };
     }
+    baseShas.add(update.remoteSha);
     try {
       const output = execFileSync("git", [
         "diff",
@@ -88,9 +112,19 @@ function mainPushSelection(root, updates) {
     }
   }
   const paths = [...changedFiles].sort();
+  const baseSha = baseShas.size === 1 ? [...baseShas][0] : null;
+  if (paths.length > 0 && requiresCoreReleaseProfile(paths)) {
+    return {
+      mode: "profile",
+      profile: CORE_RELEASE_PROFILE_ID,
+      changed_files: paths,
+      reason: "governed_release_surface",
+      base_sha: baseSha,
+    };
+  }
   return paths.length > 0
-    ? { mode: "changed_files", changed_files: paths, reason: "trusted_ref_diff" }
-    : { mode: "full", changed_files: [], reason: "empty_ref_diff" };
+    ? { mode: "changed_files", changed_files: paths, reason: "trusted_ref_diff", base_sha: baseSha }
+    : { mode: "full", changed_files: [], reason: "empty_ref_diff", base_sha: baseSha };
 }
 
 function projectRoot() {
@@ -201,7 +235,7 @@ function completedRunDiagnostics(stdout, root) {
 
 function resolveTimeoutMs(rawValue) {
   if (rawValue === undefined || String(rawValue).trim() === "") {
-    return { ok: true, value: DEFAULT_IVE_PRE_PUSH_TIMEOUT_MS, source: "default" };
+    return { ok: true, value: null, source: "forecast" };
   }
   const value = Number(rawValue);
   if (!Number.isInteger(value) || value <= 0) {
@@ -236,13 +270,47 @@ if (!timeout.ok) {
 }
 
 const selection = mainPushSelection(root, mainUpdates);
-console.log(`[pre-push] Push to main detected; running governed IVE conformance (runner=${runner} timeout_ms=${timeout.value} timeout_source=${timeout.source} selection=${selection.mode} changed_files=${selection.changed_files.length} reason=${selection.reason})...`);
-const startedAtMs = Date.now();
 const explicitPlanTarget = process.env._PLANNER_PLAN_TARGET?.trim() || null;
-const runnerArgs = [
+const selectionArgs = [
   runner,
   ...(explicitPlanTarget ? ["--plan-target", explicitPlanTarget] : []),
-  ...selection.changed_files.flatMap((path) => ["--changed-files", path]),
+  ...(selection.profile
+    ? ["--profile", selection.profile]
+    : selection.changed_files.flatMap((path) => ["--changed-files", path])),
+  ...(selection.base_sha ? ["--base-sha", selection.base_sha] : []),
+];
+const forecast = spawnSync(process.execPath, [...selectionArgs, "--forecast", "--json"], {
+  cwd: root,
+  encoding: "utf-8",
+  env: {
+    ...isolatedChildEnv(),
+    PLANNER_SKIP_SELF_HEAL: "1",
+  },
+  stdio: ["ignore", "pipe", "pipe"],
+  timeout: 60_000,
+  maxBuffer: 64 * 1024 * 1024,
+});
+let forecastReport = null;
+try { forecastReport = JSON.parse(forecast.stdout || "{}"); } catch {}
+const requiredOuterTimeoutMs = Number(forecastReport?.forecast?.required_outer_timeout_ms);
+if (forecast.status !== 0 || forecastReport?.status !== "FORECAST" || !Number.isInteger(requiredOuterTimeoutMs) || requiredOuterTimeoutMs <= 0) {
+  console.error(`[pre-push] IVE infrastructure preflight failed before suite spawn: ${excerpt(forecast.stderr || forecastReport?.issues?.[0]?.message || "invalid selected-workload forecast")}`);
+  console.error("[pre-push] IVE conformance failed; refusing push to main.");
+  process.exit(1);
+}
+const effectiveTimeoutMs = timeout.value ?? Math.max(DEFAULT_IVE_PRE_PUSH_TIMEOUT_MS, requiredOuterTimeoutMs);
+if (effectiveTimeoutMs < requiredOuterTimeoutMs) {
+  console.error(`[pre-push] IVE infrastructure preflight failed before suite spawn: configured outer timeout ${effectiveTimeoutMs}ms is below selected-workload bound ${requiredOuterTimeoutMs}ms.`);
+  console.error("[pre-push] IVE conformance failed; refusing push to main.");
+  process.exit(1);
+}
+console.log(`[pre-push] Push to main detected; running governed IVE conformance (runner=${runner} timeout_ms=${effectiveTimeoutMs} timeout_source=${timeout.source} selected_bound_ms=${requiredOuterTimeoutMs} selection=${selection.mode} changed_files=${selection.changed_files.length} reason=${selection.reason})...`);
+const startedAtMs = Date.now();
+const runnerArgs = [
+  ...selectionArgs,
+  "--outer-timeout-ms",
+  String(effectiveTimeoutMs),
+  "--progress",
   "--json",
 ];
 const child = spawn(process.execPath, runnerArgs, {
@@ -309,7 +377,11 @@ process.on("exit", onExit);
 child.stdout?.setEncoding("utf-8");
 child.stderr?.setEncoding("utf-8");
 child.stdout?.on("data", (chunk) => { childStdout += chunk; });
-child.stderr?.on("data", (chunk) => { childStderr += chunk; });
+child.stderr?.on("data", (chunk) => {
+  childStderr += chunk;
+  if (childStderr.length > 64 * 1024 * 1024) childStderr = childStderr.slice(-64 * 1024 * 1024);
+  process.stderr.write(chunk);
+});
 
 const childClosePromise = new Promise((resolveChild) => {
   let settled = false;
@@ -327,7 +399,7 @@ const childClosePromise = new Promise((resolveChild) => {
 const timeoutTimer = setTimeout(() => {
   timeoutExpired = true;
   void stopOwnedRunner();
-}, timeout.value);
+}, effectiveTimeoutMs);
 const childOutcome = await childClosePromise;
 clearTimeout(timeoutTimer);
 const unexpectedDescendants = !timeoutExpired && !parentSignal && groupAlive();
@@ -345,7 +417,7 @@ if (parentSignal) {
 
 let resultError = spawnError;
 if (timeoutExpired) {
-  resultError = new Error(`IVE conformance exceeded ${timeout.value}ms`);
+  resultError = new Error(`IVE conformance exceeded ${effectiveTimeoutMs}ms`);
   resultError.code = "ETIMEDOUT";
 } else if (unexpectedDescendants || !cleanupComplete) {
   resultError = new Error("IVE runner process group did not exit cleanly");
@@ -371,7 +443,7 @@ if (result.status !== 0 || result.error) {
   if (result.stderr) console.error(excerpt(result.stderr));
   if (result.error?.code === "ETIMEDOUT") {
     const childPid = Number.isInteger(result.pid) ? result.pid : "unavailable";
-    console.error(`[pre-push] IVE infrastructure timeout: runner=${runner} pid=${childPid} timeout_ms=${timeout.value} elapsed_ms=${elapsedMs} code=ETIMEDOUT.`);
+    console.error(`[pre-push] IVE infrastructure timeout: runner=${runner} pid=${childPid} timeout_ms=${effectiveTimeoutMs} elapsed_ms=${elapsedMs} code=ETIMEDOUT.`);
   } else if (result.error) {
     console.error(`[pre-push] IVE runner infrastructure error: runner=${runner} pid=${Number.isInteger(result.pid) ? result.pid : "unavailable"} elapsed_ms=${elapsedMs} detail=${excerpt(result.error.message)}`);
   } else {

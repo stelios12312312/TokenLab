@@ -1,6 +1,40 @@
 {
   "schema_version": 1,
   "profiles": {
+    "pre-commit-core": {
+      "description": "Required deterministic planner-core proof for a staged candidate; committed-tree proof is deferred to pre-push after the candidate commit exists.",
+      "selection_rules": [
+        {
+          "test_class": "functional_proof_test",
+          "surface": "planner_core"
+        }
+      ],
+      "must_include_suite_ids": [
+        "planner-core-coverage-ratchet",
+        "ontology-invariants",
+        "program-manager-tests",
+        "ripple-check",
+        "migration-bootstrap",
+        "cli-determinism",
+        "doc-contract-multi-ide",
+        "ive-conformance-runner-meta",
+        "planner-shell-wrapper-hooks"
+      ],
+      "exclusions": [
+        {
+          "suite_id": "clean-checkout-conformance",
+          "reason": "Pre-commit has no committed candidate revision; pre-push runs this mandatory exact-commit proof after reusing staged PASS evidence.",
+          "owner": ".agent/skills/iterative-planner/scripts/hooks/pre_push_conformance.mjs",
+          "review_by": "2026-10-01"
+        },
+        {
+          "suite_id": "findings-triage-intake",
+          "reason": "The findings-to-intake surface remains future work and is not part of the stable planner-core release contract.",
+          "owner": "plans/programs/findings-to-intake/program_packet.json",
+          "review_by": "2026-10-01"
+        }
+      ]
+    },
     "core-release": {
       "description": "Required, deterministic planner-core functional proof for a release candidate.",
       "selection_rules": [

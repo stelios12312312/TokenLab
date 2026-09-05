@@ -115,9 +115,9 @@ function setupFixtureRepo(tmp) {
   assert(setup.ok && setup.stdout.includes("SETUP COMPLETE"), "copied consumer runs its own local migrate.mjs setup");
   if (!setup.ok) console.log(setup.stdout + setup.stderr);
   assert(!lstatSync(join(tmp, ".agent")).isSymbolicLink(), "consumer fixture owns a copied .agent payload instead of a source symlink");
-  runGit(["rm", "--quiet", "--cached", "-r", ".agent"], tmp);
+  runGit(["add", "-f", ".agent"], tmp);
   runGit(["add", "."], tmp);
-  runGit(["-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-m", "record planner setup"], tmp);
+  runGit(["-c", "core.hooksPath=/dev/null", "commit", "--allow-empty", "-m", "record committed planner setup"], tmp);
 }
 
 function seedStoryRegistry(tmp) {
@@ -138,7 +138,7 @@ function seedStoryRegistry(tmp) {
         tags: ["roles", "fail_on"],
       },
       {
-        id: "US-077",
+        id: "US-9901",
         title: "Executed proof is stronger than file pointers",
         priority: "HIGH",
         status: "PARTIALLY_COVERED",
@@ -148,7 +148,7 @@ function seedStoryRegistry(tmp) {
         validation_refs: [".agent/skills/iterative-planner/tests/test_lifecycle_journey_proof.mjs"],
       },
       {
-        id: "US-080",
+        id: "US-9902",
         title: "Claim boundaries are explicit in planner verification",
         priority: "MEDIUM",
         status: "PARTIALLY_COVERED",
@@ -222,7 +222,7 @@ This temp fixture represents the Tier 1 J13/J14 proof shape. It keeps scope deli
 ## Verification Obligation Synthesis
 - Repo/system context: temp git fixture, bootstrap.mjs, transition.mjs, verify_gate.mjs, and generated planner artifacts.
 - Task shape: deterministic integration proof for planner lifecycle scaffolding.
-- Ontology signals: US-001, US-077, and US-080 bind the state machine, executed-proof, and claim-boundary invariants.
+- Ontology signals: US-001, US-9901, and US-9902 bind the state machine, executed-proof, and claim-boundary invariants.
 - Persona signals: wiring_auditor requires exercised commands; traceability requires gate/state proof; assumptions_challenger requires the autonomous-coding boundary.
 - System boundaries touched: bootstrap.mjs, transition.mjs, verify_gate.mjs, generated plan artifacts, and the temp git worktree.
 - Derived verification obligations: real gate chain, real file edit, clean close state, and explicit remaining-unverified claim boundary.
@@ -258,7 +258,7 @@ This temp fixture represents the Tier 1 J13/J14 proof shape. It keeps scope deli
 | sc_1 | US-001; J13; J14 | transition.mjs fixture | proof:integration_smoke | Run the six transition.mjs commands | Each command exits 0 | Autonomous coding is not exercised |
 | sc_2 | US-001; J13; J14 | temp git fixture | proof:behavioral_test | Inspect git diff after EXECUTE edit | docs/lifecycle-note.md differs from HEAD | Production code generation is not exercised |
 | sc_3 | US-001; J14 | generated state.json | proof:artifact_review | Read produced state.json after notify-user | state is CLOSE and real transition pairs exist | notify-user remains audit-only |
-| sc_4 | US-077; US-080; J13 | verification.md and summary.md | proof:artifact_review | Review Tier 1 claim boundary text | Tier 3 remains required for autonomous concept proof | Tier 2/Tier 3 implementation remains future work |
+| sc_4 | US-9901; US-9902; J13 | verification.md and summary.md | proof:artifact_review | Review Tier 1 claim boundary text | Tier 3 remains required for autonomous concept proof | Tier 2/Tier 3 implementation remains future work |
 
 ## Active Mistake Response
 | Mistake | Guard | Planned handling | Planned evidence |
@@ -312,7 +312,7 @@ None.
 | sc_1 | US-001 | PASS | explore-to-plan and plan-to-execute ran as real transition.mjs commands. |
 | sc_2 | US-001 | PASS | docs/lifecycle-note.md was edited during EXECUTE and git diff showed the change. |
 | sc_3 | US-001 | N/A | Later gates still need to run before final state can be inspected. |
-| sc_4 | US-077; US-080 | PASS | This file states Tier 1 proves deterministic scaffolding only; Tier 3 is required for autonomous-coding concept proof. |
+| sc_4 | US-9901; US-9902 | PASS | This file states Tier 1 proves deterministic scaffolding only; Tier 3 is required for autonomous-coding concept proof. |
 
 ## Validation Status
 | Level | Status | Evidence |
@@ -416,7 +416,7 @@ function writeValidateArtifacts(planDir, gateOutputs) {
 | sc_1 | US-001 | PASS | All six transition.mjs gate commands ran: ${LIFECYCLE_GATES.join(", ")}. |
 | sc_2 | US-001 | PASS | docs/lifecycle-note.md was edited during EXECUTE and git diff showed the change before REFLECT. |
 | sc_3 | US-001 | PASS | Produced state.json reached VALIDATE before close and is expected to close via validate-to-close. |
-| sc_4 | US-077; US-080 | PASS | Tier 1 is documented as deterministic scaffolding only; Tier 3 is required for autonomous-coding concept proof. |
+| sc_4 | US-9901; US-9902 | PASS | Tier 1 is documented as deterministic scaffolding only; Tier 3 is required for autonomous-coding concept proof. |
 
 ## Validation Status
 | Level | Status | Evidence |
@@ -554,7 +554,11 @@ try {
   assert(localSemanticHygiene.loadSemanticHygieneConfig(tmp).skip_path_prefixes.includes(".agent/"), "consumer semantic hygiene excludes its Git-ignored managed runtime");
 
   const bootstrapScript = join(tmp, ".agent", "skills", "iterative-planner", "scripts", "bootstrap.mjs");
-  const bootstrap = runNode([bootstrapScript, "new", "--force", "deterministic full lifecycle journey proof"], tmp);
+  const bootstrap = runNode(
+    [bootstrapScript, "new", "--force", "deterministic full lifecycle journey proof"],
+    tmp,
+    { PLANNER_SKIP_SELF_HEAL: "1" },
+  );
   assert(bootstrap.ok, "bootstrap.mjs new creates a temp fixture plan");
   if (!bootstrap.ok) console.log(bootstrap.stdout + bootstrap.stderr);
 

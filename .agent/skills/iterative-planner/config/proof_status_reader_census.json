@@ -454,6 +454,12 @@
       "path": ".agent/skills/iterative-planner/scripts/lib/semantic_maintenance.mjs",
       "reason": "Maintenance lifecycle state is derived from semantic issue severities and routes repair work.",
       "proof_boundary": "The lifecycle cannot satisfy evidence; unresolved or unknown maintenance state does not promote a gate."
+    },
+    {
+      "id": "apps/ive-visualizer/src/lib/graphPayloadContract.js:direct_status_comparison:1f8082914f5946be",
+      "path": "apps/ive-visualizer/src/lib/graphPayloadContract.js",
+      "reason": "Program health lifecycle status selects the visualizer's blocked rendering and is not verification proof.",
+      "proof_boundary": "The branch can only render a blocking invariant state already established by hasBlockingInvariantViolation; it cannot create PASS, satisfy evidence, or advance a lifecycle gate."
     }
   ],
   "readers": [

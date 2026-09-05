@@ -29,7 +29,7 @@ export const DEFAULT_PLANNER_POLICY = Object.freeze({
   session: Object.freeze({
     kb_reads_required: false,
   }),
-  transition_output: "full",
+  transition_output: "minimal",
 });
 
 const ROUTES = new Set(["auto", "lightweight", "full"]);

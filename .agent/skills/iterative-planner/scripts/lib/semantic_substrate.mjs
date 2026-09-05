@@ -60,6 +60,15 @@ const RELEVANCE_NONE = "none";
 const RELEVANCE_WEAK = "weak";
 const RELEVANCE_STRONG = "strong";
 
+// Diagnostic fan-out runs several broad, variable-first-argument queries over
+// the fully loaded planner ontology. Keep it bounded and fail-closed, but give
+// this explicit reporting path enough time to complete on the real repository.
+export const DIAGNOSTIC_QUERY_TIMEOUT_MS = 10_000;
+
+function diagnosticQueryAll(session, query) {
+  return session.queryAll(query, { queryTimeoutMs: DIAGNOSTIC_QUERY_TIMEOUT_MS });
+}
+
 function safeRead(filePath) {
   try {
     return existsSync(filePath) ? readFileSync(filePath, "utf-8") : null;
@@ -457,9 +466,11 @@ export function createDiagnosticsSession({
   transientCloseSignals = null,
   transientOntologyFacts = "",
   transientRegistryRefresh = false,
+  ontologyProjectionProfile = "full",
+  queryTimeoutMs = 3000,
 } = {}) {
-  const ctx = { cwd, skillPath, transientCloseSignals, transientOntologyFacts, transientRegistryRefresh };
-  const session = createSession();
+  const ctx = { cwd, skillPath, transientCloseSignals, transientOntologyFacts, transientRegistryRefresh, ontologyProjectionProfile };
+  const session = createSession({ queryTimeoutMs });
   const rules = loadRules(session, ctx);
   loadCapabilityFacts(session, ctx);
   loadSemanticHygieneFacts(session, ctx);
@@ -542,17 +553,17 @@ export function querySemanticDiagnostics({
   }
 
   return {
-    semanticBlocks: session.queryAll("semantic_block(Type, Detail)")
+    semanticBlocks: diagnosticQueryAll(session, "semantic_block(Type, Detail)")
       .map((entry) => serializeDiagnosticEntry(entry.Type, entry.Detail)),
-    repairableVariances: session.queryAll("repairable_variance(Type, Detail)")
+    repairableVariances: diagnosticQueryAll(session, "repairable_variance(Type, Detail)")
       .map((entry) => serializeDiagnosticEntry(entry.Type, entry.Detail)),
-    recommendedRecoveryModes: uniqueList(session.queryAll("recommended_recovery(Mode)").map((entry) => String(entry.Mode))),
-    minimalRepairSet: session.queryAll("minimal_repair_item(Type, Detail)")
+    recommendedRecoveryModes: uniqueList(diagnosticQueryAll(session, "recommended_recovery(Mode)").map((entry) => String(entry.Mode))),
+    minimalRepairSet: diagnosticQueryAll(session, "minimal_repair_item(Type, Detail)")
       .map((entry) => serializeDiagnosticEntry(entry.Type, entry.Detail)),
-    nextBestActions: uniqueList(session.queryAll("next_best_action(Action)").map((entry) => String(entry.Action))),
-    invariantViolations: session.queryAll("invariant_violated(Name, Detail)")
+    nextBestActions: uniqueList(diagnosticQueryAll(session, "next_best_action(Action)").map((entry) => String(entry.Action))),
+    invariantViolations: diagnosticQueryAll(session, "invariant_violated(Name, Detail)")
       .map((entry) => formatInvariantDiagnostic(session, entry)),
-    invariantWarnings: session.queryAll("invariant_warning(Name, Detail)")
+    invariantWarnings: diagnosticQueryAll(session, "invariant_warning(Name, Detail)")
       .map((entry) => formatInvariantDiagnostic(session, entry)),
   };
 }

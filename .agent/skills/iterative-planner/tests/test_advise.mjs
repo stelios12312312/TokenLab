@@ -922,6 +922,7 @@ function scenarioTaskIntakeComposesFullGuidancePacket() {
     const denialIds = new Set((packet?.measured_denial_preemption || []).map((entry) => entry.id));
     assert(["assumption-ledger-present", "assumption-probes-recorded", "GATE-PLN-002", "GATE-PLN-016", "GATE-PLN-017", "GATE-ETR-004", "GATE-ETR-008", "GATE-REF-003", "GATE-VAL-011"].every((id) => denialIds.has(id)), "packet carries canonical shapes for all nine attempt-6 denial classes");
     assert(packet?.persona_guardrails?.active_packs?.includes("config_integrity") && packet?.persona_guardrails?.suppressed_or_advisory_packs?.some((entry) => entry.pack_id === "quant"), "planner-core fixture packet carries active guardrails and quant suppression context");
+    assert(packet?.model_assurance?.effective_profile === "critical" && packet.model_assurance.required_checks.includes("ontology_invariants") && packet.model_assurance.normal_surface.tools === "unchanged", "guidance packet carries critical assurance checks without shrinking the normal tool surface");
     assert(packet?.semantic_substrate_contract?.check_id === "GATE-REF-016" && packet.semantic_substrate_contract.canonical_shape.includes("planner-owned evidence paths"), "packet explains the GATE-REF-016 semantic provenance contract");
     assert(packet?.program_context?.tickets?.[0]?.id === "T-INTAKE-120A6B61" && packet.program_context.tickets[0].acceptance_criteria[0]?.id === "AC-G1", "packet embeds exact matched ticket acceptance context");
     assert(packet?.program_context?.tickets?.[0]?.verification_rows?.[0]?.id === "VM-G1" && packet.program_context.tickets[0].depends_on.includes("T-INTAKE-2707D982"), "packet embeds exact verification and dependency context");
@@ -930,7 +931,7 @@ function scenarioTaskIntakeComposesFullGuidancePacket() {
     assert(packet?.budgets?.context_entries_used <= packet?.budgets?.context_entry_budget, "guidance packet respects the context entry budget");
     assert(existsSync(join(tmp, "plans", "guidance_packet.json")) && existsSync(join(tmp, "plans", "guidance_packet.md")), "task intake writes carried JSON and Markdown guidance artifacts");
     const rendered = readFileSync(join(tmp, "plans", "guidance_packet.md"), "utf-8");
-    assert(rendered.includes("notify-user") && rendered.includes("GATE-REF-016") && rendered.includes("T-INTAKE-120A6B61"), "Markdown mirror renders gate semantic and Program context");
+    assert(rendered.includes("notify-user") && rendered.includes("GATE-REF-016") && rendered.includes("T-INTAKE-120A6B61") && rendered.includes("Model Assurance") && rendered.includes("ontology_invariants"), "Markdown mirror renders gate semantic, assurance, and Program context");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -1013,6 +1014,8 @@ function scenarioBootstrapCarriesMatchingIntakeContextIntoFocusContract() {
     const focus = JSON.parse(readFileSync(join(planDir, "focus_contract.json"), "utf-8"));
 
     assert(JSON.stringify(focus?.intake_context?.persona_guardrails) === JSON.stringify(packet?.persona_guardrails), "focus intake snapshot preserves persona_guardrails verbatim");
+    assert(!!packet?.model_assurance && JSON.stringify(focus?.intake_context?.model_assurance) === JSON.stringify(packet?.model_assurance), "focus intake snapshot preserves model_assurance verbatim");
+    assert(!!focus?.model_assurance && JSON.stringify(focus?.model_assurance) === JSON.stringify(packet?.model_assurance), "focus exposes model_assurance as an active execution contract");
     assert(JSON.stringify(focus?.program_context) === JSON.stringify(packet?.program_context), "focus top-level Program context equals the intake packet structurally");
     assert(JSON.stringify(focus?.intake_context?.program_context) === JSON.stringify(packet?.program_context), "focus intake snapshot preserves Program context verbatim");
     assert(focus?.program_context?.program?.id === "PGM-GUIDANCE-FIRST" && focus?.program_context?.tickets?.[0]?.id === "T-INTAKE-120A6B61", "focus carries the exact matched Program and ticket identity");

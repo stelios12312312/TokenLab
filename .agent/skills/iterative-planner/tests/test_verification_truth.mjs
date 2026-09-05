@@ -359,13 +359,13 @@ check("proof-status repository census is exhaustive and fully classified", () =>
     result.denominators.javascript_files + result.denominators.prolog_files,
     "the production denominator equals the complete scanned JavaScript and Prolog boundary",
   );
-  assert.equal(result.denominators.excluded_nonproduction_javascript_files, 157);
+  assert.equal(result.denominators.excluded_nonproduction_javascript_files, 161);
   assert.equal(result.denominators.registered_readers, 97);
   assert.equal(result.denominators.canonical_derived_readers, 9);
   assert.equal(result.denominators.repaired_readers, 88);
-  assert.equal(result.denominators.discovered_candidates, 78);
-  assert.equal(result.denominators.live_exemptions, 75);
-  assert.equal(result.denominators.protocol_exemptions, 75);
+  assert.equal(result.denominators.discovered_candidates, 79);
+  assert.equal(result.denominators.live_exemptions, 76);
+  assert.equal(result.denominators.protocol_exemptions, 76);
   for (const exemption of result.protocol_exemptions) {
     const candidate = result.candidates.find((entry) => entry.id === exemption.id);
     assert.equal(candidate?.exemption?.valid, true, `${exemption.id} has a live inline annotation`);

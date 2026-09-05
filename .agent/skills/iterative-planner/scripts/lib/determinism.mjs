@@ -375,11 +375,9 @@ export function createInitialStateJson(planDirName, goal, options = {}) {
         timestamp: now,
         gate_result: "SKIP",
         failure_codes: [],
-        script_versions: {},
       },
     ],
     change_manifest: [],
-    script_versions: {},
     rule_bundle_version: loadConfig().rule_engine?.rule_bundle_version || "1.0.0",
     knowledge_snapshot: computeKnowledgeSnapshot(options.projectRoot || options.cwd),
     // v7.4.2: pre-allocate circuit_breakers so cmdFixStuck and other
@@ -632,6 +630,73 @@ export function hashAllScripts(skillPath) {
     debugLog("determinism", `Script hashing failed: ${e.message}`);
   }
   return hashes;
+}
+
+function stableScriptVersions(scriptVersions) {
+  return Object.fromEntries(Object.entries(scriptVersions && typeof scriptVersions === "object" ? scriptVersions : {})
+    .filter(([key, value]) => typeof key === "string" && typeof value === "string")
+    .sort(([left], [right]) => left.localeCompare(right)));
+}
+
+export const DEFAULT_SCRIPT_MANIFEST_RETENTION = 8;
+
+function pruneUnreferencedScriptManifests(planDir, manifestDir, currentDigest) {
+  const referenced = new Set([currentDigest]);
+  const state = readStateJson(planDir);
+  if (state?.script_bundle?.digest) referenced.add(state.script_bundle.digest);
+  for (const transition of Array.isArray(state?.transitions) ? state.transitions : []) {
+    if (transition?.script_bundle?.digest) referenced.add(transition.script_bundle.digest);
+  }
+  const disposable = readdirSync(manifestDir)
+    .filter((name) => /^[a-f0-9]{64}\.json$/.test(name))
+    .map((name) => ({ name, path: join(manifestDir, name), digest: name.slice(0, -5) }))
+    .filter((entry) => !referenced.has(entry.digest))
+    .map((entry) => ({ ...entry, mtimeMs: statSync(entry.path).mtimeMs }))
+    .sort((left, right) => right.mtimeMs - left.mtimeMs || left.name.localeCompare(right.name));
+  for (const entry of disposable.slice(DEFAULT_SCRIPT_MANIFEST_RETENTION)) {
+    try { unlinkSync(entry.path); } catch { /* bounded retention is best-effort */ }
+  }
+}
+
+export function writeScriptBundleManifest({ projectRoot = process.cwd(), planDir, scriptVersions } = {}) {
+  if (!planDir) throw new Error("writeScriptBundleManifest requires planDir");
+  const versions = stableScriptVersions(scriptVersions);
+  const digest = createHash("sha256").update(JSON.stringify(versions)).digest("hex");
+  const manifestDir = join(planDir, "artifacts", "script_manifests");
+  const manifestPath = join(manifestDir, `${digest}.json`);
+  mkdirSync(manifestDir, { recursive: true });
+  if (!existsSync(manifestPath)) {
+    const manifest = { schema_version: 1, digest, count: Object.keys(versions).length, script_versions: versions };
+    writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  }
+  pruneUnreferencedScriptManifests(planDir, manifestDir, digest);
+  return {
+    schema_version: 1,
+    digest,
+    count: Object.keys(versions).length,
+    manifest_path: relative(projectRoot, manifestPath).replace(/\\/g, "/"),
+  };
+}
+
+export function resolveScriptVersions({ projectRoot = process.cwd(), planDir, record } = {}) {
+  if (record?.script_versions && typeof record.script_versions === "object" && !Array.isArray(record.script_versions)) {
+    return stableScriptVersions(record.script_versions);
+  }
+  const bundle = record?.script_bundle;
+  if (!bundle || typeof bundle.manifest_path !== "string" || !/^[a-f0-9]{64}$/.test(bundle.digest || "")) return null;
+  const root = resolve(projectRoot);
+  const path = resolve(root, bundle.manifest_path);
+  const allowedPlan = planDir ? resolve(planDir) : root;
+  if (path !== allowedPlan && !path.startsWith(`${allowedPlan}/`)) return null;
+  try {
+    const manifest = JSON.parse(readFileSync(path, "utf-8"));
+    const versions = stableScriptVersions(manifest?.script_versions);
+    const digest = createHash("sha256").update(JSON.stringify(versions)).digest("hex");
+    if (digest !== bundle.digest || manifest?.digest !== bundle.digest) return null;
+    return versions;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------

@@ -536,6 +536,10 @@ export function buildStructuredTestRunDocument({
   tests = [],
   generatedAt = new Date().toISOString(),
   rawOutput = null,
+  repositoryRevision = null,
+  sourceDigest = null,
+  toolVersion = null,
+  provenance = "test_run_record",
 } = {}) {
   const normalizedTests = (Array.isArray(tests) ? tests : []).map((test) => ({
     name: normalizeString(test?.name),
@@ -552,6 +556,10 @@ export function buildStructuredTestRunDocument({
       generated_at: generatedAt,
       framework: normalizeString(framework) || "unknown",
       command: normalizeString(command),
+      ...(normalizeString(repositoryRevision) ? { repository_revision: normalizeString(repositoryRevision) } : {}),
+      ...(normalizeString(sourceDigest) ? { source_digest: normalizeString(sourceDigest) } : {}),
+      ...(normalizeString(toolVersion) ? { tool_version: normalizeString(toolVersion) } : {}),
+      provenance: normalizeString(provenance) || "test_run_record",
       summary: buildSummaryFromTests(normalizedTests),
       tests: normalizedTests,
       ...(normalizeString(rawOutput) ? { raw_output: String(rawOutput) } : {}),
@@ -568,6 +576,10 @@ export function writeStructuredTestRunDocument({
   generatedAt = new Date().toISOString(),
   outputPath = null,
   rawOutput = null,
+  repositoryRevision = null,
+  sourceDigest = null,
+  toolVersion = null,
+  provenance = "test_run_record",
 } = {}) {
   const document = buildStructuredTestRunDocument({
     planId,
@@ -576,6 +588,10 @@ export function writeStructuredTestRunDocument({
     tests,
     generatedAt,
     rawOutput,
+    repositoryRevision,
+    sourceDigest,
+    toolVersion,
+    provenance,
   });
   const dir = outputPath
     ? dirname(resolve(projectRoot, outputPath))

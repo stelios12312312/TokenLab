@@ -66,6 +66,16 @@
             "type": "object",
             "additionalProperties": { "type": "string" }
           },
+          "script_bundle": {
+            "type": "object",
+            "required": ["schema_version", "digest", "count", "manifest_path"],
+            "properties": {
+              "schema_version": { "const": 1 },
+              "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+              "count": { "type": "integer", "minimum": 0 },
+              "manifest_path": { "type": "string", "minLength": 1 }
+            }
+          },
           "record_hash": {
             "type": "string",
             "pattern": "^[0-9a-f]{32}$",
@@ -85,6 +95,17 @@
       "type": "object",
       "additionalProperties": { "type": "string" },
       "description": "Hash of each script at last transition (for drift detection)"
+    },
+    "script_bundle": {
+      "type": "object",
+      "required": ["schema_version", "digest", "count", "manifest_path"],
+      "properties": {
+        "schema_version": { "const": 1 },
+        "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "count": { "type": "integer", "minimum": 0 },
+        "manifest_path": { "type": "string", "minLength": 1 }
+      },
+      "description": "Compact content-bound reference to the script-version manifest used by new writes"
     },
     "rule_bundle_version": {
       "type": "string",

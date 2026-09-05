@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "cache_contract_version": "ontology-runtime-cache.v1",
+  "benchmark_contract_version": "ontology-benchmark.v1",
+  "warmup_runs": 1,
+  "measurement_runs": 5,
+  "budgets_ms": {
+    "small": { "cold_p95": 2000, "warm_p95": 1000, "grounded_lookup_p95": 100 },
+    "large": { "cold_p95": 10000, "warm_p95": 5000, "grounded_lookup_p95": 250 }
+  },
+  "claims_boundary": "Budgets and measurements are same-machine repository evidence, not universal model or deployment speed guarantees."
+}

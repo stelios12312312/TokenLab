@@ -24,6 +24,7 @@ const ROUTES = new Map([
   ["doctor", "project_health.mjs"],
   ["health", "project_health.mjs"],
   ["preflight", "planner_preflight.mjs"],
+  ["assurance", "model_assurance.mjs"],
   ["verify-fleet", "migrate.mjs"],
   ["fleet-doctor", "migrate.mjs"],
   ["migration-wave", "migrate.mjs"],
@@ -48,6 +49,7 @@ Usage:
   node .agent/skills/iterative-planner/scripts/planner.mjs fleet doctor [--json]
   node .agent/skills/iterative-planner/scripts/planner.mjs gate <gate-name> [--plan <plan-dir>]
   node .agent/skills/iterative-planner/scripts/planner.mjs work-preflight --goal "<task>" [--json]
+  node .agent/skills/iterative-planner/scripts/planner.mjs assurance inspect [--json]
   node .agent/skills/iterative-planner/scripts/planner.mjs advise [--goal "<task>"] [--json]
   node .agent/skills/iterative-planner/scripts/planner.mjs batch <start|add|status|close> [...]
   node .agent/skills/iterative-planner/scripts/planner.mjs ritual-lint --workflow </workflow> --phase <phase> [--json]

@@ -1,10 +1,72 @@
-import { basename, join } from "path";
-import { existsSync } from "fs";
+import { createHash } from "node:crypto";
+import { basename, dirname, join, resolve } from "node:path";
+import { existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from "node:fs";
 
-import { renderOntologyProlog, resolveOntologyDocuments } from "./ontology_fact_builder.mjs";
+import { buildAuthorityReceipt, renderOntologyProlog, resolveOntologyDocuments } from "./ontology_fact_builder.mjs";
 import { getOntologyCompiledFactPath } from "./ontology_schema.mjs";
 import { collectIssueHistoryFactBundle } from "./issue_history_facts.mjs";
 import { createSession } from "./prolog.mjs";
+
+const RUNTIME_CACHE_VERSION = "ontology-runtime-cache.v1";
+
+function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(",")}}`;
+  return JSON.stringify(value);
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function projectIdentity(cwd) {
+  try {
+    return realpathSync(cwd);
+  } catch {
+    return resolve(cwd);
+  }
+}
+
+function runtimeConfigDigest(cwd) {
+  const path = join(cwd, ".agent/skills/iterative-planner/config/ontology_performance_slo.json");
+  return existsSync(path) ? `sha256:${sha256(readFileSync(path))}` : "absent";
+}
+
+export function ontologyRuntimeCacheKey({ cwd, authorityReceipt, projectionProfile = "full", configDigest = null }) {
+  return `sha256:${sha256(stableStringify({
+    cache_contract: RUNTIME_CACHE_VERSION,
+    project_identity: projectIdentity(cwd),
+    source_digest: authorityReceipt?.source_digest,
+    schema_version: authorityReceipt?.schema_version,
+    engine_version: authorityReceipt?.engine_version,
+    projection_profile: projectionProfile,
+    config_digest: configDigest || runtimeConfigDigest(cwd),
+  }))}`;
+}
+
+function readRuntimeCache(path, expectedKey) {
+  try {
+    const envelope = JSON.parse(readFileSync(path, "utf8"));
+    if (envelope.cache_contract !== RUNTIME_CACHE_VERSION) return { hit: false, warning: "ontology runtime cache contract mismatch" };
+    if (envelope.key !== expectedKey) return { hit: false, warning: "ontology runtime cache authority mismatch" };
+    if (typeof envelope.facts !== "string" || envelope.facts_sha256 !== sha256(envelope.facts)) return { hit: false, warning: "ontology runtime cache integrity mismatch" };
+    return { hit: true, facts: envelope.facts };
+  } catch (error) {
+    return { hit: false, warning: `ontology runtime cache unreadable: ${error instanceof Error ? error.message : String(error)}` };
+  }
+}
+
+function writeRuntimeCache(path, key, facts) {
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    const temp = `${path}.tmp`;
+    writeFileSync(temp, `${JSON.stringify({ cache_contract: RUNTIME_CACHE_VERSION, key, facts_sha256: sha256(facts), facts })}\n`);
+    renameSync(temp, path);
+    return null;
+  } catch (error) {
+    return `ontology runtime cache write failed; continuing uncached: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
 
 function mapEntries(value) {
   return Object.entries(value || {});
@@ -167,9 +229,9 @@ function referenceLooksResolvable(reference, { cwd, filePaths, fileBasenames, ar
   return false;
 }
 
-export function loadOntologyRuntime({ cwd = process.cwd() } = {}) {
+export function loadOntologyRuntime({ cwd = process.cwd(), useCache = true, writeCache = true, projectionProfile = "full", configDigest = null } = {}) {
   const compiledPath = getOntologyCompiledFactPath(cwd);
-  const resolved = resolveOntologyDocuments({ cwd, induce: false });
+  const resolved = resolveOntologyDocuments({ cwd, induce: false, dryRun: true });
 
   if (!resolved.ok) {
     return {
@@ -186,7 +248,14 @@ export function loadOntologyRuntime({ cwd = process.cwd() } = {}) {
     };
   }
 
-  const factsText = renderOntologyProlog(resolved.documents);
+  const authoritySeed = buildAuthorityReceipt({ cwd, documents: resolved.documents });
+  const cachePath = join(cwd, ".agent/ontology/cache/runtime-v1.json");
+  const effectiveConfigDigest = configDigest || runtimeConfigDigest(cwd);
+  const cacheKey = ontologyRuntimeCacheKey({ cwd, authorityReceipt: authoritySeed, projectionProfile, configDigest: effectiveConfigDigest });
+  const cached = useCache && existsSync(cachePath) ? readRuntimeCache(cachePath, cacheKey) : { hit: false };
+  const factsText = cached.hit ? cached.facts : renderOntologyProlog(resolved.documents, authoritySeed, { profile: projectionProfile });
+  const cacheWriteWarning = !cached.hit && useCache && writeCache ? writeRuntimeCache(cachePath, cacheKey, factsText) : null;
+  const authorityReceipt = buildAuthorityReceipt({ cwd, documents: resolved.documents, facts: factsText });
   const session = createSession();
   session.consult(factsText);
   const issueHistory = collectIssueHistoryFactBundle({ cwd });
@@ -203,9 +272,19 @@ export function loadOntologyRuntime({ cwd = process.cwd() } = {}) {
     facts_text: factsText,
     session,
     counts: resolved.counts || null,
+    authority_receipt: authorityReceipt,
+    cache: {
+      contract: RUNTIME_CACHE_VERSION,
+      path: cachePath,
+      key: cacheKey,
+      status: cached.hit ? "hit" : "miss",
+      enabled: useCache,
+    },
     issue_history: issueHistory.meta,
     warnings: [
       ...(resolved.warnings || []),
+      ...(cached.warning ? [cached.warning] : []),
+      ...(cacheWriteWarning ? [cacheWriteWarning] : []),
       ...(issueHistory.meta.invalid_caches > 0 ? [`${issueHistory.meta.invalid_caches} invalid issue-history cache(s) skipped`] : []),
     ],
     issues: [],

@@ -1,5 +1,11 @@
 # Rule Engine Guide (Prolog-Powered Semantic Verification)
 
+## Ontology authority and observed proof (10.12.0)
+
+Canonical project ontology facts live only in `.agent/ontology/facts/*.yaml`. The runtime renders those files for each session and returns an authority receipt; compiled Prolog, runtime overlays, and TTL exports are derived surfaces with explicit roles. A persisted `facts.pl` mismatch is diagnosable drift, not an alternate source of truth.
+
+Executed evidence becomes gate-authoritative only when `test_run_plan/2`, `test_run_current/2`, `test_run_result/3`, and `test_verifies_plan_criterion/3` form a matching chain. A current `pass`/`passed` result can satisfy `canonical_story_observed/1`; declared-only, stale, failed, wrong-plan, wrong-criterion, or dangling evidence cannot. Plans with no canonical observed-proof tracking retain the governed legacy evidence path for migration compatibility.
+
 > Extracted from SKILL.md. Full reference for the Prolog rule engine.
 
 The rule engine adds a formal verification layer using an embedded Prolog interpreter. It evaluates state machine guards, user story invariants, and cross-story conflicts using logical rules rather than string matching.
@@ -152,6 +158,28 @@ Telemetry-backed findings can add planner-owned fact inputs such as `proof_telem
 | **I-027** | **list_endpoint_no_pagination** | **⚠️ Advisory: list endpoint stories should be paginated** |
 | **I-028** | **transaction_no_atomicity** | **⚠️ Advisory: transaction stories should document atomicity** |
 | **I-029** | **migration_no_rollback** | **⚠️ Advisory: migration stories should have rollback tests** |
+| **I-ML-001** | **ml_temporal_leakage** | **Model features/dataset timestamps must not exceed model training split date** |
+| **I-ML-002** | **ml_calibration_error_exceeded / ml_metric_floor_failed** | **Production deployment prohibited if ECE calibration error > 0.08 or metrics fall below declared floors** |
+| **I-ML-003** | **ml_upstream_data_drift** | **Model artifact marked stale/violated if upstream dataset schema hash changes** |
+| **I-ML-004** | **ml_agent_action_unqualified** | **AI agent actions prohibited without ICP qualification and rate governor quota proofs** |
+
+### Machine Learning Governance Invariants (I-ML-001 to I-ML-004)
+
+Machine Learning safety rules govern data lineage, temporal leakage, model evaluation calibration, and AI agent qualification. When a project-level ML fact source or the selected active plan's `ml_facts.json` exists, the loader validates and compiles it into these predicates:
+
+- `dataset(DatasetId, Source, SchemaHash, Timestamp).`
+- `feature_set(FeatureSetId, DatasetId, FeatureList).`
+- `model(ModelId, Architecture, FeatureSetId, Hyperparams, TrainingSplitDate).`
+- `model_dataset_schema_hash(ModelId, DatasetId, ExpectedHash).`
+- `model_evaluation(ModelId, MetricName, Score, DatasetSplit).`
+- `model_deployment(ModelId, TargetEnvironment, Status).`
+- `feature_timestamp(Feature, Timestamp).`
+- `ml_metric_floor(Metric, Floor).`
+- `agent_action(AgentId, ActionId).`
+- `agent_icp_qualified(AgentId).`
+- `agent_rate_governor_quota(AgentId, ActionId).`
+
+The ML invariants are dormant during EXPLORE, PLAN, EXECUTE, and REFLECT. They become hard when a transition targets VALIDATE and remain hard in VALIDATE/CLOSE. A malformed selected ML fact source records `ml_governance_facts` degraded coverage and blocks gates that require complete semantic coverage; an absent optional source does not.
 
 ### Program Packet Invariants
 
@@ -197,10 +225,26 @@ Available tags: `auth`, `public_api`, `rate_limited`, `pii`, `credentials`, `sec
 - **`invariant_violated(Name, Detail)`** — Hard failure. Blocks gate transitions. Used for properties that MUST hold.
 - **`invariant_warning(Name, Detail)`** — Advisory. Logged but non-blocking. Used for best-practice recommendations.
 
-I-023 uses `invariant_violated` (hard fail). I-024 through I-029 use `invariant_warning` (advisory).
+I-023 and I-ML-001 through I-ML-004 use `invariant_violated` (hard fail). I-024 through I-029 use `invariant_warning` (advisory).
+
+## Engine Execution Architecture
+
+The semantic rule engine uses the embedded JavaScript interpreter with these contracts:
+
+1. **First-Argument Clause Candidate Indexing (`clause_index.mjs`)**:
+   Asserted clauses are grouped by predicate and first-argument shape (`atoms`, `numbers`, `compounds`, and variable-head clauses). Ground queries inspect the matching candidates plus variable-head clauses while preserving consultation order. This is an in-process JavaScript optimization, not a Trealla/WASM bridge or a compiled-runtime claim.
+
+2. **Typed, Fail-Closed Query Deadlines**:
+   Every query supports a bounded execution timeout (`DEFAULT_QUERY_TIMEOUT_MS = 3000`). A cyclic or runaway goal throws `QueryTimeoutError` with code `QUERY_TIMEOUT`; exhausting the finite solve-depth guard throws `QueryDepthError` with code `QUERY_DEPTH_EXCEEDED`. Callers must surface either condition as an engine failure, not reinterpret it as no solutions.
+
+3. **Read-Only Fact Loading**:
+   Rule loading reads canonical project and active-plan sources without creating a root cache artifact. Optional sources may be absent; malformed selected sources enter the governed degraded-coverage path.
+
+4. **Narrow Internal First-Run Fast Track**:
+   `_PLANNER_FAST_TRACK=1` remains available only for the documented first-run bootstrap case. It can relax the early story-readiness invariant family; domain, infrastructure, security, and traceability violations remain blocking. There is no public semantic skip or public fast-track alias.
 
 ## Mandatory Enforcement
 
-Prolog semantic verification is **mandatory** for all state transitions. If the `prolog/` directory or `rule_engine.mjs` is missing, `transition.mjs` will **FAIL** the gate (not skip). If a Prolog execution error occurs, the transition is **blocked** (FAIL, not WARN). This ensures the formal verification layer cannot be silently bypassed.
+Prolog semantic verification is **mandatory** for all state transitions. If the `prolog/` directory or `rule_engine.mjs` is missing, `transition.mjs` will **FAIL** the gate (not skip). If rule loading, fact compilation, or query execution fails, the transition is blocked or reports governed degraded coverage according to the gate contract. No environment variable bypasses semantic execution.
 
 If `story_registry.json` doesn't exist, story-specific commands return `SKIP`, but the core transition rules and invariants still execute.

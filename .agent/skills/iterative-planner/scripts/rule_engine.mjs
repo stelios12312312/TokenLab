@@ -62,6 +62,17 @@ const GATE_REGISTRY = (() => {
   }
 })();
 
+// The internal first-run fast-track is intentionally narrow. It can relax only
+// the early story-readiness family that the bootstrap flow may not yet satisfy;
+// infrastructure, security, traceability, and domain invariants remain hard.
+const FAST_TRACK_RELAXABLE_INVARIANTS = new Set([
+  "high_priority_untested",
+  "code_without_tests",
+  "depends_on_unimplemented",
+  "depends_on_retired",
+  "auth_story_untested",
+]);
+
 // ═══════════════════════════════════════════════════════════
 // Engine factory — creates a Prolog session with all facts loaded
 // ═══════════════════════════════════════════════════════════
@@ -80,6 +91,10 @@ function createEngine(options = {}) {
       options?.transientOntologyFacts ||
       "",
     transientRegistryRefresh: options?.transientRegistryRefresh === true,
+    ontologyProjectionProfile: "gate",
+    // The project-owned ontology is larger than the legacy overlay. Keep a
+    // finite budget, but allow close-time invariant enumeration to finish.
+    queryTimeoutMs: options?.queryTimeoutMs ?? 10000,
   });
 }
 
@@ -87,7 +102,7 @@ function createEngine(options = {}) {
 const cmdCtx = {
   createEngine,
   createSession,
-  loadRules: (session) => loadRules(session, { cwd, skillPath }),
+  loadRules: (session) => loadRules(session, { cwd, skillPath, ontologyProjectionProfile: "gate" }),
   cwd,
   skillPath,
 };
@@ -151,30 +166,39 @@ export function runSemanticChecks(gate, planDir, engineOptions = {}) {
 
     const violations = session.queryAll("invariant_violated(Name, Detail)");
     if (violations.length > 0) {
-      // FAST_TRACK mode: downgrade story invariant violations from FAIL to WARN.
-      // Story invariants fire for high-priority untested/unimplemented stories — expected
-      // during EXPLORE→PLAN when the bootstrap plan hasn't run yet. This mirrors the
-      // FAST_TRACK relaxation in verify_gate.mjs (GATE-EXP-009/010).
       const auditOnly = gateDef?.audit_only === true;
-      const fastTrack = process.env._PLANNER_FAST_TRACK === "1" || auditOnly;
-      // Phase B: attach structured violation list so transition.mjs can request
-      // supervisor-generated fix commands per violation. Additive — existing
-      // consumers reading only {name, status, detail} are unaffected.
-      const structuredViolations = violations.map((v) => ({
+      const internalFastTrack = process.env._PLANNER_FAST_TRACK === "1";
+      const downgradedViolations = auditOnly
+        ? violations
+        : internalFastTrack
+          ? violations.filter((v) => FAST_TRACK_RELAXABLE_INVARIANTS.has(String(v.Name || "")))
+          : [];
+      const downgradedSet = new Set(downgradedViolations);
+      const hardViolations = violations.filter((v) => !downgradedSet.has(v));
+      const toStructuredViolation = (v) => ({
         name: typeof v.Name === "string" ? v.Name : String(v.Name || "unknown"),
         detail: typeof v.Detail === "string" ? v.Detail : String(v.Detail || ""),
-        // Heuristic phase-guard hint: known phase-premature invariant names. The
-        // supervisor itself also enforces this via violation.phase_guard_required.
         phase_guard_required: /phase_reached|phase_premature|temporal/i.test(String(v.Name || "")),
         suggested_fix_command: null,
         auto_repair_safe: false,
-      }));
-      results.push(withFailureCode({
-        name: "Story invariants",
-        status: fastTrack ? "WARN" : "FAIL",
-        detail: `${violations.length} violation(s): ${violations.slice(0, 3).map(v => formatInvariantDiagnostic(session, v)).join("; ")}${violations.length > 3 ? " ..." : ""}${fastTrack ? ` [${auditOnly ? "AUDIT_ONLY" : "FAST_TRACK"} — downgraded to WARN]` : ""}`,
-        violations: structuredViolations,
-      }, "GATE-SEM-002"));
+      });
+
+      if (hardViolations.length > 0) {
+        results.push(withFailureCode({
+          name: "Story invariants",
+          status: "FAIL",
+          detail: `${hardViolations.length} violation(s): ${hardViolations.slice(0, 3).map(v => formatInvariantDiagnostic(session, v)).join("; ")}${hardViolations.length > 3 ? " ..." : ""}`,
+          violations: hardViolations.map(toStructuredViolation),
+        }, "GATE-SEM-002"));
+      }
+
+      if (downgradedViolations.length > 0) {
+        results.push({
+          name: auditOnly ? "Audit-only invariant advisories" : "Fast-track story invariant advisories",
+          status: "WARN",
+          detail: `${downgradedViolations.length} violation(s) [${auditOnly ? "AUDIT_ONLY" : "INTERNAL_FAST_TRACK"} — downgraded to WARN]: ${downgradedViolations.slice(0, 3).map(v => formatInvariantDiagnostic(session, v)).join("; ")}${downgradedViolations.length > 3 ? " ..." : ""}`,
+        });
+      }
     }
 
     const warnings = session.queryAll("invariant_warning(Name, Detail)");

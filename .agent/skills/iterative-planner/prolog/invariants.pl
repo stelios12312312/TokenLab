@@ -911,13 +911,40 @@ invariant_warning(journal_contradiction_detected, info(Left, Right, Key)) :-
     contradicts(Left, Right),
     journal_contradiction_key(Left, Right, Key).
 
+canonical_test_observed_pass(Test, Plan) :-
+    plan_observed_run(Plan, Run),
+    test_run_current(Run, true),
+    test_run_result(Run, Test, pass).
+canonical_test_observed_pass(Test, Plan) :-
+    plan_observed_run(Plan, Run),
+    test_run_current(Run, true),
+    test_run_result(Run, Test, passed).
+
+canonical_observed_proof_tracking(Story) :-
+    canonical_story_observation_tracking(Story).
+
+canonical_story_observed(Story) :-
+    canonical_story_observation_pass(Story).
+
+canonical_criterion_observed(Story, Criterion) :-
+    canonical_criterion_observation_pass(Story, Criterion).
+
+full_evidence_chain(Criterion) :-
+    criterion_story(Criterion, Story),
+    code_ref(Story, _),
+    test_ref(Story, _),
+    validation_ref(Story, _),
+    canonical_observed_proof_tracking(Story),
+    canonical_story_observed(Story).
+
 full_evidence_chain(Criterion) :-
     criterion_story(Criterion, Story),
     code_ref(Story, _),
     test_ref(Story, _),
     validation_ref(Story, Validation),
     story_coverage_contract(Story, current),
-    validation_executed(Story, Validation).
+    validation_executed(Story, Validation),
+    \+ canonical_observed_proof_tracking(Story).
 
 %% Pinned contract-v1 stories retain their historical evidence judgment.
 full_evidence_chain(Criterion) :-
@@ -926,7 +953,8 @@ full_evidence_chain(Criterion) :-
     test_ref(Story, _),
     validation_ref(Story, _),
     validation_executed_tracking_enabled,
-    \+ story_coverage_contract(Story, current).
+    \+ story_coverage_contract(Story, current),
+    \+ canonical_observed_proof_tracking(Story).
 
 %% Fallback: if validation_executed tracking not enabled, check ref only
 full_evidence_chain(Criterion) :-
@@ -935,7 +963,8 @@ full_evidence_chain(Criterion) :-
     test_ref(Story, _),
     validation_ref(Story, _),
     \+ story_coverage_contract(Story, _),
-    \+ validation_executed_tracking_enabled.
+    \+ validation_executed_tracking_enabled,
+    \+ canonical_observed_proof_tracking(Story).
 
 %% Phase 1 verification-obligation ontology warnings.
 %%   These warnings are additive only and fire exclusively when the active
@@ -1088,3 +1117,77 @@ invariant_warning(novel_insight_floor_at_risk, count(N)) :-
     novel_insight_count(0),
     N >= W,
     N < T.
+
+%% ═══════════════════════════════════════════════════════════
+%% MACHINE LEARNING LIFECYCLE GOVERNANCE INVARIANTS (I-ML)
+%% ═══════════════════════════════════════════════════════════
+
+%% ML governance becomes hard at the evidence/promotion boundary. The
+%% transition target covers REFLECT -> VALIDATE before current_state changes;
+%% evidence_phase_reached keeps the rules active throughout VALIDATE/CLOSE.
+ml_governance_enforcement_reached :-
+    semantic_transition_target(validate).
+
+ml_governance_enforcement_reached :-
+    evidence_phase_reached.
+
+%% I-ML-001: Temporal Leakage — Feature or dataset timestamp > Model TrainingSplitDate
+invariant_violated(ml_temporal_leakage, leak(ModelId, Feature, FeatureTime, SplitDate)) :-
+    ml_governance_enforcement_reached,
+    model(ModelId, _, FeatureSetId, _, SplitDate),
+    feature_set(FeatureSetId, _, Features),
+    member(Feature, Features),
+    feature_timestamp(Feature, FeatureTime),
+    FeatureTime > SplitDate.
+
+invariant_violated(ml_temporal_leakage, leak(ModelId, DatasetId, DataTime, SplitDate)) :-
+    ml_governance_enforcement_reached,
+    model(ModelId, _, FeatureSetId, _, SplitDate),
+    feature_set(FeatureSetId, DatasetId, _),
+    dataset(DatasetId, _, _, DataTime),
+    DataTime > SplitDate.
+
+%% I-ML-002: Metric Floor & Calibration
+%% Prevent staged -> production transition if model evaluation falls below declared floors
+%% or if ECE calibration error > 0.08 (or declared floor).
+invariant_violated(ml_calibration_error_exceeded, eval(ModelId, ece, EceScore, MaxEce)) :-
+    ml_governance_enforcement_reached,
+    model_deployment(ModelId, production, _),
+    model_evaluation(ModelId, ece, EceScore, _),
+    ml_metric_floor(ece, MaxEce),
+    EceScore > MaxEce.
+
+invariant_violated(ml_calibration_error_exceeded, eval(ModelId, ece, EceScore, 0.08)) :-
+    ml_governance_enforcement_reached,
+    model_deployment(ModelId, production, _),
+    model_evaluation(ModelId, ece, EceScore, _),
+    \+ ml_metric_floor(ece, _),
+    EceScore > 0.08.
+
+invariant_violated(ml_metric_floor_failed, eval(ModelId, Metric, Score, MinFloor)) :-
+    ml_governance_enforcement_reached,
+    model_deployment(ModelId, production, _),
+    model_evaluation(ModelId, Metric, Score, _),
+    Metric \= ece,
+    ml_metric_floor(Metric, MinFloor),
+    Score < MinFloor.
+
+%% I-ML-003: Upstream Data Drift — Mark model artifact stale if upstream dataset schema hash changes
+invariant_violated(ml_upstream_data_drift, drift(ModelId, DatasetId, ExpectedHash, ActualHash)) :-
+    ml_governance_enforcement_reached,
+    model(ModelId, _, FeatureSetId, _, _),
+    feature_set(FeatureSetId, DatasetId, _),
+    model_dataset_schema_hash(ModelId, DatasetId, ExpectedHash),
+    dataset(DatasetId, _, ActualHash, _),
+    ExpectedHash \= ActualHash.
+
+%% I-ML-004: Agent Action Qualification — Prohibit AI agent actions without ICP qualification and rate governor quota proofs
+invariant_violated(ml_agent_action_unqualified, action(AgentId, ActionId, missing_icp_qualification)) :-
+    ml_governance_enforcement_reached,
+    agent_action(AgentId, ActionId),
+    \+ agent_icp_qualified(AgentId).
+
+invariant_violated(ml_agent_action_unqualified, action(AgentId, ActionId, missing_rate_governor_quota)) :-
+    ml_governance_enforcement_reached,
+    agent_action(AgentId, ActionId),
+    \+ agent_rate_governor_quota(AgentId, ActionId).

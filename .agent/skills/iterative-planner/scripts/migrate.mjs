@@ -57,6 +57,10 @@ import { ensureCircuitBreakersState, readStateJson as readPlanStateJson } from "
 import { ensurePlannerPolicy, loadPlannerPolicy } from "./lib/planner_policy.mjs";
 import { extractHostRuleOverlays } from "./lib/host_rule_overlays.mjs";
 import {
+  MANAGED_PAYLOAD_OWNERSHIP,
+  classifyManagedPayloadPath,
+} from "./lib/managed_payload_ownership.mjs";
+import {
   ROOT_INSTRUCTION_SOURCE_OF_TRUTH,
   ROOT_INSTRUCTION_TARGETS,
   ROOT_INSTRUCTION_SECTION_HEADINGS,
@@ -77,6 +81,12 @@ import {
   runIveUpgrade,
   runIveValidateMigration,
 } from "./lib/ive_migration_bootstrap.mjs";
+import {
+  formatProjectOntologyProvisioning,
+  formatProjectSetupCompletion,
+  mergeProjectOntologyExitCode,
+  provisionProjectOntology,
+} from "./lib/project_ontology_provisioning.mjs";
 import { JOURNAL_REL_PATH, loadJournal } from "./lib/agent_journal.mjs";
 import {
   MANAGED_UPGRADE_RECEIPT_RELATIVE_PATH as MANAGED_UPGRADE_RECEIPT_REL_PATH,
@@ -102,6 +112,7 @@ const {
   selectedSourceCommit,
   selectedSourceRef,
   sourcePathHasHistory,
+  sourcePathHistoryTexts,
 } = createMigrationSourcePin({ agentDir, fileHash, normalizeComparablePath });
 
 // Read version from single source of truth
@@ -458,7 +469,15 @@ function buildExpectedManifest(targetPath) {
     }
   }
 
-  return entries;
+  const managedWorkflowPaths = listFleetManagedWorkflowFiles(dirname(agentDir))
+    .map((name) => `.agent/workflows/${name}`);
+  return entries.map((entry) => {
+    const relativePath = gitPath(relative(targetPath, entry.path));
+    const ownership = entry.consumer_owned
+      ? MANAGED_PAYLOAD_OWNERSHIP.PROJECT
+      : classifyManagedPayloadPath(relativePath, { managedWorkflowPaths });
+    return { ...entry, ownership };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -2861,7 +2880,7 @@ function buildDoctorReport(targetPath) {
   const partialSurfaceSync = Boolean(engineMatchesCurrent && (workflowsHasIssues || policyHasIssues || staleOutsideSkill.length > 0));
 
   const splitBrainReasons = [];
-  if (workflowsHasIssues) splitBrainReasons.push(`workflows=${ritualContractReadiness.status === "PASS" ? "ok" : "parked-exposed"}`);
+  if (workflowsHasIssues) splitBrainReasons.push(`workflows=${verificationStatusIsPass(ritualContractReadiness.status, "execution") ? "ok" : "parked-exposed"}`);
   if (policyHasIssues) splitBrainReasons.push("policy=incomplete");
   if (staleOutsideSkill.length > 0) splitBrainReasons.push(`stale_outside_skill=${staleOutsideSkill.length}`);
   const partialSurfaceSyncReason = partialSurfaceSync ? splitBrainReasons.join(", ") : null;
@@ -3400,7 +3419,14 @@ function runProjectSetup(targetPath, dryRun, log) {
 
   syncRootInstructionSurfaces(targetPath, { dryRun, log });
 
-  // 7. Run ripple check
+  // 7. Provision the consumer's own canonical ontology. This invokes the
+  // installed engine against targetPath; it never copies source-repo facts.
+  log.push("\n## Project Ontology");
+  const ontologyReceipt = provisionProjectOntology({ cwd: targetPath, dryRun });
+  log.push(...formatProjectOntologyProvisioning(ontologyReceipt));
+  process.exitCode = mergeProjectOntologyExitCode(process.exitCode, ontologyReceipt);
+
+  // 8. Run ripple check
   log.push("\n## Ripple-Through Check");
   const rippleCheckPath = join(targetBase, "scripts", "ripple_check.mjs");
   if (existsSync(rippleCheckPath)) {
@@ -3416,6 +3442,7 @@ function runProjectSetup(targetPath, dryRun, log) {
   } else {
     log.push(`  SKIP: ripple_check.mjs not found`);
   }
+  return ontologyReceipt.ok;
 }
 
 function normalizeSetupProfile(value) {
@@ -3718,7 +3745,7 @@ function cmdDoctor(targetPath, jsonOutput) {
     if (report.recovery_command) console.log(`\n  Interrupted transaction recovery: ${report.recovery_command}`);
     if (report.partial_surface_sync || report.install_health?.partial_surface_sync) {
       let workflowsStatus = "ok";
-      if (report.ritual_contract_readiness?.status !== "PASS") {
+      if (!verificationStatusIsPass(report.ritual_contract_readiness?.status, "execution")) {
         const hasParked = (report.ritual_contract_readiness?.issues || []).some(
           (i) => i.id === "workflow_parked_present_in_active_dir",
         );
@@ -3775,7 +3802,10 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   const setupIssues = collectRepairableSetupIssues(targetPath);
   const advisoryIssues = findRootInstructionSyncIssues(targetPath);
 
-  let syncSafetyEntries = staleEntries.filter((entry) => basename(entry.path) !== ".project_registry.json");
+  let syncSafetyEntries = staleEntries.filter((entry) => (
+    entry.ownership !== MANAGED_PAYLOAD_OWNERSHIP.PROJECT
+    && entry.ownership !== MANAGED_PAYLOAD_OWNERSHIP.GENERATED
+  ));
   const rulesEntry = syncSafetyEntries.find((entry) => gitPath(relative(targetPath, entry.path)) === ".agent/rules.md");
   let extractedOverlays = [];
   if (rulesEntry) {
@@ -3803,10 +3833,20 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
         sourceRulesText = null;
       }
     }
-    const extraction = extractHostRuleOverlays(targetPath, { dryRun, sourceText: sourceRulesText });
+    const historicalSourceTexts = sourcePathHistoryTexts(".agent/rules.md")
+      .filter((text) => text !== sourceRulesText);
+    const extraction = extractHostRuleOverlays(targetPath, {
+      dryRun,
+      sourceText: sourceRulesText,
+      historicalSourceTexts,
+      allowCurrentSectionOverrides: true,
+    });
     if (
-      extraction.status === "extractable"
-      && (extraction.wrote.length > 0 || extraction.skipped.length > 0 || (extraction.overlays && extraction.overlays.length > 0))
+      extraction.status === "historical_identical"
+      || (
+        extraction.status === "extractable"
+        && (extraction.wrote.length > 0 || extraction.skipped.length > 0 || (extraction.overlays && extraction.overlays.length > 0))
+      )
     ) {
       extractedOverlays = extraction.overlays;
       for (const p of extraction.overlays) {
@@ -3823,7 +3863,8 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   const syncSafety = assessManagedSyncSafety(
     targetPath,
     syncSafetyEntries,
-    [...obsoleteWorkflows.prunable, ...obsoleteTests.prunable],
+    [...obsoleteWorkflows.prunable, ...obsoleteTests.prunable]
+      .map((path) => ({ path, ownership: MANAGED_PAYLOAD_OWNERSHIP.ENGINE })),
   );
   if (!syncSafety.ok) {
     const stratigraphy = managedUpgradeDiagnostics(targetPath, CURRENT_VERSION);
@@ -3841,6 +3882,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
       to: CURRENT_VERSION,
       reason: "managed-sync-conflict",
       conflicts: syncSafety.conflicts,
+      engineReplacements: syncSafety.replacements,
     };
   }
 
@@ -3858,6 +3900,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
       from: version,
       to: CURRENT_VERSION,
       reason: "already-current-clean",
+      engineReplacements: [],
     };
   }
 
@@ -3871,6 +3914,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
       from: version,
       to: CURRENT_VERSION,
       reason: "setup-repair-required",
+      engineReplacements: [],
     };
   }
 
@@ -3955,11 +3999,21 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     join(targetBase, "config"),
     (name) => (name.endsWith(".json")
         && name !== ".project_registry.json"
+        && name !== "source_hygiene.json"
         && name !== basename(MANAGED_UPGRADE_RECEIPT_REL_PATH))
       || name === ".checklist_integrity"
       || name.endsWith(".yaml"),
     dryRun, log
   );
+  const sourceHygieneSource = join(skillDir, "config", "source_hygiene.json");
+  const sourceHygieneTarget = join(targetBase, "config", "source_hygiene.json");
+  if (existsSync(sourceHygieneSource)) {
+    if (existsSync(sourceHygieneTarget)) {
+      log.push("  PRESERVED project-owned config: source_hygiene.json");
+    } else {
+      copyIfMissing(sourceHygieneSource, sourceHygieneTarget, dryRun, log);
+    }
+  }
   const targetRegistryPath = join(targetBase, "config", ".project_registry.json");
   try {
     const registryBefore = existsSync(targetRegistryPath) ? readFileSync(targetRegistryPath) : null;
@@ -4257,6 +4311,7 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     from: version,
     to: CURRENT_VERSION,
     reason: "upgrade-or-repair",
+    engineReplacements: syncSafety.replacements,
   };
 }
 
@@ -4345,10 +4400,11 @@ function cmdSetup(targetPath, dryRun, options = {}) {
   console.log(`║  PROJECT SETUP ${profile === "kernel" ? "[kernel] " : ""}${dryRun ? "(DRY RUN) " : ""}                     ║`);
   console.log(`╚══════════════════════════════════════════════════════╝\n`);
 
+  let setupOk = true;
   if (profile === "kernel") {
     runKernelProjectSetup(targetPath, dryRun, log);
   } else {
-    runProjectSetup(targetPath, dryRun, log);
+    setupOk = runProjectSetup(targetPath, dryRun, log);
   }
 
   // Print log
@@ -4356,7 +4412,7 @@ function cmdSetup(targetPath, dryRun, options = {}) {
     console.log(line);
   }
 
-  console.log(`\n  ══ SETUP COMPLETE ══`);
+  console.log(formatProjectSetupCompletion(setupOk));
   if (profile === "kernel") {
     console.log(`  Kernel profile installed. Use kernel-status to inspect journal counts and earned-layer activation.`);
   } else {
@@ -4860,6 +4916,7 @@ function cmdUpgradeAll(dryRun, commitRequested = false) {
             sourceCommit: selectedSourceCommit(),
             fromVersion: readCommittedPlannerVersion(project.path),
             toVersion: CURRENT_VERSION,
+            engineReplacements: preview.engineReplacements,
           });
           upgradeResult = {
             noOp: false,
@@ -6684,6 +6741,7 @@ if (command === "upgrade-approval-envelope") {
               fromVersion: readCommittedPlannerVersion(targetPath),
               toVersion: CURRENT_VERSION,
               seedKB,
+              engineReplacements: preview.engineReplacements,
             });
           } catch (error) {
             console.error(

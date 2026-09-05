@@ -46,7 +46,62 @@ const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
 const skillDir = resolve(testDir, "..");
 const repoRoot = resolve(skillDir, "..", "..", "..");
-const agentDir = join(repoRoot, ".agent");
+const hostAgentDir = join(repoRoot, ".agent");
+const fixtureAgentRoot = mkdtempSync(join(tmpdir(), "planner-gates-fixture-agent-"));
+const agentDir = join(fixtureAgentRoot, ".agent");
+mkdirSync(join(agentDir, "skills"), { recursive: true });
+cpSync(skillDir, join(agentDir, "skills", "iterative-planner"), { recursive: true });
+rmSync(join(agentDir, "skills", "iterative-planner", "node_modules"), { recursive: true, force: true });
+
+if (existsSync(join(hostAgentDir, "workflows"))) {
+  mkdirSync(join(agentDir, "workflows"), { recursive: true });
+  const workflowRegistryPath = join(agentDir, "skills", "iterative-planner", "config", "workflow_registry.json");
+  const allowedWorkflows = new Set(["semantic_map.schema.json"]);
+  try {
+    const reg = JSON.parse(readFileSync(workflowRegistryPath, "utf-8"));
+    if (Array.isArray(reg?.workflows)) {
+      for (const w of reg.workflows) {
+        if (typeof w?.id === "string") {
+          allowedWorkflows.add(`${w.id.replace(/^\//, "")}.md`);
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  for (const file of readdirSync(join(hostAgentDir, "workflows"))) {
+    if (allowedWorkflows.has(file)) {
+      cpSync(join(hostAgentDir, "workflows", file), join(agentDir, "workflows", file));
+    }
+  }
+}
+
+if (existsSync(join(hostAgentDir, "rules.md"))) {
+  cpSync(join(hostAgentDir, "rules.md"), join(agentDir, "rules.md"));
+}
+if (existsSync(join(hostAgentDir, "gotchas.md"))) {
+  cpSync(join(hostAgentDir, "gotchas.md"), join(agentDir, "gotchas.md"));
+}
+if (existsSync(join(hostAgentDir, "scripts"))) {
+  cpSync(join(hostAgentDir, "scripts"), join(agentDir, "scripts"), { recursive: true });
+}
+
+const trackedTempDirs = new Set();
+
+function registerTempDir(p) {
+  trackedTempDirs.add(p);
+  return p;
+}
+
+function cleanupTempDir(p) {
+  trackedTempDirs.delete(p);
+  try { rmSync(p, { recursive: true, force: true }); } catch { /* best effort */ }
+}
+
+process.on("exit", () => {
+  rmSync(fixtureAgentRoot, { recursive: true, force: true });
+  for (const p of trackedTempDirs) {
+    try { rmSync(p, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+});
 const NODE = process.execPath;
 
 const bootstrapScript = join(skillDir, "scripts", "bootstrap.mjs");
@@ -118,11 +173,13 @@ function runGit(args, cwd, extraEnv = {}) {
 }
 
 function makeTemp(name) {
-  return mkdtempSync(join(tmpdir(), `planner-gates-${name}-`));
+  return registerTempDir(mkdtempSync(join(tmpdir(), `planner-gates-${name}-`)));
 }
 
 function readJson(path) {
-  return JSON.parse(readFileSync(path, "utf-8"));
+  const parsed = JSON.parse(readFileSync(path, "utf-8"));
+  if (parsed?.pointer_version !== 1 || typeof parsed.target !== "string") return parsed;
+  return JSON.parse(readFileSync(resolve(dirname(path), parsed.target), "utf-8"));
 }
 
 function readText(path) {
@@ -747,6 +804,7 @@ function setPlanState(planDir, nextState, extra = {}) {
     ...readJson(statePath),
     ...extra,
     state: nextState,
+    phase: nextState,
   };
   writeJson(statePath, state);
 }
@@ -1070,7 +1128,7 @@ function scenarioPlanToExecuteFailsClosedWhenSnapshotPreparationCannotReadInput(
     chmodSync(unreadablePath, 0o600);
     unreadablePath = null;
 
-    assert(!execute.ok && execute.stdout.includes("Gate-time replay input capture"), "unreadable gate-time input blocks snapshot preparation");
+    assert(!execute.ok && execute.stdout.includes("GATE-RUN-001"), "unreadable gate-time authority blocks before snapshot persistence");
     assert(execute.stdout.includes("GATE-RUN-001"), "snapshot preparation failure uses the stable runtime failure code");
     assert(readJson(join(planDir, "state.json")).state === "PLAN", "snapshot preparation failure does not advance canonical state");
     assert(resolveGateInputSnapshot({ planDir, gate: "plan-to-execute" }).status === "absent", "snapshot preparation failure publishes no replay authority");
@@ -3334,10 +3392,13 @@ Root-cause fix
 }
 
 function scenarioSemanticDivergencePrecisionContract() {
-  const probe = runNode([
-    "--input-type=module",
-    "-e",
-    `import { readFileSync } from "fs";
+  const tmp = makeTemp("semantic-divergence-precision");
+  let probe;
+  try {
+    probe = runNode([
+      "--input-type=module",
+      "-e",
+      `import { readFileSync } from "fs";
 import { classifySemanticDivergence } from ${JSON.stringify(pathToFileURL(semanticDivergenceScript).href)};
 import { buildTransitionReceipt } from ${JSON.stringify(pathToFileURL(gateVerdictScript).href)};
 
@@ -3410,7 +3471,10 @@ console.log(JSON.stringify({
     generatedAt: "2026-07-22T00:00:00.000Z",
   }),
 }));`,
-  ], repoRoot);
+    ], tmp);
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
 
   assert(probe.ok, "shared semantic divergence classifier and receipt probe loads");
   if (!probe.ok) {
@@ -3665,8 +3729,14 @@ function scenarioValidateCloseScopesAsyncDriftMaintenanceToPlanFiles() {
       "--plan",
       basename(ambientPlanDir),
     ], ambientTmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    if (!notification.ok && process.env.PLANNER_GATE_FLOW_SCENARIO === "notify") {
+      console.log(notification.stdout);
+      console.error(notification.stderr);
+    }
     assert(notification.ok, "notify-user succeeds for an explicitly targeted closed plan after its active pointer is already absent");
     assert(notification.stdout.includes("pointer/thread target already absent or reassigned"), "notify-user reports the absent-pointer cleanup path without mutating another target");
+    assert(!/Health Scan|Persona Audit|Reachability Audit|Tool Trace Audit|Semantic Checks/.test(notification.stdout),
+      "fresh notify-user runs only the bounded handoff graph");
 
     runGit(["init"], repeatTmp);
     const repeatPlanDir = seedProject(repeatTmp, "ordinary documentation close scope smoke");
@@ -7168,10 +7238,15 @@ function scenarioBootstrapCreationPersistsExplicitProofPosture() {
 }
 
 function scenarioGuideFirstClassificationContract() {
-  const help = runNode([transitionScript, "--help"], repoRoot, { PLANNER_SKIP_SELF_HEAL: "1" });
-  assert(help.ok && help.stdout.includes("Unified gate wrapper"), "transition CLI help exits cleanly with the governed gate catalog");
-  const unknownGate = runNode([transitionScript, "not-a-gate"], repoRoot, { PLANNER_SKIP_SELF_HEAL: "1" });
-  assert(!unknownGate.ok && unknownGate.stderr.includes("Unknown gate 'not-a-gate'"), "transition CLI rejects an unknown gate before runtime mutation");
+  const tmp = makeTemp("guide-first-classification");
+  try {
+    const help = runNode([transitionScript, "--help"], tmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(help.ok && help.stdout.includes("Unified gate wrapper"), "transition CLI help exits cleanly with the governed gate catalog");
+    const unknownGate = runNode([transitionScript, "not-a-gate"], tmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(!unknownGate.ok && unknownGate.stderr.includes("Unknown gate 'not-a-gate'"), "transition CLI rejects an unknown gate before runtime mutation");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
 
   assert(deriveGateDecision([{ status: "PASS" }]) === "ALLOWED", "canonical PASS allows a gate decision");
   assert(deriveGateDecision([{ status: "WARN" }]) === "ALLOWED", "canonical WARN remains an advisory gate decision");
@@ -7231,6 +7306,8 @@ function scenarioMissingOntologyFactsEmitDegradedCoverage() {
     const expiredWaiverAt = new Date(fixtureNowMs - 1).toISOString();
     const { planDir } = seedCopiedPlannerProject(tmp, "missing ontology facts degraded coverage fixture");
     const copiedSkillDir = join(tmp, ".agent", "skills", "iterative-planner");
+    const copiedPrologDir = join(copiedSkillDir, "prolog");
+    writeFileSync(join(copiedPrologDir, "README.txt"), "Project rule directories may contain non-Prolog metadata.\n");
     const copiedOntologyFactsDir = join(tmp, ".agent", "ontology", "facts");
     mkdirSync(copiedOntologyFactsDir, { recursive: true });
     for (const entityClass of ONTOLOGY_ENTITY_CLASSES) {
@@ -7257,8 +7334,29 @@ function scenarioMissingOntologyFactsEmitDegradedCoverage() {
         !Object.keys(loadedRules).includes("degraded_coverage"),
       "loadRules preserves its array contract while attaching non-enumerable configured coverage metadata",
     );
+    const gateProjectedRules = loadRules(createSession(), {
+      cwd: tmp,
+      skillPath: copiedSkillDir,
+      ontologyProjectionProfile: "gate",
+    });
+    assert(
+      gateProjectedRules.includes("ontology facts (generated from source)"),
+      "loadRules exercises the bounded gate ontology projection as well as the default full projection",
+    );
+    const implicitDefaultRoot = makeTemp("load-rules-implicit-default-");
+    const previousCwd = process.cwd();
+    let implicitDefaultRules;
+    try {
+      process.chdir(implicitDefaultRoot);
+      implicitDefaultRules = loadRules(createSession());
+    } finally {
+      process.chdir(previousCwd);
+    }
+    assert(
+      Array.isArray(implicitDefaultRules) && implicitDefaultRules.degraded_coverage?.evidence_validity === "invalid",
+      "loadRules preserves and exercises its no-options full-projection entry path on a bounded empty project without inventing ontology coverage",
+    );
 
-    const copiedPrologDir = join(copiedSkillDir, "prolog");
     const copiedPrologBackup = join(tmp, "prolog-backup");
     cpSync(copiedPrologDir, copiedPrologBackup, { recursive: true });
     rmSync(copiedPrologDir, { recursive: true, force: true });
@@ -7339,7 +7437,7 @@ function scenarioMissingOntologyFactsEmitDegradedCoverage() {
       "missing ontology facts cannot report full coverage from direct invariant CLI",
     );
 
-    const status = runNode([copiedBootstrap, "status"], tmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    const status = runNode([copiedBootstrap, "status", "--full"], tmp, { PLANNER_SKIP_SELF_HEAL: "1" });
     assert(
       status.ok &&
         status.stdout.includes("Degraded coverage") &&
@@ -7352,7 +7450,7 @@ function scenarioMissingOntologyFactsEmitDegradedCoverage() {
     const pointerPath = join(tmp, "plans", ".current_plan");
     const pointerValue = readFileSync(pointerPath, "utf-8");
     rmSync(pointerPath, { force: true });
-    const noPlanStatus = runNode([copiedBootstrap, "status"], tmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    const noPlanStatus = runNode([copiedBootstrap, "status", "--full"], tmp, { PLANNER_SKIP_SELF_HEAL: "1" });
     assert(
       noPlanStatus.ok &&
         noPlanStatus.stdout.includes("No active plan") &&
@@ -7439,6 +7537,13 @@ function scenarioMissingOntologyFactsEmitDegradedCoverage() {
   }
 }
 
+if (process.env.PLANNER_GATE_FLOW_SCENARIO === "notify") {
+  console.log("\nTransition And Gate Flow Test — notify fixture\n");
+  scenarioValidateCloseScopesAsyncDriftMaintenanceToPlanFiles();
+  console.log(`\nResults: ${passed} passed, ${failed} failed`);
+  process.exit(failed > 0 ? 1 : 0);
+}
+
 console.log("\nTransition And Gate Flow Test\n");
 
 scenarioCanonicalRitualProcessClassification();
@@ -7496,17 +7601,22 @@ scenarioUnmappedSourceDivergenceRemainsLoud();
 // scenarioReflectTransitionBlocksMissingActiveMistakeHookEvidence();
 // scenarioReflectTransitionAcceptsMarkdownWrappedActiveMistakeHookEvidence();
 function scenarioTransitionCliValidationAndHelp() {
-  const helpResult = runNode([transitionScript, "--help"], repoRoot);
-  assert(helpResult.ok && helpResult.stdout.includes("Usage:"), "transition --help exits cleanly with usage");
+  const tmp = makeTemp("transition-cli-help");
+  try {
+    const helpResult = runNode([transitionScript, "--help"], tmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(helpResult.ok && helpResult.stdout.includes("Usage:"), "transition --help exits cleanly with usage");
 
-  const missingPlanFlag = runNode([transitionScript, "explore-to-plan", "--plan"], repoRoot);
-  assert(!missingPlanFlag.ok && missingPlanFlag.stderr.includes("--plan requires a plan directory value"), "transition --plan without value fails closed");
+    const missingPlanFlag = runNode([transitionScript, "explore-to-plan", "--plan"], tmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(!missingPlanFlag.ok && missingPlanFlag.stderr.includes("--plan requires a plan directory value"), "transition --plan without value fails closed");
 
-  const unknownFlag = runNode([transitionScript, "explore-to-plan", "--invalid-flag"], repoRoot);
-  assert(!unknownFlag.ok && unknownFlag.stderr.includes("Unknown flag"), "transition with unknown flag fails closed");
+    const unknownFlag = runNode([transitionScript, "explore-to-plan", "--invalid-flag"], tmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(!unknownFlag.ok && unknownFlag.stderr.includes("Unknown flag"), "transition with unknown flag fails closed");
 
-  const unknownGate = runNode([transitionScript, "invalid-gate-name"], repoRoot);
-  assert(!unknownGate.ok && unknownGate.stderr.includes("Unknown gate"), "transition with unknown gate fails closed");
+    const unknownGate = runNode([transitionScript, "invalid-gate-name"], tmp, { PLANNER_SKIP_SELF_HEAL: "1" });
+    assert(!unknownGate.ok && unknownGate.stderr.includes("Unknown gate"), "transition with unknown gate fails closed");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
 }
 
 scenarioTransitionCliValidationAndHelp();
@@ -7549,4 +7659,3 @@ scenarioStalePlanEditBlocks();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
-

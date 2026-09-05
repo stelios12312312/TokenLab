@@ -76,6 +76,26 @@
       ]
     },
     {
+      "id": "ml_governance_facts",
+      "name": "Selected ML governance facts",
+      "source_path": ".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs",
+      "source_anchor": "Selected ML governance facts failed to load",
+      "selection_predicate": "Selected only when a project-level ML facts file or active-plan ml_facts.json exists.",
+      "cause_class": "invalid_selected_substrate",
+      "disposition": "report_degraded_coverage",
+      "evaluator": "runtime_failure_only",
+      "exits": [
+        {
+          "kind": "build_substrate",
+          "action": "Repair the named ML governance JSON source and rerun the semantic command."
+        },
+        {
+          "kind": "record_governed_waiver",
+          "action": "Record a typed, approved, time-bounded entry in .agent/degraded_coverage_waivers.json."
+        }
+      ]
+    },
+    {
       "id": "active_plan_ontology_fallback",
       "name": "Active-plan persisted ontology fallback",
       "source_path": ".agent/skills/iterative-planner/scripts/lib/fact_loader.mjs",

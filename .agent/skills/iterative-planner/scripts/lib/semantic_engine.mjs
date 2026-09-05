@@ -11,6 +11,8 @@ export function createSemanticEngine({
   transientCloseSignals = null,
   transientOntologyFacts = "",
   transientRegistryRefresh = false,
+  ontologyProjectionProfile = "full",
+  queryTimeoutMs = 3000,
 } = {}) {
   const ctx = { cwd, skillPath, transientRegistryRefresh };
   let refresh = null;
@@ -51,6 +53,8 @@ export function createSemanticEngine({
     transientCloseSignals: ctx.transientCloseSignals,
     transientOntologyFacts: ctx.transientOntologyFacts,
     transientRegistryRefresh: ctx.transientRegistryRefresh,
+    ontologyProjectionProfile,
+    queryTimeoutMs,
   });
 
   return {

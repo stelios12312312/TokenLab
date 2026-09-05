@@ -2956,7 +2956,12 @@ try {
     runGit(tmp, ["add", packetRel, decisionsRel, passReceiptRel, failReceiptRel, malformedReceiptRel]);
     runGit(tmp, ["-c", "user.name=Planner Test", "-c", "user.email=planner-test@example.com", "commit", "-m", "seed proposed resolution evidence"]);
     const reachableCommit = runGit(tmp, ["rev-parse", "HEAD"]);
-    const unreachableCommit = runGit(tmp, ["commit-tree", `${reachableCommit}^{tree}`, "-m", "detached resolution evidence"]);
+    const unreachableCommit = runGit(tmp, [
+      "-c", "user.name=Planner Test",
+      "-c", "user.email=planner-test@example.com",
+      "commit-tree", `${reachableCommit}^{tree}`,
+      "-m", "detached resolution evidence",
+    ]);
 
     const decision = (id) => ({ path: decisionsRel, id });
     const request = {

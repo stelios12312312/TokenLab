@@ -12,6 +12,58 @@
     "uncoded_fail_policy": "contract_defect",
     "terminal_verdict_source": "transition_receipt"
   },
+  "evaluation_sessions": {
+    "enabled": true,
+    "freshness_ms": 120000,
+    "retention_count": 8,
+    "disable_environment_flag": "PLANNER_DISABLE_GATE_REUSE",
+    "unknown_input_policy": "run"
+  },
+  "check_families": {
+    "health": {
+      "cacheable": true,
+      "inputs": ["head", "index", "unstaged", "untracked", "health_config"],
+      "applicability": "configured_health_scan_or_final_proof_boundary",
+      "unknown_input_policy": "run"
+    },
+    "test_baseline": {
+      "cacheable": true,
+      "inputs": ["code", "tests", "evidence"],
+      "applicability": "code_or_test_change",
+      "unknown_input_policy": "run"
+    },
+    "reachability": {
+      "cacheable": true,
+      "inputs": ["gate_registry", "prolog", "rules", "checklists", "workflows"],
+      "applicability": "topology_boundary",
+      "unknown_input_policy": "run"
+    },
+    "persona": {
+      "cacheable": true,
+      "inputs": ["goal", "focus", "planned_files", "changed_files", "persona_config", "persona_artifacts"],
+      "applicability": "persona_audit_enabled",
+      "unknown_input_policy": "run"
+    },
+    "semantic": {
+      "cacheable": false,
+      "inputs": ["state", "plan", "evidence", "story_registry", "ontology", "rules"],
+      "applicability": "semantic_phase_boundary",
+      "unknown_input_policy": "run"
+    },
+    "notify_handoff": {
+      "cacheable": true,
+      "inputs": ["close_receipt", "summary", "notification", "knowledge_handoff"],
+      "applicability": "notify_user_only",
+      "unknown_input_policy": "run"
+    }
+  },
+  "performance_budgets": {
+    "default_no_plan_status_p95_ms": 1500,
+    "unchanged_actual_p95_ms": 2000,
+    "unchanged_actual_max_dry_run_ratio": 0.25,
+    "fresh_notify_max_close_ratio": 0.25,
+    "compact_artifact_max_legacy_ratio": 0.35
+  },
   "gates": {
     "explore-to-plan": {
       "from": "explore",
@@ -108,9 +160,10 @@
         "continuous_execute_supervision": false
       },
       "audit_only": true,
-      "persona_audit": true,
+      "handoff_only": true,
+      "persona_audit": false,
       "health_scan": null,
-      "trace_audit": true,
+      "trace_audit": false,
       "reachability_audit": false,
       "failure_code_prefix": "GATE-NTF"
     }

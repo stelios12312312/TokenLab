@@ -51,9 +51,35 @@ const declaredVolatileTimeFields = new Set([
 
 const executableDescriptors = [
   {
+    fileName: "model_assurance.mjs",
+    label: "model_assurance critical escalation",
+    args: ({ skillDir }) => [
+      scriptPath(skillDir, "model_assurance.mjs"),
+      "inspect",
+      "--floor",
+      "standard",
+      "--task-risk",
+      "enhanced",
+      "--capability-profile",
+      "standard",
+      "--identity-provenance",
+      "observed",
+      "--observed-failures",
+      "2",
+      "--requested-profile",
+      "standard",
+      "--json",
+    ],
+  },
+  {
     fileName: "coverage_baseline.mjs",
     label: "coverage_baseline canonical check",
     args: ({ skillDir }) => [scriptPath(skillDir, "coverage_baseline.mjs"), "check", "--json", "--no-head"],
+  },
+  {
+    fileName: "planner_latency_benchmark.mjs",
+    label: "planner_latency_benchmark deterministic sample",
+    args: ({ skillDir }) => [scriptPath(skillDir, "planner_latency_benchmark.mjs"), "--sample", "--json"],
   },
   {
     fileName: "test_gate_census.mjs",

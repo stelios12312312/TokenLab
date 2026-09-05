@@ -98,6 +98,9 @@ function humanSummary(result) {
     `- generated_facts: ${result.wrote_generated_facts ? "wrote" : (result.changed_generated_facts ? "dry-run-change" : "up_to_date")}`,
     `- canonical_yaml: ${result.wrote_fact_documents.length > 0 ? result.wrote_fact_documents.join(", ") : "unchanged"}`,
     `- total_facts: ${result.total_fact_count}`,
+    `- authority: ${result.authority_receipt?.authority || "unavailable"}`,
+    `- source_digest: ${result.authority_receipt?.source_digest || "unavailable"}`,
+    `- compiled_projection: ${result.authority_receipt?.projections?.compiled_prolog?.status || "unavailable"}`,
     `- code: modules=${result.counts.code.modules}, files=${result.counts.code.files}`,
     `- specification: stories=${result.counts.specification.stories}, domains=${result.counts.specification.domains}, plans=${result.counts.specification.plans}`,
     `- verification: criteria=${result.counts.verification.criteria}, tests=${result.counts.verification.tests}, artifacts=${result.counts.verification.artifacts}`,
@@ -282,6 +285,7 @@ if (options.command === "build") {
     incremental: result.incremental,
     dryRun: result.dryRun,
     total_fact_count: result.total_fact_count,
+    authority_receipt: result.authority_receipt,
   };
 } else if (options.command === "query") {
   result = runOntologyQuery({

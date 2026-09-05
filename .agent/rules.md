@@ -98,8 +98,9 @@ Mandatory rules for every AI session on this project. These rules prevent common
 **Protocol**:
 - When using the iterative planner, NEVER transition between states manually.
 - Use `node <skill-path>/scripts/transition.mjs <gate-name>` for ALL transitions.
-- Immediately before each actual transition, run `node <skill-path>/scripts/transition.mjs <gate-name> --dry-run`; it is the same evaluator with persistence disabled.
-- This single command runs health checks, gate verification, and checklists.
+- Immediately before each actual transition, run `node <skill-path>/scripts/transition.mjs <gate-name> --dry-run`; it is the same evaluator with canonical persistence disabled. A PASS dry-run may write only a disposable, ignored, content-bound session under repository Git metadata so the unchanged actual command can reuse the evaluation.
+- The actual command revalidates that session under the canonical state lock. Any changed plan/phase/Git/evaluator/rule/config/checklist/evidence/target input, expiry, corruption, failure, or unknown dependency reruns the complete evaluator or fails closed; `PLANNER_DISABLE_GATE_REUSE=1` is the forced-fresh control.
+- This single command runs every check applicable to the gate. `notify-user` is a bounded handoff audit and intentionally does not repeat health, persona, trace, reachability, test-baseline, or full semantic close evaluation.
 - If it outputs FAIL, you may NOT proceed. Fix the failing items first.
 - Do NOT run `verify_gate.mjs`, `checklist_runner.mjs`, or `project_health.mjs` individually at gate points.
 
@@ -146,6 +147,7 @@ Mandatory rules for every AI session on this project. These rules prevent common
 - **After second fix to same feature**: STOP. Write down the actual user journey. Redesign instead of patching. Four patches to one feature in one session means wrong level of abstraction.
 - **Test the user journey**: if the change affects migration, run `node <skill-path>/tests/ive/run.mjs --only migration-bootstrap --only transition-gate-flows --json --no-manifest` so the governed migration and planner-transition paths are both exercised.
 - **Keep managed upgrades transactional**: never write an upgrade payload directly into a live consumer and leave proof or commit for a later session. Require clean managed preflight, an immutable source pin, scratch-candidate apply/setup, census plus planner-core proof, explicit `--commit` consent, one live fast-forward, and a durable receipt/recovery path. Preserve all provenance refusals and unrelated consumer work.
+- **Bound long-running release proof before spawn**: select and forecast the exact suite workload, include cleanup headroom, refuse impossible outer deadlines and over-budget staged evidence before launching work, stream redacted heartbeats outside JSON stdout, and reuse/resume only exact fresh completed PASS evidence. Increasing a fixed timeout without this contract is not a root-cause fix.
 
 **Why**: The planner's own code has the highest blast radius in the project — a bug in `transition.mjs` or `migrate.mjs` breaks every project that uses the planner. In the v2.1.0 session, the same class of bug (incomplete ripple-through) occurred four times because the agent modified planner code without following the planner's own discipline. The checks existed but weren't run.
 

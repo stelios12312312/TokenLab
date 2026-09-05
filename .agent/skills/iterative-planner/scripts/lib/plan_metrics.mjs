@@ -27,6 +27,7 @@ function createDefaultMetrics(planId, createdAt) {
     gate_failures: [],
     tool_errors: [],
     gate_attempts_total: 0,
+    gate_attempt_ledger: [],
     transition_friction: {
       hard_blocks: 0,
       advisory_conversions: 0,
@@ -53,6 +54,7 @@ function createDefaultMetrics(planId, createdAt) {
       tokens: "unavailable",
       first_code_edit: "unavailable",
       scripts_invoked: "unavailable",
+      gate_attempts: "unavailable",
       note: "Phase 0 Task 0.5 currently wires lifecycle timestamps and gate outcomes only.",
     },
     verification_strategy_reader: {
@@ -95,6 +97,7 @@ function normalizeMetricsShape(metrics, { planId, createdAt }) {
   base.gate_failures = Array.isArray(base.gate_failures) ? base.gate_failures : [];
   base.tool_errors = Array.isArray(base.tool_errors) ? base.tool_errors : [];
   base.gate_attempts_total = Number.isInteger(base.gate_attempts_total) ? base.gate_attempts_total : 0;
+  base.gate_attempt_ledger = Array.isArray(base.gate_attempt_ledger) ? base.gate_attempt_ledger : [];
   const friction = base.transition_friction && typeof base.transition_friction === "object"
     ? base.transition_friction
     : {};
@@ -132,12 +135,14 @@ function normalizeMetricsShape(metrics, { planId, createdAt }) {
         tokens: base.capture_status.tokens || "unavailable",
         first_code_edit: base.capture_status.first_code_edit || "unavailable",
         scripts_invoked: base.capture_status.scripts_invoked || "unavailable",
+        gate_attempts: base.capture_status.gate_attempts || (base.gate_attempt_ledger.length > 0 ? "collected" : "unavailable"),
         note: base.capture_status.note || "Phase 0 Task 0.5 currently wires lifecycle timestamps and gate outcomes only.",
       }
     : {
         tokens: "unavailable",
         first_code_edit: "unavailable",
         scripts_invoked: "unavailable",
+        gate_attempts: "unavailable",
         note: "Phase 0 Task 0.5 currently wires lifecycle timestamps and gate outcomes only.",
       };
   const reader = base.verification_strategy_reader && typeof base.verification_strategy_reader === "object"
@@ -291,6 +296,108 @@ export function recordGateMetrics({
 
 export function readPlanMetrics(planDir) {
   return readMetrics(planDir);
+}
+
+function finiteNonNegative(value, fallback = 0) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? number : fallback;
+}
+
+function durationMs(startedAt, endedAt) {
+  const start = Date.parse(startedAt);
+  const end = Date.parse(endedAt);
+  return Number.isFinite(start) && Number.isFinite(end) && end >= start ? end - start : null;
+}
+
+export function recordGateAttemptTelemetry({
+  projectRoot,
+  planDirName,
+  planDir,
+  gate,
+  mode,
+  attemptId,
+  startedAt,
+  endedAt,
+  componentDurationsMs = {},
+  dispositions = {},
+  cache = {},
+  failureCodes = [],
+  toolErrorCodes = [],
+  retryOf = null,
+  lateRequirementCount = 0,
+  artifactBytes = 0,
+} = {}) {
+  if (!planDirName || !planDir || !gate || !["dry-run", "actual"].includes(mode)) return null;
+  ensureMetricsInfrastructure(projectRoot);
+  const metrics = normalizeMetricsShape(readMetrics(planDir), {
+    planId: planDirName,
+    createdAt: normalizeIso(startedAt, normalizeIso(endedAt, null)),
+  });
+  const normalizedComponents = Object.fromEntries(Object.entries(componentDurationsMs || {})
+    .filter(([key, value]) => key && Number.isFinite(Number(value)) && Number(value) >= 0)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([key, value]) => [key, Number(value)]));
+  const entry = {
+    attempt_id: String(attemptId || `${gate}:${mode}:${startedAt || endedAt || metrics.gate_attempt_ledger.length}`),
+    gate,
+    mode,
+    started_at: normalizeIso(startedAt, null),
+    ended_at: normalizeIso(endedAt, null),
+    duration_ms: durationMs(startedAt, endedAt),
+    component_durations_ms: normalizedComponents,
+    dispositions: {
+      ran: finiteNonNegative(dispositions?.ran),
+      reused: finiteNonNegative(dispositions?.reused),
+      not_applicable: finiteNonNegative(dispositions?.not_applicable),
+    },
+    cache: {
+      identity: typeof cache?.identity === "string" ? cache.identity : null,
+      outcome: typeof cache?.outcome === "string" ? cache.outcome : "not_used",
+      invalidation_reason: typeof cache?.invalidation_reason === "string" ? cache.invalidation_reason : null,
+    },
+    failure_codes: [...new Set((Array.isArray(failureCodes) ? failureCodes : []).filter(Boolean))],
+    tool_error_codes: [...new Set((Array.isArray(toolErrorCodes) ? toolErrorCodes : []).filter(Boolean))],
+    retry_of: typeof retryOf === "string" && retryOf ? retryOf : null,
+    late_requirement_count: finiteNonNegative(lateRequirementCount),
+    artifact_bytes: finiteNonNegative(artifactBytes),
+  };
+  const existingIndex = metrics.gate_attempt_ledger.findIndex((row) => row?.attempt_id === entry.attempt_id);
+  if (existingIndex >= 0) metrics.gate_attempt_ledger[existingIndex] = entry;
+  else metrics.gate_attempt_ledger.push(entry);
+  metrics.capture_status.gate_attempts = "collected";
+  metrics.capture_status.scripts_invoked = "collected";
+  metrics.scripts_invoked = metrics.gate_attempt_ledger.reduce((sum, row) => sum + finiteNonNegative(row?.dispositions?.ran), 0);
+  const persistence = writeMetrics(planDir, metrics);
+  return { metrics, entry, persistence };
+}
+
+export function summarizeGateAttemptTelemetry(metrics) {
+  const rows = Array.isArray(metrics?.gate_attempt_ledger) ? metrics.gate_attempt_ledger : [];
+  if (!rows.some((row) => row?.mode === "dry-run")) {
+    return {
+      status: "unavailable",
+      reason: "dry_run_telemetry_missing",
+      attempt_count: rows.length,
+      dispositions: { ran: 0, reused: 0, not_applicable: 0 },
+      late_requirement_count: null,
+      artifact_bytes: null,
+    };
+  }
+  const sum = (selector) => rows.reduce((total, row) => total + finiteNonNegative(selector(row)), 0);
+  return {
+    status: "collected",
+    reason: null,
+    attempt_count: rows.length,
+    dry_run_attempt_count: rows.filter((row) => row.mode === "dry-run").length,
+    actual_attempt_count: rows.filter((row) => row.mode === "actual").length,
+    dispositions: {
+      ran: sum((row) => row?.dispositions?.ran),
+      reused: sum((row) => row?.dispositions?.reused),
+      not_applicable: sum((row) => row?.dispositions?.not_applicable),
+    },
+    late_requirement_count: sum((row) => row?.late_requirement_count),
+    artifact_bytes: sum((row) => row?.artifact_bytes),
+  };
 }
 
 export function recordVerificationStrategyReaderUsage({ projectRoot, planDirName, planDir, source, path = null, at = null }) {

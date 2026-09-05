@@ -2252,7 +2252,7 @@ export function printResults(results) {
   // T-INTAKE-A0AAAFC1: PASS checks collapse to a single count line; full detail
   // prints only for WARN/FAIL. Display-only — counts and enforcement unchanged.
   // Set PLANNER_VERBOSE_CHECKS=1 to restore per-PASS lines.
-  const verbose = process.env.PLANNER_VERBOSE_CHECKS === "1";
+  const verbose = process.env.PLANNER_VERBOSE_CHECKS === "1" || process.env._PLANNER_TRANSITION_OUTPUT_MODE === "full";
   for (const r of results) {
     if (r.status === PASS && !verbose) {
       pass++;
@@ -3327,7 +3327,7 @@ export function printResultsWithCodes(results) {
   let pass = 0, warn = 0, fail = 0, skip = 0;
   const codes = [];
   // T-INTAKE-A0AAAFC1: PASS collapses to a count line (see printResults).
-  const verbose = process.env.PLANNER_VERBOSE_CHECKS === "1";
+  const verbose = process.env.PLANNER_VERBOSE_CHECKS === "1" || process.env._PLANNER_TRANSITION_OUTPUT_MODE === "full";
   for (const r of results) {
     if (r.status === PASS && !verbose) {
       pass++;

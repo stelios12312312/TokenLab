@@ -10,6 +10,7 @@ import {
 } from "./lib/evidence_verifier.mjs";
 import { emitJson } from "./lib/emit_json.mjs";
 import { getPaths, resolvePlanTarget } from "./lib/plan_utils.mjs";
+import { gitRevision, repositorySourceDigest } from "./ontology_inducer.mjs";
 
 const args = process.argv.slice(2);
 const flags = {
@@ -100,6 +101,13 @@ let rawOutput = "";
 let command = "";
 let childStatus = 0;
 
+function repositoryIdentity(root) {
+  return {
+    revision: gitRevision(root),
+    sourceDigest: repositorySourceDigest(root),
+  };
+}
+
 if (inputPath) {
   const resolvedInputPath = resolve(cwd, inputPath);
   if (!existsSync(resolvedInputPath)) {
@@ -127,10 +135,19 @@ const framework = inferFramework({
   commandArgs,
   inputPath,
 });
-const tests = parseRawTestOutput({
+let tests = parseRawTestOutput({
   framework,
   rawOutput,
 });
+if (commandArgs.length > 0 && tests.length === 0) {
+  tests = [{
+    name: `${commandArgs.at(-1)} aggregate`,
+    file: commandArgs.find((token) => /\.(?:mjs|cjs|js|jsx|ts|tsx)$/.test(token)) || "",
+    outcome: childStatus === 0 ? "pass" : "fail",
+    output_summary: `Process exited ${childStatus}`,
+  }];
+}
+const repository = repositoryIdentity(cwd);
 const result = writeStructuredTestRunDocument({
   projectRoot: cwd,
   planId: target.planDirName,
@@ -140,6 +157,10 @@ const result = writeStructuredTestRunDocument({
   generatedAt,
   outputPath,
   rawOutput,
+  repositoryRevision: repository.revision,
+  sourceDigest: repository.sourceDigest,
+  toolVersion: `${framework}:${process.version}`,
+  provenance: "test_run_record",
 });
 
 const payload = {

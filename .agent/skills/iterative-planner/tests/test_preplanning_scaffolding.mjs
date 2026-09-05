@@ -24,6 +24,7 @@ import {
 import { refreshPlanArtifacts } from "../scripts/lib/plan_refresh.mjs";
 import { createInitialStateJson, readStateJson, writeStateJson } from "../scripts/lib/determinism.mjs";
 import { plannerSubprocessEnv } from "./helpers/env.mjs";
+import { buildScopeContract } from "../scripts/lib/scope_contract.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const testDir = dirname(__filename);
@@ -198,6 +199,63 @@ Ticket: T-REMOTE-1
     const programContext = resultByName(report, "Program Packet context");
     assert(programContext?.status === "PASS", "direct ticket id match beats earlier fuzzy Program Packet token match");
     assert(String(programContext?.detail || "").includes("PGM-REMOTE-MEMORY"), "Program Packet context reports the directly matched packet");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioPlanningOnlyFuzzyProgramMatchIsSuggestionOnly() {
+  const tmp = makeTemp("planner-program-suggestion-");
+  try {
+    const skillPath = join(tmp, "skill");
+    seedManifesto(skillPath);
+    seedStoryRegistry(tmp);
+    writeJson(join(tmp, "plans", "programs", "ambient-lifecycle", "program_packet.json"), {
+      program_id: "PGM-AMBIENT-LIFECYCLE",
+      title: "Planner lifecycle contract latency repair",
+      status: "executing",
+      tickets: [{ id: "T-AMBIENT-LIFECYCLE", title: "Compile lifecycle contract and reduce latency", lifecycle: "proposed" }],
+    });
+    const { planDir } = seedPlan(tmp, {
+      goal: "Create an implementation plan only for lifecycle contract latency; do not write code",
+      findings: "# Findings\n\n## F-001\nGeneric lexical overlap is not Program authority.\n",
+    });
+
+    const report = evaluatePreplanningScaffolding({ cwd: tmp, planDir, skillPath });
+    const programContext = resultByName(report, "Program Packet context");
+    assert(programContext?.status === "SKIP", "planning-only fuzzy Program overlap is non-blocking");
+    assert(programContext?.binding === false && programContext?.suggestion?.program_id === "PGM-AMBIENT-LIFECYCLE",
+      "planning-only fuzzy overlap remains a provenance-bearing suggestion");
+    assert(!report.actions.some((action) => action.code === PREPLANNING_CODES.programContext),
+      "planning-only fuzzy overlap cannot emit a Program authority repair action");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioAmbientScopeIsBoundedButOwnedOverlapExact() {
+  const tmp = makeTemp("planner-bounded-scope-");
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: tmp });
+    mkdirSync(join(tmp, "src"), { recursive: true });
+    writeFileSync(join(tmp, "src", "owned.mjs"), "export const owned = true;\n");
+    for (let index = 0; index < 80; index += 1) {
+      const dir = join(tmp, "plans", "generated", `batch-${String(index % 4).padStart(2, "0")}`);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, `artifact-${String(index).padStart(3, "0")}.json`), "{}\n");
+    }
+    const planContent = "# Plan\n\n## Files To Modify\n- src/owned.mjs\n";
+    const contract = buildScopeContract({ cwd: tmp, planContent });
+    assert(contract.summary?.overlap_count === 1 && contract.overlap_files?.includes("src/owned.mjs"),
+      "declared dirty-file overlap remains exact");
+    assert(contract.ambient_scope?.count === 80 && /^[a-f0-9]{64}$/.test(contract.ambient_scope?.digest || ""),
+      "ambient scope records the complete count and content digest");
+    assert(contract.ambient_scope?.sample?.length <= 20,
+      "ambient scope stores only a bounded deterministic sample");
+    assert(contract.ambient_scope?.top_level_counts?.plans === 80,
+      "ambient scope stores top-level class counts");
+    assert(!Array.isArray(contract.ambient_dirty_files) && !Array.isArray(contract.observed_dirty_files_at_start),
+      "new scope contracts do not embed unbounded ambient path arrays");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -507,6 +565,14 @@ function scenarioBootstrapStatusDoesNotSelfDirtyCleanConsumer() {
     writeFileSync(join(tmp, "plans", "knowledge", "patterns.md"), "# Patterns\n");
     writeFileSync(join(tmp, "plans", "knowledge", "gotchas.md"), "# Gotchas\n");
     writeFileSync(join(tmp, "plans", "knowledge", "retros", "retro_ledger.json"), JSON.stringify({ entries: [] }, null, 2));
+    writeFileSync(join(tmp, "plans", ".planner_critical_status.json"), `${JSON.stringify({
+      warnings: [
+        { severity: "CRITICAL", detail: "Global critical detail remains visible." },
+        { severity: "critical", code: "STATUS-CRITICAL-002" },
+        { severity: "CRITICAL" },
+        { severity: "WARN", message: "Non-critical cache rows stay hidden." },
+      ],
+    }, null, 2)}\n`);
     writeFileSync(join(tmp, "audit.config.json"), JSON.stringify({ roles: ["core"], fail_on: ["HIGH"] }, null, 2));
     writeFileSync(join(tmp, "planner.policy.yaml"), "version: 1\n");
     mkdirSync(join(tmp, ".agent", "skills", "iterative-planner"), { recursive: true });
@@ -521,21 +587,94 @@ function scenarioBootstrapStatusDoesNotSelfDirtyCleanConsumer() {
     assert(statusBefore.trim() === "", "fixture starts clean");
 
     const bootstrapScript = join(tmp, ".agent", "skills", "iterative-planner", "scripts", "bootstrap.mjs");
-    execFileSync(NODE, [bootstrapScript, "status"], {
+    const defaultStatus = execFileSync(NODE, [bootstrapScript, "status"], {
       cwd: tmp,
       encoding: "utf8",
       env: plannerSubprocessEnv(),
     });
+    assert(defaultStatus.includes("status --full"), "bounded default status points to the explicit full dashboard");
+    assert(defaultStatus.includes("Global critical detail remains visible.")
+      && defaultStatus.includes("STATUS-CRITICAL-002")
+      && defaultStatus.includes("Cached critical planner warning"),
+    "bounded no-plan status retains every cached CRITICAL warning fallback");
+    assert(!defaultStatus.includes("Non-critical cache rows stay hidden."),
+      "bounded status excludes non-critical cached warnings");
+    assert(!defaultStatus.includes("Lifecycle reconciliation") && !defaultStatus.includes("Ambient persona"),
+      "bounded default no-plan status omits expensive ambient dashboard sections");
     const statusAfter1 = execFileSync("git", ["status", "--porcelain"], { cwd: tmp, encoding: "utf8" });
     assert(statusAfter1.trim() === "", "git status remains clean after first bootstrap status");
 
-    execFileSync(NODE, [bootstrapScript, "status"], {
+    const fullStatus = execFileSync(NODE, [bootstrapScript, "status", "--full"], {
       cwd: tmp,
       encoding: "utf8",
       env: plannerSubprocessEnv(),
     });
+    assert(!fullStatus.includes("Run `status --full` for the ambient dashboard"),
+      "status --full renders the dashboard rather than the bounded follow-up hint");
     const statusAfter2 = execFileSync("git", ["status", "--porcelain"], { cwd: tmp, encoding: "utf8" });
-    assert(statusAfter2.trim() === "", "git status remains clean after second bootstrap status");
+    assert(statusAfter2.trim() === "", "git status remains clean after full bootstrap status");
+
+    const activePlanId = "plan_2026-09-04_boundedstatus";
+    const activePlanDir = join(tmp, "plans", activePlanId);
+    mkdirSync(join(activePlanDir, "artifacts"), { recursive: true });
+    writeFileSync(join(activePlanDir, "plan.md"), "# Plan\n\n## Goal\nKeep active status bounded and useful.\n");
+    writeFileSync(join(activePlanDir, "state.md"), "# Current State: EXECUTE\n## Iteration: 1\n## Current Plan Step: verify status\n");
+    writeFileSync(join(activePlanDir, "state.json"), `${JSON.stringify({
+      state: "EXECUTE",
+      iteration: 1,
+      current_step: "verify status",
+      goal: "Keep active status bounded and useful.",
+      transitions: [],
+    }, null, 2)}\n`);
+    writeFileSync(join(activePlanDir, "artifacts", "critical_status.json"), `${JSON.stringify({
+      warnings: [{ severity: "CRITICAL", code: "STATUS-CRITICAL-001", message: "Cached critical fixture remains visible." }],
+    }, null, 2)}\n`);
+    writeFileSync(join(tmp, "plans", ".current_plan"), `${activePlanId}\n`);
+
+    const activeStatus = execFileSync(NODE, [bootstrapScript, "status"], {
+      cwd: tmp,
+      encoding: "utf8",
+      env: plannerSubprocessEnv(),
+    });
+    assert(activeStatus.includes("[EXECUTE]") && activeStatus.includes("Keep active status bounded and useful"),
+      "bounded active-plan status retains phase and goal");
+    assert(activeStatus.includes(`transition.mjs execute-to-reflect --dry-run --plan ${activePlanId}`),
+      "bounded active-plan status retains the exact next gate command");
+    assert(activeStatus.includes("Cached critical fixture remains visible."),
+      "bounded active-plan status retains cached critical warnings");
+    assert(!activeStatus.includes("Ambient persona") && !activeStatus.includes("Lifecycle reconciliation"),
+      "bounded active-plan status omits expensive ambient dashboard sections");
+
+    const lifecycleNextGates = {
+      EXPLORE: "explore-to-plan",
+      PLAN: "plan-to-execute",
+      EXECUTE: "execute-to-reflect",
+      REFLECT: "reflect-to-validate",
+      VALIDATE: "validate-to-close",
+      CLOSE: "notify-user",
+    };
+    for (const [phase, gate] of Object.entries(lifecycleNextGates)) {
+      const state = JSON.parse(readFileSync(join(activePlanDir, "state.json"), "utf8"));
+      state.state = phase;
+      writeFileSync(join(activePlanDir, "state.json"), `${JSON.stringify(state, null, 2)}\n`);
+      const phaseStatus = execFileSync(NODE, [bootstrapScript, "status"], {
+        cwd: tmp,
+        encoding: "utf8",
+        env: plannerSubprocessEnv(),
+      });
+      assert(phaseStatus.includes(`transition.mjs ${gate} --dry-run --plan ${activePlanId}`),
+        `bounded ${phase} status selects the canonical next gate`);
+    }
+
+    const unknownState = JSON.parse(readFileSync(join(activePlanDir, "state.json"), "utf8"));
+    unknownState.state = "UNKNOWN";
+    writeFileSync(join(activePlanDir, "state.json"), `${JSON.stringify(unknownState, null, 2)}\n`);
+    const unknownStatus = execFileSync(NODE, [bootstrapScript, "status"], {
+      cwd: tmp,
+      encoding: "utf8",
+      env: plannerSubprocessEnv(),
+    });
+    assert(!unknownStatus.includes("transition.mjs null"), "bounded unknown-state status does not invent a next gate");
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
@@ -545,6 +684,8 @@ console.log("\nPre-Planning Scaffolding\n");
 
 scenarioAllScaffoldInputsPass();
 scenarioProgramPacketPrefersDirectTicketMatch();
+scenarioPlanningOnlyFuzzyProgramMatchIsSuggestionOnly();
+scenarioAmbientScopeIsBoundedButOwnedOverlapExact();
 scenarioMissingScaffoldBlocksNormalPlannerWork();
 scenarioSkipPlannerShapesWarnOnly();
 scenarioStoryRegistryMinimumUsesPolicyOverride();
@@ -560,4 +701,3 @@ if (!existsSync(transitionScript)) {
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
-

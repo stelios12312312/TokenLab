@@ -12,6 +12,7 @@ import { fileURLToPath, pathToFileURL } from "url";
 import { buildContextPacket, DEFAULT_ENTRY_BUDGET } from "./context_packet.mjs";
 import { buildWorkflowContractSummary } from "./workflow_contracts.mjs";
 import { evaluateExternalPrerequisites } from "./program_packet.mjs";
+import { goalLooksLikePlanningOnlyRequest } from "./plan_utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const libDir = dirname(__filename);
@@ -30,6 +31,7 @@ const FULL_GATE_SEQUENCE = Object.freeze([
   "validate-to-close",
   "notify-user",
 ]);
+const FUZZY_PROGRAM_AUTHORITY_MIN_SCORE = 8;
 
 const PLANNER_CORE_PERSONA_EXPECTATIONS = Object.freeze({
   assumptions_challenger: Object.freeze([
@@ -331,8 +333,31 @@ function selectProgramContext({ cwd, goal, decision = null, preflight = null }) 
     return { ...entry, exact, score: exactProgram ? 1000 : exactTicket ? 900 : overlap(goal, `${id} ${entry.packet.title} ${entry.packet.goal}`) };
   }).filter((entry) => entry.score > 0 && (entry.exact || asString(entry.packet?.status).toLowerCase() !== "closed"))
     .sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
-  const selected = preferred?.selected || ranked[0];
-  if (!selected) return { program: null, tickets: [], warnings: [], source: null };
+  const fuzzySuggestions = ranked
+    .filter((entry) => !entry.exact)
+    .slice(0, 3)
+    .map((entry) => ({
+      program_id: programId(entry.packet),
+      title: entry.packet?.title || "",
+      source: rel(cwd, entry.path),
+      match_kind: "lexical_overlap",
+      score: entry.score,
+      binding: false,
+    }));
+  const planningOnly = goalLooksLikePlanningOnlyRequest(goal);
+  const selected = preferred?.selected || ranked.find((entry) => entry.exact || (!planningOnly && entry.score >= FUZZY_PROGRAM_AUTHORITY_MIN_SCORE));
+  if (!selected) {
+    return {
+      program: null,
+      tickets: [],
+      warnings: [],
+      source: null,
+      selection_source: fuzzySuggestions.length > 0 ? "fuzzy_suggestion" : null,
+      binding: false,
+      suggestions: fuzzySuggestions,
+      authority_threshold: FUZZY_PROGRAM_AUTHORITY_MIN_SCORE,
+    };
+  }
 
   const packet = selected.packet;
   const preferredTicketIds = new Set(preferred?.ticket_ids || []);
@@ -395,6 +420,9 @@ function selectProgramContext({ cwd, goal, decision = null, preflight = null }) 
     warnings: unique(warnings),
     source: rel(cwd, selected.path),
     selection_source: preferred?.source || "goal_match",
+    binding: true,
+    suggestions: fuzzySuggestions.filter((entry) => entry.program_id !== programId(packet)),
+    authority_threshold: FUZZY_PROGRAM_AUTHORITY_MIN_SCORE,
   };
 }
 
@@ -652,6 +680,7 @@ export async function buildGuidancePacket({
       context_approximate_tokens: contextPacket.budgets.approximate_tokens,
     },
     gate_contracts: gateContracts,
+    model_assurance: preflight?.model_assurance || null,
     persona_guardrails: personaGuardrails,
     ontology_findings: {
       current_invariants: ruleEngine,
@@ -683,6 +712,8 @@ export async function buildGuidancePacket({
     })),
     sources_consulted: unique([
       ".agent/skills/iterative-planner/scripts/planner_preflight.mjs",
+      ".agent/skills/iterative-planner/config/model_assurance.json",
+      ".agent/skills/iterative-planner/scripts/lib/model_assurance.mjs",
       ".agent/skills/iterative-planner/scripts/work_preflight.mjs",
       ".agent/skills/iterative-planner/scripts/context_packet.mjs",
       ".agent/skills/iterative-planner/config/gates.json",
@@ -728,6 +759,16 @@ export function renderGuidancePacketMarkdown(packet) {
       lines.push("");
     }
   }
+  lines.push("## Model Assurance", "");
+  if (!packet.model_assurance) {
+    lines.push("Unavailable — use the deterministic gate contracts above.", "");
+  } else {
+    lines.push(`Profile: ${packet.model_assurance.effective_profile}`);
+    lines.push(`Identity provenance: ${packet.model_assurance.identity_provenance}`);
+    lines.push(`Retry budget: ${packet.model_assurance.retry_budget}`);
+    lines.push(`Required deterministic checks: ${packet.model_assurance.required_checks.join(", ")}`);
+    lines.push("Normal provider, model, generation, and tool surfaces remain unchanged.", "");
+  }
   lines.push("## Persona Guardrails", "");
   lines.push(`Active: ${packet.persona_guardrails.active_packs.join(", ") || "none"}`);
   for (const item of packet.persona_guardrails.expectations) lines.push(`- ${item.pack_id}/${item.phase}: ${item.expectation}`);
@@ -738,7 +779,12 @@ export function renderGuidancePacketMarkdown(packet) {
   lines.push("", "## Knowledge", "");
   for (const entry of packet.knowledge.entries) lines.push(`- ${entry.id}: ${entry.title} — ${entry.summary}`);
   lines.push("", "## Program Context", "");
-  if (!packet.program_context.program) lines.push("No matching Program Packet/ticket context.");
+  if (!packet.program_context.program) {
+    lines.push("No binding Program Packet/ticket context.");
+    for (const suggestion of packet.program_context.suggestions || []) {
+      lines.push(`- Non-binding suggestion: ${suggestion.program_id} — ${suggestion.title} (${suggestion.match_kind}, score ${suggestion.score}; explicit authority required)`);
+    }
+  }
   else {
     lines.push(`Program: ${packet.program_context.program.id} — ${packet.program_context.program.title}`);
     for (const ticket of packet.program_context.tickets) {

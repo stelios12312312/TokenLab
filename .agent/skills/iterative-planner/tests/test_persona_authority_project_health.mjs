@@ -205,7 +205,7 @@ try {
   assert(declaredAudit.stderr.includes("Persona shape suppression: dropped_packs=quant, ux_ui; shape=planner-core; source=declared:planner_policy.shape"), "declared planner-core policy receipt names source");
   assert(declaredAudit.stderr.includes("Persona shape conflict: active/high persona_adapt role(s) quant, ux_ui suppressed by shape=planner-core"), "declared planner-core policy warns on persona-vs-shape conflict");
 
-  const status = run([join(scriptDir, "bootstrap.mjs"), "status"], policyTmp);
+  const status = run([join(scriptDir, "bootstrap.mjs"), "status", "--full"], policyTmp);
   assert(status.stdout.includes("Persona shape suppression: dropped_packs=quant, ux_ui; shape=planner-core; source=declared:planner_policy.shape"), "bootstrap status mirrors shape suppression receipt");
   assert(status.stdout.includes("Persona shape conflict: active/high persona_adapt role(s) quant, ux_ui suppressed by shape=planner-core"), "bootstrap status mirrors persona-vs-shape conflict");
 

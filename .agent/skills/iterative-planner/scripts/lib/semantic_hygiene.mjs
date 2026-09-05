@@ -141,6 +141,21 @@ function isPlannerBackupSegment(part) {
   return /^\.agent\.v[0-9a-zA-Z._-]*\.backup$/.test(String(part || ""));
 }
 
+function gitCommonDir(cwd) {
+  const env = { ...process.env };
+  for (const key of GIT_ROUTING_ENV_KEYS) delete env[key];
+  try {
+    const value = execFileSync(
+      "git",
+      ["-C", cwd, "rev-parse", "--path-format=absolute", "--git-common-dir"],
+      { env, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] },
+    ).trim();
+    return value ? resolve(value) : null;
+  } catch {
+    return null;
+  }
+}
+
 function isCanonicalPlannerSource(cwd) {
   if (
     process.env._PLANNER_MANAGED_UPGRADE_PROOF_RUNNING === "1"
@@ -155,7 +170,11 @@ function isCanonicalPlannerSource(cwd) {
     : "";
   if (!sourcePath) return false;
   try {
-    return resolve(sourcePath) === resolve(cwd);
+    if (resolve(sourcePath) === resolve(cwd)) return true;
+    if (!existsSync(sourcePath)) return false;
+    const sourceCommonDir = gitCommonDir(sourcePath);
+    const cwdCommonDir = gitCommonDir(cwd);
+    return Boolean(sourceCommonDir && cwdCommonDir && sourceCommonDir === cwdCommonDir);
   } catch {
     return false;
   }

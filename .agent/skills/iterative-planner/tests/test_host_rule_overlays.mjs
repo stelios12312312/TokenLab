@@ -93,6 +93,13 @@ Mandatory rules for every AI session on this project.
 - Reject unsigned envelopes.
 `;
 
+const sampleSourceV2 = sampleSource
+  .replace(
+    "**Goal**: Accumulated knowledge must be used.",
+    "**Goal**: Accumulated knowledge must be consulted and recorded.",
+  )
+  .concat("\n---\n\n## 2. Transaction Boundary\n\n**Goal**: Keep upgrades atomic.\n");
+
 const sampleCanonicalSourceWithDomain = `# Agent Rules
 
 ---
@@ -220,7 +227,7 @@ Body 15
   assert(result.status === "true_divergence", "4. deleted managed heading returns true_divergence");
 }
 
-// Test 5: existing overlay file with different content -> do not overwrite (true_divergence / conflict)
+// Test 5: existing overlay file with different content -> preserve it and use a content-addressed filename
 {
   const tmp = mkdtempSync(join(tmpdir(), "host-rules-test-conflict-"));
   try {
@@ -236,12 +243,48 @@ Body 15
       dryRun: false,
       sourceText: sampleSource,
     });
-    assert(result.status === "true_divergence", "5. conflicting existing overlay stops as true_divergence");
+    assert(result.status === "extractable", "5. conflicting existing overlay is extracted without clobbering");
     const surviving = readFileSync(join(rulesDir, "40-tender-integrity.md"), "utf-8");
     assert(surviving.includes("Old conflicting content"), "5. existing overlay content was preserved byte-for-byte");
+    assert(
+      result.wrote.length === 1
+        && result.wrote[0] !== ".agent/rules/40-tender-integrity.md"
+        && existsSync(join(tmp, result.wrote[0])),
+      "5. conflicting extraction uses a deterministic alternate overlay",
+    );
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
+}
+
+// Test 9: an older canonical rules snapshot plus a project-only section is extractable
+{
+  const result = classifyRulesMdDivergence({
+    sourceText: sampleSourceV2,
+    consumerText: sampleConsumerExtra,
+    historicalSourceTexts: [sampleSource],
+    allowCurrentSectionOverrides: true,
+  });
+  assert(result.status === "extractable", "9. historical canonical base plus project section is extractable");
+  assert(result.extra_sections.length === 1, "9. only the project-only section is extracted");
+  assert(result.extra_sections[0].title === "Tender Integrity", "9. historical engine sections are not misclassified as project rules");
+}
+
+// Test 10: a project edit to a historical canonical-titled section becomes an overlay
+{
+  const modifiedHistorical = sampleSource.replace(
+    "**Goal**: Accumulated knowledge must be used.",
+    "**Goal**: Consumer-specific memory policy.",
+  );
+  const result = classifyRulesMdDivergence({
+    sourceText: sampleSourceV2,
+    consumerText: modifiedHistorical,
+    historicalSourceTexts: [sampleSource],
+    allowCurrentSectionOverrides: true,
+  });
+  assert(result.status === "extractable", "10. modified historical managed section is preserved as an overlay");
+  assert(result.extra_sections.length === 1, "10. exactly the modified section is extracted");
+  assert(result.extra_sections[0].cleanBody.includes("Consumer-specific memory policy"), "10. extracted override retains consumer semantics");
 }
 
 // Test 6: canonical-like file that has content after DOMAIN comment matching source, plus one extra host section
@@ -335,4 +378,3 @@ Body 15
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
-

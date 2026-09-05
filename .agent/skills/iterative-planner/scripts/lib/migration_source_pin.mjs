@@ -2,6 +2,10 @@ import { execFileSync, spawnSync } from "child_process";
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "fs";
 import { join, relative, resolve } from "path";
 import { tmpdir } from "os";
+import {
+  MANAGED_PAYLOAD_OWNERSHIP,
+  classifyManagedPayloadPath,
+} from "./managed_payload_ownership.mjs";
 
 const PINNED_SOURCE_RUNNING_ENV = "_PLANNER_PINNED_SOURCE_RUNNING";
 const CANONICAL_SOURCE_REPO_ENV = "PLANNER_CANONICAL_SOURCE_REPO";
@@ -163,6 +167,45 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
     return result;
   }
 
+  function sourcePathHistoryTexts(sourceRelativePath, { limit = 200 } = {}) {
+    const normalizedPath = gitPath(sourceRelativePath);
+    const sourceRepo = canonicalSourceProjectPath();
+    const sourceCommit = selectedSourceCommit();
+    if (!sourceCommit) return [];
+    const revisionList = gitText(sourceRepo, [
+      "log",
+      sourceCommit,
+      `--max-count=${Math.max(1, Number(limit) || 200)}`,
+      "--format=%H",
+      "--",
+      normalizedPath,
+    ]);
+    if (revisionList === null) return [];
+    const texts = [];
+    const seen = new Set();
+    for (const revision of revisionList.split("\n").filter(Boolean)) {
+      try {
+        const content = execFileSync(
+          "git",
+          ["-c", "core.excludesfile=", "-C", sourceRepo, "show", `${revision}:${normalizedPath}`],
+          {
+            encoding: "utf-8",
+            stdio: ["ignore", "pipe", "pipe"],
+            maxBuffer: 32 * 1024 * 1024,
+            env: gitEnv(),
+          },
+        );
+        if (!seen.has(content)) {
+          seen.add(content);
+          texts.push(content);
+        }
+      } catch {
+        // Revisions that remove the path have no text snapshot to classify.
+      }
+    }
+    return texts;
+  }
+
   let legacyProvenanceCache = null;
   function legacyBlobIdsFor(sourceRelativePath) {
     if (!legacyProvenanceCache) {
@@ -243,24 +286,38 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
 
   function assessManagedSyncSafety(targetPath, staleEntries, removalPaths = []) {
     const candidates = [
-      ...staleEntries.map((entry) => ({ path: entry.path, removal: false })),
-      ...removalPaths.map((path) => ({ path, removal: true })),
-    ];
-    if (candidates.length === 0 || resolve(targetPath) === canonicalSourceProjectPath()) return { ok: true, conflicts: [] };
+      ...staleEntries.map((entry) => ({ ...entry, path: entry.path, removal: false })),
+      ...removalPaths.map((entry) => (
+        typeof entry === "string"
+          ? { path: entry, removal: true }
+          : { ...entry, path: entry.path, removal: true }
+      )),
+    ].map((entry) => {
+      const targetRelativePath = gitPath(relative(targetPath, entry.path));
+      return {
+        ...entry,
+        targetRelativePath,
+        ownership: entry.ownership || classifyManagedPayloadPath(targetRelativePath),
+      };
+    });
+    if (candidates.length === 0 || resolve(targetPath) === canonicalSourceProjectPath()) {
+      return { ok: true, conflicts: [], replacements: [] };
+    }
 
     const sourceRepo = canonicalSourceProjectPath();
     const sourceCommit = selectedSourceCommit();
     const sourceRef = selectedSourceRef();
     const targetGitRoot = gitText(targetPath, ["rev-parse", "--show-toplevel"]);
     const conflicts = [];
+    const replacements = [];
     if (!sourceCommit || !targetGitRoot || normalizeComparablePath(targetGitRoot) !== normalizeComparablePath(targetPath)) {
       for (const entry of candidates) {
-        const targetRelativePath = gitPath(relative(targetPath, entry.path));
         const sourceRelativeToAgent = relative(join(targetPath, ".agent"), entry.path);
         const incomingPath = entry.removal ? null : join(agentDir, sourceRelativeToAgent);
         conflicts.push({
-          path: targetRelativePath,
+          path: entry.targetRelativePath,
           classification: "unclassifiable_target",
+          ownership: entry.ownership,
           before_sha256: fileHash(entry.path),
           after_sha256: incomingPath ? fileHash(incomingPath) : null,
           diff_summary: boundedDiffSummary(incomingPath, entry.path),
@@ -269,6 +326,7 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
       return {
         ok: false,
         conflicts,
+        replacements,
         sourceRef,
         sourceCommit,
         targetPath,
@@ -300,10 +358,25 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
     };
     const gitRoot = gitText(targetPath, ["rev-parse", "--show-toplevel"]);
     for (const entry of candidates) {
-      const targetRelativePath = gitPath(relative(targetPath, entry.path));
+      const targetRelativePath = entry.targetRelativePath;
       const sourceRelativeToAgent = relative(join(targetPath, ".agent"), entry.path);
       const incomingPath = entry.removal ? null : join(agentDir, sourceRelativeToAgent);
       const sourceRelativePath = gitPath(join(".agent", sourceRelativeToAgent));
+      if (entry.ownership !== MANAGED_PAYLOAD_OWNERSHIP.ENGINE) {
+        conflicts.push({
+          path: targetRelativePath,
+          classification: entry.ownership === MANAGED_PAYLOAD_OWNERSHIP.MIXED_PROJECTION
+            ? "mixed_projection_requires_extraction"
+            : (entry.ownership === MANAGED_PAYLOAD_OWNERSHIP.UNKNOWN
+                ? "unknown_ownership_mutation"
+                : "project_owned_mutation_refused"),
+          ownership: entry.ownership,
+          before_sha256: fileHash(entry.path),
+          after_sha256: incomingPath ? fileHash(incomingPath) : null,
+          diff_summary: boundedDiffSummary(incomingPath, entry.path),
+        });
+        continue;
+      }
       let gitRelPath = targetRelativePath;
       if (gitRoot) {
         try {
@@ -333,12 +406,27 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
         if (selectedIds.has(targetHeadBlob)) continue;
 
         const allIds = allHistoryFor(sourceRelativePath, selectedIds);
-        classification = allIds.has(targetHeadBlob) ? "committed_ahead_of_source_ref" : "committed_divergence";
+        if (allIds.has(targetHeadBlob)) {
+          classification = "committed_ahead_of_source_ref";
+        } else {
+          replacements.push({
+            path: targetRelativePath,
+            ownership: entry.ownership,
+            operation: entry.removal ? "remove" : "replace",
+            before_sha256: fileHash(entry.path),
+            after_sha256: incomingPath ? fileHash(incomingPath) : null,
+            target_head_blob: targetHeadBlob,
+            target_working_blob: targetWorkingBlob,
+            diff_summary: boundedDiffSummary(incomingPath, entry.path),
+          });
+          continue;
+        }
       }
 
       conflicts.push({
         path: targetRelativePath,
         classification,
+        ownership: entry.ownership,
         before_sha256: fileHash(entry.path),
         after_sha256: incomingPath ? fileHash(incomingPath) : null,
         target_head_blob: targetHeadBlob,
@@ -349,6 +437,7 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
     return {
       ok: conflicts.length === 0,
       conflicts,
+      replacements,
       sourceRef,
       sourceCommit,
       targetPath,
@@ -407,5 +496,6 @@ export function createMigrationSourcePin({ agentDir, fileHash, normalizeComparab
     selectedSourceCommit,
     selectedSourceRef,
     sourcePathHasHistory,
+    sourcePathHistoryTexts,
   };
 }

@@ -187,6 +187,7 @@ function resolveIntakeContext({ cwd, planDir, goalText }) {
       schema_version: packet.schema_version,
       packet_hash: packet.packet_hash,
       goal: packet.goal,
+      model_assurance: deepCopy(packet.model_assurance || null),
       persona_guardrails: deepCopy(packet.persona_guardrails),
       program_context: deepCopy(packet.program_context),
     },
@@ -514,6 +515,7 @@ export function deriveTaskFocusContract({
     notes,
     planner_policy: plannerPolicy ? { present: true } : { present: false },
     task_profile: taskProfile?.id || taskProfile?.task_profile?.id || null,
+    model_assurance: intakeContext ? deepCopy(intakeContext.model_assurance) : null,
     program_context: intakeContext ? deepCopy(intakeContext.program_context) : (programContext || null),
     ...(intakeContext ? { intake_context: deepCopy(intakeContext) } : {}),
   };

@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "selection_mode": "adaptive",
+  "configured_floor": "standard",
+  "trusted_identity_provenance": ["observed", "user_declared"],
+  "failure_escalation": { "enhanced_at": 1, "critical_at": 2 },
+  "profile_override_policy": {
+    "model_output_can_lower": false,
+    "operator_floor_can_raise": true,
+    "unknown_identity_can_infer": false
+  },
+  "profiles": {
+    "standard": {
+      "rank": 1,
+      "retry_budget": 0,
+      "required_checks": ["schema_validation", "ontology_invariants"]
+    },
+    "enhanced": {
+      "rank": 2,
+      "retry_budget": 1,
+      "required_checks": ["schema_validation", "ontology_invariants", "acceptance_traceability", "evidence_freshness", "postcondition", "exercised_system", "negative_control", "bounded_retry"]
+    },
+    "critical": {
+      "rank": 3,
+      "retry_budget": 2,
+      "required_checks": ["schema_validation", "ontology_invariants", "acceptance_traceability", "evidence_freshness", "postcondition", "exercised_system", "negative_control", "bounded_retry", "independent_replay", "artifact_integrity"]
+    }
+  },
+  "normal_surface": {
+    "provider_selection": "unchanged",
+    "model_selection": "unchanged",
+    "generation": "unchanged",
+    "tools": "unchanged"
+  }
+}

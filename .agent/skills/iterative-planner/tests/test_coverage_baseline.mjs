@@ -8,6 +8,7 @@ import { join, resolve } from "path";
 import { fileURLToPath } from "url";
 import {
   auditCoverageRatchet,
+  buildCoverageRunnerArgs,
   COVERAGE_TARGETS,
   preserveByteUnchangedCoverageRows,
   resolveCoverageWorkloadSuiteIds,
@@ -61,8 +62,8 @@ assert(
 
 const canonical = JSON.parse(readFileSync(baselinePath, "utf8"));
 const canonicalValidation = validateBaselineArtifact(canonical, { repoRoot });
-assert(COVERAGE_TARGETS.length === 20, "coverage target contract contains exactly twenty scripts");
-assert(new Set(COVERAGE_TARGETS).size === 20, "coverage targets are unique");
+assert(COVERAGE_TARGETS.length === 23, "coverage target contract contains exactly twenty-three scripts");
+assert(new Set(COVERAGE_TARGETS).size === 23, "coverage targets are unique");
 assert(canonicalValidation.status === "PASS", "canonical baseline is complete and source-fresh", canonicalValidation.issues.join("; "));
 const committedBaselineRead = spawnSync(
   "git",
@@ -102,6 +103,14 @@ assert(!workloadSuiteIds.includes("planner-core-coverage-ratchet"), "coverage me
 assert(!workloadSuiteIds.includes("cli-determinism"), "coverage measurement excludes timing-sensitive CLI determinism");
 assert(workloadSuiteIds.includes("planner-shell-wrapper-hooks"), "coverage measurement includes governed pre-commit wrapper proof");
 assert(workloadSuiteIds.includes("harvest-real-telemetry"), "coverage measurement includes bootstrap reachability branch proof");
+const coverageRunnerArgs = buildCoverageRunnerArgs({
+  reportDir: "/tmp/coverage-contract",
+  suiteIds: ["harvest-real-telemetry"],
+  planTarget: "plan_contract_fixture",
+});
+assert(coverageRunnerArgs.includes("--no-reuse"), "coverage measurement disables IVE checkpoint reuse");
+assert(coverageRunnerArgs.includes("--no-manifest"), "coverage measurement remains report-only");
+assert(coverageRunnerArgs.includes("plan_contract_fixture"), "coverage measurement forwards its explicit plan target");
 
 const failedSuiteSummary = summarizeFailedIveSuites(JSON.stringify({
   results: [
@@ -162,6 +171,9 @@ try {
   current = artifact([row(target, sourceHash, 50)]);
   result = auditCoverageRatchet({ currentBaseline: current, previousBaseline: null, changedFiles: [target], repoRoot: fixtureRoot, expectedTargets: [target] });
   assert(result.status === "PASS" && result.compared_to_head === false, "first baseline passes without inventing historical thresholds");
+
+  result = auditCoverageRatchet({ currentBaseline: current, previousBaseline: artifact([]), changedFiles: [target], repoRoot: fixtureRoot, expectedTargets: [target] });
+  assert(result.status === "PASS" && result.compared_to_head === true, "newly declared target establishes its first floor against an older baseline");
 
   current = artifact([row(target, sourceHash, 50), row(target, sourceHash, 50)]);
   result = auditCoverageRatchet({ currentBaseline: current, previousBaseline: null, changedFiles: [], repoRoot: fixtureRoot, expectedTargets: [target] });

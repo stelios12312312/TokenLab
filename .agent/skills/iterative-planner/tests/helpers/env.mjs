@@ -16,7 +16,13 @@ export const AGENT_IDE_ENV_KEYS = Object.freeze([
 ]);
 
 export function plannerSubprocessEnv(overrides = {}, baseEnv = process.env) {
-  const env = { ...(baseEnv || {}) };
+  const env = {
+    GIT_CONFIG_GLOBAL: "/dev/null",
+    GIT_CONFIG_NOSYSTEM: "1",
+    GIT_CONFIG_SYSTEM: "/dev/null",
+    XDG_CONFIG_HOME: "/dev/null",
+    ...(baseEnv || {}),
+  };
   for (const key of Object.keys(env)) {
     if (AGENT_IDE_ENV_PREFIXES.some((prefix) => key.startsWith(prefix))) {
       env[key] = "";

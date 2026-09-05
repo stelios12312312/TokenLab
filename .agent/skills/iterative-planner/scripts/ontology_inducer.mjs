@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "child_process";
+import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "fs";
-import { basename, dirname, extname, join, resolve } from "path";
+import { basename, dirname, extname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 
 import { emitJson } from "./lib/emit_json.mjs";
@@ -32,6 +33,8 @@ const SOURCE_HANDLERS = new Map([
   ["workflows", induceWorkflowRegistry],
   ["knowledge", induceKnowledgeMarkdown],
   ["adrs", induceAdrs],
+  ["code-structure", induceCodeStructure],
+  ["executed-evidence", induceExecutedEvidence],
 ]);
 
 const KNOWN_DOMAIN_DESCRIPTIONS = new Map([
@@ -566,6 +569,49 @@ function createOntologyBuilder() {
     return record;
   }
 
+  function addClass(name, file) {
+    const normalizedName = firstNonEmptyString(name);
+    const normalizedFile = stripLineSuffix(file);
+    if (!normalizedName || !normalizedFile) return null;
+    const key = `${normalizedFile}:${normalizedName}`;
+    if (indexes.classes?.has(key)) return indexes.classes.get(key);
+    if (!indexes.classes) indexes.classes = new Map();
+    const record = { name: normalizedName, file: normalizedFile };
+    code.classes.push(record);
+    indexes.classes.set(key, record);
+    addCodePath(normalizedFile);
+    return record;
+  }
+
+  function addFunction(name, file) {
+    const normalizedName = firstNonEmptyString(name);
+    const normalizedFile = stripLineSuffix(file);
+    if (!normalizedName || !normalizedFile) return null;
+    const key = `${normalizedFile}:${normalizedName}`;
+    if (indexes.functions?.has(key)) return indexes.functions.get(key);
+    if (!indexes.functions) indexes.functions = new Map();
+    const record = { name: normalizedName, file: normalizedFile };
+    code.functions.push(record);
+    indexes.functions.set(key, record);
+    addCodePath(normalizedFile);
+    return record;
+  }
+
+  function addFileDependency(source, target, type = "import") {
+    const normalizedSource = stripLineSuffix(source);
+    const normalizedTarget = stripLineSuffix(target);
+    if (!normalizedSource || !normalizedTarget) return null;
+    const key = `${normalizedSource}:${normalizedTarget}`;
+    if (indexes.fileDependencies?.has(key)) return indexes.fileDependencies.get(key);
+    if (!indexes.fileDependencies) indexes.fileDependencies = new Map();
+    const record = { source: normalizedSource, target: normalizedTarget, type };
+    code.file_dependencies.push(record);
+    indexes.fileDependencies.set(key, record);
+    addCodePath(normalizedSource);
+    addCodePath(normalizedTarget);
+    return record;
+  }
+
   function addCodePath(filePath) {
     const normalizedPath = stripLineSuffix(filePath);
     if (!normalizedPath) return null;
@@ -741,6 +787,40 @@ function createOntologyBuilder() {
     verification.artifacts.push(record);
     indexes.artifacts.set(normalizedPath, record);
     return record;
+  }
+
+  function addTestRun(record = {}) {
+    const id = firstNonEmptyString(record.id);
+    if (!id) return null;
+    const existing = indexes.testRuns.get(id);
+    if (existing) return existing;
+    const next = { ...record, id, results: Array.isArray(record.results) ? record.results : [] };
+    verification.test_runs.push(next);
+    indexes.testRuns.set(id, next);
+    return next;
+  }
+
+  function addCoverageReport(record = {}) {
+    const id = firstNonEmptyString(record.id);
+    const file = stripLineSuffix(record.file);
+    if (!id || !file) return null;
+    if (indexes.coverageReports.has(id)) return indexes.coverageReports.get(id);
+    const next = { ...record, id, file };
+    verification.coverage_reports.push(next);
+    indexes.coverageReports.set(id, next);
+    addCodePath(file);
+    return next;
+  }
+
+  function testsMentionedByCommand(command) {
+    const text = String(command || "").replace(/\\/g, "/");
+    const suite = text.match(/--only\s+([^\s]+)/)?.[1]?.replace(/-/g, "_").toLowerCase() || null;
+    return [...indexes.tests.values()].filter((test) =>
+      text.includes(test.file) ||
+      (!new Set(["run.mjs", "index.mjs", "test.mjs"]).has(basename(test.file)) && text.includes(basename(test.file))) ||
+      (suite && `${test.name} ${test.file}`.replace(/-/g, "_").toLowerCase().includes(suite)) ||
+      (text.includes("apps/ive-visualizer") && test.file.startsWith("apps/ive-visualizer/"))
+    );
   }
 
   function addMistake(id, { title = null, domain = null, frequency = null } = {}) {
@@ -966,6 +1046,9 @@ function createOntologyBuilder() {
 
   return {
     addCodePath,
+    addClass,
+    addFunction,
+    addFileDependency,
     addDomain,
     addStory,
     ensureStoryCriterion,
@@ -973,6 +1056,9 @@ function createOntologyBuilder() {
     addCriterion,
     addTest,
     addArtifact,
+    addTestRun,
+    addCoverageReport,
+    testsMentionedByCommand,
     addMistake,
     addPattern,
     addGotcha,
@@ -1834,6 +1920,202 @@ export function induceAdrs({ cwd = process.cwd(), builder } = {}) {
       adrs: adrCount,
     },
   };
+}
+
+function trackedFiles(cwd) {
+  const proc = spawnSync("git", ["-C", cwd, "ls-files", "-z"], {
+    encoding: "utf-8",
+    timeout: 10000,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (proc.status !== 0 || proc.error) return [];
+  return String(proc.stdout || "").split("\0").map(normalizeRelativePath).filter(Boolean).sort();
+}
+
+function resolveRelativeImport(cwd, source, specifier) {
+  if (!specifier.startsWith(".")) return null;
+  const base = resolve(cwd, dirname(source), specifier);
+  const candidates = [base, ...[".mjs", ".js", ".cjs", ".ts", ".tsx", ".jsx"].map((suffix) => `${base}${suffix}`), ...[".mjs", ".js", ".cjs", ".ts", ".tsx", ".jsx"].map((suffix) => join(base, `index${suffix}`))];
+  const match = candidates.find((candidate) => existsSync(candidate));
+  return match ? normalizeRelativePath(relative(cwd, match)) : null;
+}
+
+export function induceCodeStructure({ cwd = process.cwd(), builder } = {}) {
+  const supported = trackedFiles(cwd).filter((file) => /\.(?:mjs|cjs|js|jsx|ts|tsx)$/.test(file));
+  let classes = 0;
+  let functions = 0;
+  let dependencies = 0;
+  const warnings = [];
+  for (const file of supported) {
+    const text = safeReadText(join(cwd, file));
+    if (text === null) {
+      warnings.push(`Unable to read tracked source ${file}`);
+      continue;
+    }
+    builder.addCodePath(file);
+    for (const match of text.matchAll(/(?:^|\n)\s*(?:export\s+(?:default\s+)?)?class\s+([A-Za-z_$][\w$]*)/g)) {
+      if (builder.addClass(match[1], file)) classes += 1;
+    }
+    for (const match of text.matchAll(/(?:^|\n)\s*(?:export\s+)?(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*\(/g)) {
+      if (builder.addFunction(match[1], file)) functions += 1;
+    }
+    for (const match of text.matchAll(/(?:^|\n)\s*(?:export\s+)?const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>/g)) {
+      if (builder.addFunction(match[1], file)) functions += 1;
+    }
+    for (const match of text.matchAll(/(?:from\s+|import\s*)["']([^"']+)["']/g)) {
+      const target = resolveRelativeImport(cwd, file, match[1]);
+      if (target && builder.addFileDependency(file, target, "import")) dependencies += 1;
+    }
+  }
+  return { source: "code-structure", present: supported.length > 0, usable: true, warnings, issues: [], counts: { files: supported.length, classes, functions, file_dependencies: dependencies, adapter: "js-structural-v1" } };
+}
+
+export function gitRevision(cwd) {
+  const proc = spawnSync("git", ["-C", cwd, "rev-parse", "HEAD"], { encoding: "utf-8", timeout: 5000 });
+  return proc.status === 0 ? String(proc.stdout || "").trim() : null;
+}
+
+export function repositorySourceDigest(cwd) {
+  const files = trackedFiles(cwd).filter((file) =>
+    /\.(?:mjs|cjs|js|jsx|ts|tsx|pl)$/.test(file) &&
+    file !== ".agent/ontology/facts.pl"
+  );
+  const hash = createHash("sha256");
+  for (const file of files) {
+    const path = join(cwd, file);
+    if (!existsSync(path)) continue;
+    hash.update(file).update("\0").update(readFileSync(path)).update("\0");
+  }
+  return `sha256:${hash.digest("hex")}`;
+}
+
+function collectNamedFiles(root, predicate, limit = 200) {
+  if (!existsSync(root)) return [];
+  const found = [];
+  const visit = (directory) => {
+    if (found.length >= limit) return;
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      if (found.length >= limit) break;
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (entry.isFile() && predicate(path)) found.push(path);
+    }
+  };
+  visit(root);
+  return found;
+}
+
+export function induceExecutedEvidence({ cwd = process.cwd(), builder } = {}) {
+  const revision = gitRevision(cwd);
+  const currentSourceDigest = repositorySourceDigest(cwd);
+  const runFiles = existsSync(join(cwd, "reports/test_runs"))
+    ? readdirSync(join(cwd, "reports/test_runs")).filter((name) => /\.(?:yaml|yml|json)$/.test(name)).sort().map((name) => join(cwd, "reports/test_runs", name))
+    : [];
+  let runCount = 0;
+  let resultCount = 0;
+  const warnings = [];
+  for (const path of runFiles) {
+    const parsed = safeReadJson(path);
+    const receipt = parsed.value?.test_run || parsed.value;
+    if (!parsed.usable || !receipt || typeof receipt !== "object") {
+      warnings.push(`Skipped malformed executed-evidence receipt ${normalizeRelativePath(relative(cwd, path))}`);
+      continue;
+    }
+    const recordedRevision = firstNonEmptyString(receipt.repository_revision, receipt.revision, receipt.commit);
+    const tests = Array.isArray(receipt.tests) ? receipt.tests : [];
+    const results = tests.map((test, index) => ({
+      test_name: firstNonEmptyString(test.name, test.test_name, `${basename(path)}#${index + 1}`),
+      outcome: firstNonEmptyString(test.outcome, test.status, test.passed === false ? "fail" : "pass"),
+    }));
+    const total = Number(receipt.summary?.total || 0);
+    if (total > 0) {
+      for (const declared of builder.testsMentionedByCommand(receipt.command)) {
+        if (!results.some((result) => result.test_name === declared.name)) {
+          results.push({ test_name: declared.name, outcome: Number(receipt.summary?.failed || 0) > 0 ? "fail" : "pass" });
+        }
+      }
+    }
+    if (results.length === 0 && total > 0) {
+      results.push({ test_name: `${basename(path)} aggregate`, outcome: Number(receipt.summary?.failed || 0) > 0 ? "fail" : "pass" });
+    }
+    for (const result of results) {
+      builder.addTest({ name: result.test_name, file: normalizeRelativePath(relative(cwd, path)), type: "integration" });
+    }
+    const raw = readFileSync(path);
+    const recordedSourceDigest = firstNonEmptyString(receipt.source_digest);
+    const recordedProvenance = firstNonEmptyString(receipt.provenance);
+    const trustedRecorder = recordedProvenance === "test_run_record";
+    builder.addTestRun({
+      id: firstNonEmptyString(receipt.id, `${firstNonEmptyString(receipt.plan_id, "unscoped")}:${basename(path)}`),
+      plan_id: firstNonEmptyString(receipt.plan_id),
+      generated_at: firstNonEmptyString(receipt.generated_at),
+      command: firstNonEmptyString(receipt.command),
+      revision: recordedRevision,
+      source_digest: recordedSourceDigest || `sha256:${createHash("sha256").update(raw).digest("hex")}`,
+      tool_version: firstNonEmptyString(receipt.tool_version, receipt.framework, "unknown"),
+      provenance: recordedProvenance || "legacy_receipt",
+      current: Boolean(
+        trustedRecorder &&
+        recordedRevision && revision && recordedRevision === revision &&
+        recordedSourceDigest && recordedSourceDigest === currentSourceDigest
+      ),
+      results,
+    });
+    runCount += 1;
+    resultCount += results.length;
+  }
+
+  const coverageFiles = [
+    ...collectNamedFiles(join(cwd, "reports"), (path) => /coverage.*\.json$/i.test(basename(path)), 100),
+    join(cwd, ".agent/skills/iterative-planner/config/coverage_baseline.json"),
+  ].filter((path, index, all) => existsSync(path) && all.indexOf(path) === index);
+  let coverageCount = 0;
+  for (const path of coverageFiles) {
+    const parsed = safeReadJson(path);
+    if (!parsed.usable) continue;
+    const value = parsed.value || {};
+    if (Array.isArray(value.targets)) {
+      for (const target of value.targets) {
+        const file = firstNonEmptyString(target.file);
+        const linePct = target.lines_pct ?? target.metrics?.lines?.pct;
+        const branchPct = target.branches_pct ?? target.metrics?.branches?.pct;
+        if (!file || (!Number.isFinite(Number(linePct)) && !Number.isFinite(Number(branchPct)))) continue;
+        const absoluteTarget = join(cwd, file);
+        const actualDigest = existsSync(absoluteTarget) ? createHash("sha256").update(readFileSync(absoluteTarget)).digest("hex") : null;
+        builder.addCoverageReport({
+          id: `${normalizeRelativePath(relative(cwd, path))}:${file}`,
+          file,
+          line_pct: Number.isFinite(Number(linePct)) ? Number(linePct) : 0,
+          branch_pct: Number.isFinite(Number(branchPct)) ? Number(branchPct) : 0,
+          generated_at: firstNonEmptyString(value.generated_at),
+          revision: firstNonEmptyString(value.revision, value.commit),
+          source_digest: firstNonEmptyString(target.source_hash, `sha256:${createHash("sha256").update(readFileSync(path)).digest("hex")}`),
+          tool_version: firstNonEmptyString(value.generator?.version, value.measurement?.tool_version, "unknown"),
+          provenance: "coverage_receipt",
+          current: Boolean(target.source_hash && actualDigest && target.source_hash === actualDigest),
+        });
+        coverageCount += 1;
+      }
+      continue;
+    }
+    const linePct = value.line_pct ?? value.lines?.pct ?? value.coverage?.line_pct;
+    const branchPct = value.branch_pct ?? value.branches?.pct ?? value.coverage?.branch_pct;
+    if (!Number.isFinite(Number(linePct)) && !Number.isFinite(Number(branchPct))) continue;
+    builder.addCoverageReport({
+      id: normalizeRelativePath(relative(cwd, path)),
+      file: firstNonEmptyString(value.file, normalizeRelativePath(relative(cwd, path))),
+      line_pct: Number.isFinite(Number(linePct)) ? Number(linePct) : 0,
+      branch_pct: Number.isFinite(Number(branchPct)) ? Number(branchPct) : 0,
+      generated_at: firstNonEmptyString(value.generated_at),
+      revision: firstNonEmptyString(value.revision, value.commit),
+      source_digest: `sha256:${createHash("sha256").update(readFileSync(path)).digest("hex")}`,
+      tool_version: firstNonEmptyString(value.tool_version, "unknown"),
+      provenance: "coverage_receipt",
+      current: Boolean(firstNonEmptyString(value.revision, value.commit) && revision && firstNonEmptyString(value.revision, value.commit) === revision),
+    });
+    coverageCount += 1;
+  }
+  return { source: "executed-evidence", present: runFiles.length > 0 || coverageFiles.length > 0, usable: true, warnings, issues: [], counts: { test_runs: runCount, results: resultCount, coverage_reports: coverageCount, adapter: "executed-evidence-v1" } };
 }
 
 export function induceOntologyDocuments({ cwd = process.cwd(), sources = ["all"] } = {}) {

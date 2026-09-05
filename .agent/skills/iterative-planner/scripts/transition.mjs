@@ -51,12 +51,14 @@ const {
   isFeatureEnabled, loadConfig, readStateJson, readStateJsonWithProvenance, writeStateJsonResult, validateStateJson,
   appendDecisionLogResult, buildDecisionEntry, deriveGateDecision, writeProofTrace,
   hashAllScripts, nowISO, getReplayDir, loadReplayArtifacts,
+  writeScriptBundleManifest,
   withFailureCode, getRuleBundleVersion, sortResults, KB_SALT_BYTES,
   validateDecisionLogChain, acquireStateLock,
 } = await import("./lib/determinism.mjs");
 const { runPersonaAuditGate, persistPersonaAuditArtifacts } = await import("./audit_runner.mjs");
 const { runChecklist } = await import("./lib/checklist_runner.mjs");
 const { recordGateMetrics } = await import("./lib/plan_metrics.mjs");
+const { recordGateAttemptTelemetry } = await import("./lib/plan_metrics.mjs");
 const { finalizeOwnedFileReplace, rollbackOwnedFileReplace } = await import("./lib/owned_file_replace.mjs");
 const {
   recoverTransitionJournal,
@@ -80,12 +82,24 @@ const { EXECUTED_TEST_GATES_FILE, TEST_GATED_TRANSITIONS, runExecutedTestGate, w
 const { loadAgentOrchestrationConfig, validateAgentWhitelist } = await import("./lib/agent_orchestration.mjs");
 const { readHealthDeltaAcknowledgement } = await import("./lib/health_delta_ack.mjs");
 const { verificationStatusIsHardFailure, verificationStatusIsPass } = await import("./lib/verification_status_vocabulary.mjs");
+const { DEFAULT_PLANNER_POLICY, loadPlannerPolicy } = await import("./lib/planner_policy.mjs");
 const { classifySemanticDivergence } = await import("./lib/semantic_divergence.mjs");
+const {
+  buildGateEvaluationIdentity,
+  createGateEvaluationSessionReceipt,
+  readGateEvaluationSession,
+  validateGateEvaluationSession,
+  writeGateEvaluationSession,
+} = await import("./lib/gate_evaluation_session.mjs");
 const { validateCoverageContract } = await import("./story_registry.mjs");
 const { plansDir, knowledgeDir } = getPaths(cwd);
 const ACTIVE_PLAN_ALIAS_LABEL = "plans/ACTIVE_PLAN.md";
 const RITUAL_TOOL_ERROR_CODE = "TOOL-RIT-001";
 const TOOL_OUTPUT_EXCERPT_BYTES = 2048;
+const transitionPolicy = loadPlannerPolicy(cwd).policy || DEFAULT_PLANNER_POLICY;
+process.env._PLANNER_TRANSITION_OUTPUT_MODE = process.env.PLANNER_VERBOSE_CHECKS === "1"
+  ? "full"
+  : transitionPolicy.transition_output;
 
 function gateResultBlocks(result) {
   return verificationStatusIsHardFailure(result.status, "gate");
@@ -832,6 +846,7 @@ export async function runRegistryRefresh(opts = {}) {
 // ---------------------------------------------------------------------------
 
 async function runTransition(gate, opts = {}) {
+  const attemptStartedAt = nowISO();
   const dryRun = opts.dryRun === true;
   // Signal the shared evaluator to fact_loader. Registry persistence is separately
   // gated by _PLANNER_DRY_RUN so both modes consult the same facts.
@@ -866,6 +881,28 @@ async function runTransition(gate, opts = {}) {
   }
   process.env._PLANNER_PLAN_TARGET = planDirName;
 
+  const initialState = readStateJson(planDir);
+  const evaluationIdentity = buildGateEvaluationIdentity({
+    projectRoot: cwd,
+    planDir,
+    planId: planDirName,
+    gate,
+    sourceState: initialState?.state || null,
+    skillPath,
+    evaluatorContract: gateDef,
+  });
+  const cachedSession = dryRun || process.env.PLANNER_DISABLE_GATE_REUSE === "1"
+    ? null
+    : readGateEvaluationSession({ projectRoot: cwd, planId: planDirName, gate });
+  const reuseVerdict = cachedSession
+    ? validateGateEvaluationSession({ session: cachedSession, identity: evaluationIdentity })
+    : {
+        reusable: false,
+        reason: process.env.PLANNER_DISABLE_GATE_REUSE === "1" ? "disabled_by_environment" : "session_absent",
+      };
+  const reusePayload = reuseVerdict.reusable ? cachedSession?.evaluation_payload : null;
+  const reuseAccepted = reuseVerdict.reusable === true && Array.isArray(reusePayload?.results);
+
   printHeader(`TRANSITION: ${gate}${dryRun ? " [DRY RUN]" : ""}`, `Plan: ${planDirName}`);
   const targetedPlan = resolvePlanTarget(plansDir, { exitOnMissing: false, plan: opts.plan });
   if (targetedPlan.source && targetedPlan.source !== "pointer") {
@@ -877,8 +914,14 @@ async function runTransition(gate, opts = {}) {
     console.log();
   }
   const allResults = [];
+  const expectedSources = gateDef
+    ? (Array.isArray(gateDef.from) ? gateDef.from : [gateDef.from]).filter(Boolean)
+    : [];
+  let modules = null;
+  let _traceSummary = null;
   let sharedPlanRefresh = null;
   let evaluatedRegistrySnapshot = null;
+  let stateJsonForCloseCheck = initialState;
   const pendingPersistence = {
     health: [],
     persona: null,
@@ -887,7 +930,26 @@ async function runTransition(gate, opts = {}) {
     semanticTrace: null,
     invariantAdvisories: null,
   };
-  const preparationReport = await prepareAttemptedGate({ gate, planDirName, results: allResults });
+  let preparationReport = null;
+  if (reuseAccepted) {
+    preparationReport = reusePayload.preparation || null;
+    allResults.push(...reusePayload.results);
+    sharedPlanRefresh = reusePayload.sharedPlanRefresh || null;
+    evaluatedRegistrySnapshot = reusePayload.evaluatedRegistrySnapshot || readStoryRegistrySnapshot(cwd);
+    if (reusePayload.pendingPersistence && typeof reusePayload.pendingPersistence === "object") {
+      Object.assign(pendingPersistence, reusePayload.pendingPersistence);
+    }
+    printSection("Gate Evaluation Reuse");
+    console.log(`  ✅ Exact fresh PASS dry-run reused (${evaluationIdentity.identity_digest})`);
+    console.log("  Disposition: reused — evaluator work skipped; canonical persistence still runs.");
+    console.log();
+  } else {
+  if (!dryRun && cachedSession) {
+    printSection("Gate Evaluation Reuse");
+    console.log(`  Cache invalidated: ${reuseVerdict.reason}; running the complete evaluator.`);
+    console.log();
+  }
+  preparationReport = await prepareAttemptedGate({ gate, planDirName, results: allResults });
   const emitEarlyBlock = (row, exitCode = 2) => {
     const normalized = normalizeGateResults([...allResults, row], { gate, planId: planDirName });
     const sourceState = readStateJson(planDir)?.state || null;
@@ -927,7 +989,7 @@ async function runTransition(gate, opts = {}) {
   // POST-CLOSE GUARD: Prevent state-mutating gates on an already-closed plan.
   // Audit-only gates (for example notify-user) are allowed because they do not
   // append transition history or change canonical planner state.
-  const stateJsonForCloseCheck = readStateJson(planDir);
+  stateJsonForCloseCheck = readStateJson(planDir);
   if (stateJsonForCloseCheck?.state === "CLOSE" && !isAuditOnlyGate) {
     const row = withFailureCode(check(
       "Post-close mutation guard",
@@ -1097,9 +1159,6 @@ async function runTransition(gate, opts = {}) {
   }
 
   // Step 0: Source-state validation — derived from gates.json
-  const expectedSources = gateDef
-    ? (Array.isArray(gateDef.from) ? gateDef.from : [gateDef.from]).filter(Boolean)
-    : [];
   if (expectedSources.length > 0) {
     // AV-6: Require state.json (canonical). state.md regex fallback removed —
     // LLMs can edit state.md to fake current state, bypassing source-state checks.
@@ -1250,7 +1309,7 @@ async function runTransition(gate, opts = {}) {
   // Step 1.7: Shared plan refresh — regenerate ontology facts and structured close signals
   // before JS gate checks, checklists, and Prolog semantics run. Non-blocking: transitions
   // still continue even if the refresh cannot complete so legacy fallbacks remain available.
-  if (planDir) {
+  if (planDir && !gateDef?.handoff_only) {
     try {
       sharedPlanRefresh = refreshPlanArtifacts({
         cwd,
@@ -1454,7 +1513,7 @@ async function runTransition(gate, opts = {}) {
 
   // Step 2: Gate checks (delegated to verify_gate.mjs — single authoritative implementation)
   printSection("Gate Checks");
-  const modules = await loadGateFunctions();
+  modules = await loadGateFunctions();
   const { GATES, evaluateGateResults } = modules.verifyGate;
   const gateFn = GATES[gate];
   const gateEvaluation = gateFn
@@ -1484,7 +1543,6 @@ async function runTransition(gate, opts = {}) {
 
   // Step 3.5: Tool trace audit (if feature enabled AND gate has trace_audit:true)
   // BUG-6: Previously gates.json trace_audit field was dead config — now wired in
-  let _traceSummary = null;
   if (isFeatureEnabled("tool_trace") && gateDef?.trace_audit !== false) {
     printSection("Tool Trace Audit");
     try {
@@ -1580,11 +1638,13 @@ async function runTransition(gate, opts = {}) {
     console.log();
   }
 
-  // Step 4: Semantic rule checks (MANDATORY — Prolog verification is required)
-  {
+  // Step 4: Semantic rule checks are mandatory at lifecycle phase boundaries.
+  // notify-user is an audit-only handoff consumer of the already-closed proof,
+  // so it validates only notification/summary/KB artifacts instead of rerunning
+  // the close evaluator graph.
+  if (!gateDef?.handoff_only) {
     const ruleEnginePath = join(skillPath, "scripts", "rule_engine.mjs");
     const prologDirPath = join(skillPath, "prolog");
-
     if (!existsSync(prologDirPath) || !existsSync(ruleEnginePath)) {
       // Missing Prolog infrastructure is a hard failure — do not allow transitions without it
       printSection("Semantic Checks (Prolog)");
@@ -1716,6 +1776,7 @@ async function runTransition(gate, opts = {}) {
   // defect, never an ordinary blocker with an empty failure-code list.
   const normalizedGateResults = normalizeGateResultsForTransition(allResults, { gate, planId: planDirName });
   allResults.splice(0, allResults.length, ...normalizedGateResults);
+  }
 
   let totalPass = allResults.filter(r => r.status === PASS).length;
   let totalWarn = allResults.filter(r => r.status === WARN).length;
@@ -1725,7 +1786,10 @@ async function runTransition(gate, opts = {}) {
   console.log(`  Summary: ${totalPass} PASS, ${totalWarn} WARN, ${totalFail} FAIL${totalSkip ? `, ${totalSkip} SKIP` : ""}`);
 
   // --- Determinism: decision log + state.json update ---
-  const scriptVersions = hashAllScripts(skillPath);
+  const cachedScriptVersions = reuseAccepted && reusePayload?.scriptVersions && typeof reusePayload.scriptVersions === "object"
+    ? reusePayload.scriptVersions
+    : null;
+  const scriptVersions = cachedScriptVersions || hashAllScripts(skillPath);
   let failureCodes = [...new Set(allResults.filter(gateResultBlocks).map(r => r.code))];
   const transitionTimestamp = nowISO();
   const sourceStateForReceipt = readStateJson(planDir)?.state || expectedSources[0]?.toUpperCase() || null;
@@ -1745,12 +1809,163 @@ async function runTransition(gate, opts = {}) {
   // produced its normalized receipt. Dry-run returns the in-memory receipt;
   // actual execution continues with artifact, audit-log, metric, and state writes.
   if (dryRun) {
+    const session = createGateEvaluationSessionReceipt({
+      identity: evaluationIdentity,
+      gateReceipt: receipt,
+      evaluationPayload: {
+        results: allResults,
+        preparation: preparationReport,
+        pendingPersistence,
+        sharedPlanRefresh,
+        evaluatedRegistrySnapshot,
+        scriptVersions,
+        attempt: {
+          attempt_id: `dry-run:${gate}:${transitionTimestamp}`,
+          started_at: attemptStartedAt,
+          ended_at: nowISO(),
+        },
+      },
+    });
+    const cacheWrite = writeGateEvaluationSession({ projectRoot: cwd, planId: planDirName, gate, session });
+    console.log(`  Gate evaluation session: ${cacheWrite.written ? "stored" : "unavailable"} (${cacheWrite.reason})`);
     if (totalFail > 0 && failureCodes?.length > 0) {
       console.log(`  Failure codes: ${failureCodes.join(", ")}`);
     }
     console.log();
     console.log(renderTransitionVerdict(receipt));
     return totalFail > 0 ? 1 : 0;
+  }
+
+  // The canonical state lock owns the complete publication/finalization window.
+  // Revalidate an accepted dry-run session only after taking that lock so a
+  // concurrent mutation cannot land between cache acceptance and persistence.
+  // A mismatch fails closed and requires a fresh dry-run.
+  let releaseLock = null;
+  let lockedStateRead = null;
+  let transitionJournalWrite = null;
+  if (!isAuditOnlyGate) {
+    releaseLock = acquireStateLock(planDir);
+    if (!releaseLock) {
+      const row = withFailureCode(check(
+        "Canonical state lock",
+        FAIL,
+        "Could not acquire state.json lock — concurrent transition detected."
+      ), "GATE-STA-001");
+      allResults.push(row);
+      const normalized = normalizeGateResults(allResults, { gate, planId: planDirName });
+      allResults.splice(0, allResults.length, ...normalized);
+      receipt = buildTransitionReceipt({
+        projectRoot: cwd,
+        planId: planDirName,
+        gate,
+        sourceState: sourceStateForReceipt,
+        targetState: targetStateForReceipt,
+        results: allResults,
+        preparation: preparationReport,
+        generatedAt: transitionTimestamp,
+        persistence: { decision_log: false, state: false, metrics: false },
+      });
+      receipt = writeTransitionReceipt(planDir, receipt, { projectRoot: cwd }).receipt;
+      console.log();
+      console.log(renderTransitionVerdict(receipt));
+      return 1;
+    }
+
+    const recovered = recoverTransitionJournal(planDir);
+    if (recovered.status === "recovery_required") {
+      releaseLock();
+      const row = withFailureCode(check(
+        "Transition journal recovery",
+        FAIL,
+        `An interrupted transition requires reconciliation (${recovered.action}: ${recovered.reason || recovered.phase || "unknown"}).`,
+      ), "GATE-STA-002");
+      allResults.push(row);
+      const normalized = normalizeGateResults(allResults, { gate, planId: planDirName });
+      allResults.splice(0, allResults.length, ...normalized);
+      receipt = writeTransitionReceipt(planDir, buildTransitionReceipt({
+        projectRoot: cwd,
+        planId: planDirName,
+        gate,
+        sourceState: sourceStateForReceipt,
+        targetState: targetStateForReceipt,
+        results: allResults,
+        preparation: preparationReport,
+        generatedAt: transitionTimestamp,
+      }), { projectRoot: cwd }).receipt;
+      console.log();
+      console.log(renderTransitionVerdict(receipt));
+      return 1;
+    }
+
+    lockedStateRead = readStateJsonWithProvenance(planDir);
+    if (reuseAccepted) {
+      const lockedIdentity = buildGateEvaluationIdentity({
+        projectRoot: cwd,
+        planDir,
+        planId: planDirName,
+        gate,
+        sourceState: lockedStateRead.state?.state || null,
+        skillPath,
+        evaluatorContract: gateDef,
+      });
+      const lockedReuseVerdict = validateGateEvaluationSession({
+        session: cachedSession,
+        identity: lockedIdentity,
+      });
+      if (!lockedReuseVerdict.reusable) {
+        releaseLock();
+        const row = withFailureCode(check(
+          "Locked gate evaluation identity",
+          FAIL,
+          `Gate authority changed after reuse selection (${lockedReuseVerdict.reason}); rerun the dry-run before persistence.`,
+        ), "GATE-RUN-001");
+        allResults.push(row);
+        const normalized = normalizeGateResults(allResults, { gate, planId: planDirName });
+        allResults.splice(0, allResults.length, ...normalized);
+        receipt = writeTransitionReceipt(planDir, buildTransitionReceipt({
+          projectRoot: cwd,
+          planId: planDirName,
+          gate,
+          sourceState: sourceStateForReceipt,
+          targetState: targetStateForReceipt,
+          results: allResults,
+          preparation: preparationReport,
+          generatedAt: transitionTimestamp,
+          persistence: { decision_log: false, state: false, metrics: false },
+        }), { projectRoot: cwd }).receipt;
+        console.log(`  Cache invalidated under state lock: ${lockedReuseVerdict.reason}`);
+        console.log();
+        console.log(renderTransitionVerdict(receipt));
+        return 1;
+      }
+    }
+
+    transitionJournalWrite = writeTransitionJournal(planDir, {
+      gate,
+      phase: "prepared",
+      plan_id: planDirName,
+      transition_timestamp: transitionTimestamp,
+      state_before: lockedStateRead.provenance,
+      state_after: null,
+      receipt_paths: [],
+      decision_status: "pending",
+    }, { expected: null });
+    if (transitionJournalWrite.status !== "committed") {
+      releaseLock();
+      throw new Error(`transition journal ${transitionJournalWrite.status}: ${transitionJournalWrite.reason}`);
+    }
+  }
+
+  let scriptBundle;
+  try {
+    scriptBundle = writeScriptBundleManifest({
+      projectRoot: cwd,
+      planDir,
+      scriptVersions,
+    });
+  } catch (error) {
+    if (releaseLock) releaseLock();
+    throw error;
   }
 
   // Preserve the exact top-level plan bytes evaluated by a successful
@@ -1823,83 +2038,6 @@ async function runTransition(gate, opts = {}) {
     }
   } catch (error) {
     debugLog("transition", `post-verdict artifact persistence failed: ${error.message}`);
-  }
-
-  // The canonical state lock owns the complete publication/finalization window.
-  // A leftover journal is either safely aborted while state still matches its
-  // before-token, or it blocks this invocation for explicit reconciliation.
-  let releaseLock = null;
-  let lockedStateRead = null;
-  let transitionJournalWrite = null;
-  if (!isAuditOnlyGate) {
-    releaseLock = acquireStateLock(planDir);
-    if (!releaseLock) {
-      const row = withFailureCode(check(
-        "Canonical state lock",
-        FAIL,
-        "Could not acquire state.json lock — concurrent transition detected."
-      ), "GATE-STA-001");
-      allResults.push(row);
-      const normalized = normalizeGateResults(allResults, { gate, planId: planDirName });
-      allResults.splice(0, allResults.length, ...normalized);
-      receipt = buildTransitionReceipt({
-        projectRoot: cwd,
-        planId: planDirName,
-        gate,
-        sourceState: sourceStateForReceipt,
-        targetState: targetStateForReceipt,
-        results: allResults,
-        preparation: preparationReport,
-        generatedAt: transitionTimestamp,
-        persistence: { decision_log: false, state: false, metrics: false },
-      });
-      receipt = writeTransitionReceipt(planDir, receipt, { projectRoot: cwd }).receipt;
-      console.log();
-      console.log(renderTransitionVerdict(receipt));
-      return 1;
-    }
-
-    const recovered = recoverTransitionJournal(planDir);
-    if (recovered.status === "recovery_required") {
-      releaseLock();
-      const row = withFailureCode(check(
-        "Transition journal recovery",
-        FAIL,
-        `An interrupted transition requires reconciliation (${recovered.action}: ${recovered.reason || recovered.phase || "unknown"}).`,
-      ), "GATE-STA-002");
-      allResults.push(row);
-      const normalized = normalizeGateResults(allResults, { gate, planId: planDirName });
-      allResults.splice(0, allResults.length, ...normalized);
-      receipt = writeTransitionReceipt(planDir, buildTransitionReceipt({
-        projectRoot: cwd,
-        planId: planDirName,
-        gate,
-        sourceState: sourceStateForReceipt,
-        targetState: targetStateForReceipt,
-        results: allResults,
-        preparation: preparationReport,
-        generatedAt: transitionTimestamp,
-      }), { projectRoot: cwd }).receipt;
-      console.log();
-      console.log(renderTransitionVerdict(receipt));
-      return 1;
-    }
-
-    lockedStateRead = readStateJsonWithProvenance(planDir);
-    transitionJournalWrite = writeTransitionJournal(planDir, {
-      gate,
-      phase: "prepared",
-      plan_id: planDirName,
-      transition_timestamp: transitionTimestamp,
-      state_before: lockedStateRead.provenance,
-      state_after: null,
-      receipt_paths: [],
-      decision_status: "pending",
-    }, { expected: null });
-    if (transitionJournalWrite.status !== "committed") {
-      releaseLock();
-      throw new Error(`transition journal ${transitionJournalWrite.status}: ${transitionJournalWrite.reason}`);
-    }
   }
 
   if (totalFail === 0 && pendingGateInputSnapshot) {
@@ -2050,9 +2188,10 @@ async function runTransition(gate, opts = {}) {
         timestamp: nowISO(),
         gate_result: totalFail > 0 ? "FAIL" : "PASS",
         failure_codes: failureCodes,
-        script_versions: scriptVersions,
+        script_bundle: scriptBundle,
       });
-      stateJson.script_versions = scriptVersions;
+      stateJson.script_bundle = scriptBundle;
+      delete stateJson.script_versions;
       stateJson.rule_bundle_version = getRuleBundleVersion();
       // RT9-I1: Soft warning when re-plan loop count is high.
       // Counts transitions TO re_plan state — more than 3 suggests the plan is struggling.
@@ -2293,6 +2432,67 @@ async function runTransition(gate, opts = {}) {
     }
   } finally {
     if (releaseLock) releaseLock();
+  }
+
+  try {
+    const cachedAttempt = cachedSession?.evaluation_payload?.attempt;
+    if (cachedAttempt?.attempt_id) {
+      recordGateAttemptTelemetry({
+        projectRoot: cwd,
+        planDirName,
+        planDir,
+        gate,
+        mode: "dry-run",
+        attemptId: cachedAttempt.attempt_id,
+        startedAt: cachedAttempt.started_at,
+        endedAt: cachedAttempt.ended_at,
+        componentDurationsMs: {
+          evaluator: Math.max(0, Date.parse(cachedAttempt.ended_at) - Date.parse(cachedAttempt.started_at)),
+        },
+        dispositions: {
+          ran: cachedSession?.evaluation_payload?.results?.filter((row) => row?.status !== SKIP).length || 0,
+          reused: 0,
+          not_applicable: cachedSession?.evaluation_payload?.results?.filter((row) => row?.status === SKIP).length || 0,
+        },
+        cache: { identity: cachedSession.identity_digest, outcome: "stored", invalidation_reason: null },
+        failureCodes: cachedSession.gate_receipt?.failure_codes || [],
+        toolErrorCodes: cachedSession.gate_receipt?.tool_error_codes || [],
+        lateRequirementCount: 0,
+        artifactBytes: Buffer.byteLength(JSON.stringify(cachedSession)),
+      });
+    }
+    const actualEndedAt = nowISO();
+    recordGateAttemptTelemetry({
+      projectRoot: cwd,
+      planDirName,
+      planDir,
+      gate,
+      mode: "actual",
+      attemptId: `actual:${gate}:${transitionTimestamp}`,
+      startedAt: attemptStartedAt,
+      endedAt: actualEndedAt,
+      componentDurationsMs: {
+        [reuseAccepted ? "persistence" : "evaluator_and_persistence"]: Math.max(0, Date.parse(actualEndedAt) - Date.parse(attemptStartedAt)),
+      },
+      dispositions: {
+        ran: reuseAccepted ? 0 : allResults.filter((row) => row?.status !== SKIP).length,
+        reused: reuseAccepted ? allResults.filter((row) => row?.status !== SKIP).length : 0,
+        not_applicable: allResults.filter((row) => row?.status === SKIP).length,
+      },
+      cache: {
+        identity: evaluationIdentity.identity_digest,
+        outcome: reuseAccepted ? "reused" : cachedSession ? "invalidated" : "miss",
+        invalidation_reason: reuseAccepted ? null : reuseVerdict.reason,
+      },
+      failureCodes,
+      toolErrorCodes: receipt.tool_error_codes || [],
+      retryOf: cachedAttempt?.attempt_id || null,
+      lateRequirementCount: 0,
+      artifactBytes: Buffer.byteLength(JSON.stringify(receipt)),
+    });
+    metricsPersisted = true;
+  } catch (error) {
+    debugLog("transition", `attempt telemetry record failed: ${error.message}`);
   }
 
   if (totalFail > 0 && failureCodes?.length > 0) {

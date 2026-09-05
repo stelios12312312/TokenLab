@@ -25,14 +25,6 @@
         "program_ready_ticket_missing_github_issue": 3,
         "ready_ticket_missing_github_issue": 3
       }
-    },
-    "ive-consolidation-rectification": {
-      "status": "FAIL",
-      "total": 2,
-      "codes": {
-        "program_ready_ticket_missing_github_issue": 1,
-        "ready_ticket_missing_github_issue": 1
-      }
     }
   }
 }

@@ -3,7 +3,14 @@ import { dirname, join, relative, resolve } from "path";
 import { fileURLToPath } from "url";
 import { spawnSync } from "child_process";
 
-import { extractFilesToModify, FAIL, PASS, SKIP, WARN } from "./plan_utils.mjs";
+import {
+  extractFilesToModify,
+  goalLooksLikePlanningOnlyRequest,
+  FAIL,
+  PASS,
+  SKIP,
+  WARN,
+} from "./plan_utils.mjs";
 import { detectPlanShape } from "./plan_shape.mjs";
 import { loadPlannerPolicy } from "./planner_policy.mjs";
 import { normalizePlannerManifesto } from "./planner_manifesto.mjs";
@@ -51,6 +58,7 @@ const CLOSED_PROGRAM_STATUSES = new Set([
   "deferred",
   "done",
 ]);
+const FUZZY_PROGRAM_AUTHORITY_MIN_TOKENS = 8;
 
 function safeRead(filePath) {
   try {
@@ -306,16 +314,23 @@ function matchProgramPacket(packetEntry, haystack) {
   const ids = packetIdentifiers(packetEntry.packet);
   const direct = ids.find((id) => lowerHaystack.includes(id.toLowerCase()));
   if (direct) {
-    return { matched: true, reason: `matched id ${direct}`, ids, score: 1000 };
+    return { matched: true, binding: true, match_kind: "explicit_id", reason: `matched id ${direct}`, ids, score: 1000 };
   }
 
   const tokens = packetTokens(packetEntry.packet);
   const matchedTokens = tokens.filter((token) => lowerHaystack.includes(token));
   if (matchedTokens.length >= 3) {
-    return { matched: true, reason: `matched tokens ${matchedTokens.slice(0, 4).join(", ")}`, ids, score: matchedTokens.length };
+    return {
+      matched: true,
+      binding: matchedTokens.length >= FUZZY_PROGRAM_AUTHORITY_MIN_TOKENS,
+      match_kind: "lexical_overlap",
+      reason: `matched tokens ${matchedTokens.slice(0, 4).join(", ")}`,
+      ids,
+      score: matchedTokens.length,
+    };
   }
 
-  return { matched: false, ids, score: 0 };
+  return { matched: false, binding: false, match_kind: null, ids, score: 0 };
 }
 
 function hasProgramContext({ stateJson, planContent, findingsContent, match }) {
@@ -366,10 +381,29 @@ function evaluateProgramContext({ cwd, stateJson, planContent, findingsContent, 
     };
   }
 
+  const planningOnly = goalLooksLikePlanningOnlyRequest(stateJson?.goal || "");
+  if (!matched.match.binding || (planningOnly && matched.match.match_kind === "lexical_overlap")) {
+    return {
+      name: "Program Packet context",
+      status: SKIP,
+      binding: false,
+      detail: `Non-binding Program suggestion for ${matched.packet.program_id || matched.packet.id} (${matched.match.reason}); explicit Program/ticket authority is required${planningOnly ? " for planning-only intake" : " below the high-confidence threshold"}.`,
+      finding_id: "preplanning_program_context_suggestion",
+      suggestion: {
+        program_id: matched.packet.program_id || matched.packet.id,
+        packet_path: rel(cwd, matched.packetPath),
+        match_kind: matched.match.match_kind,
+        score: matched.match.score,
+        authority_threshold: FUZZY_PROGRAM_AUTHORITY_MIN_TOKENS,
+      },
+    };
+  }
+
   if (hasProgramContext({ stateJson, planContent, findingsContent, match: matched.match })) {
     return {
       name: "Program Packet context",
       status: PASS,
+      binding: true,
       detail: `Context declared for ${matched.packet.program_id || matched.packet.id} (${matched.match.reason})`,
       finding_id: "preplanning_program_context_present",
     };
@@ -380,6 +414,7 @@ function evaluateProgramContext({ cwd, stateJson, planContent, findingsContent, 
   return {
     name: "Program Packet context",
     status,
+    binding: true,
     detail: `Plan appears related to ${matched.packet.program_id || matched.packet.id} (${matched.match.reason}) but lacks a ## Program Context section or state program_context link`,
     code: PREPLANNING_CODES.programContext,
     finding_id: PREPLANNING_FINDINGS.programContextMissing,

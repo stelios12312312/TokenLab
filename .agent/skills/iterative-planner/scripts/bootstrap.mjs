@@ -2339,14 +2339,51 @@ async function printDegradedCoverageStatus() {
   if (status) console.log(`\n${status}`);
 }
 
-async function cmdStatus() {
+function printBoundedStatusFollowup() {
+  console.log(`  Full dashboard: node ${process.argv[1]} status --full`);
+}
+
+function printCachedCriticalWarnings(planDirName = null) {
+  const candidates = [
+    planDirName ? join(plansDir, planDirName, "artifacts", "critical_status.json") : null,
+    join(plansDir, ".planner_critical_status.json"),
+  ].filter(Boolean);
+  for (const path of candidates) {
+    try {
+      if (!existsSync(path)) continue;
+      const payload = JSON.parse(readFileSync(path, "utf-8"));
+      const warnings = Array.isArray(payload?.warnings) ? payload.warnings : [];
+      for (const warning of warnings.filter((entry) => String(entry?.severity || "").toUpperCase() === "CRITICAL")) {
+        console.log(`  ⚠️  ${warning.message || warning.detail || warning.code || "Cached critical planner warning"}`);
+      }
+    } catch { /* bounded status never blocks on stale cache */ }
+  }
+}
+
+function nextGateForState(state) {
+  return ({
+    EXPLORE: "explore-to-plan",
+    PLAN: "plan-to-execute",
+    EXECUTE: "execute-to-reflect",
+    REFLECT: "reflect-to-validate",
+    VALIDATE: "validate-to-close",
+    CLOSE: "notify-user",
+  })[String(state || "").toUpperCase()] || null;
+}
+
+async function cmdStatus({ full = false } = {}) {
   const pointerPlanDirName = readPointer();
   const target = resolvePlanTarget(plansDir, { exitOnMissing: false });
   const planDirName = target.planDirName;
   if (!planDirName) {
-    refreshActivePlanAliasFor(null);
     console.log("No active plan.");
     console.log(`  Canonical alias: ${ACTIVE_PLAN_ALIAS_LABEL}`);
+    printCachedCriticalWarnings();
+    if (!full) {
+      printBoundedStatusFollowup();
+      process.exit(0);
+    }
+    refreshActivePlanAliasFor(null);
     printCapabilityBanner(cwd, null);
     printKernelProfileStatus(cwd);
     warnTelemetryInstallHealth(cwd);
@@ -2386,6 +2423,14 @@ async function cmdStatus() {
     planDir: join(plansDir, planDirName),
     goalText: goal,
   }))}`);
+  printCachedCriticalWarnings(planDirName);
+  if (!full) {
+    const nextGate = nextGateForState(currentState);
+    if (nextGate) console.log(`  Next: node .agent/skills/iterative-planner/scripts/transition.mjs ${nextGate} --dry-run --plan ${planDirName}`);
+    checkStaleness(planDirName);
+    printBoundedStatusFollowup();
+    return;
+  }
   const personaAuthoritySummary = renderActivePersonaAuthoritySummary(planDirName);
   if (personaAuthoritySummary) console.log(personaAuthoritySummary);
   const ontologyPackGuardSummary = renderActiveOntologyPackGuardSummary(planDirName);
@@ -3116,7 +3161,8 @@ Commands:
   new --parallel "goal"             Create a new plan without replacing the current pointer
   new "goal" --workflow </workflow> Persist the workflow contract identity
   resume                            Output current plan state for re-entry
-  status                            One-line state summary
+  status                            Bounded state summary
+  status --full                     Full ambient status dashboard
   close                             Close active plan (preserves directory; blocks if not in VALIDATE/EXECUTE)
   close --informational             Close from any state as informational (merges findings/KB, no execution)
   close --force                     Close active plan even from non-standard state
@@ -3176,7 +3222,7 @@ if (!subcommands.has(cmd)) {
 } else if (cmd === "resume") {
   await cmdResume();
 } else if (cmd === "status") {
-  await cmdStatus();
+  await cmdStatus({ full: args.includes("--full") });
 } else if (cmd === "close") {
   const closeForce = args.includes("--force");
   const closeInformational = args.includes("--informational");

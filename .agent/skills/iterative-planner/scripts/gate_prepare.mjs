@@ -34,6 +34,10 @@ import {
 import { computeVerificationObligationSynthesis } from "./lib/verification_obligations.mjs";
 import { buildGuidanceReminder, renderGuidanceReminder } from "./lib/guidance_reminder.mjs";
 import { deriveVerificationTruth } from "./lib/verification_truth.mjs";
+import {
+  compileLifecycleContract,
+  writeLifecycleContract,
+} from "./lib/lifecycle_contract.mjs";
 
 const SUPPORTED_GATES = new Set([
   "explore-to-plan",
@@ -285,6 +289,13 @@ function buildContext({ cwd, resolved, gate }) {
   const reflectionGuide = gate === "reflect-to-validate"
     ? buildReflectionGuide({ cwd, planDir })
     : null;
+  const lifecycleContract = gate === "plan-to-execute"
+    ? compileLifecycleContract({
+        cwd,
+        planDir,
+        workflowId: stateJson?.workflow_id || null,
+      })
+    : null;
 
   return {
     cwd,
@@ -306,6 +317,7 @@ function buildContext({ cwd, resolved, gate }) {
     verificationSynthesis,
     refresh,
     reflectionGuide,
+    lifecycleContract,
   };
 }
 
@@ -543,6 +555,7 @@ function analyzePlanToExecute(context) {
     verification_obligation_synthesis_present: sectionPresent(context.planContent, "Verification Obligation Synthesis"),
     semantic_upkeep_contract_present: sectionPresent(context.planContent, "Semantic Upkeep Contract"),
     story_linkage_declared: matchedCriteria.length === 0 ? true : unmatchedCriteria.length === 0,
+    completion_contract_valid: context.lifecycleContract?.validation?.ok === true,
   };
   return {
     checks,
@@ -550,6 +563,8 @@ function analyzePlanToExecute(context) {
     diagnostics: {
       verification_strategy_issues: context.strategyLint?.issues || [],
       unmatched_criteria: unmatchedCriteria,
+      completion_contract_issues: context.lifecycleContract?.validation?.issues || [],
+      completion_contract_digest: context.lifecycleContract?.contract_digest || null,
     },
   };
 }
@@ -848,6 +863,19 @@ function applyGateWrite(context, analysis) {
         errors: strategy.errors || [],
       });
     }
+    const lifecycle = compileLifecycleContract({
+      cwd: context.cwd,
+      planDir: context.planDir,
+      workflowId: context.stateJson?.workflow_id || null,
+    });
+    const lifecycleWrite = writeLifecycleContract({ planDir: context.planDir, contract: lifecycle });
+    actions.push({
+      id: "completion_contract",
+      file: lifecycleWrite.path,
+      status: lifecycleWrite.written ? "written" : "already_current",
+      truthfulness: "Derived lifecycle dependency graph only; no terminal proof or phase artifact was fabricated.",
+      validation: lifecycle.validation,
+    });
     return actions;
   }
 

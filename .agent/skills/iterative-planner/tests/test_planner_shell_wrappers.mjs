@@ -19,8 +19,13 @@ const preCommitPolicySource = readFileSync(join(plannerRoot, ".agent/skills/iter
 const affectedTimeoutMatch = preCommitPolicySource.match(/const AFFECTED_TEST_TIMEOUT_MS = ([\d_]+);/);
 const verificationStatusHelperSource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/scripts/lib/verification_status_vocabulary.mjs"), "utf-8");
 const verificationStatusVocabularySource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/config/verification_status_vocabulary.json"), "utf-8");
+const releaseArtifactPolicySource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/scripts/lib/release_artifact_policy.mjs"), "utf-8");
+const releaseArtifactPolicyConfigSource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/config/release_artifact_policy.json"), "utf-8");
+const managedUpgradeProofContractSource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/scripts/lib/managed_upgrade_proof_contract.mjs"), "utf-8");
 const runNodeSource = readFileSync(join(plannerRoot, ".agent/skills/iterative-planner/scripts/hooks/run-node.sh"), "utf-8");
 const migrateAllSource = readFileSync(join(plannerRoot, ".agent/scripts/migrate-all-projects.sh"), "utf-8");
+const alignFleetSource = readFileSync(join(plannerRoot, ".agent/scripts/align-fleet.mjs"), "utf-8");
+const upgradeFleetSource = readFileSync(join(plannerRoot, ".agent/scripts/upgrade-fleet.mjs"), "utf-8");
 
 let passed = 0;
 let failed = 0;
@@ -99,7 +104,10 @@ function seedPreCommitPolicyRepo(tmp, rippleMode) {
   mkdirSync(configDir, { recursive: true });
   writeFileSync(join(scriptsDir, "pre_commit_policy.mjs"), preCommitPolicySource);
   writeFileSync(join(libDir, "verification_status_vocabulary.mjs"), verificationStatusHelperSource);
+  writeFileSync(join(libDir, "release_artifact_policy.mjs"), releaseArtifactPolicySource);
+  writeFileSync(join(libDir, "managed_upgrade_proof_contract.mjs"), managedUpgradeProofContractSource);
   writeFileSync(join(configDir, "verification_status_vocabulary.json"), verificationStatusVocabularySource);
+  writeFileSync(join(configDir, "release_artifact_policy.json"), releaseArtifactPolicyConfigSource);
   writeFileSync(join(hooksDir, "run-node.sh"), runNodeSource);
   chmodSync(join(hooksDir, "run-node.sh"), 0o755);
   writeFileSync(join(scriptsDir, "ripple_check.mjs"), `#!/usr/bin/env node
@@ -151,6 +159,10 @@ writeFileSync(".ive-git-env.json", JSON.stringify({
   GIT_QUARANTINE_PATH: process.env.GIT_QUARANTINE_PATH || null,
   GIT_WORK_TREE: process.env.GIT_WORK_TREE || null,
 }));
+if (process.argv.includes("--forecast")) {
+  console.log(JSON.stringify({ status: "FORECAST", selected_count: 1, forecast: { required_outer_timeout_ms: Number(process.env.TEST_IVE_FORECAST_REQUIRED_MS || 1) } }));
+  process.exit(0);
+}
 console.log(JSON.stringify({ status: passed ? "PASS" : "FAIL", results: [{ id: "fake-affected" }], padding: mode === "large-pass" ? "x".repeat(2 * 1024 * 1024) : "" }));
 process.exitCode = passed ? 0 : 1;
 `);
@@ -193,8 +205,9 @@ function scenarioInstalledPreCommitHook() {
     const governedResult = runBin("sh", [installedPreCommitHookPath], tmp, clean.env);
     assert(governedResult.ok, "installed pre-commit hook exits cleanly for a governed runner-surface change");
     const governedArgs = JSON.parse(readFileSync(join(tmp, ".ive-args.json"), "utf8"));
-    assert(governedArgs.includes("--profile") && governedArgs.includes("core-release"), "runner-surface changes use the governed core-release profile");
-    assert(!governedArgs.includes("--changed-files") && !governedArgs.includes("--no-manifest"), "governed pre-commit proof cannot be narrowed or suppress its manifest");
+    assert(governedArgs.includes("--profile") && governedArgs.includes("pre-commit-core"), "runner-surface changes use the staged-candidate pre-commit profile");
+    assert(!governedArgs.includes("core-release"), "pre-commit does not run committed-tree-only release proof before a candidate commit exists");
+    assert(!governedArgs.includes("--changed-files") && governedArgs.includes("--no-manifest"), "governed pre-commit proof is receipt-only so it cannot mutate the worktree stamp before reuse");
 
     const affectedFailure = runBin("sh", [installedPreCommitHookPath], tmp, { ...clean.env, TEST_IVE_CONFORMANCE_MODE: "fail" });
     assert(!affectedFailure.ok, "installed pre-commit hook blocks when an affected IVE suite fails");
@@ -318,6 +331,37 @@ function scenarioInstalledPrePushHook() {
     const scopedFiles = scopedArgs.flatMap((value, index) => value === "--changed-files" ? [scopedArgs[index + 1]] : []);
     assert(scopedPass.ok && scopedPass.stdout.includes("selection=changed_files") && scopedPass.stdout.includes("changed_files=2"), "trustworthy main ref boundaries select changed-file IVE mode");
     assert(JSON.stringify(scopedFiles) === JSON.stringify(["second-change.txt", "tracked-base.txt"]), "pre-push forwards the exact stable changed-file union to IVE");
+    assert(scopedArgs.includes("--base-sha") && scopedArgs.includes(remoteSha), "pre-push binds conformance identity to the exact remote base SHA");
+    assert(scopedArgs.includes("--outer-timeout-ms") && scopedArgs.includes("--progress"), "pre-push forwards admitted outer timeout and live progress transport");
+
+    mkdirSync(join(tmp, ".agent", "skills", "iterative-planner", "scripts", "hooks"), { recursive: true });
+    writeFileSync(join(tmp, ".agent", "skills", "iterative-planner", "scripts", "hooks", "pre_push_conformance.mjs"), "governed change\n");
+    execFileSync("git", ["add", ".agent/skills/iterative-planner/scripts/hooks/pre_push_conformance.mjs"], { cwd: tmp, stdio: ["pipe", "pipe", "pipe"] });
+    execFileSync("git", ["-c", "user.name=Planner Test", "-c", "user.email=planner@example.invalid", "commit", "-qm", "change governed release surface"], { cwd: tmp, stdio: ["pipe", "pipe", "pipe"] });
+    const governedSha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: tmp, encoding: "utf8" }).trim();
+    const governedPass = runBin(
+      "sh",
+      [installedPrePushHookPath],
+      tmp,
+      { ...baseEnv, TEST_IVE_CONFORMANCE_MODE: "pass" },
+      `refs/heads/main ${governedSha} refs/heads/main ${localSha}\n`,
+    );
+    const governedArgs = JSON.parse(readFileSync(join(tmp, ".ive-args.json"), "utf8"));
+    assert(governedPass.ok && governedPass.stdout.includes("selection=profile") && governedPass.stdout.includes("reason=governed_release_surface"), "governed runner surfaces select the bounded core-release profile");
+    assert(governedArgs.includes("--profile") && governedArgs.includes("core-release") && !governedArgs.includes("--changed-files"), "pre-push runs the canonical core-release profile without expanding a central runner change to the full catalog");
+    assert(governedArgs.includes("--base-sha") && governedArgs.includes(localSha), "profile-scoped pre-push proof remains bound to the exact remote base SHA");
+
+    rmSync(join(tmp, ".ive-args.json"), { force: true });
+    const underBudget = runBin(
+      "sh",
+      [installedPrePushHookPath],
+      tmp,
+      { ...baseEnv, TEST_IVE_CONFORMANCE_MODE: "pass", TEST_IVE_FORECAST_REQUIRED_MS: "100", IVE_PRE_PUSH_TIMEOUT_MS: "99" },
+      "refs/heads/main abc refs/heads/main def\n",
+    );
+    const underBudgetArgs = JSON.parse(readFileSync(join(tmp, ".ive-args.json"), "utf8"));
+    assert(!underBudget.ok && (underBudget.stdout + underBudget.stderr).includes("below selected-workload bound"), "pre-push refuses an impossible outer timeout during infrastructure preflight");
+    assert(underBudgetArgs.includes("--forecast") && !underBudgetArgs.includes("--progress"), "insufficient pre-push timeout fails before the main suite process is spawned");
 
     const mainFail = runBin(
       "sh",
@@ -328,6 +372,23 @@ function scenarioInstalledPrePushHook() {
     );
     assert(!mainFail.ok, "installed pre-push hook blocks main refs after red IVE conformance");
     assert((mainFail.stdout + mainFail.stderr).includes("refusing push to main"), "installed pre-push hook reports main-push refusal");
+  } finally {
+    try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+  }
+}
+
+function scenarioPreCommitArtifactBudgetStopsBeforeIve() {
+  const tmp = mkdtempSync(join(tmpdir(), "planner-pre-commit-budget-"));
+  try {
+    const seeded = seedPreCommitPolicyRepo(tmp, "clean");
+    for (let index = 0; index < 81; index += 1) {
+      stageFile(tmp, `reports/ive/test_runs/oversized/result-${index}.json`, "{}\n");
+    }
+    const result = runBin("sh", [installedPreCommitHookPath], tmp, seeded.env);
+    const output = result.stdout + result.stderr;
+    assert(!result.ok && output.includes("release artifact budget refused before IVE suite spawn"), "pre-commit refuses an oversized transient evidence candidate before conformance spawn");
+    assert(!existsSync(join(tmp, ".ive-args.json")), "artifact budget refusal does not invoke the IVE runner");
+    assert(existsSync(join(tmp, ".git/iterative-planner/release-artifact-census.json")), "artifact budget refusal leaves a durable census receipt in Git metadata");
   } finally {
     try { rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
   }
@@ -501,13 +562,28 @@ Preserve project-specific guidance.
   }
 }
 
+function scenarioDeprecatedFleetWrappers() {
+  for (const [name, source] of [
+    ["align-fleet", alignFleetSource],
+    ["upgrade-fleet", upgradeFleetSource],
+  ]) {
+    assert(source.includes('"upgrade-all"'), `${name} delegates to migrate.mjs upgrade-all`);
+    assert(source.includes('process.argv.includes("--commit")'), `${name} requires explicit --commit consent for live writes`);
+    assert(source.includes("Refusing live fleet write"), `${name} reports dry-run refusal without --commit`);
+    assert(!source.includes('execFileSync("rsync"'), `${name} cannot invoke direct rsync copying`);
+    assert(!source.includes('execFileSync("git"'), `${name} cannot stage or commit consumer repositories directly`);
+  }
+}
+
 console.log("\nPlanner Shell Wrapper Tests\n");
 
 scenarioInstalledPreCommitHook();
+scenarioPreCommitArtifactBudgetStopsBeforeIve();
 scenarioInstalledPrePushHook();
 scenarioInstalledPrePushLinkedWorktreeIsolation();
 scenarioLegacyPreCommitWrapper();
 scenarioMigrateAllProjectsShell();
+scenarioDeprecatedFleetWrappers();
 
 console.log(`\nResults: ${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

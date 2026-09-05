@@ -116,7 +116,7 @@ function runBootstrapReachabilityCase(label, reachability) {
     const registryPath = join(root, "registry.json");
     writeFileSync(registryPath, `${JSON.stringify({ projects }, null, 2)}\n`);
     const before = snapshotFiles(root);
-    const result = runBootstrap(root, registryPath);
+    const result = runBootstrap(root, registryPath, ["status", "--full"]);
     const after = snapshotFiles(root);
     return { ...result, before, after, projects, registryPath };
   } finally {
@@ -158,9 +158,23 @@ function runBootstrapNewCase() {
     ]);
     const refreshedIndex = readFileSync(indexPath, "utf-8");
     const existingIndexRefreshed = refreshedIndex.startsWith("# Plan Index\n") && !refreshedIndex.includes("sentinel-before-new");
-    const activeStatus = runBootstrap(root, registryPath);
+    const activePlanId = readFileSync(join(root, "plans", ".current_plan"), "utf8").trim();
+    const activeArtifacts = join(root, "plans", activePlanId, "artifacts");
+    mkdirSync(activeArtifacts, { recursive: true });
+    writeFileSync(join(activeArtifacts, "critical_status.json"), `${JSON.stringify({
+      warnings: [
+        { severity: "CRITICAL", message: "Canonical cached warning message." },
+        { severity: "CRITICAL", detail: "Canonical cached warning detail." },
+        { severity: "critical", code: "STATUS-CANONICAL-003" },
+        { severity: "CRITICAL" },
+        { severity: "WARN", message: "Canonical non-critical warning stays hidden." },
+      ],
+    }, null, 2)}\n`);
+    const boundedStatus = runBootstrap(root, registryPath, ["status"]);
+    const activeStatus = runBootstrap(root, registryPath, ["status", "--full"]);
     return {
       created,
+      boundedStatus,
       activeStatus,
       projects,
       registryUnchanged: sha256File(registryPath) === registryBefore,
@@ -183,12 +197,12 @@ function runBootstrapConfiguredStatusCase() {
     writeFileSync(join(root, "planner.profile.json"), `${JSON.stringify({ install_profile: "kernel" })}\n`);
     mkdirSync(join(root, ".claude"), { recursive: true });
     writeFileSync(join(root, ".claude", "settings.json"), `${JSON.stringify({ hooks: { PostToolUse: [] } })}\n`);
-    const seededStatus = runBootstrap(root, registryPath);
+    const seededStatus = runBootstrap(root, registryPath, ["status", "--full"]);
     const indexPath = join(root, "plans", "INDEX.md");
     const missingIndexNotSeeded = seededStatus.status === 0 && !existsSync(indexPath);
     writeFileSync(indexPath, "# Plan Index\n\nsentinel-existing-index\n");
     const before = snapshotFiles(root);
-    const result = runBootstrap(root, registryPath);
+    const result = runBootstrap(root, registryPath, ["status", "--full"]);
     const after = snapshotFiles(root);
     return { ...result, before, after, projects, missingIndexNotSeeded };
   } finally {
@@ -417,6 +431,21 @@ check("bootstrap new 0/N: warning does not leak registered paths or basenames", 
   !bootstrapNew.created.output.includes(project.path) && !bootstrapNew.created.output.includes(basename(project.path))
 ));
 check("bootstrap new 0/N: registry bytes stay unchanged", bootstrapNew.registryUnchanged);
+check("bootstrap bounded active status: command exits zero", bootstrapNew.boundedStatus.status === 0, `exit ${bootstrapNew.boundedStatus.status}`);
+check("bootstrap bounded active status: phase and exact next gate remain visible",
+  bootstrapNew.boundedStatus.output.includes("[EXPLORE]")
+  && bootstrapNew.boundedStatus.output.includes("transition.mjs explore-to-plan --dry-run")
+);
+check("bootstrap bounded active status: cached CRITICAL warning fallbacks remain visible",
+  bootstrapNew.boundedStatus.output.includes("Canonical cached warning message.")
+  && bootstrapNew.boundedStatus.output.includes("Canonical cached warning detail.")
+  && bootstrapNew.boundedStatus.output.includes("STATUS-CANONICAL-003")
+  && bootstrapNew.boundedStatus.output.includes("Cached critical planner warning")
+);
+check("bootstrap bounded active status: non-critical cache rows and ambient reachability stay hidden",
+  !bootstrapNew.boundedStatus.output.includes("Canonical non-critical warning stays hidden.")
+  && !bootstrapNew.boundedStatus.output.includes("Project registry reachability warning:")
+);
 check("bootstrap active status 0/N: command exits zero", bootstrapNew.activeStatus.status === 0, `exit ${bootstrapNew.activeStatus.status}`);
 check("bootstrap active status 0/N: warning reports exact ratio and guidance",
   hasExactOutputLine(bootstrapNew.activeStatus.output, "Project registry reachability warning: 0/2 registered project path(s) resolve on this host.") &&

@@ -1,8 +1,9 @@
 // @planner:module = gate_verdict_contract
 // @planner:capability = guide_first_transition_classification_receipts_and_terminal_rendering
 
+import { createHash } from "crypto";
 import { existsSync, mkdirSync, readFileSync } from "fs";
-import { join, relative } from "path";
+import { dirname, join, relative, resolve } from "path";
 import { getFailureCode } from "./determinism.mjs";
 import { recordGateMetrics } from "./plan_metrics.mjs";
 import { normalizeVerificationStatus, verificationStatusIsPass } from "./verification_status_vocabulary.mjs";
@@ -18,6 +19,7 @@ function unique(values) {
 
 function normalizedStatus(value) {
   if (String(value || "").trim().toUpperCase() === TOOL_ERROR_STATUS) return TOOL_ERROR_STATUS;
+  if (["SKIP", "SKIPPED"].includes(String(value || "").trim().toUpperCase())) return "SKIP";
   const normalized = normalizeVerificationStatus(value, "gate");
   if (!normalized.valid) return null;
   if (normalized.kind === "pass") return "PASS";
@@ -344,7 +346,17 @@ export function writeTransitionReceipt(planDir, receipt, { projectRoot = process
   // and finalizes it afterward. Its timestamped path is unique to that attempt,
   // so replacing that one path does not rewrite prior attempts.
   const immutableWrite = atomicWriteJson(immutablePath, decorated);
-  const latestWrite = atomicWriteJson(latestPath, decorated);
+  const immutableBytes = readFileSync(immutablePath);
+  const pointer = {
+    pointer_version: 1,
+    target: relative(receiptDir, immutablePath).replace(/\\/g, "/"),
+    digest: createHash("sha256").update(immutableBytes).digest("hex"),
+    gate: decorated.gate,
+    status: decorated.status,
+    generated_at: decorated.generated_at,
+    plan_id: decorated.plan_id,
+  };
+  const latestWrite = atomicWriteJson(latestPath, pointer);
   return {
     receipt: decorated,
     immutable_path: immutablePath,
@@ -418,10 +430,39 @@ export function readLatestTransitionReceipt(planDir, gate) {
   const path = join(planDir, "artifacts", "transition_receipts", `latest_${safeSegment(gate)}.json`);
   if (!existsSync(path)) return null;
   try {
-    return JSON.parse(readFileSync(path, "utf-8"));
+    const parsed = JSON.parse(readFileSync(path, "utf-8"));
+    if (parsed?.pointer_version !== 1) return parsed;
+    if (parsed.gate !== gate || typeof parsed.target !== "string" || !/^[a-f0-9]{64}$/.test(parsed.digest || "")) return null;
+    const receiptDir = dirname(path);
+    const target = resolve(receiptDir, parsed.target);
+    if (target === receiptDir || !target.startsWith(`${receiptDir}/`) || !existsSync(target)) return null;
+    const bytes = readFileSync(target);
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    if (digest !== parsed.digest) return null;
+    const receipt = JSON.parse(bytes.toString("utf-8"));
+    if (receipt?.gate !== gate || receipt?.plan_id !== parsed.plan_id || receipt?.status !== parsed.status) return null;
+    return receipt;
   } catch {
     return null;
   }
+}
+
+export function selectTransitionResultsForOutput(results, { mode = "minimal", verbose = false } = {}) {
+  const rows = Array.isArray(results) ? results : [];
+  const summary = {
+    pass: rows.filter((row) => normalizedStatus(row?.status) === "PASS").length,
+    warn: rows.filter((row) => normalizedStatus(row?.status) === "WARN").length,
+    fail: rows.filter((row) => normalizedStatus(row?.status) === "FAIL").length,
+    tool_error: rows.filter((row) => normalizedStatus(row?.status) === TOOL_ERROR_STATUS).length,
+    skip: rows.filter((row) => normalizedStatus(row?.status) === "SKIP").length,
+  };
+  const full = verbose === true || mode === "full";
+  return {
+    mode: full ? "full" : "minimal",
+    rows: full ? [...rows] : rows.filter((row) => ["WARN", "FAIL", TOOL_ERROR_STATUS].includes(normalizedStatus(row?.status))),
+    summary,
+    collapsed_count: full ? 0 : summary.pass + summary.skip,
+  };
 }
 
 export function renderTransitionVerdict(receipt) {

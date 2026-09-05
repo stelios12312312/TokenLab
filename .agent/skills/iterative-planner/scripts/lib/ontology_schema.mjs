@@ -521,6 +521,10 @@ function validateVerificationDocument(root, issues) {
     }
     if (!isNonEmptyString(runRecord.id)) issues.push(`${label}.id is required`);
     if (runRecord.plan_id !== undefined && !isNonEmptyString(runRecord.plan_id)) issues.push(`${label}.plan_id must be a non-empty string when present`);
+    for (const field of ["generated_at", "command", "revision", "source_digest", "tool_version", "provenance"]) {
+      if (runRecord[field] !== undefined && runRecord[field] !== null && !isNonEmptyString(runRecord[field])) issues.push(`${label}.${field} must be a non-empty string when present`);
+    }
+    if (runRecord.current !== undefined && !isBoolean(runRecord.current)) issues.push(`${label}.current must be boolean when present`);
     if (!Array.isArray(runRecord.results)) {
       issues.push(`${label}.results must be an array`);
       continue;
@@ -546,6 +550,10 @@ function validateVerificationDocument(root, issues) {
     }
     if (!isNonEmptyString(coverageRecord.id)) issues.push(`${label}.id is required`);
     if (!isNonEmptyString(coverageRecord.file)) issues.push(`${label}.file is required`);
+    for (const field of ["generated_at", "revision", "source_digest", "tool_version", "provenance"]) {
+      if (coverageRecord[field] !== undefined && coverageRecord[field] !== null && !isNonEmptyString(coverageRecord[field])) issues.push(`${label}.${field} must be a non-empty string when present`);
+    }
+    if (coverageRecord.current !== undefined && !isBoolean(coverageRecord.current)) issues.push(`${label}.current must be boolean when present`);
     if (coverageRecord.line_pct !== undefined && !Number.isFinite(Number(coverageRecord.line_pct))) issues.push(`${label}.line_pct must be numeric when present`);
     if (coverageRecord.branch_pct !== undefined && !Number.isFinite(Number(coverageRecord.branch_pct))) issues.push(`${label}.branch_pct must be numeric when present`);
   }

@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 import { execFileSync } from "child_process";
+import { createHash } from "crypto";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -94,7 +95,85 @@ function normalizeDocument(doc) {
     .trim();
 }
 
-export function classifyRulesMdDivergence({ sourceText, consumerText }) {
+function classifyAgainstCanonicalBase({
+  baseText,
+  consumerText,
+  allowSectionOverrides = false,
+}) {
+  const sourceSections = parseNumberedMarkdownSections(baseText);
+  const consumerSections = parseNumberedMarkdownSections(consumerText);
+  const sourceByTitle = new Map(
+    sourceSections.map((section) => [normalizeTitle(section.title), section]),
+  );
+  const consumerByTitle = new Map(
+    consumerSections.map((section) => [normalizeTitle(section.title), section]),
+  );
+
+  for (const sourceSection of sourceSections) {
+    if (!consumerByTitle.has(normalizeTitle(sourceSection.title))) {
+      return {
+        status: "true_divergence",
+        extra_sections: [],
+        reason: `managed heading missing in consumer: ${sourceSection.heading}`,
+      };
+    }
+  }
+
+  const projectSections = [];
+  const replacements = [];
+  for (const consumerSection of consumerSections) {
+    const sourceSection = sourceByTitle.get(normalizeTitle(consumerSection.title));
+    if (!sourceSection) {
+      projectSections.push(consumerSection);
+      replacements.push({ section: consumerSection, replacement: "\n" });
+      continue;
+    }
+    if (normalizeBody(consumerSection.body) !== normalizeBody(sourceSection.body)) {
+      if (!allowSectionOverrides) {
+        return {
+          status: "true_divergence",
+          extra_sections: [],
+          reason: `managed section body modified in consumer: ${sourceSection.heading}`,
+        };
+      }
+      projectSections.push(consumerSection);
+      replacements.push({ section: consumerSection, replacement: sourceSection.raw });
+    }
+  }
+
+  if (projectSections.length === 0) {
+    return {
+      status: "true_divergence",
+      extra_sections: [],
+      reason: "non-section text or preamble differences detected in rules.md",
+    };
+  }
+
+  let reconstructed = String(consumerText);
+  for (const item of replacements.sort((a, b) => b.section.start - a.section.start)) {
+    reconstructed = `${reconstructed.slice(0, item.section.start)}${item.replacement}${reconstructed.slice(item.section.end)}`;
+  }
+  if (normalizeDocument(reconstructed) !== normalizeDocument(baseText)) {
+    return {
+      status: "true_divergence",
+      extra_sections: projectSections,
+      reason: "unmanaged non-section modifications detected in rules.md alongside project sections",
+    };
+  }
+
+  return {
+    status: "extractable",
+    extra_sections: projectSections,
+    reason: `found ${projectSections.length} extractable project section(s)`,
+  };
+}
+
+export function classifyRulesMdDivergence({
+  sourceText,
+  consumerText,
+  historicalSourceTexts = [],
+  allowCurrentSectionOverrides = false,
+}) {
   if (
     sourceText === null
     || typeof sourceText !== "string"
@@ -126,71 +205,45 @@ export function classifyRulesMdDivergence({ sourceText, consumerText }) {
     };
   }
 
-  const sourceSections = parseNumberedMarkdownSections(sourceText);
-  const consumerSections = parseNumberedMarkdownSections(consumerText);
+  const currentResult = classifyAgainstCanonicalBase({
+    baseText: sourceText,
+    consumerText,
+    allowSectionOverrides: false,
+  });
+  if (currentResult.status === "extractable") return currentResult;
 
-  // Map source sections by normalized title
-  const sourceByTitle = new Map();
-  for (const sec of sourceSections) {
-    sourceByTitle.set(normalizeTitle(sec.title), sec);
-  }
-
-  // 1. Check that every source managed heading exists in consumer with identical body
-  for (const srcSec of sourceSections) {
-    const key = normalizeTitle(srcSec.title);
-    const consSec = consumerSections.find((s) => normalizeTitle(s.title) === key);
-    if (!consSec) {
+  const seen = new Set([sourceText]);
+  for (const historicalText of Array.isArray(historicalSourceTexts) ? historicalSourceTexts : []) {
+    if (typeof historicalText !== "string" || seen.has(historicalText)) continue;
+    seen.add(historicalText);
+    if (normalizeDocument(historicalText) === consNorm) {
       return {
-        status: "true_divergence",
+        status: "historical_identical",
         extra_sections: [],
-        reason: `managed heading missing in consumer: ${srcSec.heading}`,
+        reason: "consumer rules.md matches a historical canonical projection",
       };
     }
-    if (normalizeBody(consSec.body) !== normalizeBody(srcSec.body)) {
+    const historicalResult = classifyAgainstCanonicalBase({
+      baseText: historicalText,
+      consumerText,
+      allowSectionOverrides: true,
+    });
+    if (historicalResult.status === "extractable") {
       return {
-        status: "true_divergence",
-        extra_sections: [],
-        reason: `managed section body modified in consumer: ${srcSec.heading}`,
+        ...historicalResult,
+        historical_base: true,
       };
     }
   }
-
-  // 2. Identify extra sections in consumer that are NOT in source
-  const extraSections = [];
-  for (const consSec of consumerSections) {
-    const key = normalizeTitle(consSec.title);
-    if (!sourceByTitle.has(key)) {
-      extraSections.push(consSec);
-    }
+  if (allowCurrentSectionOverrides) {
+    const currentOverrideResult = classifyAgainstCanonicalBase({
+      baseText: sourceText,
+      consumerText,
+      allowSectionOverrides: true,
+    });
+    if (currentOverrideResult.status === "extractable") return currentOverrideResult;
   }
-
-  if (extraSections.length === 0) {
-    return {
-      status: "true_divergence",
-      extra_sections: [],
-      reason: "non-section text or preamble differences detected in rules.md",
-    };
-  }
-
-  // 3. Check that the extra sections are the ONLY non-whitespace difference
-  let reconstructed = String(consumerText);
-  for (const extra of extraSections) {
-    reconstructed = reconstructed.replace(extra.raw, "\n");
-  }
-
-  if (normalizeDocument(reconstructed) !== srcNorm) {
-    return {
-      status: "true_divergence",
-      extra_sections: extraSections,
-      reason: "unmanaged non-section modifications detected in rules.md alongside extra sections",
-    };
-  }
-
-  return {
-    status: "extractable",
-    extra_sections: extraSections,
-    reason: `found ${extraSections.length} extractable host section(s)`,
-  };
+  return currentResult;
 }
 
 export function planHostRuleOverlayWrites({ extra_sections, overlayDir, startNumber = 40 }) {
@@ -207,16 +260,29 @@ export function planHostRuleOverlayWrites({ extra_sections, overlayDir, startNum
       .replace(/^\s+/, "")
       .replace(/(\n\s*---\s*)*\s*$/, "")
       .trim();
-    const contents = `${sec.heading}\n\n${cleanBody}\n`;
+    const contents = typeof sec.raw === "string" && sec.raw.length > 0
+      ? (sec.raw.endsWith("\n") ? sec.raw : `${sec.raw}\n`)
+      : `${sec.heading}\n\n${cleanBody}\n`;
 
     let exists = false;
     let conflict = false;
-    if (overlayDir && existsSync(absolutePath)) {
+    let resolvedFilename = filename;
+    let resolvedRelativePath = relativePath;
+    let resolvedAbsolutePath = absolutePath;
+    if (overlayDir && existsSync(resolvedAbsolutePath)) {
       exists = true;
       try {
-        const diskContent = readFileSync(absolutePath, "utf-8");
+        const diskContent = readFileSync(resolvedAbsolutePath, "utf-8");
         if (normalizeBody(diskContent) !== normalizeBody(contents)) {
-          conflict = true;
+          const digest = createHash("sha256").update(contents).digest("hex").slice(0, 12);
+          resolvedFilename = `${num}-${slug}-${digest}.md`;
+          resolvedRelativePath = `.agent/rules/${resolvedFilename}`;
+          resolvedAbsolutePath = join(overlayDir, resolvedFilename);
+          exists = existsSync(resolvedAbsolutePath);
+          if (exists) {
+            const alternateContent = readFileSync(resolvedAbsolutePath, "utf-8");
+            conflict = normalizeBody(alternateContent) !== normalizeBody(contents);
+          }
         }
       } catch {
         conflict = true;
@@ -226,9 +292,9 @@ export function planHostRuleOverlayWrites({ extra_sections, overlayDir, startNum
     return {
       number: num,
       slug,
-      filename,
-      relative_path: relativePath,
-      absolute_path: absolutePath,
+      filename: resolvedFilename,
+      relative_path: resolvedRelativePath,
+      absolute_path: resolvedAbsolutePath,
       heading: sec.heading,
       contents,
       exists,
@@ -237,7 +303,12 @@ export function planHostRuleOverlayWrites({ extra_sections, overlayDir, startNum
   });
 }
 
-export function extractHostRuleOverlays(projectRoot, { dryRun = false, sourceText = null } = {}) {
+export function extractHostRuleOverlays(projectRoot, {
+  dryRun = false,
+  sourceText = null,
+  historicalSourceTexts = [],
+  allowCurrentSectionOverrides = false,
+} = {}) {
   const rulesPath = join(projectRoot, ".agent", "rules.md");
   if (!existsSync(rulesPath)) {
     return {
@@ -305,6 +376,8 @@ export function extractHostRuleOverlays(projectRoot, { dryRun = false, sourceTex
   const classification = classifyRulesMdDivergence({
     sourceText,
     consumerText,
+    historicalSourceTexts,
+    allowCurrentSectionOverrides,
   });
 
   if (classification.status !== "extractable") {

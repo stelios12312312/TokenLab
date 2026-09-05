@@ -17,19 +17,11 @@ import { formatReason, deduplicateViolations, sanitizeAtom, sanitizeEnumAtom } f
 import { deriveVerificationTruth, normalizePresentationResult } from "./verification_truth.mjs";
 
 function safeQueryAll(session, query) {
-  try {
-    return session.queryAll(query);
-  } catch {
-    return [];
-  }
+  return session.queryAll(query);
 }
 
 function safeCheck(session, query) {
-  try {
-    return session.check(query);
-  } catch {
-    return false;
-  }
+  return session.check(query);
 }
 
 function invariantAuditTransitionTargets(state) {
@@ -1815,6 +1807,53 @@ export function selfTest(jsonMode, { createEngine, createSession, loadRules }) {
 
   const lowRiskSuggestions = s6.queryAll("suggest_skill(Skill, Reason, Severity)");
   assert("Minimal suggestions for clean project", lowRiskSuggestions.length <= 3);
+
+  // ── Machine Learning Governance Invariant Tests (I-ML-001 - I-ML-004) ──
+  if (!jsonMode) console.log("\n  ── Machine Learning Governance Invariant Tests ──");
+  const sMl = createSession();
+  loadRules(sMl);
+  sMl.consult("semantic_transition_target(validate).");
+  sMl.consult(`
+    dataset(ds_users, 's3://bucket/users.csv', 'hash_abc123', 1700000000).
+    dataset(ds_leaked, 's3://bucket/leak.csv', 'hash_leak999', 1700005000).
+    feature_set(fs_v1, ds_users, [user_age, user_tenure]).
+    feature_set(fs_leak, ds_users, [user_age, user_future_feature]).
+    feature_timestamp(user_age, 1690000000).
+    feature_timestamp(user_future_feature, 1700006000).
+    model(m_prod_ok, random_forest, fs_v1, 'n_estimators=100', 1700001000).
+    model(m_leaked_feat, random_forest, fs_leak, 'none', 1700001000).
+    model(m_leaked_ds, random_forest, fs_v1, 'none', 1699999000).
+    model_dataset_schema_hash(m_prod_ok, ds_users, 'hash_abc123').
+    model_dataset_schema_hash(m_drifted, ds_users, 'hash_old_v1').
+    model(m_drifted, random_forest, fs_v1, 'none', 1700001000).
+    model_deployment(m_prod_ok, production, deployed).
+    model_deployment(m_bad_calib, production, staged).
+    model_deployment(m_bad_auc, production, staged).
+    model_evaluation(m_prod_ok, ece, 0.04, test).
+    model_evaluation(m_prod_ok, auc, 0.92, test).
+    model_evaluation(m_bad_calib, ece, 0.12, test).
+    model_evaluation(m_bad_auc, auc, 0.65, test).
+    ml_metric_floor(ece, 0.08).
+    ml_metric_floor(auc, 0.80).
+    agent_action(agent_001, execute_trade).
+    agent_action(agent_unqualified, execute_trade).
+    agent_icp_qualified(agent_001).
+    agent_rate_governor_quota(agent_001, execute_trade).
+  `);
+
+  assert("I-ML-001: Temporal leakage detected (feature timestamp > split)", sMl.check("invariant_violated(ml_temporal_leakage, leak(m_leaked_feat, user_future_feature, _, _))"));
+  assert("I-ML-001: Temporal leakage detected (dataset timestamp > split)", sMl.check("invariant_violated(ml_temporal_leakage, leak(m_leaked_ds, ds_users, _, _))"));
+  assert("I-ML-001: Clean model passes temporal check", !sMl.check("invariant_violated(ml_temporal_leakage, leak(m_prod_ok, _, _, _))"));
+
+  assert("I-ML-002: ECE Calibration error floor violation detected", sMl.check("invariant_violated(ml_calibration_error_exceeded, eval(m_bad_calib, ece, _, _))"));
+  assert("I-ML-002: Metric floor AUC violation detected", sMl.check("invariant_violated(ml_metric_floor_failed, eval(m_bad_auc, auc, _, _))"));
+  assert("I-ML-002: Well-calibrated high-metric model passes", !sMl.check("invariant_violated(ml_calibration_error_exceeded, eval(m_prod_ok, _, _, _))") && !sMl.check("invariant_violated(ml_metric_floor_failed, eval(m_prod_ok, _, _, _))"));
+
+  assert("I-ML-003: Upstream data drift detected (schema mismatch)", sMl.check("invariant_violated(ml_upstream_data_drift, drift(m_drifted, ds_users, _, _))"));
+  assert("I-ML-003: Consistent schema passes drift check", !sMl.check("invariant_violated(ml_upstream_data_drift, drift(m_prod_ok, ds_users, _, _))"));
+
+  assert("I-ML-004: Unqualified agent action blocked", sMl.check("invariant_violated(ml_agent_action_unqualified, action(agent_unqualified, execute_trade, missing_icp_qualification))"));
+  assert("I-ML-004: Qualified agent with quota passes", !sMl.check("invariant_violated(ml_agent_action_unqualified, action(agent_001, execute_trade, _))"));
 
   if (jsonMode) {
     console.log(JSON.stringify({ status: fail > 0 ? "FAIL" : "PASS", pass, fail, total: pass + fail, results }, null, 2));

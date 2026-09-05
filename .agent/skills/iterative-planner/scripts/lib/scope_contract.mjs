@@ -9,6 +9,7 @@ import { extractFilesToModify } from "./plan_utils.mjs";
 export const SCOPE_CONTRACT_FILENAME = "scope.json";
 export const AMBIENT_DIRTY_SCOPE_HEADING = "Ambient Dirty Scope";
 export const LARGE_AMBIENT_DIRTY_THRESHOLD = 20;
+export const AMBIENT_SCOPE_SAMPLE_LIMIT = 20;
 
 function normalizePath(value) {
   return String(value || "")
@@ -62,7 +63,18 @@ export function readScopeContract(planDir) {
   try {
     if (!existsSync(path)) return null;
     const parsed = JSON.parse(readFileSync(path, "utf-8"));
-    return parsed && typeof parsed === "object" ? parsed : null;
+    if (!parsed || typeof parsed !== "object") return null;
+    // Compatibility projection: legacy consumers may still ask for the old
+    // arrays. New persisted contracts remain bounded; readers receive only the
+    // exact overlap plus the declared deterministic ambient sample.
+    if (Number(parsed.version) >= 2 && parsed.ambient_scope) {
+      parsed.ambient_dirty_files = uniqueSorted(parsed.ambient_scope.sample);
+      parsed.observed_dirty_files_at_start = uniqueSorted([
+        ...(parsed.overlap_files || []),
+        ...parsed.ambient_dirty_files,
+      ]);
+    }
+    return parsed;
   } catch {
     return null;
   }
@@ -71,37 +83,69 @@ export function readScopeContract(planDir) {
 function computeFingerprint(contract) {
   const payload = JSON.stringify({
     declared_files: contract.declared_files,
-    observed_dirty_files_at_start: contract.observed_dirty_files_at_start,
     owned_files: contract.owned_files,
-    ambient_dirty_files: contract.ambient_dirty_files,
+    overlap_files: contract.overlap_files,
+    ambient_scope: contract.ambient_scope,
   });
   return createHash("sha256").update(payload).digest("hex").slice(0, 32);
+}
+
+function digestPaths(paths) {
+  return createHash("sha256").update(uniqueSorted(paths).join("\0")).digest("hex");
+}
+
+function topLevelCounts(paths) {
+  const counts = {};
+  for (const path of uniqueSorted(paths)) {
+    const top = path.split("/")[0] || ".";
+    counts[top] = (counts[top] || 0) + 1;
+  }
+  return Object.fromEntries(Object.entries(counts).sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function compactAmbientScope(paths) {
+  const sorted = uniqueSorted(paths);
+  return {
+    count: sorted.length,
+    digest: digestPaths(sorted),
+    top_level_counts: topLevelCounts(sorted),
+    sample: sorted.slice(0, AMBIENT_SCOPE_SAMPLE_LIMIT),
+    sample_limit: AMBIENT_SCOPE_SAMPLE_LIMIT,
+    truncated: sorted.length > AMBIENT_SCOPE_SAMPLE_LIMIT,
+  };
 }
 
 export function buildScopeContract({ cwd = process.cwd(), planDir, planContent = "", now = new Date().toISOString() } = {}) {
   const existing = planDir ? readScopeContract(planDir) : null;
   const declared = uniqueSorted(extractFilesToModify(planContent));
-  const observedDirty = existing?.observed_dirty_files_at_start
+  const observedDirty = existing && Number(existing.version) < 2 && existing?.observed_dirty_files_at_start
     ? uniqueSorted(existing.observed_dirty_files_at_start)
     : listObservedDirtyFiles(cwd);
   const owned = declared;
   const ownedSet = new Set(owned);
   const ambient = observedDirty.filter((file) => !ownedSet.has(file));
   const overlap = observedDirty.filter((file) => ownedSet.has(file));
+  const ambientScope = existing && Number(existing.version) >= 2 && existing.ambient_scope
+    ? {
+        ...existing.ambient_scope,
+        sample: uniqueSorted(existing.ambient_scope.sample).slice(0, AMBIENT_SCOPE_SAMPLE_LIMIT),
+        sample_limit: AMBIENT_SCOPE_SAMPLE_LIMIT,
+      }
+    : compactAmbientScope(ambient);
   const contract = {
-    version: 1,
+    version: 2,
     generated_at: existing?.generated_at || now,
     updated_at: now,
     declared_files: declared,
-    observed_dirty_files_at_start: observedDirty,
     owned_files: owned,
-    ambient_dirty_files: ambient,
+    overlap_files: overlap,
+    ambient_scope: ambientScope,
     summary: {
       declared_count: declared.length,
-      observed_dirty_count: observedDirty.length,
+      observed_dirty_count: overlap.length + ambientScope.count,
       overlap_count: overlap.length,
-      ambient_count: ambient.length,
-      large_ambient_dirty: ambient.length >= LARGE_AMBIENT_DIRTY_THRESHOLD && declared.length > 0,
+      ambient_count: ambientScope.count,
+      large_ambient_dirty: ambientScope.count >= LARGE_AMBIENT_DIRTY_THRESHOLD && declared.length > 0,
     },
   };
   contract.fingerprint = computeFingerprint(contract);

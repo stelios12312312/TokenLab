@@ -2,6 +2,162 @@
 
 How to upgrade projects already using the iterative planner to the current shipped version.
 
+## 10.13.3 — Engine/Project Ownership Boundary
+
+Version 10.13.3 separates the replaceable planner engine from consumer-owned
+semantics with one authoritative path classifier used by manifest construction,
+source-pin safety, scratch candidate selection, transaction preflight, and
+receipts.
+
+- `engine` covers planner runtime, tests, state-machine Prolog, and
+  inventory-managed workflows. A committed engine fork is replaced from the
+  immutable source pin and recorded in `engine_replacements`; target Git history
+  and the transaction journal retain recovery evidence.
+- `project` covers consumer ontology, rule overlays, custom workflows, policy,
+  registry, and knowledge. Existing project bytes are never source-copied or
+  removed. Dirty project paths do not block an engine upgrade; absent setup
+  scaffolds may still be seeded. `source_hygiene.json` is seed-once.
+- `mixed_projection` covers `.agent/rules.md` and root instruction snapshots.
+  Rules are reconstructed against current and historical canonical snapshots;
+  project-only sections and committed section overrides move to deterministic,
+  collision-safe overlays before the canonical projection advances.
+- `generated` receipts and caches never become canonical payload or dirt
+  blockers. A proposed mutation of an `unknown` path fails closed.
+
+There is no force flag and no second updater. Uncommitted engine changes,
+ahead-of-pin content, unresolved mixed projections, and unknown mutation targets
+still refuse. The existing source pin, scratch apply and proof, exact candidate
+commit, live HEAD/path recheck, single fast-forward, journal, and recovery flow
+remain the transaction boundary.
+
+Proof is split at the same ownership boundary. The canonical source release
+must pass the complete `core-release` profile, including project-semantic
+`transition-gate-flows`. A consumer transaction reruns only portable install
+proof: gate/delete census, migration bootstrap, and preplanning scaffolding.
+It does not evaluate the source project's lifecycle expectations against the
+consumer's independently owned ontology, telemetry, stories, or policies.
+
+Compatibility is read-old/write-new: transaction config reads legacy
+`preflight_scopes` but writes and ships `candidate_scopes`. Older receipts remain
+readable; new receipts add `engine_replacements`. Rollback is a normal Git revert
+of the 10.13.3 engine commit. Extracted project overlays may be retained when
+rolling back because they are consumer semantics, not engine payload.
+
+## 10.13.2 — Compiled Finish Line and Exact Gate Reuse
+
+This additive candidate compiles `completion_contract.json` before EXECUTE,
+reuses only an immediately preceding exact fresh PASS transition dry-run, makes
+default status bounded, makes transition output minimal by default, records a
+dry-run/actual attempt ledger, narrows `notify-user` to its handoff checks, and
+compacts new script-version and latest-receipt storage.
+
+Compatibility is read-both/write-new: existing inline `script_versions` maps and
+full `latest_<gate>.json` receipts remain readable, while new transitions use a
+`script_bundle` manifest reference and a digest-bound latest pointer. Historical
+state rows and immutable receipts are not rewritten. Corrupt, stale, missing,
+traversing, or digest-mismatched cache/pointer data fails closed or runs fresh.
+Dry-run's only new write is disposable derived session data under repository Git
+metadata; project, plan, pointer, and lifecycle bytes remain unchanged.
+
+Operators use `bootstrap.mjs status --full` for the former ambient dashboard,
+`PLANNER_VERBOSE_CHECKS=1` or an explicit `transition_output: full` policy for
+row-by-row transition output, and `PLANNER_DISABLE_GATE_REUSE=1` for forced-fresh
+diagnosis. Rollback may leave derived Git-metadata sessions and content-addressed
+script manifests in place; older runtimes ignore them. Do not delete immutable
+transition receipts or canonical plan history.
+
+## 10.13.1 — Bounded Release Proof and Focused IVE Workspace
+
+Version 10.13.1 fixes the release-latency failure mode without weakening ontology verification or changing normal provider, model, generation, or tool selection.
+
+- The canonical IVE runner forecasts the exact selected workload before spawn, separates infrastructure admission from suite verdicts, emits bounded redacted progress on stderr, and keeps stdout as one JSON document. Exact fresh PASS receipts and completed-suite checkpoints live under repository Git metadata; they bind staged tree, remote base, dirty state, planner version, full suite catalog, config, command contract, and selected fixture bytes. Stale, failed, partial, tampered, or mismatched evidence reruns.
+- Pre-commit classifies every staged path through the release-artifact policy and refuses over-budget transient evidence before any conformance suite starts. Pre-push forecasts first, forwards its admitted timeout and remote base, streams progress, retains process-group cleanup, and preserves the final manifest as failure authority.
+- IVE now defaults to a deterministic ticket-focused graph projection, discloses displayed, available-payload, and canonical ontology counts separately, and offers explicit full-payload mode without treating hidden presentation nodes as absent ontology. Ticket search/status presets, grouped secondary views, collapsible desktop panels, labeled mobile drawers, and a collapsed terminal reduce cockpit clutter.
+
+Configuration is additive. `config/conformance_session.json` owns freshness, retention, heartbeat, fallback, multiplier, cleanup cushion, and outer bounds. `config/release_artifact_policy.json` owns ordered artifact classes, budgets, future-expiring waivers, and audit-log compaction policy. CLI values override environment values, which override committed defaults; invalid or insufficient bounds fail before spawn.
+
+Rollback: revert the 10.13.1 managed payload and reinstall the 10.13.0 hook set. Receipt, checkpoint, and census files under `.git/iterative-planner/` are derived proof metadata and may be retained; 10.13.0 ignores them. Do not delete canonical ontology YAML, Program Packets, story evidence, or durable release artifacts. Regenerate the IVE payload after rollback to restore the previous presentation behavior.
+
+## 10.13.0 — Project Ontology Adoption and Assurance
+
+Version 10.13.0 makes the ontology an installed project capability rather than an optional documentation surface.
+
+- Full setup and governed upgrade induce and validate the target repository's own canonical ontology, preserve authored identities, apply explicit project exclusions, publish a receipt, remain dry-run safe, and restore prior canonical/projection bytes on failure. Kernel setup remains intentionally minimal.
+- IVE's workspace graph now comes from the canonical ontology adapter, carries the canonical digest plus typed identities/edges/provenance/freshness/verification state, keeps Program tickets as a shared-identity overlay, and declares when its read-only display is capped for a large graph. If canonical loading is unavailable, IVE reports a read-only degraded Program fallback with zero canonical counts instead of presenting fallback data as the ontology.
+- Adaptive assurance is provider-neutral and monotonic across configured floor, task risk, trusted capability provenance, and observed contract failures. It strengthens deterministic checks and bounded retries without changing normal provider/model selection, generation, or tools; unsupported Antigravity metadata remains unknown. Full-flow task intake publishes the resolved contract in `guidance_packet.json`, `guidance_packet.md`, and the new plan's persisted focus snapshot.
+- Runtime fact caching is derived-only and digest-safe. Project identity, source digest, schema/engine, projection profile, configuration, and payload integrity are checked before reuse; every mismatch or corruption rebuilds fresh and verdicts remain newly consulted.
+- `ontology_benchmark.mjs` records distinct small/large graph counts, cold/warm load, induction, compilation, lookup/join/scan/full-gate phases, warm-up/repetition policy, p50/p95/variance, machine/runtime identity, versioned budgets, and an explicit same-machine claims boundary.
+
+Rollback: revert the 10.13.0 managed payload, remove the ignored `.agent/ontology/cache/` directory, and rerun the prior ontology build. Canonical YAML and provisioning receipts remain project-owned data; do not delete them as part of planner rollback. If setup fails mid-provisioning, the transaction already restores the previous canonical YAML and compiled projection and writes a failed rollback receipt.
+
+## 10.12.0 — Ontology-First Verification Authority
+
+Version 10.12.0 completes the first ontology-first verification slice without changing normal model/provider selection.
+
+- `.agent/ontology/facts/*.yaml` is the sole persistent authority. Runtime and gate sessions render it fresh and expose a recomputable receipt containing the ordered source digest, schema/engine version, generation time, provenance, and projection roles.
+- `.agent/ontology/facts.pl` is a derived compatibility projection. Missing, stale, or tampered projection bytes are reported but never become a second authority; TTL remains export-only and active-plan facts remain session-scoped overlays.
+- The existing inducer now has bounded JavaScript/TypeScript structural and executed-evidence adapters. Test and coverage observations carry command, timestamp, revision, source digest, tool version, provenance, and currentness; legacy receipts without revision identity remain degraded and cannot satisfy current observed proof.
+- Gate predicates preserve the legacy evidence path only when observed-proof tracking is absent. Once a plan has canonical run observations, only a current passing run linked to that plan and criterion strengthens the evidence chain.
+- IVE carries `not_run`, `unavailable`, `stale`, `degraded`, `pass`, and `fail` as distinct invariant-evidence states. Empty violations never manufacture PASS, and the displayed ontology digest/provenance comes from the canonical authority receipt.
+
+Rollback is additive: revert the 10.12.0 managed payload and regenerate `.agent/ontology/facts.pl` with 10.11.1. Canonical YAML and historical receipts remain readable; observations lacking the new provenance fields simply retain their governed degraded status.
+
+## 10.11.1 — Fail-Closed ML Ontology and Bounded-Engine Repair
+
+Version 10.11.1 repairs the 10.11.0 logical-core candidate so semantic failures remain fail-closed, ML facts are loaded from the active plan, and the shipped documentation matches the JavaScript runtime that actually executes.
+
+### Fix 1 — Typed, Fail-Closed Query Deadlines
+- Bounded queries throw `QueryTimeoutError` with stable code `QUERY_TIMEOUT`; solve-depth exhaustion throws `QueryDepthError` with stable code `QUERY_DEPTH_EXCEEDED`. `queryAll`, `queryOne`, semantic commands, and transitions no longer translate either incomplete execution state into empty results or false success.
+- Cycle-detection history is local to one top-level query, so a completed deep query cannot poison a later identical query in the same session.
+- Floating-point parsing, comparison, and division remain supported.
+- The JavaScript first-argument clause index is shipped as `clause_index.mjs`. It narrows candidate clauses while preserving insertion order and variable-head clauses; it is not represented as Trealla, WASM, or a separately compiled runtime.
+
+### Fix 2 — Mandatory Semantic Enforcement
+- Transition semantic verification has no environment-variable skip path.
+- The public `PLANNER_FAST_TRACK` alias is not recognized.
+- The legacy internal `_PLANNER_FAST_TRACK=1` first-run path can relax only the named early story-readiness invariant family; ML, infrastructure, security, traceability, and other domain invariants remain hard failures.
+
+### Fix 3 — ML Lifecycle Boundary and Fact Integrity
+- `I-ML-001` through `I-ML-004` become hard at entry to VALIDATE and remain active in VALIDATE/CLOSE, avoiding premature failures during discovery and implementation.
+- Project-level ML facts and the selected active plan's `ml_facts.json` are compiled and consulted when present.
+- A malformed selected ML fact source produces governed degraded-coverage evidence instead of being silently ignored.
+- Read-oriented fact loading no longer creates a root cache file with undefined invalidation semantics.
+
+## 10.11.0 — Machine Learning Lifecycle Ontology Foundation
+
+Version 10.11.0 introduced first-argument clause candidate indexing in the embedded JavaScript Prolog interpreter, bounded query deadlines, floating-point arithmetic, and Machine Learning lifecycle governance invariants (`I-ML-001` through `I-ML-004`). Upgrade to 10.11.1 for fail-closed timeout propagation, mandatory semantic enforcement, active-plan ML fact loading, and corrected lifecycle scoping.
+
+### Feature 1 — Embedded Solver Foundation
+- Clauses are indexed by predicate and first-argument shape to reduce candidate scanning for ground queries.
+- Floating-point parsing, comparison, and division are supported.
+- Query deadlines bound cyclic or runaway goals.
+
+### Feature 2 — Machine Learning Lifecycle Governance Invariants
+- `I-ML-001` detects temporal leakage from feature or dataset timestamps after the training split.
+- `I-ML-002` enforces ECE and declared metric floors for production deployments.
+- `I-ML-003` detects upstream dataset schema drift against model expectations.
+- `I-ML-004` requires ICP qualification and rate-governor quota proof for declared agent actions.
+
+## 10.10.1 — Ephemeral Resource Lifecycle and Fixture Isolation
+
+Version 10.10.1 introduces native disk space preflights before upgrade scratch allocation, implements guaranteed process-exit temp directory cleanup across all test runners, and hardens test fixtures against host ontology/rules leakage in heterogeneous consumer repositories.
+
+### Fix 1 — Native Disk Space Preflight
+- `managed_upgrade_transaction.mjs` executes `preflightDiskSpace(targetPath)` using Node's native `statfsSync(tmpdir())` before allocating scratch parents or cloning.
+- Enforces a minimum free disk space threshold (2.5 GB) to prevent mid-flight `ENOSPC` disk exhaustion during large-repository upgrades.
+
+### Fix 2 — Tracked Temporary Directory Cleanup on Process Exit
+- Conformance test runners (`test_transition_gate_flows.mjs`, `archetype_matrix_fixture.mjs`) track all allocated temp directories in memory.
+- `process.on("exit")` handlers guarantee all allocated scratch directories are removed even on test failure or process interruption.
+
+### Fix 3 — Hermetic Test Fixture Isolation
+- `test_transition_gate_flows.mjs` explicitly populates test fixtures with only canonical planner skills and registered workflows.
+- Prevents host-specific ontology facts, rules, or plans in consumer repositories from polluting isolated test environments.
+
+## 10.10.0 — Safe Rule Overlay Extraction and Semantic Hygiene Isolation
+
+Version 10.10.0 provides safe host rule overlay extraction, consumer I-035 skip rules for .agent/ trees, and default safe git environment injection.
+
 ## 10.9.0 — Migration Ergonomics and GitHub Realignment
 
 Version 10.9.0 eliminates the four migration refusal classes blocking fleet adoption, eliminates hosted GitHub CI workflows in favor of local-only independent verification, and makes GitHub Issues a push-only default projection while local Program Packets remain authoritative.
@@ -342,7 +498,7 @@ story_registry:
   enforced_for: [code, integration, quant, security]
 session:
   kb_reads_required: false
-transition_output: full
+transition_output: minimal
 ```
 
 Paste the full output. If it reports any issues, fix them before proceeding.
@@ -652,7 +808,7 @@ node .agent/skills/iterative-planner/scripts/migrate.mjs upgrade . --commit --se
 ### What the upgrade does NOT do
 
 - **Does NOT modify SKILL.md gates** — the upgrade preserves project-specific skill docs. Root IDE instruction files still satisfy the gate-doc contract, but mirroring key script refs into `SKILL.md` remains recommended (see below).
-- **Does NOT overwrite divergent target work** — stale canonical files advance only after provenance classification and scratch-candidate proof
+- **Does NOT overwrite uncommitted target work** — committed engine forks advance from the immutable source pin after ownership classification and scratch-candidate proof; uncommitted engine overlap remains fail-closed
 - **Does NOT stage unrelated project work** — the candidate commit is built from the clean consumer `HEAD`
 - **Does NOT touch `<!-- DOMAIN: -->` sections** — all domain customizations are preserved
 - **Does NOT overwrite existing KB files** — seeds are prefixed with `seed-` to avoid conflicts
@@ -748,6 +904,15 @@ If the project has a test suite, run test_baseline.mjs capture "<test-command>" 
 
 | Version | Codename | Key Features |
 |---------|----------|-------------|
+| 10.13.3 | Engine/Project Ownership Boundary | Replaces committed engine forks from the immutable pin while preserving project ontology, rules, workflows, policy, registry, knowledge, and unrelated dirt; extracts historical mixed-rule semantics into collision-safe overlays and records engine replacements. |
+| 10.13.2 | Compiled Finish Line and Exact Gate Reuse | Compiles the lifecycle completion graph before execution, reuses only exact fresh PASS gate dry-runs, bounds default transition/status output, and stores compact content-addressed gate metadata without changing normal provider, model, or tool selection. |
+| 10.13.1 | Bounded Release Proof and Focused IVE Workspace | Adds pre-spawn artifact/workload admission, digest-bound reusable conformance sessions with live progress and resume, and a responsive ticket-focused ontology projection that keeps canonical authority explicit. |
+| 10.13.0 | Project Ontology Adoption and Assurance | Provisions project-owned ontologies during full setup/upgrade, renders their canonical graph in IVE, adds normal-use-preserving adaptive assurance, and introduces digest-safe runtime caching with governed benchmarks. |
+| 10.12.0 | Ontology-First Verification Authority | Establishes a canonical YAML authority receipt, structural/executed-evidence induction, observed-proof-aware gates, and six-state IVE evidence semantics without changing provider/model use. |
+| 10.11.1 | Fail-Closed ML Ontology and Bounded-Engine Repair | Propagates typed timeout/depth failures, isolates cycle state per query, removes public semantic bypasses and self-dirtying cache behavior, loads validated active-plan ML facts, scopes ML invariants to the VALIDATE boundary, and adds governed regression coverage. |
+| 10.11.0 | Machine Learning Lifecycle Ontology Foundation | Adds JavaScript first-argument clause candidate indexing, bounded query deadlines, float arithmetic, and ML safety invariants (I-ML-001 through I-ML-004); superseded by the 10.11.1 hardening repair. |
+| 10.10.1 | Ephemeral Resource Lifecycle and Fixture Isolation | Implements tracked temporary directory cleanup on process exit across test suites, adds native statfsSync disk capacity preflights in managed upgrade transactions, and hardens test fixtures against host ontology leakage. |
+| 10.10.0 | Safe Rule Overlay Extraction and Semantic Hygiene Isolation | Safe host rule overlay extraction into .agent/rules/40-*.md, consumer I-035 skip rules for .agent/ trees, and default safe git environment injection. |
 | 10.9.0 | Migration Ergonomics and GitHub Realignment | Eliminates the four migration refusal classes (self-dirtying, overlap-cleanliness, consumer-owned source_hygiene, parked workflow disposition), removes hosted GitHub CI workflows, and makes GitHub Issues default push-only mirror. |
 | 10.8.1 | Catalog Repair and Coverage Ratchet Alignment | Registers quant persona scoring suite in IVE runner, aligns test census denominators, updates version surfaces, and reinforces test coverage for transition, bootstrap, and program manager helpers. |
 | 10.8.0 | IVE Runtime Phase 6 Release Handoff / Kernel Extraction | Trims local-only ticket truth, per-plan artifact diet, and persona ambient reduction; preserves consumer identity across parked workflows. |

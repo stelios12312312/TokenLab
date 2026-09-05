@@ -229,6 +229,9 @@ console.log("Scenario 0: governed core-release profile");
 
   const noManifest = runRunner({ args: ["--profile", "core-release", "--no-manifest", "--json"] });
   assert(noManifest.exit_code === 1, "profile cannot suppress its manifest");
+
+  const receiptOnlyPreCommit = runRunner({ args: ["--profile", "pre-commit-core", "--no-manifest", "--forecast", "--json"] });
+  assert(receiptOnlyPreCommit.exit_code === 0 && receiptOnlyPreCommit.parsed?.status === "FORECAST", "pre-commit profile may stay receipt-only without weakening release-profile manifest authority");
 }
 
 // Meta-guard: the research-memory packet seam is CI-real only if the suite is

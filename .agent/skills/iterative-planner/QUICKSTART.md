@@ -41,7 +41,7 @@ story_registry:
   enforced_for: [code, integration, quant, security]
 session:
   kb_reads_required: false
-transition_output: full
+transition_output: minimal
 ```
 
 `default_route` may be `auto`, `lightweight`, or `full`. It only affects
@@ -83,20 +83,39 @@ Preserved `CLOSE` plan directories are normal history, not crash residue.
 Use the unified transition command:
 
 ```bash
+node .agent/skills/iterative-planner/scripts/transition.mjs explore-to-plan --dry-run
 node .agent/skills/iterative-planner/scripts/transition.mjs explore-to-plan
 ```
 
-This runs all checks (verify_gate + checklist + health scan) in one command.
+The dry-run evaluates the complete gate and stores only a disposable session under
+Git metadata. If the actual command immediately follows with identical plan,
+phase, Git state, evaluator/config/rule/checklist bundles, and evidence, it reuses
+the PASS result while still writing canonical state, metrics, receipts, and audit
+history. Any mismatch reruns or fails closed. Use
+`PLANNER_DISABLE_GATE_REUSE=1` when you need a forced-fresh diagnostic control.
+
+Before PLAN approval, `gate_prepare.mjs plan-to-execute --write` writes the
+derived `completion_contract.json` so downstream artifact producers, consumers,
+proof modes, and the terminal `notify-user` handoff are visible before EXECUTE.
 
 ## Checking Status
 
 ```bash
-# One-line status
+# Bounded phase, focus, critical-warning, and next-command status
 node .agent/skills/iterative-planner/scripts/bootstrap.mjs status
+
+# Full ambient/persona/lifecycle diagnostic dashboard
+node .agent/skills/iterative-planner/scripts/bootstrap.mjs status --full
 
 # Full re-entry summary
 node .agent/skills/iterative-planner/scripts/bootstrap.mjs resume
 ```
+
+Transition output defaults to `minimal`, which keeps every warning, failure,
+NEXT/WHY action, equivalence line, result, and receipt while collapsing routine
+PASS/SKIP rows. Set `transition_output: full` in project policy or use
+`PLANNER_VERBOSE_CHECKS=1` for row-by-row diagnostics; rendering never changes
+the evaluated truth.
 
 ## Common First-Time Issues
 
@@ -107,6 +126,8 @@ node .agent/skills/iterative-planner/scripts/bootstrap.mjs resume
 | "Fewer than 3 indexed findings" | Add more findings to `findings.md` (minimum 3, ≥50 words each) |
 | "KB digest missing" | The salt is printed by `transition.mjs explore-to-plan` — add `[KB_DIGEST:<salt>]` to findings.md |
 | "Config integrity baseline missing" | You are on an old planner/runtime; current E8-1 runtime retired `.config_integrity`. |
+| "Cache invalidated: …" | Authority changed after the dry-run. Let the complete evaluator run, or rerun the dry-run and actual command without intervening changes. |
+| Need ambient diagnostics | Run `bootstrap.mjs status --full`; default status is intentionally bounded. |
 | "This work is done in EXPLORE" | Close intentionally with `bootstrap.mjs close --informational` instead of forcing empty EXECUTE/REFLECT steps |
 
 ## Quick Status Check (Manual)

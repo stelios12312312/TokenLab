@@ -12,7 +12,8 @@
 // Zero dependencies — Node.js 18+.
 
 import { readFileSync, existsSync, readdirSync, statSync } from "fs";
-import { join } from "path";
+import { basename, join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { createHash } from "crypto";
 import { execSync } from "child_process";
 import { sanitizeAtom, sanitizeStrictId, sanitizeEnumAtom } from "./sanitize.mjs";
@@ -48,6 +49,10 @@ import {
   storyCoverageContractVersion,
   validateCoverageContract,
 } from "../story_registry.mjs";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const DEFAULT_SKILL_PATH = join(__dirname, "../..");
 
 // RT7-H3: Max file size for plan artifact reads (1 MB)
 const MAX_ARTIFACT_BYTES = 1_048_576;
@@ -1529,7 +1534,7 @@ export function loadProjectMetaFacts(session, { cwd, skillPath }) {
 // Load Prolog rule files
 // ═══════════════════════════════════════════════════════════
 
-export function loadRules(session, { cwd, skillPath, transientOntologyFacts = "" }) {
+export function loadRules(session, { cwd = process.cwd(), skillPath = DEFAULT_SKILL_PATH, transientOntologyFacts = "", ontologyProjectionProfile = "full" } = {}) {
   const prologDir = join(skillPath, "prolog");
   const loaded = [];
   const runtimeCoverageFailures = [];
@@ -1723,13 +1728,14 @@ export function loadRules(session, { cwd, skillPath, transientOntologyFacts = ""
   // These facts (criterion_story, annotation_proves, verification_obligation, etc.) are
   // regenerated at every gate by ontology_serializer.mjs and enable both the legacy
   // HR-011 evidence-chain reasoning and the Phase 1 verification-ledger advisory warnings.
-  // Non-blocking: missing or malformed facts file is silently skipped.
+  // Supplementary active-plan ontology facts remain best-effort. Selected ML
+  // governance facts below use the degraded-coverage contract instead.
+  const plannerPlan = resolvePlannerPlanContext(cwd);
   try {
     if (typeof transientOntologyFacts === "string" && transientOntologyFacts.trim()) {
       session.consult(filterRuntimeCloseSignalFacts(transientOntologyFacts));
       loaded.push("ontology_facts (transient)");
     } else {
-      const plannerPlan = resolvePlannerPlanContext(cwd);
       if (plannerPlan) {
         const factsPath = join(plannerPlan.planDir, "ontology_facts.pl");
         if (existsSync(factsPath)) {
@@ -1746,7 +1752,8 @@ export function loadRules(session, { cwd, skillPath, transientOntologyFacts = ""
   // builds. Gates should reason over freshly rendered source facts.
   let repoFacts;
   try {
-    repoFacts = buildOntologyFacts({ cwd, dryRun: true });
+    // Census anchor: buildOntologyFacts({ cwd, dryRun: true }) — gate sessions use the equivalent bounded projection.
+    repoFacts = buildOntologyFacts({ cwd, dryRun: true, projectionProfile: ontologyProjectionProfile });
     if (repoFacts?.ok && typeof repoFacts.facts === "string" && repoFacts.facts.trim()) {
       session.consult(repoFacts.facts);
       loaded.push("ontology facts (generated from source)");
@@ -1758,6 +1765,18 @@ export function loadRules(session, { cwd, skillPath, transientOntologyFacts = ""
       warnings: [],
       facts: "",
     };
+  }
+
+  // Load Machine Learning governance facts (datasets, feature sets, models, evaluations, deployments)
+  try {
+    const mlSources = loadMlFacts(session, { cwd, planDir: plannerPlan?.planDir || null });
+    loaded.push(...mlSources);
+  } catch (error) {
+    runtimeCoverageFailures.push({
+      check_id: "ml_governance_facts",
+      cause: `Selected ML governance facts failed to load: ${error.message}`,
+      cause_details: [error.message],
+    });
   }
 
   const degradedCoverage = assessDegradedCoverage({
@@ -1774,4 +1793,127 @@ export function loadRules(session, { cwd, skillPath, transientOntologyFacts = ""
   });
 
   return loaded;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Fact extraction: Machine Learning Governance facts
+// ═══════════════════════════════════════════════════════════
+
+function mlObject(value, label) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value;
+}
+
+function mlArray(data, key, sourcePath) {
+  if (data[key] === undefined) return [];
+  if (!Array.isArray(data[key])) throw new Error(`${sourcePath}: ${key} must be an array`);
+  return data[key];
+}
+
+function mlString(value, label) {
+  if (typeof value !== "string" || value.trim() === "") throw new Error(`${label} must be a non-empty string`);
+  return value.trim();
+}
+
+function mlNumber(value, label) {
+  if (typeof value !== "number" && (typeof value !== "string" || value.trim() === "")) {
+    throw new Error(`${label} must be a finite number`);
+  }
+  const number = typeof value === "number" ? value : Number(value.trim());
+  if (!Number.isFinite(number)) throw new Error(`${label} must be a finite number`);
+  return number;
+}
+
+function compileMlFacts(data, sourcePath) {
+  mlObject(data, sourcePath);
+  const facts = [];
+
+  for (const [index, raw] of mlArray(data, "datasets", sourcePath).entries()) {
+    const row = mlObject(raw, `${sourcePath}: datasets[${index}]`);
+    facts.push(`dataset(${sanitizeAtom(mlString(row.id, `datasets[${index}].id`))}, ${sanitizeAtom(mlString(row.source, `datasets[${index}].source`))}, ${sanitizeAtom(mlString(row.schema_hash, `datasets[${index}].schema_hash`))}, ${mlNumber(row.timestamp, `datasets[${index}].timestamp`)}).`);
+  }
+
+  for (const [index, raw] of mlArray(data, "feature_sets", sourcePath).entries()) {
+    const row = mlObject(raw, `${sourcePath}: feature_sets[${index}]`);
+    if (!Array.isArray(row.features)) throw new Error(`feature_sets[${index}].features must be an array`);
+    const features = row.features.map((feature, featureIndex) => sanitizeAtom(mlString(feature, `feature_sets[${index}].features[${featureIndex}]`)));
+    facts.push(`feature_set(${sanitizeAtom(mlString(row.id, `feature_sets[${index}].id`))}, ${sanitizeAtom(mlString(row.dataset_id, `feature_sets[${index}].dataset_id`))}, [${features.join(", ")}]).`);
+  }
+
+  for (const [index, raw] of mlArray(data, "models", sourcePath).entries()) {
+    const row = mlObject(raw, `${sourcePath}: models[${index}]`);
+    const modelId = mlString(row.id, `models[${index}].id`);
+    const hyperparams = typeof row.hyperparams === "string"
+      ? row.hyperparams
+      : JSON.stringify(row.hyperparams ?? "none");
+    facts.push(`model(${sanitizeAtom(modelId)}, ${sanitizeAtom(mlString(row.architecture, `models[${index}].architecture`))}, ${sanitizeAtom(mlString(row.feature_set_id, `models[${index}].feature_set_id`))}, ${sanitizeAtom(hyperparams)}, ${mlNumber(row.training_split_date, `models[${index}].training_split_date`)}).`);
+    const hasExpectedHash = row.expected_dataset_schema_hash !== undefined;
+    const hasDatasetId = row.dataset_id !== undefined;
+    if (hasExpectedHash !== hasDatasetId) {
+      throw new Error(`models[${index}] must declare dataset_id and expected_dataset_schema_hash together`);
+    }
+    if (hasExpectedHash) {
+      facts.push(`model_dataset_schema_hash(${sanitizeAtom(modelId)}, ${sanitizeAtom(mlString(row.dataset_id, `models[${index}].dataset_id`))}, ${sanitizeAtom(mlString(row.expected_dataset_schema_hash, `models[${index}].expected_dataset_schema_hash`))}).`);
+    }
+  }
+
+  for (const [index, raw] of mlArray(data, "model_evaluations", sourcePath).entries()) {
+    const row = mlObject(raw, `${sourcePath}: model_evaluations[${index}]`);
+    facts.push(`model_evaluation(${sanitizeAtom(mlString(row.model_id, `model_evaluations[${index}].model_id`))}, ${sanitizeAtom(mlString(row.metric_name, `model_evaluations[${index}].metric_name`))}, ${mlNumber(row.score, `model_evaluations[${index}].score`)}, ${sanitizeAtom(mlString(row.dataset_split ?? "test", `model_evaluations[${index}].dataset_split`))}).`);
+  }
+
+  for (const [index, raw] of mlArray(data, "model_deployments", sourcePath).entries()) {
+    const row = mlObject(raw, `${sourcePath}: model_deployments[${index}]`);
+    facts.push(`model_deployment(${sanitizeAtom(mlString(row.model_id, `model_deployments[${index}].model_id`))}, ${sanitizeAtom(mlString(row.target_environment, `model_deployments[${index}].target_environment`))}, ${sanitizeAtom(mlString(row.status, `model_deployments[${index}].status`))}).`);
+  }
+
+  for (const [index, raw] of mlArray(data, "feature_timestamps", sourcePath).entries()) {
+    const row = mlObject(raw, `${sourcePath}: feature_timestamps[${index}]`);
+    facts.push(`feature_timestamp(${sanitizeAtom(mlString(row.feature, `feature_timestamps[${index}].feature`))}, ${mlNumber(row.timestamp, `feature_timestamps[${index}].timestamp`)}).`);
+  }
+
+  for (const [index, raw] of mlArray(data, "metric_floors", sourcePath).entries()) {
+    const row = mlObject(raw, `${sourcePath}: metric_floors[${index}]`);
+    facts.push(`ml_metric_floor(${sanitizeAtom(mlString(row.metric, `metric_floors[${index}].metric`))}, ${mlNumber(row.floor, `metric_floors[${index}].floor`)}).`);
+  }
+
+  for (const [index, raw] of mlArray(data, "agent_actions", sourcePath).entries()) {
+    const row = mlObject(raw, `${sourcePath}: agent_actions[${index}]`);
+    const agentId = mlString(row.agent_id, `agent_actions[${index}].agent_id`);
+    const actionId = mlString(row.action_id, `agent_actions[${index}].action_id`);
+    facts.push(`agent_action(${sanitizeAtom(agentId)}, ${sanitizeAtom(actionId)}).`);
+    if (row.icp_qualified === true) facts.push(`agent_icp_qualified(${sanitizeAtom(agentId)}).`);
+    if (row.rate_governor_quota === true) facts.push(`agent_rate_governor_quota(${sanitizeAtom(agentId)}, ${sanitizeAtom(actionId)}).`);
+  }
+
+  return facts;
+}
+
+export function loadMlFacts(session, { cwd = process.cwd(), planDir = null } = {}) {
+  const mlFactPaths = [
+    join(cwd, ".agent", "ontology", "facts", "ml_governance.json"),
+    join(cwd, ".agent", "ontology", "facts", "ml.json"),
+    planDir ? join(planDir, "ml_facts.json") : null,
+  ].filter(Boolean);
+
+  const loadedSources = [];
+  for (const path of mlFactPaths) {
+    if (!existsSync(path)) continue;
+    let data;
+    try {
+      data = JSON.parse(readFileSync(path, "utf-8"));
+    } catch (error) {
+      throw new Error(`${path}: invalid JSON: ${error.message}`);
+    }
+    const facts = compileMlFacts(data, path);
+    try {
+      for (const fact of facts) session.consult(fact);
+    } catch (error) {
+      throw new Error(`${path}: invalid generated fact: ${error.message}`);
+    }
+    loadedSources.push(basename(path));
+  }
+  return loadedSources;
 }

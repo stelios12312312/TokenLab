@@ -16,6 +16,21 @@ import { buildRepoStateStamp } from "../../scripts/lib/repo_state_stamp.mjs";
 import { findingsFromIveReport } from "../../scripts/lib/deterministic_findings.mjs";
 import { plannerSubprocessEnv } from "../helpers/env.mjs";
 import { COVERAGE_TARGETS } from "../../scripts/coverage_baseline.mjs";
+import {
+  admitConformanceWorkload,
+  buildConformanceIdentityFromRepository,
+  conformanceStoragePaths,
+  createConformanceReceipt,
+  createProgressEmitter,
+  findReusableConformanceEvidence,
+  forecastSelectedWorkload,
+  loadConformanceSessionConfig,
+  pruneConformanceEvidence,
+  readConformanceDurationHistory,
+  resolveGitDir,
+  writeConformanceCheckpoint,
+  writeConformanceReceipt,
+} from "../../scripts/lib/conformance_session.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const TEST_DIR = dirname(__filename);
@@ -27,6 +42,7 @@ const REPO_ROOT = resolve(SKILL_DIR, "..", "..", "..");
 const SCHEMA_VERSION = 1;
 const STDOUT_EXCERPT_BYTES = 500;
 const DIRECT_OUTPUT_LIMIT_BYTES = 1024 * 1024;
+const SESSION_OUTPUT_LIMIT_BYTES = 64 * 1024 * 1024;
 const DEFAULT_TIMEOUT_MS = 120000;
 const NODE = process.execPath;
 const REPORT_ROOT = join(REPO_ROOT, "reports", "ive", "test_runs");
@@ -254,6 +270,8 @@ const DEFAULT_SUITES = [
       skillRel("scripts/lib/determinism.mjs"),
       skillRel("scripts/lib/plan_metrics.mjs"),
       skillRel("scripts/lib/gate_verdict.mjs"),
+      skillRel("scripts/lib/gate_evaluation_session.mjs"),
+      skillRel("scripts/lib/plan_metrics.mjs"),
       skillRel("scripts/lib/gate_input_snapshot.mjs"),
       skillRel("scripts/lib/plan_refresh.mjs"),
       skillRel("scripts/lib/transition_journal.mjs"),
@@ -296,6 +314,33 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/scripts\/rule_engine\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/prolog\//,
       /^reports\/user_story_audit\/story_registry\.json$/,
+    ],
+  }),
+  suite({
+    id: "ml-ontology-invariants",
+    category: "ontology",
+    label: "Fail-closed bounded Prolog and ML lifecycle ontology contract",
+    command: ["node", join(TESTS_ROOT, "test_ml_ontology_invariants.mjs")],
+    phases: ["ontology", "planner-core", "state-machine", "migration"],
+    surfaces: ["ontology", "planner_core", "state_machine", "test_governance", "migration"],
+    fixtures: [
+      skillRel("tests/test_ml_ontology_invariants.mjs"),
+      skillRel("scripts/lib/prolog.mjs"),
+      skillRel("scripts/lib/clause_index.mjs"),
+      skillRel("scripts/lib/fact_loader.mjs"),
+      skillRel("scripts/lib/plan_utils.mjs"),
+      skillRel("scripts/lib/semantic_substrate.mjs"),
+      skillRel("scripts/rule_engine.mjs"),
+      skillRel("scripts/transition.mjs"),
+      skillRel("prolog/invariants.pl"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_ml_ontology_invariants\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(prolog|clause_index|fact_loader|plan_utils|semantic_substrate)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(rule_engine|transition)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/prolog\/invariants\.pl$/,
+      /^\.agent\/skills\/iterative-planner\/(MIGRATION|SKILL)\.md$/,
+      /^\.agent\/skills\/iterative-planner\/references\/rule-engine-guide\.md$/,
     ],
   }),
   suite({
@@ -368,6 +413,27 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
+    id: "ontology-adoption",
+    category: "ontology",
+    label: "Project ontology provisioning, canonical IVE graph, adaptive assurance, and digest-safe runtime cache",
+    command: ["node", join(TESTS_ROOT, "test_ontology_adoption.mjs")],
+    phases: ["ontology", "migration-parity", "visualizer", "model-assurance", "performance"],
+    surfaces: ["ontology", "migration", "visualizer", "planner_core", "configuration", "performance"],
+    fixtures: [
+      skillRel("tests/test_ontology_adoption.mjs"),
+      skillRel("scripts/lib/project_ontology_provisioning.mjs"),
+      skillRel("scripts/lib/model_assurance.mjs"),
+      skillRel("scripts/lib/ontology_runtime.mjs"),
+      skillRel("config/model_assurance.json"),
+      skillRel("config/ontology_performance_slo.json"),
+      "apps/ive-visualizer/scripts/canonical-ontology-adapter.mjs",
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/(tests\/test_ontology_adoption|scripts\/(model_assurance|ontology_benchmark)|scripts\/lib\/(project_ontology_provisioning|model_assurance|ontology_runtime)|config\/(model_assurance|ontology_performance_slo))\.mjs$|^\.agent\/skills\/iterative-planner\/config\/(model_assurance|ontology_performance_slo)\.json$/,
+      /^apps\/ive-visualizer\/scripts\/canonical-ontology-adapter\.mjs$/,
+    ],
+  }),
+  suite({
     id: "truth-surface-convergence",
     category: "structured_plan",
     label: "Freshness-aware Program, story, issue, plan, branch, PR, audit, and close-gate truth convergence",
@@ -434,7 +500,7 @@ const DEFAULT_SUITES = [
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_transition_gate_flows\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/(bootstrap|transition|verify_gate)\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(determinism|plan_refresh|gate_input_snapshot|fact_loader|guidance_reminder|gate_verdict|checklist_runner|degraded_coverage|bootstrap_status_context|semantic_substrate|semantic_engine|rule_commands)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(determinism|plan_refresh|plan_metrics|gate_evaluation_session|gate_input_snapshot|fact_loader|guidance_reminder|gate_verdict|checklist_runner|degraded_coverage|bootstrap_status_context|semantic_substrate|semantic_engine|rule_commands)\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/prolog\/(invariants|transitions)\.pl$/,
       /^\.agent\/skills\/iterative-planner\/config\/(gates|failure-codes|degraded_coverage_census)\.json$/,
       /^\.agent\/skills\/iterative-planner\/analyzers\/pattern-grep\.yaml$/,
@@ -459,6 +525,9 @@ const DEFAULT_SUITES = [
       skillRel("scripts/lib/checklist_runner.mjs"),
       skillRel("scripts/lib/fact_loader.mjs"),
       skillRel("scripts/lib/gate_verdict.mjs"),
+      skillRel("scripts/lib/gate_evaluation_session.mjs"),
+      skillRel("scripts/lib/plan_metrics.mjs"),
+      skillRel("scripts/lib/planner_policy.mjs"),
       skillRel("scripts/lib/gate_input_snapshot.mjs"),
       skillRel("scripts/lib/guidance_packet.mjs"),
       skillRel("scripts/lib/plan_utils.mjs"),
@@ -483,7 +552,7 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/tests\/test_transition_dry_run_equivalence\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/(transition|verify_gate|audit_runner|rule_engine)\.mjs$/,
-      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(autonomous_driver|checklist_runner|fact_loader|gate_verdict|guidance_packet|plan_utils|repair_packet|rule_commands)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(autonomous_driver|checklist_runner|fact_loader|gate_evaluation_session|gate_verdict|guidance_packet|plan_metrics|planner_policy|plan_utils|repair_packet|rule_commands)\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/(mcp_server\.mjs|SKILL\.md|MIGRATION\.md)$/,
       /^\.agent\/skills\/iterative-planner\/config\/gates\.json$/,
       /^\.agent\/skills\/iterative-planner\/config\/\.checklist_integrity$/,
@@ -1637,12 +1706,19 @@ const DEFAULT_SUITES = [
     fixtures: [
       skillRel("tests/test_contract_preview.mjs"),
       skillRel("scripts/lib/contract_preview.mjs"),
+      skillRel("scripts/lib/lifecycle_contract.mjs"),
       skillRel("scripts/lib/determinism.mjs"),
+      skillRel("scripts/gate_prepare.mjs"),
+      skillRel("scripts/planner_latency_benchmark.mjs"),
+      skillRel("config/gates.json"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_contract_preview\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/contract_preview\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/lifecycle_contract\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/determinism\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/(gate_prepare|planner_latency_benchmark)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/gates\.json$/,
     ],
   }),
   suite({
@@ -2451,6 +2527,10 @@ const DEFAULT_SUITES = [
     fixtures: [
       skillRel("tests/test_preplanning_scaffolding.mjs"),
       skillRel("scripts/lib/preplanning_scaffolding.mjs"),
+      skillRel("scripts/lib/guidance_packet.mjs"),
+      skillRel("scripts/lib/scope_contract.mjs"),
+      skillRel("scripts/lib/planner_policy.mjs"),
+      skillRel("scripts/bootstrap.mjs"),
       skillRel("scripts/transition.mjs"),
       skillRel("scripts/lib/plan_utils.mjs"),
       skillRel("scripts/lib/plan_refresh.mjs"),
@@ -2461,6 +2541,8 @@ const DEFAULT_SUITES = [
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_preplanning_scaffolding\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/preplanning_scaffolding\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(guidance_packet|scope_contract|planner_policy)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/bootstrap\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/transition\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/plan_utils\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/plan_refresh\.mjs$/,
@@ -3005,6 +3087,23 @@ const DEFAULT_SUITES = [
     ],
   }),
   suite({
+    id: "upgrade-disk-preflight",
+    category: "migration",
+    label: "Managed upgrade disk space preflight and exit cleanup verification",
+    command: ["node", join(TESTS_ROOT, "test_upgrade_disk_preflight.mjs")],
+    timeoutMs: 60000,
+    phases: ["migration", "resource-lifecycle", "planner-core"],
+    surfaces: ["migration", "resource_lifecycle", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_upgrade_disk_preflight.mjs"),
+      skillRel("scripts/lib/managed_upgrade_transaction.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_upgrade_disk_preflight\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/managed_upgrade_transaction\.mjs$/,
+    ],
+  }),
+  suite({
     id: "canonical-release-handoff",
     category: "release",
     label: "IVE canonical migration release handoff",
@@ -3425,10 +3524,16 @@ const DEFAULT_SUITES = [
     fixtures: [
       skillRel("tests/test_ive_conformance_runner.mjs"),
       skillRel("tests/ive/run.mjs"),
+      skillRel("scripts/lib/conformance_session.mjs"),
+      skillRel("scripts/lib/release_artifact_policy.mjs"),
+      skillRel("config/conformance_session.json"),
+      skillRel("config/release_artifact_policy.json"),
     ],
     changedFilePatterns: [
       /^\.agent\/skills\/iterative-planner\/tests\/test_ive_conformance_runner\.mjs$/,
       /^\.agent\/skills\/iterative-planner\/tests\/ive\/run\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/(conformance_session|release_artifact_policy)\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/config\/(conformance_session|release_artifact_policy)\.json$/,
     ],
   }),
   suite({
@@ -3438,8 +3543,8 @@ const DEFAULT_SUITES = [
     command: ["node", join(TESTS_ROOT, "test_planner_shell_wrappers.mjs")],
     phases: ["stage1", "ci-enforcement", "n03"],
     surfaces: ["git_hooks", "planner_runtime", "conformance"],
-    fixtures: [skillRel("tests/test_planner_shell_wrappers.mjs"), skillRel("scripts/pre_commit_policy.mjs"), skillRel("scripts/hooks/pre-commit"), skillRel("scripts/hooks/pre-push"), skillRel("scripts/pre-commit-hook.sh"), skillRel("SKILL.md")],
-    changedFilePatterns: [/^\.agent\/skills\/iterative-planner\/tests\/test_planner_shell_wrappers\.mjs$/, /^\.agent\/skills\/iterative-planner\/scripts\/pre_commit_policy\.mjs$/, /^\.agent\/skills\/iterative-planner\/scripts\/hooks\/(pre-(commit|push)|pre_push_conformance\.mjs)$/, /^\.agent\/skills\/iterative-planner\/scripts\/pre-commit-hook\.sh$/, /^\.agent\/skills\/iterative-planner\/SKILL\.md$/],
+    fixtures: [skillRel("tests/test_planner_shell_wrappers.mjs"), skillRel("scripts/pre_commit_policy.mjs"), skillRel("scripts/hooks/pre-commit"), skillRel("scripts/hooks/pre-push"), skillRel("scripts/pre-commit-hook.sh"), ".agent/scripts/align-fleet.mjs", ".agent/scripts/upgrade-fleet.mjs", skillRel("SKILL.md")],
+    changedFilePatterns: [/^\.agent\/skills\/iterative-planner\/tests\/test_planner_shell_wrappers\.mjs$/, /^\.agent\/skills\/iterative-planner\/scripts\/pre_commit_policy\.mjs$/, /^\.agent\/skills\/iterative-planner\/scripts\/hooks\/(pre-(commit|push)|pre_push_conformance\.mjs)$/, /^\.agent\/skills\/iterative-planner\/scripts\/pre-commit-hook\.sh$/, /^\.agent\/scripts\/(align|upgrade)-fleet\.mjs$/, /^\.agent\/skills\/iterative-planner\/SKILL\.md$/],
   }),
   suite({
     id: "active-ontology-temporal-provenance",
@@ -3621,7 +3726,7 @@ const DEFAULT_SUITES = [
 function captureExcerpt(value) {
   const text = (value || "").toString();
   return text.length > STDOUT_EXCERPT_BYTES
-    ? `${text.slice(0, STDOUT_EXCERPT_BYTES)}...[truncated]`
+    ? `...[truncated]${text.slice(-STDOUT_EXCERPT_BYTES)}`
     : text;
 }
 
@@ -3919,7 +4024,7 @@ function runVisualizerBrowserProof(_command, {
 } = {}) {
   const appRoot = visualizerAppRoot(repoRoot);
   const playwrightBin = visualizerPlaywrightBin(repoRoot);
-  if (!existsSync(playwrightBin)) {
+  if (!existsSync(playwrightBin) && execute === runExitCodeCheck) {
     const reason = "playwright_dependency_missing";
     const guidance = "Run: npm ci --prefix apps/ive-visualizer && npm --prefix apps/ive-visualizer exec playwright -- install --with-deps chromium";
     return {
@@ -4082,6 +4187,119 @@ function executeSuite(item, options = {}) {
     raw_stdout: result.raw_stdout ?? result.stdout_excerpt ?? "",
     raw_stderr: result.raw_stderr ?? result.stderr_excerpt ?? "",
     injected: !!result.injected,
+  };
+}
+
+async function executeSuiteAsync(item, options = {}) {
+  const injectedTarget = process.env.IVE_RUNNER_INJECT_FAILURE || null;
+  const missingFixtures = missingRequiredFixtures(item, options.repoRoot || REPO_ROOT);
+  if (missingFixtures.length > 0 || (injectedTarget && injectedTarget === item.id) || typeof item.run === "function") {
+    return executeSuite(item, options);
+  }
+
+  const timeoutMs = Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+    ? options.timeoutMs
+    : Number.isFinite(item.timeout_ms) && item.timeout_ms > 0
+      ? item.timeout_ms
+      : DEFAULT_TIMEOUT_MS;
+  const envOverrides = item.accepts_plan_target === true && options.planTarget
+    ? { _PLANNER_PLAN_TARGET: options.planTarget }
+    : {};
+  const startedAt = new Date().toISOString();
+  const startedMs = Date.now();
+  let stdout = "";
+  let stderr = "";
+  let outputBytes = 0;
+  let outputExceeded = false;
+  let timedOut = false;
+  let spawnError = null;
+  let child;
+  try {
+    child = spawn(item.command[0], item.command.slice(1), {
+      cwd: options.repoRoot || REPO_ROOT,
+      env: commandEnv(envOverrides),
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+  } catch (error) {
+    spawnError = error;
+  }
+
+  if (!child) {
+    return {
+      id: item.id,
+      status: "FAIL",
+      status_reason: "suite_spawn_failed",
+      exit_code: 1,
+      timed_out: false,
+      duration_ms: Date.now() - startedMs,
+      started_at: startedAt,
+      finished_at: new Date().toISOString(),
+      stdout_excerpt: "",
+      stderr_excerpt: captureExcerpt(spawnError?.message || "suite spawn failed"),
+      raw_stdout: "",
+      raw_stderr: spawnError?.message || "suite spawn failed",
+    };
+  }
+
+  child.stdout?.setEncoding("utf-8");
+  child.stderr?.setEncoding("utf-8");
+  const append = (target, chunk) => {
+    outputBytes += Buffer.byteLength(chunk);
+    if (outputBytes > SESSION_OUTPUT_LIMIT_BYTES) {
+      outputExceeded = true;
+      child.kill("SIGTERM");
+      return;
+    }
+    if (target === "stdout") stdout += chunk;
+    else stderr += chunk;
+  };
+  child.stdout?.on("data", (chunk) => append("stdout", chunk));
+  child.stderr?.on("data", (chunk) => append("stderr", chunk));
+  const timer = setTimeout(() => {
+    timedOut = true;
+    child.kill("SIGTERM");
+  }, timeoutMs);
+  timer.unref?.();
+  const outcome = await new Promise((resolveOutcome) => {
+    let settled = false;
+    const settle = (value) => {
+      if (settled) return;
+      settled = true;
+      resolveOutcome(value);
+    };
+    child.once("error", (error) => {
+      spawnError = error;
+      settle({ code: null, signal: null });
+    });
+    child.once("close", (code, signal) => settle({ code, signal }));
+  });
+  clearTimeout(timer);
+  const status = timedOut ? "TIMEOUT" : outputExceeded || spawnError || outcome.code !== 0 || outcome.signal ? "FAIL" : "PASS";
+  const reason = timedOut
+    ? "suite_timeout"
+    : outputExceeded
+      ? "suite_output_limit"
+      : spawnError
+        ? "suite_spawn_failed"
+        : outcome.signal
+          ? `suite_signal_${outcome.signal}`
+          : outcome.code !== 0
+            ? "suite_nonzero_exit"
+            : "";
+  const failureDetail = [stderr, spawnError?.message || "", outputExceeded ? `suite output exceeded ${SESSION_OUTPUT_LIMIT_BYTES} bytes` : ""].filter(Boolean).join("\n");
+  return {
+    id: item.id,
+    status,
+    status_reason: reason,
+    exit_code: timedOut ? -1 : Number.isInteger(outcome.code) ? outcome.code : status === "PASS" ? 0 : 1,
+    timed_out: timedOut,
+    duration_ms: Date.now() - startedMs,
+    started_at: startedAt,
+    finished_at: new Date().toISOString(),
+    stdout_excerpt: captureExcerpt(stdout),
+    stderr_excerpt: captureExcerpt(status === "PASS" ? "" : failureDetail),
+    raw_stdout: stdout,
+    raw_stderr: status === "PASS" ? "" : failureDetail,
   };
 }
 
@@ -4282,7 +4500,7 @@ function validateProfileArgs(args) {
   if (args.only.length > 0) incompatible.push("--only");
   if (args.phase !== "all") incompatible.push("--phase");
   if (args.changedFiles.length > 0) incompatible.push("--changed-files");
-  if (!args.writeManifest) incompatible.push("--no-manifest");
+  if (!args.writeManifest && args.profile !== "pre-commit-core") incompatible.push("--no-manifest");
   if (incompatible.length > 0) {
     throw profileConfigError(
       `--profile cannot be combined with ${incompatible.join(", ")}`,
@@ -4380,6 +4598,8 @@ function normalizeResult(item, result) {
     raw_stdout: candidate.raw_stdout ?? candidate.stdout_excerpt ?? "",
     raw_stderr: rawStderr,
     injected: !!candidate.injected,
+    reused: candidate.reused === true,
+    reuse_source: candidate.reuse_source || null,
   };
 }
 
@@ -4726,6 +4946,8 @@ function writeRunArtifacts(report, {
       issues: report.issues,
       findings: report.findings,
       repo_state_stamp: report.repo_state_stamp || artifactRepoStateStamp,
+      ...(report.conformance_session ? { conformance_session: report.conformance_session } : {}),
+      ...(report.receipt_path ? { receipt_path: report.receipt_path } : {}),
       ...(report.profile ? { profile: report.profile } : {}),
     };
     writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
@@ -4750,6 +4972,8 @@ function runConformance({
   profile = null,
   planTarget = null,
   runStartedAt = null,
+  sessionMetadata = null,
+  preserveRawResults = false,
 } = {}) {
   const effectiveRunId = sanitizeRunId(runId);
   if (profile) {
@@ -4912,6 +5136,7 @@ function runConformance({
       ritual_score: scores.ritual_score.current,
     },
     issues,
+    ...(sessionMetadata ? { conformance_session: sessionMetadata } : {}),
     ...(profile ? {
       profile: {
         id: profile.id,
@@ -4947,7 +5172,7 @@ function runConformance({
   if (!Array.isArray(report.findings)) {
     report.findings = findingsFromIveReport(report);
   }
-  report.results = report.results.map(publicResult);
+  if (!preserveRawResults) report.results = report.results.map(publicResult);
   report.checks = report.results;
 
   const injectedTarget = process.env.IVE_RUNNER_INJECT_FAILURE || null;
@@ -5092,6 +5317,83 @@ async function prepareDirectConformanceResults({
   return precomputedResults;
 }
 
+function conformancePreflightReport({ runId, phase, changedFiles, forecast, admission, identity } = {}) {
+  const message = admission?.reason || forecast?.status || "conformance_session_preflight_failed";
+  return {
+    schema_version: SCHEMA_VERSION,
+    run_id: runId,
+    phase,
+    changed_files: splitChangedFiles(changedFiles),
+    run_started_at: new Date().toISOString(),
+    run_finished_at: new Date().toISOString(),
+    ok: false,
+    status: "FAIL",
+    overall_status: "fail",
+    command_count: 0,
+    passed_count: 0,
+    failed_required_count: 0,
+    warning_count: 0,
+    skipped_count: 0,
+    not_applicable_count: 0,
+    not_implemented_count: 0,
+    categories: [],
+    test_classes: [],
+    scores: buildQualityScores([]),
+    results: [],
+    checks: [],
+    summary: { total: 0, passed: 0, warned: 0, skipped: 0, not_applicable: 0, not_implemented: 0, failed: 1, functional_proof_tests: 0, quality_score_evaluations: 0, quality_score: null, iv_score: null, ritual_score: null },
+    issues: [{ code: "conformance_session_preflight_failed", suite_id: null, message }],
+    conformance_session: { identity_digest: identity?.identity_digest || null, context_digest: identity?.context_digest || null, forecast, admission },
+  };
+}
+
+function prepareConformanceSession({ suites, only, phase, changedFiles, repoRoot, baseSha, outerTimeoutMs, allowReuse, allowResume } = {}) {
+  const selectedSuites = selectSuites(suites, only, phase, changedFiles);
+  const config = loadConformanceSessionConfig({ repoRoot });
+  const identity = buildConformanceIdentityFromRepository({ repoRoot, suites: selectedSuites, catalogSuites: DEFAULT_SUITES, baseSha });
+  const gitDir = resolveGitDir(repoRoot);
+  const history = gitDir ? readConformanceDurationHistory({ gitDir }) : [];
+  const forecast = forecastSelectedWorkload({ selectedSuites, history, config });
+  const admission = admitConformanceWorkload({ forecast, outerTimeoutMs });
+  const evidence = gitDir && (allowReuse || allowResume)
+    ? findReusableConformanceEvidence({ gitDir, identity, allowReceipt: allowReuse, allowCheckpoint: allowResume })
+    : { source: null, path: null, reusable_results: [], rerun: identity.selected_suite_ids.map((id) => ({ id, reason: "reuse_disabled" })) };
+  return { selectedSuites, config, identity, gitDir, history, forecast, admission, evidence };
+}
+
+function forecastConformance({ suites = DEFAULT_SUITES, only = [], phase = "all", changedFiles = [], repoRoot = REPO_ROOT, baseSha = null, outerTimeoutMs = null } = {}) {
+  const session = prepareConformanceSession({ suites, only, phase, changedFiles, repoRoot, baseSha, outerTimeoutMs, allowReuse: false, allowResume: false });
+  return {
+    schema_version: SCHEMA_VERSION,
+    ok: session.admission.ok,
+    status: session.admission.ok ? "FORECAST" : "FAIL",
+    selected_suite_ids: session.selectedSuites.map((suite) => suite.id),
+    selected_count: session.selectedSuites.length,
+    identity_digest: session.identity.identity_digest,
+    context_digest: session.identity.context_digest,
+    forecast: session.forecast,
+    admission: session.admission,
+    issues: session.admission.ok ? [] : [{ code: "conformance_session_preflight_failed", message: session.admission.reason }],
+  };
+}
+
+function gitMetadataLocator(gitDir, absolutePath) {
+  if (!gitDir || !absolutePath) return null;
+  const rel = relative(resolve(gitDir), resolve(absolutePath)).replace(/\\/g, "/");
+  if (!rel || rel === ".." || rel.startsWith("../") || isAbsolute(rel)) return null;
+  return `git-metadata:${rel}`;
+}
+
+function portableRetention(retention, gitDir) {
+  return {
+    removed: (retention?.removed || []).map((entry) => ({
+      ...entry,
+      path: gitMetadataLocator(gitDir, entry?.path),
+    })),
+    retained: (retention?.retained || []).map((path) => gitMetadataLocator(gitDir, path)).filter(Boolean),
+  };
+}
+
 async function runConformanceLive({
   suites = DEFAULT_SUITES,
   only = [],
@@ -5106,93 +5408,145 @@ async function runConformanceLive({
   reportRoot = REPORT_ROOT,
   profile = null,
   planTarget = null,
-  invocationArgv = [],
+  baseSha = null,
+  outerTimeoutMs = null,
+  allowReuse = true,
+  allowResume = true,
+  progressEnabled = false,
 } = {}) {
   const effectiveRunId = sanitizeRunId(runId);
-  const directWavePlan = resolveDirectSuiteWaves(suites, repoRoot);
-  const rawArgs = Array.isArray(invocationArgv) ? invocationArgv : [];
-  let invocationIsExact = true;
-  for (let index = 0; index < rawArgs.length; index += 1) {
-    const arg = rawArgs[index];
-    if (arg === "--json") continue;
-    if (arg === "--run-id" || arg === "--plan-target") {
-      const value = rawArgs[index + 1];
-      if (!value || String(value).startsWith("--")) {
-        invocationIsExact = false;
-        break;
-      }
-      index += 1;
-      continue;
-    }
-    if (arg.startsWith("--run-id=") || arg.startsWith("--plan-target=")) {
-      if (!arg.slice(arg.indexOf("=") + 1)) invocationIsExact = false;
-      continue;
-    }
-    invocationIsExact = false;
-    break;
+  const session = prepareConformanceSession({ suites, only, phase, changedFiles, repoRoot, baseSha, outerTimeoutMs, allowReuse, allowResume });
+  if (!session.admission.ok) {
+    return conformancePreflightReport({ runId: effectiveRunId, phase, changedFiles, forecast: session.forecast, admission: session.admission, identity: session.identity });
   }
 
-  const eligible = isDirectInvocation(import.meta.url)
-    && invocationIsExact
-    && suites === DEFAULT_SUITES
-    && executeCommand === executeSuite
-    && only.length === 0
-    && phase === "all"
-    && splitChangedFiles(changedFiles).length === 0
-    && timeoutMs === DEFAULT_TIMEOUT_MS
-    && minimumTimeoutMs === null
-    && writeManifest === true
-    && profile === null
-    && !process.env.IVE_RUNNER_INJECT_FAILURE
-    && directWavePlan.healthy;
-
-  if (!eligible) {
-    return runConformance({
-      suites,
-      only,
-      phase,
-      changedFiles,
-      timeoutMs,
-      minimumTimeoutMs,
-      executeCommand,
-      writeManifest,
-      runId: effectiveRunId,
-      repoRoot,
-      reportRoot,
-      profile,
-      planTarget,
-    });
-  }
-
+  const progress = progressEnabled ? createProgressEmitter({ heartbeatIntervalMs: session.config.heartbeat_interval_ms }) : null;
+  const reusableById = new Map((session.evidence.reusable_results || []).map((row) => [row.id, row]));
+  const precomputedResults = new Map();
+  const completedResults = [];
+  const completedSuiteIds = new Set();
+  const selectedIdSet = new Set(session.selectedSuites.map((item) => item.id));
+  const directWavePlan = executeCommand === executeSuite ? resolveDirectSuiteWaves(DEFAULT_SUITES, repoRoot) : null;
+  const eligibleWaveByTrigger = new Map((directWavePlan?.healthy ? directWavePlan.waves : [])
+    .filter((wave) => wave.ids.every((id) => selectedIdSet.has(id) && !reusableById.has(id)))
+    .map((wave) => [wave.ids[0], wave]));
   const runStartedAt = new Date().toISOString();
-  const precomputedResults = await prepareDirectConformanceResults({
-    suites,
-    directWavePlan,
-    executeWave: executeDirectSuiteWave,
-    executeCommand,
-    timeoutMs,
-    minimumTimeoutMs,
-    repoRoot,
-    planTarget,
-    runStartedAt,
-  });
+  progress?.runStarted({ run_id: effectiveRunId, selected_count: session.selectedSuites.length, eta_ms: session.forecast.required_outer_timeout_ms, reused_count: reusableById.size });
 
-  return runConformance({
+  for (let index = 0; index < session.selectedSuites.length; index += 1) {
+    const item = session.selectedSuites[index];
+    if (completedSuiteIds.has(item.id)) continue;
+    const reused = reusableById.get(item.id);
+    if (reused) {
+      const result = {
+        id: item.id,
+        status: "PASS",
+        status_reason: `reused_exact_pass:${session.evidence.source}`,
+        exit_code: 0,
+        timed_out: false,
+        duration_ms: reused.duration_ms || 0,
+        started_at: runStartedAt,
+        finished_at: new Date().toISOString(),
+        stdout_excerpt: `Reused exact fresh PASS from ${session.evidence.path}`,
+        stderr_excerpt: "",
+        raw_stdout: `Reused exact fresh PASS from ${session.evidence.path}`,
+        raw_stderr: "",
+        reused: true,
+        reuse_source: session.evidence.source,
+      };
+      precomputedResults.set(item.id, result);
+      completedResults.push(result);
+      completedSuiteIds.add(item.id);
+      progress?.reused({ suite_id: item.id, index: index + 1, total: session.selectedSuites.length, status: "PASS", reason: session.evidence.source });
+      continue;
+    }
+
+    const wave = eligibleWaveByTrigger.get(item.id);
+    if (wave) {
+      const waveId = wave.ids.join("+");
+      progress?.waveStarted({ wave_id: waveId, total: wave.ids.length });
+      progress?.suiteStarted({ suite_id: waveId, index: index + 1, total: session.selectedSuites.length, eta_ms: wave.ids.reduce((sum, id) => sum + (session.forecast.suite_forecasts.find((row) => row.suite_id === id)?.forecast_ms || 0), 0) });
+      if (session.gitDir) {
+        writeConformanceCheckpoint({ gitDir: session.gitDir, identity: session.identity, run_id: effectiveRunId, status: "in_progress", active_suite_id: `wave:${waveId}`, completed_results: completedResults });
+      }
+      const waveResults = await executeDirectSuiteWave(wave.items, {
+        timeoutMs: Number.isFinite(minimumTimeoutMs) && minimumTimeoutMs > 0 ? Math.max(timeoutMs, minimumTimeoutMs) : timeoutMs,
+        repoRoot,
+        planTarget,
+      });
+      for (const waveItem of wave.items) {
+        const result = waveResults.get(waveItem.id) || { id: waveItem.id, status: "FAIL", exit_code: 70, timed_out: false, duration_ms: 0, status_reason: "missing_direct_wave_result" };
+        precomputedResults.set(waveItem.id, result);
+        completedSuiteIds.add(waveItem.id);
+        if (String(result?.status || "").toUpperCase() === "PASS") completedResults.push(result);
+        progress?.suiteFinished({ suite_id: waveItem.id, status: result?.status || "FAIL", duration_ms: result?.duration_ms || 0, completed_count: completedResults.length, remaining_eta_ms: Math.max(0, session.forecast.required_outer_timeout_ms - (Date.now() - Date.parse(runStartedAt))) });
+      }
+      if (session.gitDir) {
+        writeConformanceCheckpoint({ gitDir: session.gitDir, identity: session.identity, run_id: effectiveRunId, status: wave.items.every((entry) => String(waveResults.get(entry.id)?.status || "").toUpperCase() === "PASS") ? "in_progress" : "failed", active_suite_id: null, completed_results: completedResults });
+      }
+      progress?.waveFinished({ wave_id: waveId, status: wave.items.every((entry) => String(waveResults.get(entry.id)?.status || "").toUpperCase() === "PASS") ? "PASS" : "FAIL" });
+      continue;
+    }
+
+    const suiteForecast = session.forecast.suite_forecasts.find((row) => row.suite_id === item.id);
+    progress?.suiteStarted({ suite_id: item.id, index: index + 1, total: session.selectedSuites.length, eta_ms: suiteForecast?.forecast_ms || null });
+    if (session.gitDir) {
+      writeConformanceCheckpoint({
+        gitDir: session.gitDir,
+        identity: session.identity,
+        run_id: effectiveRunId,
+        status: "in_progress",
+        active_suite_id: item.id,
+        completed_results: completedResults,
+      });
+    }
+    const declaredTimeoutMs = Number.isFinite(item.timeout_ms) && item.timeout_ms > 0 ? item.timeout_ms : timeoutMs;
+    const effectiveTimeoutMs = Number.isFinite(minimumTimeoutMs) && minimumTimeoutMs > 0 ? Math.max(declaredTimeoutMs, minimumTimeoutMs) : declaredTimeoutMs;
+    const result = executeCommand === executeSuite
+      ? await executeSuiteAsync(item, { timeoutMs: effectiveTimeoutMs, repoRoot, planTarget })
+      : await Promise.resolve(executeCommand(item, { timeoutMs: effectiveTimeoutMs, repoRoot, planTarget }));
+    precomputedResults.set(item.id, result);
+    completedSuiteIds.add(item.id);
+    if (String(result?.status || "").toUpperCase() === "PASS") completedResults.push(result);
+    if (session.gitDir) {
+      writeConformanceCheckpoint({
+        gitDir: session.gitDir,
+        identity: session.identity,
+        run_id: effectiveRunId,
+        status: String(result?.status || "").toUpperCase() === "PASS" ? "in_progress" : "failed",
+        active_suite_id: null,
+        completed_results: completedResults,
+      });
+    }
+    progress?.suiteFinished({ suite_id: item.id, status: result?.status || "FAIL", duration_ms: result?.duration_ms || 0, completed_count: completedResults.length, remaining_eta_ms: Math.max(0, session.forecast.required_outer_timeout_ms - (Date.now() - Date.parse(runStartedAt))) });
+  }
+
+  const predictedReceiptPath = session.gitDir
+    ? gitMetadataLocator(session.gitDir, conformanceStoragePaths({ gitDir: session.gitDir, identity: session.identity }).receipt_path)
+    : null;
+  const sessionMetadata = {
+    schema_version: 1,
+    identity_digest: session.identity.identity_digest,
+    context_digest: session.identity.context_digest,
+    selected_suite_ids: session.identity.selected_suite_ids,
+    forecast: session.forecast,
+    admission: session.admission,
+    reuse: {
+      source: session.evidence.source,
+      source_path: session.evidence.path,
+      reused_suite_ids: [...reusableById.keys()],
+      rerun: session.evidence.rerun || [],
+    },
+    receipt_path: predictedReceiptPath,
+  };
+  const report = runConformance({
     suites,
     only,
     phase,
     changedFiles,
     timeoutMs,
     minimumTimeoutMs,
-    executeCommand: (item) => precomputedResults.get(item.id)
-      || {
-        id: item.id,
-        ...directSchedulingFailure(
-          runStartedAt,
-          `Missing prepared result for ${item.id}`,
-          "invalid_precomputed_result",
-        ),
-      },
+    executeCommand: (item) => precomputedResults.get(item.id) || executeCommand(item, { timeoutMs, repoRoot, planTarget }),
     writeManifest,
     runId: effectiveRunId,
     repoRoot,
@@ -5200,7 +5554,63 @@ async function runConformanceLive({
     profile,
     planTarget,
     runStartedAt,
+    sessionMetadata,
+    preserveRawResults: true,
   });
+
+  if (!session.gitDir) {
+    report.issues.push({ code: "conformance_git_metadata_unavailable", suite_id: null, message: "Cannot persist conformance receipt outside Git metadata" });
+    report.ok = false;
+    report.status = "FAIL";
+    report.overall_status = "fail";
+  } else {
+    try {
+      const receipt = createConformanceReceipt({
+        identity: session.identity,
+        status: report.status,
+        results: report.results,
+        freshness_ms: session.config.receipt_freshness_ms,
+        run_id: effectiveRunId,
+        manifest_path: report.manifest_path || null,
+      });
+      const receiptWrite = writeConformanceReceipt({ gitDir: session.gitDir, receipt });
+      report.receipt_path = gitMetadataLocator(session.gitDir, receiptWrite.path);
+      report.conformance_session.receipt_digest = receiptWrite.receipt_digest;
+      writeConformanceCheckpoint({
+        gitDir: session.gitDir,
+        identity: session.identity,
+        run_id: effectiveRunId,
+        status: report.status === "PASS" ? "completed" : "failed",
+        active_suite_id: null,
+        completed_results: completedResults,
+      });
+      report.conformance_session.retention = portableRetention(
+        pruneConformanceEvidence({ gitDir: session.gitDir, retentionCount: session.config.retention_count }),
+        session.gitDir,
+      );
+    } catch (error) {
+      report.issues.push({ code: "conformance_receipt_write_failed", suite_id: null, message: error.message });
+      report.ok = false;
+      report.status = "FAIL";
+      report.overall_status = "fail";
+    }
+  }
+
+  if (writeManifest) {
+    const finalArtifacts = writeRunArtifacts(report, { repoRoot, reportRoot });
+    if (!finalArtifacts.ok) {
+      report.issues.push({ code: "manifest_write_failed", suite_id: null, message: finalArtifacts.reason });
+      report.ok = false;
+      report.status = "FAIL";
+      report.overall_status = "fail";
+    }
+  }
+  if (!Array.isArray(report.findings)) report.findings = findingsFromIveReport(report);
+  report.results = report.results.map(publicResult);
+  report.checks = report.results;
+  progress?.runFinished({ run_id: effectiveRunId, status: report.status, duration_ms: Date.now() - Date.parse(runStartedAt), completed_count: completedResults.length, reused_count: reusableById.size });
+  progress?.stop();
+  return report;
 }
 
 function listSuites(suites = DEFAULT_SUITES) {
@@ -5228,6 +5638,7 @@ function parseArgs(argv = []) {
   const parsed = {
     json: false,
     list: false,
+    forecast: false,
     only: [],
     phase: "all",
     changedFiles: [],
@@ -5237,6 +5648,11 @@ function parseArgs(argv = []) {
     writeManifest: true,
     timeoutMs: DEFAULT_TIMEOUT_MS,
     minimumTimeoutMs: null,
+    outerTimeoutMs: null,
+    baseSha: null,
+    allowReuse: true,
+    allowResume: true,
+    progress: false,
     help: false,
   };
 
@@ -5244,6 +5660,7 @@ function parseArgs(argv = []) {
     const arg = argv[index];
     if (arg === "--json") parsed.json = true;
     else if (arg === "--list") parsed.list = true;
+    else if (arg === "--forecast") parsed.forecast = true;
     else if (arg === "--help" || arg === "-h") parsed.help = true;
     else if (arg === "--only") parsed.only.push(argv[++index] || "");
     else if (arg.startsWith("--only=")) parsed.only.push(arg.slice("--only=".length));
@@ -5258,6 +5675,13 @@ function parseArgs(argv = []) {
     else if (arg === "--plan-target") parsed.planTarget = argv[++index] || null;
     else if (arg.startsWith("--plan-target=")) parsed.planTarget = arg.slice("--plan-target=".length) || null;
     else if (arg === "--no-manifest") parsed.writeManifest = false;
+    else if (arg === "--no-reuse") parsed.allowReuse = false;
+    else if (arg === "--no-resume") parsed.allowResume = false;
+    else if (arg === "--progress") parsed.progress = true;
+    else if (arg === "--base-sha") parsed.baseSha = argv[++index] || null;
+    else if (arg.startsWith("--base-sha=")) parsed.baseSha = arg.slice("--base-sha=".length) || null;
+    else if (arg === "--outer-timeout-ms") parsed.outerTimeoutMs = Number.parseInt(argv[++index] || "", 10);
+    else if (arg.startsWith("--outer-timeout-ms=")) parsed.outerTimeoutMs = Number.parseInt(arg.slice("--outer-timeout-ms=".length), 10);
     else if (arg === "--timeout-ms") parsed.timeoutMs = Number.parseInt(argv[++index] || "", 10);
     else if (arg.startsWith("--timeout-ms=")) parsed.timeoutMs = Number.parseInt(arg.slice("--timeout-ms=".length), 10);
     else if (arg === "--minimum-timeout-ms") parsed.minimumTimeoutMs = Number.parseInt(argv[++index] || "", 10);
@@ -5269,6 +5693,9 @@ function parseArgs(argv = []) {
   }
   if (!Number.isFinite(parsed.minimumTimeoutMs) || parsed.minimumTimeoutMs <= 0) {
     parsed.minimumTimeoutMs = null;
+  }
+  if (!Number.isFinite(parsed.outerTimeoutMs) || parsed.outerTimeoutMs <= 0) {
+    parsed.outerTimeoutMs = null;
   }
 
   return parsed;
@@ -5282,6 +5709,8 @@ function usage() {
   node .agent/skills/iterative-planner/tests/ive/run.mjs --phase <phase-id> [--json]
   node .agent/skills/iterative-planner/tests/ive/run.mjs --changed-files <file-list> [--json]
   node .agent/skills/iterative-planner/tests/ive/run.mjs --run-id <stable-id> [--json]
+  node .agent/skills/iterative-planner/tests/ive/run.mjs --forecast [--outer-timeout-ms <milliseconds>] [--json]
+  node .agent/skills/iterative-planner/tests/ive/run.mjs --base-sha <sha> [--no-reuse] [--no-resume] [--progress] [--json]
   node .agent/skills/iterative-planner/tests/ive/run.mjs --minimum-timeout-ms <milliseconds> [--json]
   node .agent/skills/iterative-planner/tests/ive/run.mjs --profile <profile-id> [--json]
   node .agent/skills/iterative-planner/tests/ive/run.mjs --plan-target <plan-dir-name> [--json]
@@ -5294,6 +5723,14 @@ function printText(report) {
     for (const item of report.suites) {
       console.log(`  - ${item.id} [${item.category}; ${item.test_class}] ${item.command}`);
     }
+    return;
+  }
+  if (report.status === "FORECAST") {
+    console.log("IVE conformance forecast: READY");
+    console.log(`  suites: ${report.selected_count}`);
+    console.log(`  selected workload: ${report.forecast.selected_workload_ms}ms`);
+    console.log(`  required outer timeout: ${report.forecast.required_outer_timeout_ms}ms`);
+    console.log(`  history: ${report.forecast.degraded_history ? "degraded (configured fallback used)" : "p95"}`);
     return;
   }
   if (report.status === "FAIL" && !report.run_started_at) {
@@ -5322,6 +5759,7 @@ function printText(report) {
 
 async function main(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
+  const injectedFailureActive = Boolean(process.env.IVE_RUNNER_INJECT_FAILURE);
   if (args.help) {
     console.log(usage());
     return 0;
@@ -5342,7 +5780,16 @@ async function main(argv = process.argv.slice(2)) {
           selected_suites: undefined,
         } } : {}),
       }
-      : await runConformanceLive({
+      : args.forecast
+        ? forecastConformance({
+          suites,
+          only: args.only,
+          phase: args.phase,
+          changedFiles: args.changedFiles,
+          baseSha: args.baseSha,
+          outerTimeoutMs: args.outerTimeoutMs,
+        })
+        : await runConformanceLive({
         suites,
         only: args.only,
         phase: args.phase,
@@ -5353,7 +5800,11 @@ async function main(argv = process.argv.slice(2)) {
         writeManifest: args.writeManifest,
         profile,
         planTarget: args.planTarget,
-        invocationArgv: argv,
+        baseSha: args.baseSha,
+        outerTimeoutMs: args.outerTimeoutMs,
+        allowReuse: args.allowReuse && !injectedFailureActive,
+        allowResume: args.allowResume && !injectedFailureActive,
+        progressEnabled: args.progress,
       });
   } catch (error) {
     report = profileFailureReport(error, args.profile);
@@ -5373,12 +5824,14 @@ export {
   DEFAULT_SUITES,
   DIRECT_SUITE_WAVE_IDS,
   executeDirectSuiteWave,
+  forecastConformance,
   listSuites,
   parseArgs,
   prepareDirectConformanceResults,
   readReleaseProfiles,
   resolveDirectSuiteWaves,
   resolveReleaseProfile,
+  runConformanceLive,
   runVisualizerBrowserProof,
   runConformance,
   selectSuites,
