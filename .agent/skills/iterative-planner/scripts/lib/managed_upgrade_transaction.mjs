@@ -267,11 +267,24 @@ function treePlannerVersion(targetPath) {
 }
 
 export function readCommittedPlannerVersion(targetPath) {
+  const logicalVersionPath = ".agent/skills/iterative-planner/config/version.json";
   try {
-    return parsePlannerVersion(git(targetPath, [
-      "show",
-      "HEAD:.agent/skills/iterative-planner/config/version.json",
-    ])) || "unknown";
+    const target = gitRoot(targetPath);
+    const scope = managedCandidateScopeContract(target, [logicalVersionPath]);
+    const candidates = [...new Set(
+      scope.aliases
+        .filter((entry) => entry.logical_path === logicalVersionPath)
+        .map((entry) => entry.path),
+    )];
+    for (const candidate of candidates) {
+      try {
+        const version = parsePlannerVersion(git(target, ["show", `HEAD:${candidate}`]));
+        if (version) return version;
+      } catch {
+        // Try the next logical/physical alias.
+      }
+    }
+    return "unknown";
   } catch {
     return "unknown";
   }

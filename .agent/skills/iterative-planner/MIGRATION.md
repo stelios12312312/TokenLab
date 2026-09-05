@@ -18,9 +18,9 @@ receipts.
   registry, and knowledge. Existing project bytes are never source-copied or
   removed, whether clean or dirty. Engine transactions restore those exact
   bytes into the scratch proof tree and exclude them from the candidate commit;
-  absent setup scaffolds may still be seeded. Project semantic drift is handled
-  only by an explicit project setup/annotation workflow. `source_hygiene.json`
-  is seed-once.
+  project setup, including ontology provisioning and semantic repair, runs only
+  through an explicit setup/annotation workflow. A narrowly declared missing
+  registry scaffold may still be seeded. `source_hygiene.json` is seed-once.
 - `mixed_projection` covers `.agent/rules.md` and root instruction snapshots.
   Rules are reconstructed against current and historical canonical snapshots;
   project-only sections and committed section overrides move to deterministic,

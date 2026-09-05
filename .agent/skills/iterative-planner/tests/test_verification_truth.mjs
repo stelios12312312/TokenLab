@@ -1912,4 +1912,6 @@ check("ontology serializer fails closed on unreadable and oversized plan proof a
 });
 
 console.log(`test_verification_truth passed: ${passed} assertions`);
-if (failed > 0) process.exit(1);
+// Negative-control probes intentionally exercise helpers that set process.exitCode.
+// The test verdict, not a transient probe side effect, owns the process result.
+process.exitCode = failed > 0 ? 1 : 0;

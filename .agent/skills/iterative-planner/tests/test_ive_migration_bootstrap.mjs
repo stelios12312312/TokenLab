@@ -25,6 +25,7 @@ import { createHash } from "crypto";
 import {
   CONSUMER_PORTABLE_PROOF_SUITE_IDS,
   managedUpgradeProofEnvironment,
+  readCommittedPlannerVersion,
 } from "../scripts/lib/managed_upgrade_transaction.mjs";
 import {
   buildEmptyOntologyDocument,
@@ -1635,10 +1636,10 @@ function testManagedUpgradeTransactionContract() {
     writeFileSync(join(dirtyRoot, "planner.policy.yaml"), "uncommitted: true\n");
     const dirtyRootHead = runGit(dirtyRoot, ["rev-parse", "HEAD"]);
     const dirtyRootStatus = runGit(dirtyRoot, ["status", "--porcelain=v1", "--untracked-files=all"]);
-    const dirtyRootResult = runFixtureRaw([
+    const dirtyRootResult = debugRaw("transaction-dirty-root", runFixtureRaw([
       join(sourceRoot, ".agent/skills/iterative-planner/scripts/migrate.mjs"),
       "upgrade", dirtyRoot, "--source-ref", sourceCommit, "--commit",
-    ], sourceRoot);
+    ], sourceRoot));
     assert(dirtyRootResult.ok, "transactional upgrade admits dirty project-owned policy");
     assert(
       runGit(dirtyRoot, ["rev-parse", "HEAD"]) !== dirtyRootHead,
@@ -1703,8 +1704,10 @@ function testManagedUpgradeTransactionContract() {
     consumers.push(invalidProjectOntology);
     const invalidOntologyPath = ".agent/ontology/facts/verification.yaml";
     const invalidOntologyBytes = "version: 1\nverification:\n  test_runs:\n    - plan_id: ''\n";
+    rmSync(join(invalidProjectOntology, ".agent/ontology"), { recursive: true, force: true });
     mkdirSync(dirname(join(invalidProjectOntology, invalidOntologyPath)), { recursive: true });
     writeFileSync(join(invalidProjectOntology, invalidOntologyPath), invalidOntologyBytes);
+    commitAll(invalidProjectOntology, "fixture: incomplete invalid project ontology", { noVerify: true });
     const invalidOntologyStatus = runGit(
       invalidProjectOntology,
       ["status", "--porcelain=v1", "--untracked-files=all", "--", invalidOntologyPath],
@@ -1715,8 +1718,8 @@ function testManagedUpgradeTransactionContract() {
     ], sourceRoot));
     assert(
       invalidProjectOntologyResult.ok
-        && invalidProjectOntologyResult.stdout.includes("PRESERVED: existing project-owned ontology"),
-      "engine transaction does not validate existing consumer-owned ontology",
+        && invalidProjectOntologyResult.stdout.includes("DEFERRED: engine transaction does not provision, validate, or rewrite project-owned ontology"),
+      "engine transaction does not provision or validate incomplete consumer-owned ontology",
     );
     assert(
       readFileSync(join(invalidProjectOntology, invalidOntologyPath), "utf-8") === invalidOntologyBytes
@@ -1790,6 +1793,10 @@ function testManagedUpgradeTransactionContract() {
         && symlinkedAgentPaths.includes("consumer-agent/skills/iterative-planner/MIGRATION.md")
         && !symlinkedAgentPaths.includes(".agent/skills/iterative-planner/MIGRATION.md"),
       "agent-directory symlink candidate commits resolved target paths without replacing the symlink",
+    );
+    assert(
+      readCommittedPlannerVersion(symlinkedAgent) === "10.6.3",
+      "committed-version diagnostics resolve the physical target of an in-repository agent-directory symlink",
     );
 
     const dirtySymlinkRoot = makeSymlinkedRootConsumer("transaction-dirty-symlink-root");
@@ -2781,6 +2788,43 @@ function testMigrationErgonomicsF2F3F4() {
   }
 }
 
+function testExplicitProjectSetupOwnsProjectSemantics() {
+  const tmp = createProject("explicit-project-setup");
+  try {
+    runGit(tmp, ["init", "-q"], { quiet: true });
+    const preCommitPath = join(tmp, ".git", "hooks", "pre-commit");
+    writeFileSync(
+      preCommitPath,
+      "#!/bin/sh\n# --- iterative-planner ripple-check hook ---\nold managed body\n# --- iterative-planner ripple-check hook --- end\n",
+    );
+    rmSync(join(tmp, ".agent", "ontology"), { recursive: true, force: true });
+    const setup = debugRaw(
+      "explicit-project-setup",
+      runRaw([sourceMigrate, "setup", tmp], repoRoot, {
+        _PLANNER_PINNED_SOURCE_RUNNING: "1",
+        PLANNER_CANONICAL_SOURCE_REPO: repoRoot,
+      }),
+    );
+    assert(setup.ok, "explicit setup provisions project-owned semantic surfaces");
+    assert(
+      setup.stdout.includes("## Project Ontology")
+        && !setup.stdout.includes("ENGINE TRANSACTION PROJECTION COMPLETE"),
+      "explicit setup does not use the engine-transaction deferral boundary",
+    );
+    assert(
+      existsSync(join(tmp, ".agent", "ontology", "facts", "code.yaml"))
+        && existsSync(join(tmp, ".agent", "ontology", "facts.pl")),
+      "explicit setup creates the consumer ontology when requested",
+    );
+    assert(
+      !readFileSync(preCommitPath, "utf8").includes("old managed body"),
+      "explicit setup refreshes an existing managed pre-commit hook",
+    );
+  } finally {
+    cleanup(tmp);
+  }
+}
+
 function testDoctorSelfHealClassificationAndFailOpenWorkflows() {
   if (process.env._PLANNER_MANAGED_UPGRADE_PROOF_RUNNING === "1" && process.env._PLANNER_MANAGED_UPGRADE_TEST_MODE !== "1") {
     assert(true, "doctor self-heal classification suite (inherited by parent proof)");
@@ -2991,6 +3035,8 @@ if (process.env.MANAGED_UPGRADE_CONTRACT_ONLY === "1") {
   testDoctorSelfHealClassificationAndFailOpenWorkflows();
 } else if (process.env.MIGRATION_ERGONOMICS_ONLY === "1") {
   testMigrationErgonomicsF2F3F4();
+} else if (process.env.EXPLICIT_PROJECT_SETUP_ONLY === "1") {
+  testExplicitProjectSetupOwnsProjectSemantics();
 } else {
   testManagedPayloadOwnershipContract();
   testFrontDoorStatusAndDefaultAdopt();
@@ -3008,6 +3054,7 @@ if (process.env.MANAGED_UPGRADE_CONTRACT_ONLY === "1") {
   testIrreversibleActionBoundarySeededAsOneManagedContract();
   testChecklistIntegrityRegeneration();
   testMigrationErgonomicsF2F3F4();
+  testExplicitProjectSetupOwnsProjectSemantics();
   testDoctorSelfHealClassificationAndFailOpenWorkflows();
 }
 

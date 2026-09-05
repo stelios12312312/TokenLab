@@ -85,7 +85,6 @@ import {
   formatProjectOntologyProvisioning,
   formatProjectSetupCompletion,
   mergeProjectOntologyExitCode,
-  projectOntologyPresent,
   provisionProjectOntology,
 } from "./lib/project_ontology_provisioning.mjs";
 import { JOURNAL_REL_PATH, loadJournal } from "./lib/agent_journal.mjs";
@@ -2999,14 +2998,10 @@ function validateTransactionApplyCandidate(targetPath) {
   const missing = manifest.filter((entry) => !existsSync(entry.path));
   const stale = findVerificationDrift(manifest, targetPath);
   const setupIssues = collectRepairableSetupIssues(targetPath);
-  const blockingSetupIssues = setupIssues.filter((issue) => (
-    !existsSync(join(targetPath, issue.path))
-  ));
   const ritualContractReadiness = validateRitualContractReadiness(targetPath);
   const issues = [];
   if (missing.length > 0) issues.push(`${missing.length} managed file(s) missing`);
   if (stale.length > 0) issues.push(`${stale.length} managed file(s) stale`);
-  if (blockingSetupIssues.length > 0) issues.push(`${blockingSetupIssues.length} missing project scaffold(s)`);
   if (!verificationStatusIsPass(ritualContractReadiness.status, "execution")) {
     issues.push(`ritual contract readiness ${ritualContractReadiness.status} (${ritualContractReadiness.issue_count} issue(s))`);
   }
@@ -3414,18 +3409,10 @@ function runProjectSetup(targetPath, dryRun, log) {
   // 7. Provision the consumer's own canonical ontology. This invokes the
   // installed engine against targetPath; it never copies source-repo facts.
   log.push("\n## Project Ontology");
-  let ontologyOk = true;
-  if (
-    process.env._PLANNER_MANAGED_UPGRADE_INTERNAL === "1"
-    && projectOntologyPresent(targetPath)
-  ) {
-    log.push("  PRESERVED: existing project-owned ontology; engine transaction does not validate or rewrite consumer semantics");
-  } else {
-    const ontologyReceipt = provisionProjectOntology({ cwd: targetPath, dryRun });
-    log.push(...formatProjectOntologyProvisioning(ontologyReceipt));
-    process.exitCode = mergeProjectOntologyExitCode(process.exitCode, ontologyReceipt);
-    ontologyOk = ontologyReceipt.ok;
-  }
+  const ontologyReceipt = provisionProjectOntology({ cwd: targetPath, dryRun });
+  log.push(...formatProjectOntologyProvisioning(ontologyReceipt));
+  process.exitCode = mergeProjectOntologyExitCode(process.exitCode, ontologyReceipt);
+  const ontologyOk = ontologyReceipt.ok;
 
   // 8. Run ripple check
   log.push("\n## Ripple-Through Check");
@@ -3444,6 +3431,22 @@ function runProjectSetup(targetPath, dryRun, log) {
     log.push(`  SKIP: ripple_check.mjs not found`);
   }
   return ontologyOk;
+}
+
+function runEngineTransactionSetup(targetPath, dryRun, log) {
+  log.push("\n## Engine Transaction Boundary");
+  log.push("  DEFERRED: project-owned policy, audit config, knowledge, ontology, registry, and workflow repair require an explicit setup or annotation command");
+
+  log.push("\n## Root Instruction Files (CLAUDE.md / GEMINI.md / AGENTS.md)");
+  const rootInstructions = syncRootInstructionSurfaces(targetPath, { dryRun, log });
+  if (!verificationStatusIsPass(rootInstructions.status, "execution")) {
+    log.push("  ❌ Engine transaction could not render the managed root instruction projection");
+    return false;
+  }
+
+  log.push("\n## Project Ontology");
+  log.push("  DEFERRED: engine transaction does not provision, validate, or rewrite project-owned ontology");
+  return true;
 }
 
 function normalizeSetupProfile(value) {
@@ -3804,9 +3807,6 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
   const scaffoldSetupIssues = setupIssues.filter((issue) => (
     !existsSync(join(targetPath, issue.path))
   ));
-  const preservedProjectSetupIssues = setupIssues.filter((issue) => (
-    existsSync(join(targetPath, issue.path))
-  ));
   const advisoryIssues = findRootInstructionSyncIssues(targetPath);
 
   let syncSafetyEntries = staleEntries.filter((entry) => (
@@ -3901,15 +3901,15 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     };
   }
 
-  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && obsoleteTestCount === 0 && scaffoldSetupIssues.length === 0 && !seedKB) {
+  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && obsoleteTestCount === 0 && !seedKB) {
     console.log(`\n  ✅ Already at version ${CURRENT_VERSION} with all ${manifest.length} files present and up to date.`);
-    console.log(`  No project-level setup repair is required; upgrade is a read-only no-op.`);
+    console.log(`  Engine upgrade is a read-only no-op; project setup remains an explicit command.`);
     if (advisoryIssues.length > 0) {
       console.log(`  Advisory setup drift remains (${advisoryIssues.length} issue(s)); run setup explicitly to refresh root instructions or mirrors.`);
     }
-    if (unmarkedHostWorkflowCount > 0 || preservedProjectSetupIssues.length > 0) {
+    if (unmarkedHostWorkflowCount > 0 || setupIssues.length > 0) {
       console.log(
-        `  Project-owned setup drift remains (${unmarkedHostWorkflowCount + preservedProjectSetupIssues.length} item(s)); run setup or annotate explicitly if you want to change it.`,
+        `  Project-owned setup drift remains (${unmarkedHostWorkflowCount + setupIssues.length} item(s)); run setup or annotate explicitly if you want to change it.`,
       );
     }
     console.log();
@@ -3925,27 +3925,12 @@ function cmdUpgrade(targetPath, seedKB, dryRun) {
     };
   }
 
-  if (version === CURRENT_VERSION && missing.length === 0 && staleCount === 0 && obsoleteWorkflowCount === 0 && obsoleteTestCount === 0 && scaffoldSetupIssues.length > 0 && !seedKB) {
-    console.log(`\n  ⚠️  Already at version ${CURRENT_VERSION}, but ${scaffoldSetupIssues.length} missing project scaffold(s) require setup.`);
-    console.log(`  Planner-managed files are current; setup ${dryRun ? "would run" : "will run"} as the explicit repair step.\n`);
-    return {
-      noOp: false,
-      setupNeeded: true,
-      changed: false,
-      from: version,
-      to: CURRENT_VERSION,
-      reason: "setup-repair-required",
-      engineReplacements: [],
-      engineCandidatePaths: [],
-    };
-  }
-
   if (version === CURRENT_VERSION && missing.length > 0) {
     console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${missing.length} file(s) are missing. Repairing...`);
   }
 
   if (version === CURRENT_VERSION && scaffoldSetupIssues.length > 0) {
-    console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${scaffoldSetupIssues.length} project scaffold(s) are missing. Setup ${dryRun ? "would run" : "will run"} after file sync.`);
+    console.log(`\n  ⚠️  Version is ${CURRENT_VERSION} but ${scaffoldSetupIssues.length} project scaffold(s) are missing. Run setup explicitly after the engine sync if those project surfaces are required.`);
   }
 
   if (version === CURRENT_VERSION && obsoleteWorkflowCount > 0) {
@@ -4406,6 +4391,10 @@ function cmdVerify(targetPath) {
 function cmdSetup(targetPath, dryRun, options = {}) {
   const log = [];
   const profile = normalizeSetupProfile(options.profile || "full");
+  const engineTransactionSetup = (
+    profile !== "kernel"
+    && process.env._PLANNER_MANAGED_UPGRADE_INTERNAL === "1"
+  );
   if (!SETUP_PROFILES.has(profile)) {
     console.error(`ERROR: Unknown setup profile '${options.profile}'. Expected: full, kernel.`);
     process.exit(2);
@@ -4418,6 +4407,8 @@ function cmdSetup(targetPath, dryRun, options = {}) {
   let setupOk = true;
   if (profile === "kernel") {
     runKernelProjectSetup(targetPath, dryRun, log);
+  } else if (engineTransactionSetup) {
+    setupOk = runEngineTransactionSetup(targetPath, dryRun, log);
   } else {
     setupOk = runProjectSetup(targetPath, dryRun, log);
   }
@@ -4427,10 +4418,16 @@ function cmdSetup(targetPath, dryRun, options = {}) {
     console.log(line);
   }
 
-  console.log(formatProjectSetupCompletion(setupOk));
+  if (engineTransactionSetup) {
+    console.log(setupOk
+      ? "\n  ══ ENGINE TRANSACTION PROJECTION COMPLETE — PROJECT SETUP DEFERRED ══"
+      : "\n  ══ ENGINE TRANSACTION PROJECTION FAILED — PROJECT SETUP NOT RUN ══");
+  } else {
+    console.log(formatProjectSetupCompletion(setupOk));
+  }
   if (profile === "kernel") {
     console.log(`  Kernel profile installed. Use kernel-status to inspect journal counts and earned-layer activation.`);
-  } else {
+  } else if (!engineTransactionSetup) {
     console.log(`  If audit.config.json was just created, edit it to add your domain role(s): "assumptions_challenger", "quant", "tokenomics", "ux_ui", etc.`);
   }
   console.log();
