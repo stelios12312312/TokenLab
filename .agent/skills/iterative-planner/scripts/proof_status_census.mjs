@@ -176,7 +176,7 @@ export function scanProofStatusSource(source, {
 function walk(dir, output = []) {
   if (!existsSync(dir)) return output;
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    if (["node_modules", ".git", "tests", "fixtures"].includes(entry.name)) continue;
+    if (["node_modules", ".git", "dist", "build", "tests", "fixtures"].includes(entry.name)) continue;
     const path = join(dir, entry.name);
     if (entry.isDirectory()) walk(path, output);
     else if ([".mjs", ".js", ".cjs", ".pl"].includes(extname(entry.name))) output.push(path);
@@ -191,6 +191,7 @@ function repositorySourceFiles(root) {
       encoding: "utf8",
       maxBuffer: 32 * 1024 * 1024,
       stdio: ["ignore", "pipe", "ignore"],
+      env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
     })
       .split("\0")
       .filter(Boolean)
@@ -213,7 +214,7 @@ function loadRegistry(path) {
 function isProductionSource(root, file) {
   const path = relative(root, file).replace(/\\/g, "/");
   if (/^(?:plans|reports|docs|scratch)\//.test(path)) return false;
-  if (/(?:^|\/)(?:tests?|fixtures?)(?:\/|$)/.test(path)) return false;
+  if (/(?:^|\/)(?:tests?|fixtures?|dist|build)(?:\/|$)/.test(path)) return false;
   return true;
 }
 

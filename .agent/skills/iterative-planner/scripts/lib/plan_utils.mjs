@@ -2653,8 +2653,86 @@ export function extractIndexedFindingSections(content) {
     .filter(section => section.title && section.isIndexed && !section.isStructural);
 }
 
+/**
+ * Normalizes client slash commands and goal text:
+ * - Detects /boost anywhere in the text as a user slash command, sets hasBoost=true and explicitWorkflow="/boost"
+ * - Strips /boost, /goal, and /teamwork-preview from the goal text
+ * - Detects leading /workflow matching known workflows
+ * Returns { rawGoal, cleanGoal, explicitWorkflow, hasBoost }
+ */
+export function normalizeClientGoal(goalText, knownWorkflows = []) {
+  let text = String(goalText || "").trim();
+  let explicitWorkflow = null;
+  let hasBoost = false;
+
+  // 1. Strip leading client slash commands: /goal and /teamwork-preview (can be chained)
+  let strippedClient = true;
+  while (strippedClient) {
+    const prev = text;
+    text = text.replace(/^\/goal(?:\s+|$)/i, "").trim();
+    text = text.replace(/^\/teamwork-preview(?:\s+|$)/i, "").trim();
+    strippedClient = text !== prev;
+  }
+
+  // 2. Check if the remaining text starts with a slash command /workflow
+  const leadingMatch = text.match(/^\/([a-z0-9-]+)(?:\s+(.*)|$)/iu);
+  if (leadingMatch) {
+    const candidate = `/${leadingMatch[1]}`;
+    const remainder = (leadingMatch[2] || "").trim();
+    if (candidate.toLowerCase() === "/boost") {
+      hasBoost = true;
+      explicitWorkflow = "/boost";
+      text = remainder || "/boost";
+    } else if (knownWorkflows.includes(candidate)) {
+      explicitWorkflow = candidate;
+    }
+  } else {
+    // 3. Trailing /boost: only if preceded by whitespace and a task description (>=2 words),
+    // and NOT an action verb/preposition targeting /boost (e.g. "fix /boost", "document /boost")
+    const trailingBoostMatch = text.match(/^(.*)\s+\/boost$/i);
+    if (trailingBoostMatch) {
+      const preceding = trailingBoostMatch[1].trim();
+      const isTargetObject = /\b(?:fix|repair|patch|debug|document|test|audit|review|check|verify|investigate|explain|about|with|in|on|for|to|from|of|into|update|refactor)$/i.test(preceding);
+      const wordCount = preceding.split(/\s+/).filter(Boolean).length;
+      if (!isTargetObject && wordCount >= 2) {
+        hasBoost = true;
+        explicitWorkflow = "/boost";
+        text = preceding;
+      }
+    }
+  }
+
+  const cleanGoal = text || (hasBoost ? "/boost" : "");
+
+  return {
+    rawGoal: goalText,
+    cleanGoal,
+    explicitWorkflow,
+    hasBoost,
+  };
+}
+
 export function findingsUseFastTrack(content, env = process.env) {
   return env?._PLANNER_FAST_TRACK === "1" || /\[FAST_TRACK\]/.test(content || "");
+}
+
+export function planUsesFastTrack(planDir, env = process.env) {
+  if (env?._PLANNER_FAST_TRACK === "1") return true;
+  if (!planDir) return false;
+  try {
+    const rawState = readFileSync(join(planDir, "state.json"), "utf8");
+    const state = JSON.parse(rawState);
+    if (state?.workflow_id === "/boost") return true;
+  } catch {}
+  try {
+    const ledgerInfo = loadFindingsLedger(planDir);
+    if (ledgerInfo?.parsed && findingsLedgerUseFastTrack(ledgerInfo.parsed, env)) return true;
+  } catch {}
+  try {
+    const content = readFile(join(planDir, "findings.md"));
+    if (content && findingsUseFastTrack(content, env)) return true;
+  } catch {}
+  return false;
 }
 
 function collectLedgerContentLines(value, out = []) {
@@ -3116,9 +3194,9 @@ export function readFindingsMarkdown(planDir, opts = {}) {
   return readFile(join(planDir, "findings.md"));
 }
 
-function buildMarkdownFindingsSignals(content) {
+function buildMarkdownFindingsSignals(content, { fastTrack = false, isBoost = false } = {}) {
   if (!content) return null;
-  const depth = analyzeFindingsDepth(content);
+  const depth = analyzeFindingsDepth(content, { fastTrack: fastTrack || isBoost || findingsUseFastTrack(content) });
   return {
     source: "markdown",
     findingCount: countIndexedFindings(content),
@@ -3130,9 +3208,9 @@ function buildMarkdownFindingsSignals(content) {
   };
 }
 
-function buildLedgerFindingsSignals(ledger) {
+function buildLedgerFindingsSignals(ledger, { fastTrack = false, isBoost = false } = {}) {
   if (!ledger || typeof ledger !== "object") return null;
-  const depth = analyzeFindingsLedger(ledger);
+  const depth = analyzeFindingsLedger(ledger, { fastTrack: fastTrack || isBoost || findingsLedgerUseFastTrack(ledger) });
   return {
     source: "json",
     findingCount: depth.findingCount,
@@ -3170,9 +3248,10 @@ export function resolveFindingsTruth(planDir) {
   const findingsPath = join(planDir, "findings.md");
   const findingsContent = readFile(findingsPath);
   const ledgerInfo = loadFindingsLedger(planDir);
+  const isFastTrack = planUsesFastTrack(planDir);
 
-  const markdown = buildMarkdownFindingsSignals(findingsContent);
-  const json = ledgerInfo.parsed ? buildLedgerFindingsSignals(ledgerInfo.parsed) : null;
+  const markdown = buildMarkdownFindingsSignals(findingsContent, { fastTrack: isFastTrack });
+  const json = ledgerInfo.parsed ? buildLedgerFindingsSignals(ledgerInfo.parsed, { fastTrack: isFastTrack }) : null;
   const divergence = compareFindingsSignals(json, markdown);
   const expectedEmptyLedgerFallback = ledgerInfo.present && json && json.findingCount === 0 && markdown && markdown.findingCount > 0;
 

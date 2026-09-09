@@ -89,20 +89,59 @@ function walkFiles(root, { exclude = [] } = {}) {
 function gitState(projectRoot) {
   const head = runGit(projectRoot, ["rev-parse", "HEAD"]).trim() || "UNBORN";
   const index = sha256(runGit(projectRoot, ["diff", "--cached", "--binary", "--no-ext-diff"]));
-  const unstaged = sha256(runGit(projectRoot, ["diff", "--binary", "--no-ext-diff"]));
+  // Workspace fingerprints WITHOUT reading untracked file bodies into this
+  // process. Unstaged tracked files are few, so their content is hashed
+  // exactly by git. Untracked files (potentially thousands) get a
+  // path+size+mtime metadata fingerprint — the same fidelity `git status
+  // --porcelain -uall` provides.
+  const unstagedPaths = runGit(projectRoot, ["diff", "--name-only", "-z"])
+    .split("\0")
+    .filter(Boolean)
+    .sort();
+  const unstagedContentHash = hashPathsViaGit(projectRoot, unstagedPaths);
+  const unstaged = sha256(`content:${unstagedContentHash || "unavailable"}\0metadata:${fingerprintPaths(projectRoot, unstagedPaths)}`);
   const untrackedPaths = runGit(projectRoot, ["ls-files", "--others", "--exclude-standard", "-z"])
     .split("\0")
     .filter(Boolean)
     .filter((path) => path !== "state.json.lock" && !path.endsWith("/state.json.lock"))
     .sort();
-  const untrackedHash = createHash("sha256");
-  for (const path of untrackedPaths) {
-    untrackedHash.update(`${path}\0`);
-    try { untrackedHash.update(readFileSync(join(projectRoot, path))); } catch { untrackedHash.update("UNREADABLE"); }
-    untrackedHash.update("\0");
-  }
-  return { head, index, unstaged, untracked: untrackedHash.digest("hex") };
+  const untracked = sha256(fingerprintPaths(projectRoot, untrackedPaths));
+  return { head, index, unstaged, untracked };
 }
+
+function fingerprintPaths(projectRoot, paths) {
+  const hash = createHash("sha256");
+  for (const path of paths) {
+    hash.update(`${path}\0`);
+    try {
+      const stat = statSync(join(projectRoot, path));
+      hash.update(`S\0${stat.size}\0${stat.mtimeMs}\0`);
+    } catch {
+      hash.update("U\0");
+    }
+  }
+  return hash.digest("hex");
+}
+
+function hashPathsViaGit(projectRoot, paths) {
+  if (paths.length === 0) return sha256("");
+  const result = spawnSync("git", ["hash-object", "--stdin-paths"], {
+    cwd: projectRoot,
+    input: `${paths.join("\n")}\n`,
+    encoding: "utf-8",
+    timeout: 15_000,
+    env: {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_SYSTEM: "/dev/null",
+    },
+  });
+  if (result.status !== 0) return null;
+  return sha256(String(result.stdout || ""));
+}
+
+const bundleDigestCache = new Map();
 
 function bundleDigest(skillPath, roots) {
   const paths = [];
@@ -113,7 +152,22 @@ function bundleDigest(skillPath, roots) {
     if (stat.isFile()) paths.push(relative(skillPath, absolute));
     else paths.push(...walkFiles(absolute).map((path) => join(root, path)));
   }
-  return hashFiles(skillPath, paths);
+  // Metadata-only signature (path + size + mtime): re-hash contents only when
+  // a file actually changed instead of on every evaluation step.
+  const signature = paths.map((path) => {
+    try {
+      const stat = statSync(join(skillPath, path));
+      return `${path}${stat.size}${stat.mtimeMs}`;
+    } catch {
+      return `${path}MISSING`;
+    }
+  }).join("\n");
+  const cacheKey = `${skillPath}${roots.join("")}`;
+  const cached = bundleDigestCache.get(cacheKey);
+  if (cached && cached.signature === signature) return cached.digest;
+  const digest = hashFiles(skillPath, paths);
+  bundleDigestCache.set(cacheKey, { signature, digest });
+  return digest;
 }
 
 export function buildGateEvaluationIdentity({
@@ -250,26 +304,30 @@ function latestSessionPath(projectRoot, planId, gate) {
 }
 
 export function writeGateEvaluationSession({ projectRoot = process.cwd(), planId, gate, session } = {}) {
-  const latest = latestSessionPath(projectRoot, planId, gate);
-  if (!latest) return { written: false, reason: "git_dir_unavailable", path: null };
-  const dir = dirname(latest);
-  mkdirSync(dir, { recursive: true });
-  const stamp = safeSegment(session?.created_at || new Date().toISOString());
-  const immutable = join(dir, `${stamp}_${safeSegment(gate)}.json`);
-  const bytes = `${JSON.stringify(session, null, 2)}\n`;
-  for (const path of [immutable, latest]) {
-    const temp = `${path}.${process.pid}.tmp`;
-    writeFileSync(temp, bytes);
-    renameSync(temp, path);
+  try {
+    const latest = latestSessionPath(projectRoot, planId, gate);
+    if (!latest) return { written: false, reason: "git_dir_unavailable", path: null };
+    const dir = dirname(latest);
+    mkdirSync(dir, { recursive: true });
+    const stamp = safeSegment(session?.created_at || new Date().toISOString());
+    const immutable = join(dir, `${stamp}_${safeSegment(gate)}.json`);
+    const bytes = `${JSON.stringify(session, null, 2)}\n`;
+    for (const path of [immutable, latest]) {
+      const temp = `${path}.${process.pid}.tmp`;
+      writeFileSync(temp, bytes);
+      renameSync(temp, path);
+    }
+    const immutableFiles = readdirSync(dir)
+      .filter((name) => name.endsWith(`_${safeSegment(gate)}.json`) && !name.startsWith("latest_"))
+      .sort()
+      .reverse();
+    for (const stale of immutableFiles.slice(DEFAULT_GATE_EVALUATION_RETENTION)) {
+      try { unlinkSync(join(dir, stale)); } catch { /* best effort */ }
+    }
+    return { written: true, reason: "committed", path: latest, immutable_path: immutable, bytes: Buffer.byteLength(bytes) };
+  } catch (err) {
+    return { written: false, reason: "write_failed", error: err.message, path: null };
   }
-  const immutableFiles = readdirSync(dir)
-    .filter((name) => name.endsWith(`_${safeSegment(gate)}.json`) && !name.startsWith("latest_"))
-    .sort()
-    .reverse();
-  for (const stale of immutableFiles.slice(DEFAULT_GATE_EVALUATION_RETENTION)) {
-    try { unlinkSync(join(dir, stale)); } catch { /* best effort */ }
-  }
-  return { written: true, reason: "committed", path: latest, immutable_path: immutable, bytes: Buffer.byteLength(bytes) };
 }
 
 export function readGateEvaluationSession({ projectRoot = process.cwd(), planId, gate } = {}) {

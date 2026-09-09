@@ -17,7 +17,7 @@ import { fileURLToPath } from "url";
 import { createHash } from "crypto";
 import { execSync } from "child_process";
 import { sanitizeAtom, sanitizeStrictId, sanitizeEnumAtom } from "./sanitize.mjs";
-import { readStateJson, isFeatureEnabled, nowISO, KB_SALT_HEX_LEN } from "./determinism.mjs";
+import { readStateJson, isFeatureEnabled, nowISO, KB_SALT_HEX_LEN, hashRuleFiles } from "./determinism.mjs";
 import { analyzeRedTeamNotes, debugLog, extractFilesToModify, loadIntentContract, resolveFindingsTruth, resolvePlanTarget } from "./plan_utils.mjs";
 import { detectPlanShape, shapeMinFindings } from "./plan_shape.mjs";
 import { buildNorthStarFacts, loadPlannerManifesto } from "./planner_manifesto.mjs";
@@ -477,19 +477,25 @@ export function loadStoryFacts(session, { cwd, transientRegistryRefresh = false 
     if (Array.isArray(s.open_gaps)) {
       for (const g of s.open_gaps) session.consult(`open_gap(${id}, ${sanitizeAtom(g)}).`);
     }
-    if (Array.isArray(s.preconditions)) {
-      for (const p of s.preconditions) {
-        try { session.consult(`precondition(${id}, ${sanitizeAtom(p)}).`); } catch (e) { debugLog("rule_engine", `Malformed precondition for ${s.id}: ${e.message}`); }
-      }
+    const allPreconditions = [
+      ...(Array.isArray(s.preconditions) ? s.preconditions : []),
+      ...(Array.isArray(s.needs) ? s.needs : []),
+      ...(Array.isArray(s.assumes) ? s.assumes : []),
+    ];
+    for (const p of allPreconditions) {
+      try { session.consult(`precondition(${id}, ${sanitizeAtom(p)}).`); } catch (e) { debugLog("rule_engine", `Malformed precondition for ${s.id}: ${e.message}`); }
     }
-    if (Array.isArray(s.postconditions)) {
-      for (const p of s.postconditions) {
-        try {
-          session.consult(structuredPostconditionFact(id, p) || `postcondition(${id}, ${sanitizeAtom(p)}).`);
-          postconditionCount++;
-        } catch (e) {
-          debugLog("rule_engine", `Malformed postcondition for ${s.id}: ${e.message}`);
-        }
+
+    const allPostconditions = [
+      ...(Array.isArray(s.postconditions) ? s.postconditions : []),
+      ...(Array.isArray(s.provides) ? s.provides : []),
+    ];
+    for (const p of allPostconditions) {
+      try {
+        session.consult(structuredPostconditionFact(id, p) || `postcondition(${id}, ${sanitizeAtom(p)}).`);
+        postconditionCount++;
+      } catch (e) {
+        debugLog("rule_engine", `Malformed postcondition for ${s.id}: ${e.message}`);
       }
     }
     if (Array.isArray(s.actions)) {
@@ -1272,6 +1278,38 @@ export function loadJournalFacts(session, { cwd }) {
   }
 }
 
+export function loadSourceMappingFacts(session) {
+  // Precompute the source_file_mapped/1 closure as FACTS. The equivalent
+  // Prolog rule (a 7-way disjunction over code_ref/test_ref/doc_ref/...)
+  // rescanned thousands of ref facts for every candidate file (~700ms);
+  // querying each relation once and consulting the extensional closure keeps
+  // unmapped_source_file (I-035) O(1) per lookup via clause indexing.
+  const mapped = new Set();
+  const relations = [
+    "code_ref(_, File)",
+    "test_ref(_, File)",
+    "doc_ref(_, File)",
+    "validation_ref(_, File)",
+    "validation_artifact(File, _)",
+    "story_covers_script(_, File)",
+    "file_marked_ignored(File)",
+  ];
+  for (const query of relations) {
+    let solutions;
+    try {
+      solutions = session.queryAll(query);
+    } catch {
+      continue;
+    }
+    for (const solution of solutions) {
+      if (typeof solution.File === "string" && solution.File) mapped.add(solution.File);
+    }
+  }
+  const lines = [...mapped].sort().map((file) => `source_file_mapped(${sanitizeStrictId(file)}).`);
+  if (lines.length > 0) session.consult(lines.join("\n"));
+  return mapped.size;
+}
+
 export function loadProjectMetaFacts(session, { cwd, skillPath }) {
   const manifestoInfo = loadPlannerManifesto();
   const discoveryPolicyInfo = loadDiscoveryPolicy({ cwd });
@@ -1531,8 +1569,24 @@ export function loadProjectMetaFacts(session, { cwd, skillPath }) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// Load Prolog rule files
+// Load Prolog rule files (with in-process snapshot caching)
 // ═══════════════════════════════════════════════════════════
+
+let _cachedBaseRulesDb = null;
+let _cachedBaseRulesHash = null;
+
+export function resetBaseRulesCache() {
+  _cachedBaseRulesDb = null;
+  _cachedBaseRulesHash = null;
+}
+
+export function getBaseRulesCacheStatus() {
+  return {
+    cached: _cachedBaseRulesDb !== null,
+    hash: _cachedBaseRulesHash,
+    clauseCount: _cachedBaseRulesDb ? _cachedBaseRulesDb.rawMap?.size : 0,
+  };
+}
 
 export function loadRules(session, { cwd = process.cwd(), skillPath = DEFAULT_SKILL_PATH, transientOntologyFacts = "", ontologyProjectionProfile = "full" } = {}) {
   const prologDir = join(skillPath, "prolog");
@@ -1542,24 +1596,44 @@ export function loadRules(session, { cwd = process.cwd(), skillPath = DEFAULT_SK
 
   const strictMode = process.env.RULE_ENGINE_STRICT === "1";
 
-  // RT4-M3: Load built-in rules FIRST so core predicates are authoritative.
-  // project.pl loads AFTER — it can add facts but cannot override core rules
-  // because Prolog resolves clauses in consultation order (first match wins
-  // for deterministic predicates, and core rules always appear first).
-  for (const file of (existsSync(prologDir) ? readdirSync(prologDir).sort() : [])) {
-    if (!file.endsWith(".pl")) continue;
-    try {
-      session.consultFile(join(prologDir, file));
-      loaded.push(file);
-    } catch (e) {
-      console.error(`  ⚠️  Error loading ${file}: ${e.message}`);
-      coreRuleErrors.push(`${file}: ${e.message}`);
-      if (strictMode) {
-        console.error(`  ❌ Rule file load failure in strict mode — aborting (set RULE_ENGINE_STRICT=0 to warn-only)`);
-        process.exit(2);
+  const ruleHashes = hashRuleFiles(skillPath);
+  const bundleHash = JSON.stringify(ruleHashes);
+
+  // Check if session already has base rules loaded via sessionOptions.baseDb
+  if (session?.indexedDb?.has("can_transition/2") && session?.indexedDb?.has("invariant_violated/2")) {
+    for (const f of Object.keys(ruleHashes).sort()) {
+      loaded.push(f);
+    }
+  } else if (_cachedBaseRulesDb && _cachedBaseRulesHash === bundleHash && session?.indexedDb?.copyFrom) {
+    // In-process snapshot hit: clone cached 1,879 base clauses directly without disk I/O or AST parsing
+    session.indexedDb.copyFrom(_cachedBaseRulesDb);
+    for (const f of Object.keys(ruleHashes).sort()) {
+      loaded.push(f);
+    }
+  } else {
+    // Cache miss or invalidated: consult all 11 .pl files from disk
+    for (const file of (existsSync(prologDir) ? readdirSync(prologDir).sort() : [])) {
+      if (!file.endsWith(".pl")) continue;
+      try {
+        session.consultFile(join(prologDir, file));
+        loaded.push(file);
+      } catch (e) {
+        console.error(`  ⚠️  Error loading ${file}: ${e.message}`);
+        coreRuleErrors.push(`${file}: ${e.message}`);
+        if (strictMode) {
+          console.error(`  ❌ Rule file load failure in strict mode — aborting (set RULE_ENGINE_STRICT=0 to warn-only)`);
+          process.exit(2);
+        }
       }
     }
+    session.consult(compileVerificationStatusFacts());
+
+    if (coreRuleErrors.length === 0 && session?.indexedDb?.clone) {
+      _cachedBaseRulesDb = session.indexedDb.clone();
+      _cachedBaseRulesHash = bundleHash;
+    }
   }
+
   if (coreRuleErrors.length > 0) {
     runtimeCoverageFailures.push({
       check_id: "core_prolog_rule_bundle",
@@ -1567,7 +1641,6 @@ export function loadRules(session, { cwd = process.cwd(), skillPath = DEFAULT_SK
       cause_details: coreRuleErrors,
     });
   }
-  session.consult(compileVerificationStatusFacts());
 
   // RT5-C1: Load project-specific rules AFTER built-in rules, with reserved
   // predicate blocklist. The Prolog interpreter yields on ANY matching clause,

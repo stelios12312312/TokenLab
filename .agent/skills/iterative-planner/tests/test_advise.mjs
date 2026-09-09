@@ -103,6 +103,7 @@ function runGit(cwd, args) {
     cwd,
     encoding: "utf-8",
     stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
   });
 }
 

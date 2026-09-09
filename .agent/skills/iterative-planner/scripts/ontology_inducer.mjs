@@ -1164,6 +1164,12 @@ function listTrackedPlanStrategies(cwd) {
       encoding: "utf-8",
       timeout: 5000,
       maxBuffer: 16 * 1024 * 1024,
+      env: {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+        GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM || "1",
+        GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+      },
     }
   );
   if (proc.status !== 0 || proc.error) {
@@ -1927,6 +1933,12 @@ function trackedFiles(cwd) {
     encoding: "utf-8",
     timeout: 10000,
     maxBuffer: 32 * 1024 * 1024,
+    env: {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+      GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM || "1",
+      GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+    },
   });
   if (proc.status !== 0 || proc.error) return [];
   return String(proc.stdout || "").split("\0").map(normalizeRelativePath).filter(Boolean).sort();
@@ -1971,7 +1983,16 @@ export function induceCodeStructure({ cwd = process.cwd(), builder } = {}) {
 }
 
 export function gitRevision(cwd) {
-  const proc = spawnSync("git", ["-C", cwd, "rev-parse", "HEAD"], { encoding: "utf-8", timeout: 5000 });
+  const proc = spawnSync("git", ["-C", cwd, "rev-parse", "HEAD"], {
+    encoding: "utf-8",
+    timeout: 5000,
+    env: {
+      ...process.env,
+      GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+      GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM || "1",
+      GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+    },
+  });
   return proc.status === 0 ? String(proc.stdout || "").trim() : null;
 }
 

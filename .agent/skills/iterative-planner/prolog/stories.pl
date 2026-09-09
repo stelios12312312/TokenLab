@@ -60,9 +60,20 @@ coverage(StoryId, missing) :-
 %% Dependency graph (transitive closure)
 %% ═══════════════════════════════════════════════════════════
 
-%% Direct + transitive dependencies
-depends_on(Story, Dep) :- requires(Story, Dep).
-depends_on(Story, Dep) :- requires(Story, Mid), depends_on(Mid, Dep).
+%% Direct + transitive dependencies.
+%% The visited-list accumulator makes the recursion cycle-safe: a cyclic
+%% requires graph terminates instead of looping forever under SLD
+%% backtracking. Bulk circularity checks run natively in
+%% scripts/lib/story_graph.mjs (Tarjan SCC, O(V+E)); these rules remain for
+%% small ad-hoc queries (story-deps, blast-radius).
+depends_on(Story, Dep) :- requires_path(Story, Dep, [Story]).
+
+requires_path(Story, Dep, _) :-
+    requires(Story, Dep).
+requires_path(Story, Dep, Visited) :-
+    requires(Story, Mid),
+    \+ member(Mid, Visited),
+    requires_path(Mid, Dep, [Mid|Visited]).
 
 %% Blast radius: which stories break if Story breaks?
 affected_by(Story, Downstream) :- depends_on(Downstream, Story).

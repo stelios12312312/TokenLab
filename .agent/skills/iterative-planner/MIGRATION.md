@@ -2,6 +2,30 @@
 
 How to upgrade projects already using the iterative planner to the current shipped version.
 
+## 10.14.0 — Declarative Task Contracts and Test-Native Proof
+
+Version 10.14.0 introduces declarative task declarations (`task.yaml`), a
+test-native proof collector, runtime engine optimizations, and fast-track
+verification:
+
+- `task.yaml` declarations: Optional, zero-dependency task contract with a
+  fail-closed recursive parser supporting maps, lists, quotes, and scalar
+  values while rejecting prototype-polluting keys (`__proto__`, `constructor`,
+  `prototype`), duplicate keys, and unsupported YAML extensions. Projects
+  one-way to canonical `plan.json`, `intent_contract.json`, and `plan.md`.
+  Missing task files cleanly preserve legacy Markdown/JSON workflows.
+- Test-native proof collector: Automatically scans `@sc_<id>` tags across test
+  code and parses structured test output (JUnit XML, Jest/Vitest JSON, Node TAP)
+  without requiring `@planner:` annotations inside application business logic.
+  Distinguishes test declarations from execution authority; parsed reports emit
+  declarations only, while runtime verification requires direct subprocess
+  execution observation.
+- Performance and runtime caching: Implements first-argument clause indexing,
+  state-invariant runtime caching, and shared semantic engine instances across
+  transition evaluation gates.
+- Express closeout: Adds `verify-and-close` transition command for `/boost` and
+  fast-track plans, verifying test and invariant proofs atomically.
+
 ## 10.13.3 — Engine/Project Ownership Boundary
 
 Version 10.13.3 separates the replaceable planner engine from consumer-owned
@@ -914,6 +938,7 @@ If the project has a test suite, run test_baseline.mjs capture "<test-command>" 
 
 | Version | Codename | Key Features |
 |---------|----------|-------------|
+| 10.14.0 | Declarative Task Contracts and Test-Native Proof | Introduces zero-dependency declarative task contracts (task.yaml) with fail-closed parser and one-way projection, test-native proof collector for @sc_ tags and structured runner reports (JUnit/TAP/JSON) with runner-execution boundary, clause indexing and runtime performance caching, and fast-track verify-and-close. |
 | 10.13.3 | Engine/Project Ownership Boundary | Replaces committed engine forks from the immutable pin while preserving project ontology, rules, workflows, policy, registry, knowledge, and unrelated dirt; extracts historical mixed-rule semantics into collision-safe overlays and records engine replacements. |
 | 10.13.2 | Compiled Finish Line and Exact Gate Reuse | Compiles the lifecycle completion graph before execution, reuses only exact fresh PASS gate dry-runs, bounds default transition/status output, and stores compact content-addressed gate metadata without changing normal provider, model, or tool selection. |
 | 10.13.1 | Bounded Release Proof and Focused IVE Workspace | Adds pre-spawn artifact/workload admission, digest-bound reusable conformance sessions with live progress and resume, and a responsive ticket-focused ontology projection that keeps canonical authority explicit. |

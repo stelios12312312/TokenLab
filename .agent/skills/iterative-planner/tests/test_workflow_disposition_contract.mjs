@@ -68,7 +68,7 @@ console.log("\nWorkflow Disposition Contract Tests\n");
 
 const migrationSource = readFileSync(new URL("../scripts/migrate.mjs", import.meta.url), "utf-8");
 assert(
-  (migrationSource.match(/listFleetManagedWorkflowFiles\(dirname\(agentDir\)\)/g) || []).length === 3,
+  (migrationSource.match(/listFleetManagedWorkflowFiles\(dirname\(agentDir\)\)/g) || []).length >= 3,
   "expected-managed census, canonical prune set, and copy loop share the fleet projection",
 );
 

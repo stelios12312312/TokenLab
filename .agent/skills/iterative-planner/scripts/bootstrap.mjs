@@ -102,6 +102,7 @@ const {
   resolvePlanTarget, writeThreadPlanTarget, clearThreadPlanTarget,
   extractFilesToModify,
   classifyPlannerPreflight,
+  normalizeClientGoal,
 } = await import("./lib/plan_utils.mjs");
 const { writeScopeContract } = await import("./lib/scope_contract.mjs");
 const {
@@ -1483,12 +1484,22 @@ function carryRecoveredArtifacts(sourcePlanDirName, targetPlanDirName, poisonedE
 // Commands
 // ---------------------------------------------------------------------------
 
-async function cmdNew(goal, opts = {}) {
+async function cmdNew(rawGoal, opts = {}) {
   const force = opts.force === true;
   const parallel = opts.parallel === true;
   const routeTriage = opts.routeTriage !== false;
   const suppressOrphanWarning = opts.suppressOrphanWarning === true;
-  const workflowId = normalizeWorkflowId(opts.workflow || null);
+  let workflowId = normalizeWorkflowId(opts.workflow || null);
+
+  const clientNormalized = normalizeClientGoal(rawGoal);
+  const isBoostFromGoal = clientNormalized.hasBoost;
+  const isFastTrack = opts.fastTrack === true || workflowId === "/boost" || isBoostFromGoal;
+  if (isFastTrack && !workflowId) {
+    workflowId = "/boost";
+  }
+
+  let goal = isBoostFromGoal ? clientNormalized.cleanGoal : rawGoal;
+
   if (workflowId) {
     const contract = getWorkflowContract(process.cwd(), workflowId);
     if (!contract.workflow || !contract.profile) {
@@ -1505,7 +1516,7 @@ async function cmdNew(goal, opts = {}) {
     plannerPolicy: plannerPolicyInfo.policy,
   });
   const seriousPlannerPath = triage.recommended_path === "standard_planner" || triage.recommended_path === "full_planner";
-  if (routeTriage && !force && !parallel && !seriousPlannerPath) {
+  if (routeTriage && !force && !parallel && !seriousPlannerPath && !isFastTrack) {
     console.log(renderTriage(triage, { mode: "verbose" }));
     console.log("");
     console.log("  No plan was created.");
@@ -1709,6 +1720,7 @@ ${crossPlanNote}`
     // gets a Root Cause / Adjacency / Assumption Ledger placeholder it would
     // have to mark "N/A" to clear the gate.
     const findingsScaffold = [
+      ...(isFastTrack ? ["[FAST_TRACK]", ""] : []),
       `# Findings`,
       `*Summary and index of all findings. Detailed files go in findings/ directory.*`,
       `*Detected shape: **${planShape.primary}** (source: ${planShape.source}). Required gates scale to this shape.*`,
@@ -1729,11 +1741,13 @@ ${crossPlanNote}`
       findingsScaffold.push(``, `## Assumption Ledger`, ``, `| # | Assumption | Probe | Result |`, `|---|------------|-------|--------|`, `| 1 | *e.g. external endpoint exists* | *probe command* | *VERIFIED or VIOLATED* |`);
     }
 
+    writeFileSync(join(planDir, "findings.md"), findingsScaffold.join("\n") + "\n");
+
     writeFileSync(
       join(planDir, "findings_ledger.json"),
       JSON.stringify({
         version: 1,
-        fast_track: false,
+        fast_track: isFastTrack ? true : false,
         kb_digest_salt: null,
         findings: [],
         root_cause: null,
@@ -3159,6 +3173,8 @@ Commands:
   new "goal"                        Create a new plan directory
   new --force "goal"                Close active plan and create a new one
   new --parallel "goal"             Create a new plan without replacing the current pointer
+  new --fast-track "goal"           Create a new plan with fast-track mode (relaxed depth / early story invariants)
+  new --boost "goal"                Alias for --fast-track
   new "goal" --workflow </workflow> Persist the workflow contract identity
   resume                            Output current plan state for re-entry
   status                            Bounded state summary
@@ -3205,11 +3221,12 @@ if (!subcommands.has(cmd)) {
 } else if (cmd === "new") {
   const force = args.includes("--force");
   const parallel = args.includes("--parallel");
+  const fastTrack = args.includes("--fast-track") || args.includes("--boost");
   let workflow = null;
   const goalArgs = [];
   for (let index = 1; index < args.length; index++) {
     const arg = args[index];
-    if (arg === "--force" || arg === "--parallel") continue;
+    if (arg === "--force" || arg === "--parallel" || arg === "--fast-track" || arg === "--boost") continue;
     if (arg === "--workflow") {
       workflow = args[index + 1] || null;
       index++;
@@ -3218,7 +3235,7 @@ if (!subcommands.has(cmd)) {
     goalArgs.push(arg);
   }
   const goal = goalArgs.join(" ") || "No goal specified";
-  await cmdNew(goal, { force, parallel, workflow });
+  await cmdNew(goal, { force, parallel, workflow, fastTrack });
 } else if (cmd === "resume") {
   await cmdResume();
 } else if (cmd === "status") {

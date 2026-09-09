@@ -7,6 +7,7 @@ import { basename, dirname, join, sep } from "path";
 import { createHash } from "crypto";
 import { fileURLToPath } from "url";
 import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "fs";
+import { spawnSync } from "child_process";
 import { isAbsolute, relative, resolve } from "path";
 import { createSession } from "./lib/prolog.mjs";
 import { formatReason } from "./lib/sanitize.mjs";
@@ -117,6 +118,8 @@ function parseArgs(argv) {
     remediate: false,
     force: false,
     write: false,
+    dryRun: false,
+    testCmd: null,
     githubMirror: null,
     json: false,
     facts: false,
@@ -174,6 +177,8 @@ function parseArgs(argv) {
     else if (arg === "--remediate") parsed.remediate = true;
     else if (arg === "--force") parsed.force = true;
     else if (arg === "--write") parsed.write = true;
+    else if (arg === "--dry-run") parsed.dryRun = true;
+    else if (arg === "--test-cmd") parsed.testCmd = args[++i] || null;
     else if (arg === "--allow-duplicate") parsed.allowDuplicate = true;
     else if (arg.startsWith("--")) {
       // Unknown flags are ignored for backward-compatible dry-run callers.
@@ -194,6 +199,7 @@ Usage:
   node program_manager.mjs disposition [--from-repair-packet <path>] [--finding <id>] [--from-resolution-request <path>] [--deferred-program <path-or-id> ...] [--defer-open --keep-ticket <id> ... --expect-deferred-count <n>] [--output <path>] [--close] [--write] [--json]
   node program_manager.mjs defer --program <path-or-id> --ticket <id> --decision <id> --reason "<reason>" --child-plan <path> [--write] [--json]
   node program_manager.mjs revive --program <path-or-id> --ticket <id> --decision <id> --reason "<reason>" --child-plan <path> [--write] [--json]
+  node program_manager.mjs run --program <path-or-id> --ticket <id> [--test-cmd "<cmd>"] [--dry-run] [--json]
   node program_manager.mjs check [--program <path-or-id>] [--remediate] [--write] [--json]
   node program_manager.mjs verify <gate> [--program <path-or-id>] [--remediate] [--write] [--json]
   node program_manager.mjs facts [--program <path-or-id>] [--remote-mode local-only|remote-read|remote-sync]
@@ -264,6 +270,17 @@ child plan in terminal CLOSE with an [ABANDONED] transition marker. It changes
 only that ticket (and the Program to deferred when no actionable tickets remain),
 validates the full candidate packet, is dry-run by default, and treats an exact
 repeat as an idempotent no-op. It never closes the ticket or claims delivery.
+
+run is the ticket-as-task execution lane. It makes a ready (or resumable
+in_progress) ticket directly executable WITHOUT a child plan directory: it emits
+a minimal work order (acceptance criteria, targets, dependencies, and the
+3-step Understand -> Act -> Verify loop) to <program>/work_orders/<ticket>.json,
+requires every depends_on ticket to be closed, and advances the ticket
+lifecycle ready -> in_progress. With --test-cmd "<cmd>" it additionally runs the
+verification command; exit 0 closes the ticket and records the test execution
+proof in evidence_refs, any other exit leaves the ticket in_progress and fails.
+run writes by default; --dry-run previews without mutating anything, and a run
+on an already closed ticket is an idempotent no-op.
 
 Duplicate scan: intake deterministically compares the candidate title against
 every ticket in the target packet AND every sibling Program Packet under
@@ -2057,7 +2074,7 @@ export async function runIntake(inputArgs, options = {}) {
   const remoteMode = resolveRemoteMode({
     explicit: args.remoteMode,
     env,
-    defaultMode: (args.issue || args.projectItem) ? "remote-read" : "local-only",
+    defaultMode: (args.issue || args.projectItem) ? "remote-read" : (target.packet?.remote_policy?.mode || target.packet?.remote_mode || "local-only"),
   });
   const sources = loadIntakeSources(args, { cwd, env, ghRunner, gitRunner, remoteMode });
   let workingPacket = target.packet;
@@ -2087,6 +2104,7 @@ export async function runIntake(inputArgs, options = {}) {
       policy: workingPacket?.policy || null,
       packet: workingPacket,
       env,
+      remoteMode,
     });
     if (mirrorConfig.enabled && mirrorConfig.repo) {
       for (const res of results) {
@@ -2099,6 +2117,9 @@ export async function runIntake(inputArgs, options = {}) {
             repo: mirrorConfig.repo,
             ghRunner,
             env,
+            remoteMode,
+            explicitMirror: args.githubMirror,
+            policy: workingPacket?.policy || null,
           });
           res.candidate_ticket.github_sync = packetTicket.github_sync;
         }
@@ -2564,6 +2585,11 @@ export function runDeferral(inputArgs, options = {}) {
   if (target.resolved.status !== "FOUND" || target.loadError) {
     throw new Error(target.loadError?.message || target.resolved.message || `Program Packet not found: ${args.program}`);
   }
+  const remoteMode = resolveRemoteMode({
+    explicit: args.remoteMode,
+    env: options.env || process.env,
+    defaultMode: target.packet?.remote_policy?.mode || target.packet?.remote_mode || "local-only",
+  });
   const matches = asArray(target.packet?.tickets).filter((entry) => asString(entry?.id) === ticketId);
   if (matches.length !== 1) throw new Error(`defer requires ticket ${ticketId} to resolve exactly once; found ${matches.length}`);
   const sourceTicket = matches[0];
@@ -2657,6 +2683,7 @@ export function runDeferral(inputArgs, options = {}) {
       policy: next?.policy || null,
       packet: next,
       env: options.env || process.env,
+      remoteMode,
     });
     if (mirrorConfig.enabled && mirrorConfig.repo) {
       mirrorTicketDefer({
@@ -2665,6 +2692,10 @@ export function runDeferral(inputArgs, options = {}) {
         ticket,
         repo: mirrorConfig.repo,
         ghRunner: options?.ghRunner || defaultGhRunner,
+        env: options.env || process.env,
+        remoteMode,
+        explicitMirror: args.githubMirror,
+        policy: next?.policy || null,
       });
     }
     writeFileSync(target.resolved.path, `${JSON.stringify(redactObject(next, options.env || process.env), null, 2)}\n`, "utf-8");
@@ -2776,6 +2807,303 @@ export function runRevival(inputArgs, options = {}) {
     previous_decision_ref: ticket.deferral_decision_ref,
     child_plan: childPlan,
     errors: [],
+    warnings: validation.warnings,
+  };
+}
+
+// @planner:config_flag = required_child_plan_open
+// Ticket-as-task execution: a minimal work order replaces the heavy child plan
+// directory for directly executable tickets. The 3-step loop is embedded in the
+// work order; lifecycle advances ready -> in_progress -> closed when the
+// verification command exits 0. Default is WRITE (this is an execution
+// command); pass --dry-run to preview without mutating anything.
+export function runTicketExecution(inputArgs, options = {}) {
+  const cwd = options.cwd || process.cwd();
+  const args = { ...inputArgs };
+  const ticketId = asString(args.ticket);
+  const testCmd = asString(args.testCmd);
+  const dryRun = args.dryRun === true;
+  const write = !dryRun;
+  if (!args.program || !ticketId) {
+    throw new Error("run requires --program and --ticket");
+  }
+  const target = loadTarget(cwd, args.program);
+  if (target.resolved.status !== "FOUND" || target.loadError) {
+    throw new Error(target.loadError?.message || target.resolved.message || `Program Packet not found: ${args.program}`);
+  }
+  const matches = asArray(target.packet?.tickets).filter((entry) => asString(entry?.id) === ticketId);
+  if (matches.length !== 1) throw new Error(`run requires ticket ${ticketId} to resolve exactly once; found ${matches.length}`);
+  const sourceTicket = matches[0];
+  const lifecycle = asString(sourceTicket.lifecycle).toLowerCase();
+  const programDir = dirname(target.resolved.path);
+  const workOrderRelDir = join(relativePath(cwd, programDir), "work_orders", ticketId).replace(/\\/g, "/");
+  const workOrderRelPath = `${workOrderRelDir}/work_order.json`;
+  const walkthroughRelPath = `${workOrderRelDir}/walkthrough.md`;
+
+  if (lifecycle === "closed") {
+    return {
+      command: "run",
+      status: "PASS",
+      action: "already_closed",
+      write: false,
+      packet_path: relativePath(cwd, target.resolved.path),
+      program_id: asString(target.packet?.id),
+      ticket_id: ticketId,
+      previous_lifecycle: "closed",
+      new_lifecycle: "closed",
+      work_order_path: existsSync(join(cwd, workOrderRelPath)) ? workOrderRelPath : null,
+      errors: [],
+      warnings: [],
+    };
+  }
+  if (!new Set(["ready", "in_progress"]).has(lifecycle)) {
+    throw new Error(`run requires ticket ${ticketId} lifecycle=ready or in_progress; observed ${sourceTicket.lifecycle || "unknown"}. Promote it through the program gates first.`);
+  }
+
+  // Dependency gate: every declared depends_on ticket must already be closed.
+  const dependencies = asArray(sourceTicket.depends_on).map((depId) => {
+    const depTicket = asArray(target.packet?.tickets).find((entry) => asString(entry?.id) === depId);
+    return { id: depId, lifecycle: asString(depTicket?.lifecycle).toLowerCase() || "missing" };
+  });
+  const openDependencies = dependencies.filter((dep) => dep.lifecycle !== "closed");
+  if (openDependencies.length > 0) {
+    return {
+      command: "run",
+      status: "FAIL",
+      action: "blocked_by_dependencies",
+      write: false,
+      packet_path: relativePath(cwd, target.resolved.path),
+      program_id: asString(target.packet?.id),
+      ticket_id: ticketId,
+      previous_lifecycle: lifecycle,
+      new_lifecycle: lifecycle,
+      blockers: openDependencies.map((dep) => `depends_on ${dep.id} is ${dep.lifecycle}`),
+      errors: openDependencies.map((dep) => ({
+        code: "ticket_dependency_not_closed",
+        message: `ticket ${ticketId} depends on ${dep.id}, which is ${dep.lifecycle} (must be closed)`,
+      })),
+      warnings: [],
+    };
+  }
+
+  // Minimal work order: acceptance criteria, targets, dependencies, 3-step loop.
+  const workOrder = {
+    schema_version: 1,
+    type: "ticket_work_order",
+    program_id: asString(target.packet?.id),
+    ticket_id: ticketId,
+    title: asString(sourceTicket.title),
+    problem: asString(sourceTicket.problem) || null,
+    proposed_change: asString(sourceTicket.proposed_change) || null,
+    acceptance_criteria: asArray(sourceTicket.acceptance_criteria),
+    targets: {
+      story_refs: asArray(sourceTicket.story_refs),
+      defect_refs: asArray(sourceTicket.defect_refs),
+      gap_refs: asArray(sourceTicket.gap_refs),
+      compatibility_contract_refs: asArray(sourceTicket.compatibility_contract_refs),
+      migration_boundary_refs: asArray(sourceTicket.migration_boundary_refs),
+    },
+    dependencies,
+    loop: [
+      "1. UNDERSTAND — read the acceptance criteria, targets, and dependency contracts above; restate the intent in one sentence.",
+      "2. ACT — implement the smallest change that satisfies every acceptance criterion.",
+      "3. VERIFY — run the verification command; it must exit 0 before the ticket may close.",
+    ],
+    verification_command: testCmd || null,
+    created_at: nowIso(),
+  };
+
+  // Verification proof (only when --test-cmd is given).
+  let testProof = null;
+  if (testCmd) {
+    const run = spawnSync(testCmd, {
+      cwd,
+      shell: true,
+      encoding: "utf-8",
+      timeout: 300_000,
+      env: { ...process.env },
+    });
+    const exitCode = run.status === null ? 124 : (run.status ?? 2);
+    testProof = {
+      command: testCmd,
+      exit_code: exitCode,
+      passed: exitCode === 0,
+      stderr_excerpt: exitCode === 0 ? null : String(run.stderr || "").slice(0, 400) || null,
+    };
+  }
+
+  const verified = testProof?.passed === true;
+  const newLifecycle = verified ? "closed" : "in_progress";
+
+  // Persona evidence guard: a ticket whose persona review still needs evidence
+  // may execute (work order + in_progress) but may NOT auto-close.
+  if (verified && asString(sourceTicket.persona_review?.status) === "needs_evidence") {
+    return {
+      command: "run",
+      status: "FAIL",
+      action: "closure_blocked_persona_evidence",
+      write: false,
+      packet_path: relativePath(cwd, target.resolved.path),
+      program_id: asString(target.packet?.id),
+      ticket_id: ticketId,
+      previous_lifecycle: lifecycle,
+      new_lifecycle: lifecycle,
+      verification: testProof,
+      errors: [{
+        code: "ticket_closure_persona_review_needs_evidence",
+        message: `ticket ${ticketId} persona_review.status is needs_evidence; supply persona evidence before the ticket can close`,
+      }],
+      warnings: [],
+    };
+  }
+
+  const next = clone(target.packet);
+  const ticket = next.tickets.find((entry) => asString(entry?.id) === ticketId);
+  ticket.lifecycle = newLifecycle;
+  ticket.work_order_ref = workOrderRelPath;
+  ticket.work_order_loop = "understand_act_verify";
+  let decisionId = null;
+  if (verified) {
+    // Closure contract for the ticket-as-task lane:
+    //   - lightweight child_plan tier pointed at the work-order directory,
+    //     which carries walkthrough.md as the on-disk proof; a policy=required
+    //     ticket is demoted only with an accepted packet decision (audited).
+    const policy = asString(ticket.child_plan?.policy) || "required";
+    if (policy === "required") {
+      decisionId = `D-RUN-${ticketId}`;
+      next.decisions = asArray(next.decisions);
+      const existingDecision = next.decisions.find((entry) => asString(entry?.id) === decisionId);
+      if (existingDecision && asString(existingDecision?.subject_ref) !== ticketId) {
+        throw new Error(`run decision id collision: ${decisionId}`);
+      }
+      if (!existingDecision) {
+        next.decisions.push({
+          id: decisionId,
+          type: "work_order_execution",
+          subject_ref: ticketId,
+          status: "accepted",
+          rationale: "Ticket executed via minimal work order (Understand -> Act -> Verify) with test execution proof; child plan demoted to the proportional lightweight tier backed by the work-order walkthrough.",
+          work_order_ref: workOrderRelPath,
+        });
+      }
+    }
+    ticket.child_plan = {
+      ...(ticket.child_plan || {}),
+      policy: "lightweight",
+      plan_dir: workOrderRelDir,
+      reason: "Executed via ticket-as-task work order; walkthrough.md records the verification proof.",
+    };
+    if (asString(ticket.review_status) === "not_run" || !asString(ticket.review_status)) {
+      ticket.review_status = "review_ready";
+    }
+    // Every verification row referenced by the ticket must pass; rows owned by
+    // this ticket get the execution proof, shared rows must already pass.
+    next.verification_matrix = asArray(next.verification_matrix);
+    for (const rowRef of asArray(ticket.verification_refs)) {
+      const row = next.verification_matrix.find((entry) => asString(entry?.id) === rowRef);
+      if (!row || asString(row.subject_ref) !== ticketId) continue;
+      row.result = "pass";
+      row.evidence_refs = asArray(row.evidence_refs);
+      row.evidence_refs.push({
+        type: "ticket_work_order_verification",
+        work_order: workOrderRelPath,
+        command: testCmd,
+        exit_code: testProof.exit_code,
+        at: nowIso(),
+      });
+    }
+    ticket.evidence_refs = asArray(ticket.evidence_refs);
+    ticket.evidence_refs.push({
+      type: "ticket_work_order_verification",
+      work_order: workOrderRelPath,
+      command: testCmd,
+      exit_code: testProof.exit_code,
+      at: nowIso(),
+    });
+  }
+  const previousProgramStatus = asString(next.status);
+
+  const renderWalkthrough = () => [
+    `# Work Order Walkthrough — ${ticketId}`,
+    "",
+    `Ticket: ${asString(sourceTicket.title)}`,
+    `Program: ${asString(target.packet?.id)}`,
+    "",
+    "## Loop",
+    ...workOrder.loop.map((step) => `- ${step}`),
+    "",
+    "## Verification Proof",
+    `- Command: \`${testCmd}\``,
+    `- Exit code: ${testProof?.exit_code}`,
+    `- At: ${nowIso()}`,
+    decisionId ? `- Demotion decision: ${decisionId}` : null,
+    "",
+  ].filter((line) => line !== null).join("\n");
+
+  // On-disk proof must exist BEFORE the packet validates it (the lightweight
+  // tier checks for walkthrough.md on disk). Write artifacts first in write
+  // mode; a validation failure leaves them as an idempotent, re-runnable
+  // receipt without any packet mutation.
+  if (write) {
+    mkdirSync(join(cwd, workOrderRelDir), { recursive: true });
+    writeFileSync(join(cwd, workOrderRelPath), `${JSON.stringify(redactObject(workOrder, options.env || process.env), null, 2)}\n`, "utf-8");
+    if (verified) {
+      writeFileSync(join(cwd, walkthroughRelPath), renderWalkthrough(), "utf-8");
+    }
+  }
+
+  const validation = validateProgramPacket(next, {
+    cwd,
+    storyIds: collectStoryIds(cwd),
+    programPacketPath: target.resolved.path,
+  });
+  if (dryRun && verified && !existsSync(join(cwd, walkthroughRelPath))) {
+    // Dry-run cannot write the walkthrough the lightweight tier validates.
+    // Tolerate ONLY that exact, self-produced proof-missing error for this
+    // ticket; every other validation error still blocks.
+    validation.errors = validation.errors.filter((entry) => !(
+      entry?.code === "lightweight_child_plan_proof_missing"
+      && String(entry?.path || "").startsWith(`$.tickets[${ticketId}]`)
+    ));
+    validation.ok = validation.errors.length === 0;
+  }
+  if (!validation.ok) {
+    const error = new Error(`run candidate failed Program validation: ${validation.errors.map((entry) => `${entry.code}: ${entry.message}`).join("; ")}`);
+    error.validation = validation;
+    throw error;
+  }
+
+  if (write) {
+    writeFileSync(target.resolved.path, `${JSON.stringify(redactObject(next, options.env || process.env), null, 2)}\n`, "utf-8");
+  }
+
+  const failedVerification = testProof && !testProof.passed;
+  return {
+    command: "run",
+    status: failedVerification ? "FAIL" : "PASS",
+    action: dryRun
+      ? "dry_run"
+      : verified
+        ? "executed_and_closed"
+        : "work_order_issued",
+    write,
+    packet_path: relativePath(cwd, target.resolved.path),
+    program_id: asString(next.id),
+    ticket_id: ticketId,
+    previous_lifecycle: lifecycle,
+    new_lifecycle: newLifecycle,
+    previous_program_status: previousProgramStatus,
+    new_program_status: next.status,
+    work_order_path: workOrderRelPath,
+    work_order_loop: "understand -> act -> verify",
+    decision_id: decisionId,
+    verification: testProof,
+    message: failedVerification
+      ? `verification command exited ${testProof.exit_code}; ticket remains in_progress`
+      : null,
+    errors: failedVerification
+      ? [{ code: "ticket_verification_failed", message: `\`${testCmd}\` exited ${testProof.exit_code}${testProof.stderr_excerpt ? ` (${testProof.stderr_excerpt})` : ""}` }]
+      : [],
     warnings: validation.warnings,
   };
 }
@@ -3399,7 +3727,7 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
   }
 
   const FORWARD_COMMANDS = new Set(["next-ready", "dispatch-order", "blockers", "unlocks-if-closed"]);
-  const KNOWN_COMMANDS = new Set(["init", "intake", "triage-findings", "disposition", "defer", "revive", "check", "verify", "facts", ...FORWARD_COMMANDS]);
+  const KNOWN_COMMANDS = new Set(["init", "intake", "triage-findings", "disposition", "defer", "revive", "run", "check", "verify", "facts", ...FORWARD_COMMANDS]);
   if (!KNOWN_COMMANDS.has(args.command)) {
     console.error(`Unknown command: ${args.command}\n\n${usage()}`);
     return 2;
@@ -3505,6 +3833,28 @@ async function main(argv = process.argv.slice(2), cwd = process.cwd()) {
     } catch (error) {
       const payload = {
         command: "revive",
+        status: "FAIL",
+        error: error?.message || String(error),
+        errors: error?.validation?.errors || [],
+        warnings: error?.validation?.warnings || [],
+      };
+      if (args.json) console.log(JSON.stringify(payload, null, 2));
+      else console.error(`${payload.error}\n\n${usage()}`);
+      return 1;
+    }
+  }
+  if (args.command === "run") {
+    if (!args.ticket) {
+      console.error(`Missing ticket id for run.\n\n${usage()}`);
+      return 2;
+    }
+    try {
+      const result = runTicketExecution(args, { cwd, env });
+      console.log(args.json ? JSON.stringify(result, null, 2) : renderText(result));
+      return verificationStatusIsPass(result.status, "execution") ? 0 : 1;
+    } catch (error) {
+      const payload = {
+        command: "run",
         status: "FAIL",
         error: error?.message || String(error),
         errors: error?.validation?.errors || [],

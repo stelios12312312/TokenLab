@@ -106,7 +106,11 @@ function runCli(scriptPath, args, cwd) {
 }
 
 function runGit(args, cwd) {
-  return execFileSync("git", ["-C", cwd, ...args], { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  return execFileSync("git", ["-C", cwd, ...args], {
+    encoding: "utf-8",
+    stdio: ["pipe", "pipe", "pipe"],
+    env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_SYSTEM: "/dev/null" },
+  }).trim();
 }
 
 function repositorySourceDigest(cwd) {
@@ -952,11 +956,8 @@ function scenarioGitInductionExcludesInactiveUntrackedPlans() {
       state: "CLOSE",
     });
     writeText(join(tmp, "plans", ".current_plan"), "plan_active\n");
-    execFileSync("git", ["init", "-q"], { cwd: tmp, stdio: "pipe" });
-    execFileSync("git", ["add", "--", "plans/plan_fixture/verification_strategy.yaml"], {
-      cwd: tmp,
-      stdio: "pipe",
-    });
+    runGit(["init", "-q"], tmp);
+    runGit(["add", "--", "plans/plan_fixture/verification_strategy.yaml"], tmp);
 
     const build = buildOntologyFacts({ cwd: tmp, induce: true });
     assert(build.ok, "Git plan-authority fixture builds ontology facts");
@@ -1029,16 +1030,15 @@ function scenarioPlanPointersRespectLifecycleAuthority() {
     writeText(threadPointerPaths.unreadable, "plan_thread_unreadable\n");
     writeText(threadPointerPaths.active, "plan_thread_active\n");
 
-    execFileSync("git", ["init", "-q"], { cwd: tmp, stdio: "pipe" });
-    execFileSync(
-      "git",
+    runGit(["init", "-q"], tmp);
+    runGit(
       [
         "add",
         "--",
         "plans/plan_fixture/verification_strategy.yaml",
         "plans/plan_tracked_close/verification_strategy.yaml",
       ],
-      { cwd: tmp, stdio: "pipe" }
+      tmp
     );
 
     const initialPointerBytes = new Map(

@@ -43,6 +43,7 @@ import {
   cmdAutoApproveCheck, cmdDumpFixtures, cmdReachabilityAudit, selfTest, formatInvariantDiagnostic,
   cmdImpactFromFile, cmdProveCriterion, cmdStoryProof, cmdAnnotationMismatches,
 } from "./lib/rule_commands.mjs";
+import { planUsesFastTrack } from "./lib/plan_utils.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -65,12 +66,17 @@ const GATE_REGISTRY = (() => {
 // The internal first-run fast-track is intentionally narrow. It can relax only
 // the early story-readiness family that the bootstrap flow may not yet satisfy;
 // infrastructure, security, traceability, and domain invariants remain hard.
-const FAST_TRACK_RELAXABLE_INVARIANTS = new Set([
+// Security-critical invariants (such as auth_story_untested) must NEVER be relaxed.
+export const FAST_TRACK_RELAXABLE_INVARIANTS = new Set([
   "high_priority_untested",
   "code_without_tests",
   "depends_on_unimplemented",
   "depends_on_retired",
-  "auth_story_untested",
+]);
+
+export const FAST_TRACK_PERMITTED_EARLY_GATES = new Set([
+  "explore-to-plan",
+  "plan-to-execute",
 ]);
 
 // ═══════════════════════════════════════════════════════════
@@ -167,10 +173,11 @@ export function runSemanticChecks(gate, planDir, engineOptions = {}) {
     const violations = session.queryAll("invariant_violated(Name, Detail)");
     if (violations.length > 0) {
       const auditOnly = gateDef?.audit_only === true;
-      const internalFastTrack = process.env._PLANNER_FAST_TRACK === "1";
+      const internalFastTrack = planUsesFastTrack(planDir);
+      const allowFastTrackRelaxation = internalFastTrack && FAST_TRACK_PERMITTED_EARLY_GATES.has(gate);
       const downgradedViolations = auditOnly
         ? violations
-        : internalFastTrack
+        : allowFastTrackRelaxation
           ? violations.filter((v) => FAST_TRACK_RELAXABLE_INVARIANTS.has(String(v.Name || "")))
           : [];
       const downgradedSet = new Set(downgradedViolations);
@@ -196,7 +203,7 @@ export function runSemanticChecks(gate, planDir, engineOptions = {}) {
         results.push({
           name: auditOnly ? "Audit-only invariant advisories" : "Fast-track story invariant advisories",
           status: "WARN",
-          detail: `${downgradedViolations.length} violation(s) [${auditOnly ? "AUDIT_ONLY" : "INTERNAL_FAST_TRACK"} — downgraded to WARN]: ${downgradedViolations.slice(0, 3).map(v => formatInvariantDiagnostic(session, v)).join("; ")}${downgradedViolations.length > 3 ? " ..." : ""}`,
+          detail: `${downgradedViolations.length} violation(s) [${auditOnly ? "AUDIT_ONLY" : (process.env._PLANNER_FAST_TRACK === "1" ? "INTERNAL_FAST_TRACK" : "FAST_TRACK")} — downgraded to WARN]: ${downgradedViolations.slice(0, 3).map(v => formatInvariantDiagnostic(session, v)).join("; ")}${downgradedViolations.length > 3 ? " ..." : ""}`,
         });
       }
     }

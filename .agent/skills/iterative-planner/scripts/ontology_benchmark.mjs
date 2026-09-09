@@ -54,24 +54,57 @@ function timed(fn) { const start = performance.now(); const result = fn(); retur
 function measureCase(sample) {
   const measurements = { induction: [], cold_load_compile: [], warm_load_compile: [], compilation: [], grounded_lookup: [], graph_join: [], broad_scan: [], full_gate_evaluation: [] };
   let lastRuntime = null;
+  let cardinalities = null;
   for (let index = 0; index < warmups + runs; index += 1) {
     const capture = index >= warmups;
     const induction = timed(() => buildOntologyFacts({ cwd: sample.cwd, induce: true, dryRun: true }));
-    const cold = timed(() => loadOntologyRuntime({ cwd: sample.cwd, useCache: false, writeCache: false }));
-    const warm = timed(() => loadOntologyRuntime({ cwd: sample.cwd, useCache: true, writeCache: true }));
+    const cold = timed(() => loadOntologyRuntime({ cwd: sample.cwd, useCache: false, writeCache: false, projectionProfile: "full" }));
+    const warm = timed(() => loadOntologyRuntime({ cwd: sample.cwd, useCache: true, writeCache: true, projectionProfile: "full" }));
     lastRuntime = warm.result;
     if (!induction.result.ok || !cold.result.ok || !warm.result.ok) throw new Error(`benchmark ${sample.label} ontology load failed`);
     const compilation = timed(() => { const session = createSession(); session.consult(warm.result.facts_text); return session; });
     const firstStory = warm.result.documents.specification?.stories?.[0]?.id || "__missing__";
-    const grounded = timed(() => warm.result.session.queryAll(`story('${String(firstStory).replaceAll("'", "")}', _, _)`));
-    const join = timed(() => warm.result.session.queryAll("criterion_story(_, _)"));
-    const broad = timed(() => warm.result.session.queryAll("story(_, _, _)"));
+    const grounded = timed(() => warm.result.session.queryAll(`story_title('${String(firstStory).replaceAll("'", "")}', Title)`));
+    const join = timed(() => warm.result.session.queryAll("story_has_criterion(Story, Criterion), acceptance_criterion(Criterion, Text)"));
+    const broad = timed(() => warm.result.session.queryAll("story_title(Story, Title)"));
     const validation = timed(() => validateOntologyGraph({ cwd: sample.cwd }));
+
+    // Non-empty cardinality assertions
+    if (grounded.result.length === 0) {
+      throw new Error(`benchmark ${sample.label} query 'grounded' returned 0 results`);
+    }
+    if (join.result.length === 0) {
+      throw new Error(`benchmark ${sample.label} query 'graph_join' returned 0 results`);
+    }
+    if (broad.result.length === 0) {
+      throw new Error(`benchmark ${sample.label} query 'broad_scan' returned 0 results`);
+    }
+
+    // Injected mutation control verification
+    const beforeMutationCount = broad.result.length;
+    warm.result.session.assert(`story_title('__BENCHMARK_MUTATION_${index}__', 'Mutation Control Test Title').`);
+    const afterMutation = warm.result.session.queryAll("story_title(Story, Title)");
+    if (afterMutation.length !== beforeMutationCount + 1) {
+      throw new Error(`benchmark ${sample.label} mutation control failed: expected ${beforeMutationCount + 1}, got ${afterMutation.length}`);
+    }
+    const negative = warm.result.session.queryAll("story_title('__NON_EXISTENT_BENCHMARK_STORY__', Title)");
+    if (negative.length !== 0) {
+      throw new Error(`benchmark ${sample.label} negative control failed: expected 0, got ${negative.length}`);
+    }
+
+    cardinalities = {
+      grounded_count: grounded.result.length,
+      graph_join_count: join.result.length,
+      broad_scan_count: beforeMutationCount,
+      mutation_verified: true,
+      negative_control_verified: true,
+    };
+
     if (capture) for (const [phase, timing] of Object.entries({ induction, cold_load_compile: cold, warm_load_compile: warm, compilation, grounded_lookup: grounded, graph_join: join, broad_scan: broad, full_gate_evaluation: validation })) measurements[phase].push(timing.ms);
   }
   const factLines = lastRuntime.facts_text.split("\n").filter((line) => line.trim().endsWith("."));
-  const edgeFactCount = factLines.filter((line) => /^(file_depends_on|criterion_story|criterion_test|criterion_artifact|test_covers_file|test_run_test|plan_story)\(/.test(line.trim())).length;
-  return { label: sample.label, cwd: sample.cwd, authority_digest: lastRuntime.authority_receipt.source_digest, total_fact_count: factLines.length, edge_fact_count: edgeFactCount, counts: lastRuntime.counts, phase_stats: Object.fromEntries(Object.entries(measurements).map(([phase, values]) => [phase, stats(values)])), cache_observation: lastRuntime.cache };
+  const edgeFactCount = factLines.filter((line) => /^(file_depends_on|story_has_criterion|plan_criterion_story|plan_criterion_test|test_covers_file|test_verifies_criterion|artifact_proves_criterion|file_in_module)\(/.test(line.trim())).length;
+  return { label: sample.label, cwd: sample.cwd, authority_digest: lastRuntime.authority_receipt.source_digest, total_fact_count: factLines.length, edge_fact_count: edgeFactCount, counts: lastRuntime.counts, cardinalities, phase_stats: Object.fromEntries(Object.entries(measurements).map(([phase, values]) => [phase, stats(values)])), cache_observation: lastRuntime.cache };
 }
 
 const slo = JSON.parse(readFileSync(new URL("../config/ontology_performance_slo.json", import.meta.url), "utf8"));

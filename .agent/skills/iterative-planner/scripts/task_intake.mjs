@@ -12,6 +12,8 @@ import { loadPlannerPolicy } from "./lib/planner_policy.mjs";
 import { computeTriage } from "./lib/triage.mjs";
 import { deriveIntakeDecisionRequest } from "./lib/intake_decision_request.mjs";
 import { buildGuidanceReminder, renderGuidanceReminder } from "./lib/guidance_reminder.mjs";
+import { normalizeClientGoal } from "./lib/plan_utils.mjs";
+import { getWorkflowContract } from "./lib/workflow_contracts.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const scriptDir = dirname(__filename);
@@ -135,11 +137,8 @@ function listKnownWorkflowIds() {
 }
 
 function extractExplicitWorkflow(goalText) {
-  const text = String(goalText || "").trim();
-  const match = text.match(/^\/([a-z0-9-]+)/iu);
-  if (!match) return null;
-  const workflow = `/${match[1]}`;
-  return listKnownWorkflowIds().includes(workflow) ? workflow : null;
+  const normalized = normalizeClientGoal(goalText, listKnownWorkflowIds());
+  return normalized.explicitWorkflow;
 }
 
 function buildPreflightSummary(preflight) {
@@ -279,8 +278,11 @@ async function main() {
   }
 
   const cwd = process.cwd();
-  const goal = args.goal || "";
-  const explicitWorkflow = extractExplicitWorkflow(goal);
+  const rawGoal = args.goal || "";
+  const knownWorkflows = listKnownWorkflowIds();
+  const normalized = normalizeClientGoal(rawGoal, knownWorkflows);
+  const explicitWorkflow = normalized.explicitWorkflow;
+  const goal = normalized.cleanGoal || (explicitWorkflow ? explicitWorkflow : "");
 
   let preflightJson = null;
   let decision = null;
@@ -290,12 +292,21 @@ async function main() {
     : computeTriage({ goalText: goal, plannerPolicy: plannerPolicyInfo.policy });
 
   if (explicitWorkflow) {
+    const contract = getWorkflowContract(cwd, explicitWorkflow);
+    const mode = contract?.contract_profile === "implementation_full"
+      ? "full"
+      : (contract?.contract_profile || null);
     decision = buildDecision({
-        goal,
-        route: "explicit_workflow",
-        rationale: "The user named a workflow explicitly, so task intake should not override that intent.",
-        explicitWorkflow,
-      });
+      goal: goal || explicitWorkflow,
+      route: "explicit_workflow",
+      rationale: "The user named a workflow explicitly, so task intake should not override that intent.",
+      explicitWorkflow,
+      recommendedAction: {
+        workflow: explicitWorkflow,
+        mode,
+        command: explicitWorkflow,
+      },
+    });
   } else if (triage?.operator_action === "ask_user") {
     preflightJson = buildSkipPreflight(goal, triage);
     const decisionRequest = deriveIntakeDecisionRequest({ triage, preflight: preflightJson });

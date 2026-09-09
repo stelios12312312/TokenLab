@@ -175,7 +175,10 @@ function seedStoryRegistry(projectRoot) {
 
 function seedProject({ state = "EXPLORE", goal = "Internal planner maintenance dry-run equivalence control" } = {}) {
   const projectRoot = mkdtempSync(join(tmpdir(), "planner-dry-run-equivalence-"));
-  execFileSync("git", ["init", "-q"], { cwd: projectRoot });
+  execFileSync("git", ["init", "-q"], {
+    cwd: projectRoot,
+    env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" },
+  });
   symlinkSync(agentDir, join(projectRoot, ".agent"), "dir");
   writeJson(join(projectRoot, "audit.config.json"), {
     roles: ["core", "assumptions_challenger", "wiring_auditor", "config_integrity", "traceability"],

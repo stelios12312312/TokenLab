@@ -6,6 +6,7 @@ import { spawnSync } from "child_process";
 import { existsSync, readFileSync } from "fs";
 import { join } from "path";
 import { redactSecrets } from "./provider_client.mjs";
+import { normalizeRemoteMode, REMOTE_MODES } from "./remote_mode.mjs";
 
 function asString(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -20,6 +21,12 @@ export function detectGitRemoteSlug(projectRoot = process.cwd()) {
     const res = spawnSync("git", ["config", "--get", "remote.origin.url"], {
       cwd: projectRoot,
       encoding: "utf-8",
+      env: {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+        GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+        GIT_CONFIG_NOSYSTEM: "1",
+      },
     });
     if (res.status !== 0 || !res.stdout) return null;
     const url = res.stdout.trim();
@@ -30,6 +37,15 @@ export function detectGitRemoteSlug(projectRoot = process.cwd()) {
   }
 }
 
+export function normalizeModeString(val) {
+  if (!val || typeof val !== "string") return null;
+  try {
+    return normalizeRemoteMode(val);
+  } catch {
+    return "invalid";
+  }
+}
+
 export function resolveGithubMirrorConfig({
   projectRoot = process.cwd(),
   explicitRepo = null,
@@ -37,6 +53,7 @@ export function resolveGithubMirrorConfig({
   policy = null,
   packet = null,
   env = process.env,
+  remoteMode = null,
 } = {}) {
   let explicit = null;
   if (explicitMirror !== null && explicitMirror !== undefined) {
@@ -46,16 +63,95 @@ export function resolveGithubMirrorConfig({
     explicit = val !== "0" && val !== "false" && val !== "off" && val !== "no";
   } else if (policy?.github_mirror !== undefined) {
     explicit = Boolean(policy.github_mirror);
+  } else if (packet?.remote_policy?.github_mirror !== undefined) {
+    explicit = Boolean(packet.remote_policy.github_mirror);
   }
 
   const packetRepo = packet?.remote_policy?.repository_slug || packet?.remote_policy?.repo || packet?.repo;
-  const repo = asString(explicitRepo) || asString(packetRepo) || detectGitRemoteSlug(projectRoot);
-  const enabled = explicit !== null ? (explicit && Boolean(repo)) : Boolean(repo);
+  const configuredRepo = asString(explicitRepo) || asString(packetRepo);
+  const repo = configuredRepo || detectGitRemoteSlug(projectRoot);
+
+  const rawPMode = packet?.remote_mode;
+  const rawPolicyMode = packet?.remote_policy?.mode;
+  const rawCliMode = remoteMode;
+  const rawEnvMode = env?.PLANNER_REMOTE_MODE;
+
+  const pMode = normalizeModeString(rawPMode);
+  const policyMode = normalizeModeString(rawPolicyMode);
+  const cliMode = normalizeModeString(rawCliMode);
+  const envMode = normalizeModeString(rawEnvMode);
+
+  // Check for any malformed/invalid mode strings
+  if (
+    (rawPMode && pMode === "invalid") ||
+    (rawPolicyMode && policyMode === "invalid") ||
+    (rawCliMode && cliMode === "invalid") ||
+    (rawEnvMode && envMode === "invalid")
+  ) {
+    const invalidVal = (rawPMode && pMode === "invalid") ? rawPMode :
+      (rawPolicyMode && policyMode === "invalid") ? rawPolicyMode :
+      (rawCliMode && cliMode === "invalid") ? rawCliMode : rawEnvMode;
+    return {
+      enabled: false,
+      repo: null,
+      remoteMode: "invalid",
+      conflict: true,
+      error: `Invalid or unsupported remote mode: '${invalidVal}'. Expected one of: ${REMOTE_MODES.join(", ")}`,
+      reason: "invalid_remote_mode",
+      source: "conflict",
+    };
+  }
+
+  // Check for internal conflict in packet policy vs top-level remote mode
+  if (pMode && policyMode && pMode !== policyMode) {
+    return {
+      enabled: false,
+      repo: null,
+      remoteMode: "local-only",
+      conflict: true,
+      error: `Conflicting remote modes in packet: remote_mode='${pMode}' vs remote_policy.mode='${policyMode}'`,
+      reason: "conflicting_remote_policy",
+      source: "conflict",
+    };
+  }
+
+  const effectiveMode = cliMode ||
+    policyMode ||
+    pMode ||
+    envMode ||
+    null;
+
+  const normalizedMode = effectiveMode || "local-only";
+  const isRemoteSync = normalizedMode === "remote-sync";
+
+  // Check for conflict between mirror enablement and non-remote-sync mode
+  if (!isRemoteSync && explicit === true) {
+    return {
+      enabled: false,
+      repo: null,
+      remoteMode: normalizedMode,
+      conflict: true,
+      error: `Explicit mirror enabled is invalid in ${normalizedMode} mode`,
+      reason: `remote_mode_${normalizedMode}`,
+      source: "conflict",
+    };
+  }
+
+  // Authority boundary: every remote write strictly requires validated remote-sync mode
+  let enabled = false;
+  if (isRemoteSync && repo) {
+    if (explicit !== null) {
+      enabled = explicit;
+    } else {
+      enabled = true;
+    }
+  }
 
   return {
     enabled,
-    repo,
-    source: explicit !== null ? (explicitMirror !== null ? "cli" : policy?.github_mirror !== undefined ? "policy" : "env") : (repo ? "auto" : "none"),
+    repo: enabled ? repo : (!isRemoteSync ? null : repo),
+    remoteMode: normalizedMode,
+    source: explicit !== null ? (explicitMirror !== null ? "cli" : policy?.github_mirror !== undefined ? "policy" : "env") : (enabled ? "auto" : "none"),
   };
 }
 
@@ -116,11 +212,33 @@ function renderIssueBody({ packet, ticket, env }) {
   return redactSecrets(lines.join("\n"), env);
 }
 
-export function ensureRepoLabels({ cwd = process.cwd(), repo, labels = [], ghRunner = defaultGhRunner }) {
+export function ensureRepoLabels({
+  cwd = process.cwd(),
+  repo,
+  labels = [],
+  ghRunner = defaultGhRunner,
+  remoteMode = null,
+  packet = null,
+  policy = null,
+  explicitMirror = null,
+  env = process.env,
+} = {}) {
+  const config = resolveGithubMirrorConfig({
+    projectRoot: cwd,
+    explicitRepo: repo,
+    explicitMirror,
+    policy,
+    packet,
+    env,
+    remoteMode,
+  });
+  if (!config.enabled || !config.repo) {
+    return;
+  }
   for (const label of labels) {
     if (!label) continue;
     try {
-      ghRunner(["label", "create", label, "--repo", repo, "--description", "Planner Program Packet mirror label", "--color", "0075ca"], cwd);
+      ghRunner(["label", "create", label, "--repo", config.repo, "--description", "Planner Program Packet mirror label", "--color", "0075ca"], cwd);
     } catch {
       // Best-effort
     }
@@ -134,8 +252,31 @@ export function mirrorTicketPublish({
   repo,
   ghRunner = defaultGhRunner,
   env = process.env,
+  remoteMode = null,
+  policy = null,
+  explicitMirror = null,
 }) {
-  if (!repo) {
+  const config = resolveGithubMirrorConfig({
+    projectRoot,
+    explicitRepo: repo,
+    explicitMirror,
+    policy: policy || packet?.policy || null,
+    packet,
+    env,
+    remoteMode,
+  });
+
+  if (!config.enabled) {
+    return {
+      status: "skipped",
+      reason: config.reason || `remote_mode_${config.remoteMode}`,
+      conflict: config.conflict || false,
+      error: config.error || null,
+    };
+  }
+
+  const resolvedRepo = config.repo;
+  if (!resolvedRepo) {
     return { status: "skipped", reason: "no_repo_configured" };
   }
 
@@ -154,12 +295,12 @@ export function mirrorTicketPublish({
     `lifecycle:${ticket.lifecycle || "proposed"}`,
   ];
 
-  ensureRepoLabels({ cwd: projectRoot, repo, labels, ghRunner });
+  ensureRepoLabels({ cwd: projectRoot, repo: resolvedRepo, labels, ghRunner, remoteMode: config.remoteMode, explicitMirror: true });
 
   const args = [
     "issue",
     "create",
-    "--repo", repo,
+    "--repo", resolvedRepo,
     "--title", title,
     "--body", body,
   ];
@@ -170,7 +311,7 @@ export function mirrorTicketPublish({
   let res = ghRunner(args, projectRoot);
   if (!res.ok && res.stderr?.includes("not found")) {
     // Retry without labels if label creation was rejected
-    res = ghRunner(["issue", "create", "--repo", repo, "--title", title, "--body", body], projectRoot);
+    res = ghRunner(["issue", "create", "--repo", resolvedRepo, "--title", title, "--body", body], projectRoot);
   }
 
   if (res.ok) {
@@ -187,7 +328,7 @@ export function mirrorTicketPublish({
     if (!asArray(ticket.external_refs).some((r) => r.kind === "github_issue")) {
       ticket.external_refs = [
         ...asArray(ticket.external_refs),
-        { kind: "github_issue", repo, issue_number: issueNumber, url: output },
+        { kind: "github_issue", repo: resolvedRepo, issue_number: issueNumber, url: output },
       ];
     }
     return { status: "published", issue_number: issueNumber, url: output };
@@ -209,15 +350,39 @@ export function mirrorTicketClose({
   repo,
   comment = null,
   ghRunner = defaultGhRunner,
+  env = process.env,
+  remoteMode = null,
+  policy = null,
+  explicitMirror = null,
 }) {
+  const config = resolveGithubMirrorConfig({
+    projectRoot,
+    explicitRepo: repo,
+    explicitMirror,
+    policy: policy || packet?.policy || null,
+    packet,
+    env,
+    remoteMode,
+  });
+
+  if (!config.enabled) {
+    return {
+      status: "skipped",
+      reason: config.reason || `remote_mode_${config.remoteMode}`,
+      conflict: config.conflict || false,
+      error: config.error || null,
+    };
+  }
+
+  const resolvedRepo = config.repo;
   const issueNumber = ticket.github_sync?.published_issue_number ||
     asArray(ticket.external_refs).find((r) => r.kind === "github_issue")?.issue_number;
-  if (!issueNumber || !repo) {
+  if (!issueNumber || !resolvedRepo) {
     return { status: "skipped", reason: "no_issue_or_repo" };
   }
 
   const closeComment = comment || `Closed by Program ${packet.id} ticket ${ticket.id}.`;
-  const res = ghRunner(["issue", "close", String(issueNumber), "--repo", repo, "--comment", closeComment], projectRoot);
+  const res = ghRunner(["issue", "close", String(issueNumber), "--repo", resolvedRepo, "--comment", closeComment], projectRoot);
   if (res.ok) {
     ticket.github_sync = {
       ...(ticket.github_sync || {}),
@@ -244,14 +409,38 @@ export function mirrorTicketDefer({
   ticket,
   repo,
   ghRunner = defaultGhRunner,
+  env = process.env,
+  remoteMode = null,
+  policy = null,
+  explicitMirror = null,
 }) {
+  const config = resolveGithubMirrorConfig({
+    projectRoot,
+    explicitRepo: repo,
+    explicitMirror,
+    policy: policy || packet?.policy || null,
+    packet,
+    env,
+    remoteMode,
+  });
+
+  if (!config.enabled) {
+    return {
+      status: "skipped",
+      reason: config.reason || `remote_mode_${config.remoteMode}`,
+      conflict: config.conflict || false,
+      error: config.error || null,
+    };
+  }
+
+  const resolvedRepo = config.repo;
   const issueNumber = ticket.github_sync?.published_issue_number ||
     asArray(ticket.external_refs).find((r) => r.kind === "github_issue")?.issue_number;
-  if (!issueNumber || !repo) {
+  if (!issueNumber || !resolvedRepo) {
     return { status: "skipped", reason: "no_issue_or_repo" };
   }
 
-  const res = ghRunner(["issue", "edit", String(issueNumber), "--repo", repo, "--add-label", "lifecycle:deferred"], projectRoot);
+  const res = ghRunner(["issue", "edit", String(issueNumber), "--repo", resolvedRepo, "--add-label", "lifecycle:deferred"], projectRoot);
   if (res.ok) {
     ticket.github_sync = {
       ...(ticket.github_sync || {}),

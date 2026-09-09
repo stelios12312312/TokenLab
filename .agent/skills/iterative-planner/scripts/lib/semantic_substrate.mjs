@@ -14,6 +14,7 @@ import {
   loadSpotCheckFacts,
   loadRemediationFacts,
   loadRules,
+  loadSourceMappingFacts,
   loadStateFacts,
   loadStoryFacts,
 } from "./fact_loader.mjs";
@@ -483,6 +484,7 @@ export function createDiagnosticsSession({
   loadRemediationFacts(session, ctx);
   loadReflectionFacts(session, ctx);
   loadSpotCheckFacts(session, ctx);
+  loadSourceMappingFacts(session);
 
   return {
     session,

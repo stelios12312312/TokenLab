@@ -314,13 +314,13 @@ invariant_violated(deliverable_missing_quality_contract, DeliverableId) :-
 %% I-035: Every active source file must be mapped to a story, capability, or
 %% explicitly ignored. During EXPLORE/PLAN this is advisory because mapping may
 %% be the work in progress; by VALIDATE/CLOSE it becomes blocking evidence.
-source_file_mapped(File) :- code_ref(_, File).
-source_file_mapped(File) :- test_ref(_, File).
-source_file_mapped(File) :- doc_ref(_, File).
-source_file_mapped(File) :- validation_ref(_, File).
-source_file_mapped(File) :- validation_artifact(File, _).
-source_file_mapped(File) :- story_covers_script(_, File).
-source_file_mapped(File) :- file_marked_ignored(File).
+%%
+%% source_file_mapped/1 is injected as FACTS by fact_loader.mjs
+%% (loadSourceMappingFacts), which computes the closure over code_ref/test_ref/
+%% doc_ref/validation_ref/validation_artifact/story_covers_script/
+%% file_marked_ignored once per session. The previous 7-clause rule form
+%% rescanned every ref relation for every candidate file and dominated
+%% check-invariants runtime; the fact form is an O(1) index lookup.
 
 invariant_violated(unmapped_source_file, File) :-
     source_file(File),

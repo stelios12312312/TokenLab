@@ -45,7 +45,18 @@ function fixture(name) {
 
 function run(args, cwd = repoRoot, env = process.env) {
   try {
-    const stdout = execFileSync(NODE, [cli, ...args], { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...env } });
+    const stdout = execFileSync(NODE, [cli, ...args], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+        GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM || "1",
+        GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+        ...env,
+      },
+    });
     let parsed = null;
     try { parsed = JSON.parse(stdout); } catch { /* non-JSON command */ }
     return { ok: true, stdout, parsed };
@@ -59,7 +70,18 @@ function run(args, cwd = repoRoot, env = process.env) {
 
 function runGithub(args, cwd = repoRoot, env = process.env) {
   try {
-    const stdout = execFileSync(NODE, [githubCli, ...args], { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"], env: { ...process.env, ...env } });
+    const stdout = execFileSync(NODE, [githubCli, ...args], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+        GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM || "1",
+        GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+        ...env,
+      },
+    });
     let parsed = null;
     try { parsed = JSON.parse(stdout); } catch { /* non-JSON command */ }
     return { ok: true, stdout, parsed };
@@ -1976,7 +1998,17 @@ try {
 // partial-write safe, and idempotent for already applied packet state.
 {
   function runGit(tmp, args) {
-    return execFileSync("git", args, { cwd: tmp, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    return execFileSync("git", args, {
+      cwd: tmp,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+        GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM || "1",
+        GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+      },
+    }).trim();
   }
 
   function writeJson(path, value) {
@@ -2802,7 +2834,17 @@ try {
 // can be recomputed from HEAD.
 {
   function runGit(tmp, args) {
-    return execFileSync("git", args, { cwd: tmp, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    return execFileSync("git", args, {
+      cwd: tmp,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+      env: {
+        ...process.env,
+        GIT_CONFIG_GLOBAL: process.env.GIT_CONFIG_GLOBAL || "/dev/null",
+        GIT_CONFIG_NOSYSTEM: process.env.GIT_CONFIG_NOSYSTEM || "1",
+        GIT_CONFIG_SYSTEM: process.env.GIT_CONFIG_SYSTEM || "/dev/null",
+      },
+    }).trim();
   }
 
   function writeJson(path, value) {
@@ -3744,7 +3786,7 @@ function scenarioGithubMirrorDefaultPushOnly() {
     const packetDir = join(tmp, "plans", "programs", "test-mirror");
     mkdirSync(packetDir, { recursive: true });
     const packetPath = join(packetDir, "program_packet.json");
-    const initRes = run(["init", "--program", "test-mirror", "--title", "Test Mirror", "--repo", "owner/test-repo", "--json"], tmp);
+    const initRes = run(["init", "--program", "test-mirror", "--title", "Test Mirror", "--repo", "owner/test-repo", "--remote-mode", "remote-sync", "--json"], tmp);
     assert(initRes.ok, "github mirror test: program initialized");
 
     // 1. Intake with GitHub unreachable (gh fails/offline) -> succeeds locally with queued record

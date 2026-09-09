@@ -1,3 +1,6 @@
+// @planner:module = semantic_engine
+// @planner:capability = unified_semantic_ontology_engine
+
 import { join } from "path";
 
 import { getRuleBundleVersion, hashRuleFiles } from "./determinism.mjs";
@@ -13,7 +16,12 @@ export function createSemanticEngine({
   transientRegistryRefresh = false,
   ontologyProjectionProfile = "full",
   queryTimeoutMs = 3000,
+  semanticEngine = null,
 } = {}) {
+  if (semanticEngine) {
+    return semanticEngine;
+  }
+
   const ctx = { cwd, skillPath, transientRegistryRefresh };
   let refresh = null;
   const hasProvidedCloseSignals = transientCloseSignals && typeof transientCloseSignals === "object";

@@ -15,6 +15,7 @@ import { renderDegradedCoverageAssessment } from "./degraded_coverage.mjs";
 import { parseMarkdownTable } from "./markdown_table.mjs";
 import { formatReason, deduplicateViolations, sanitizeAtom, sanitizeEnumAtom } from "./sanitize.mjs";
 import { deriveVerificationTruth, normalizePresentationResult } from "./verification_truth.mjs";
+import { loadStoryRegistryGraph, findCircularStoryPairs } from "./story_graph.mjs";
 
 function safeQueryAll(session, query) {
   return session.queryAll(query);
@@ -1139,7 +1140,24 @@ export function cmdCheckInvariants(jsonMode, {
     session.consult(`semantic_transition_target(${target}).`);
   }
 
-  const violations = deduplicateViolations(session.queryAll("invariant_violated(Name, Detail)"));
+  // I-002 circular dependencies: evaluated natively in O(V+E) via Tarjan SCC
+  // over story_registry.json `requires` edges instead of Prolog SLD
+  // backtracking over the transitive closure. Prolog-derived pairs (if any)
+  // are merged and deduplicated below.
+  const nativeCircularPairs = (() => {
+    const graph = loadStoryRegistryGraph(cwd);
+    if (!graph.ok) return [];
+    return findCircularStoryPairs(graph.edges);
+  })();
+  const nativeCircularViolations = nativeCircularPairs.map(([a, b]) => ({
+    Name: "circular_dependency",
+    Detail: { functor: "pair", args: [a, b] },
+  }));
+
+  const violations = deduplicateViolations([
+    ...session.queryAll("invariant_violated(Name, Detail)"),
+    ...nativeCircularViolations,
+  ]);
   const warnings = deduplicateViolations(session.queryAll("invariant_warning(Name, Detail)"));
   const coverageInvalid = degradedCoverage?.evidence_validity === "invalid";
   const coverageDegraded = degradedCoverage?.evidence_validity === "degraded_coverage";

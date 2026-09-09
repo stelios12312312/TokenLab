@@ -359,7 +359,7 @@ check("proof-status repository census is exhaustive and fully classified", () =>
     result.denominators.javascript_files + result.denominators.prolog_files,
     "the production denominator equals the complete scanned JavaScript and Prolog boundary",
   );
-  assert.equal(result.denominators.excluded_nonproduction_javascript_files, 161);
+  assert.equal(result.denominators.excluded_nonproduction_javascript_files, 165);
   assert.equal(result.denominators.registered_readers, 97);
   assert.equal(result.denominators.canonical_derived_readers, 9);
   assert.equal(result.denominators.repaired_readers, 88);

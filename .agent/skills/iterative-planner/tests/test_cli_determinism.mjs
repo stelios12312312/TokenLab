@@ -676,6 +676,7 @@ const inventoryExemptions = new Map([
   "bootstrap_registry.mjs",
   "close_signals.mjs",
   "clean_checkout_conformance.mjs",
+  "component_performance_profile.mjs",
   "convention_inducer.mjs",
   "conventions.mjs",
   "escalation_check.mjs",
@@ -740,6 +741,7 @@ const inventoryExemptions = new Map([
   "verification_runner.mjs",
   "verification_strategy.mjs",
   "verify_gate.mjs",
+  "v11_phase0_audit.mjs",
   "work_preflight.mjs",
   "workflow.mjs",
 ].map((fileName) => [

@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+// @planner:module = prolog
+// @planner:capability = pure_javascript_prolog_interpreter
+//
 // prolog.mjs — Minimal Prolog interpreter for rule-based verification.
 // Pure ES module, zero dependencies, Node.js 18+.
 //
@@ -387,10 +390,20 @@ const CMP = { ">=": (a, b) => a >= b, ">": (a, b) => a > b, "<": (a, b) => a < b
 // RT10-M2: Configurable depth limit with cycle detection.
 // Previous hardcoded 1000 could be silently hit by circular rules, causing
 // gates to pass without detecting violations. Cycle detection tracks
-// goal signatures to catch infinite loops earlier than depth limit.
+// goal signatures along the active derivation branch to catch infinite loops
+// earlier than the depth limit without pruning sibling search branches.
 const MAX_SOLVE_DEPTH = 500;  // Lower limit — circular rules hit this faster
 
-function* solve(goals, subst, db, depth = 0, deadline = 0, solverState = { goalHistory: new Set() }) {
+function hasAncestor(ancestors, sig) {
+  let curr = ancestors;
+  while (curr !== null) {
+    if (curr.sig === sig) return true;
+    curr = curr.parent;
+  }
+  return false;
+}
+
+function* solve(goals, subst, db, depth = 0, deadline = 0, ancestors = null) {
   if (deadline > 0 && Date.now() > deadline) {
     const err = new Error("Query execution timed out");
     err.code = "QUERY_TIMEOUT";
@@ -401,12 +414,12 @@ function* solve(goals, subst, db, depth = 0, deadline = 0, solverState = { goalH
     err.code = "QUERY_DEPTH_EXCEEDED";
     throw err;
   }
-  // Cycle detection: track goal+depth signature to detect infinite loops
+  // Cycle detection: track goal signature along the active derivation branch
+  let currentAncestors = ancestors;
   if (goals.length > 0 && depth > 50) {
     const sig = JSON.stringify(goals.map(g => deepWalk(g, subst)));
-    if (solverState.goalHistory.has(sig)) return; // cycle detected — prune
-    solverState.goalHistory.add(sig);
-    if (solverState.goalHistory.size > 10000) solverState.goalHistory.clear(); // prevent memory bloat
+    if (hasAncestor(ancestors, sig)) return; // cycle detected along active branch — prune
+    currentAncestors = { sig, parent: ancestors };
   }
   if (goals.length === 0) { yield subst; return; }
 
@@ -416,51 +429,51 @@ function* solve(goals, subst, db, depth = 0, deadline = 0, solverState = { goalH
   // --- Built-in dispatch ---
 
   // true / fail
-  if (g.type === "atom" && g.name === "true") { yield* solve(rest, subst, db, depth + 1, deadline, solverState); return; }
+  if (g.type === "atom" && g.name === "true") { yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors); return; }
   if (g.type === "atom" && g.name === "fail") { return; }
 
   // Conjunction (,)/2
   if (g.type === "compound" && g.functor === "," && g.args.length === 2) {
-    yield* solve([g.args[0], g.args[1], ...rest], subst, db, depth + 1, deadline, solverState); return;
+    yield* solve([g.args[0], g.args[1], ...rest], subst, db, depth + 1, deadline, currentAncestors); return;
   }
   // Disjunction (;)/2
   if (g.type === "compound" && g.functor === ";" && g.args.length === 2) {
-    yield* solve([g.args[0], ...rest], subst, db, depth + 1, deadline, solverState);
-    yield* solve([g.args[1], ...rest], subst, db, depth + 1, deadline, solverState);
+    yield* solve([g.args[0], ...rest], subst, db, depth + 1, deadline, currentAncestors);
+    yield* solve([g.args[1], ...rest], subst, db, depth + 1, deadline, currentAncestors);
     return;
   }
 
   // Negation \+/1
   if (g.type === "compound" && g.functor === "\\+" && g.args.length === 1) {
     let found = false;
-    for (const _ of solve([g.args[0]], subst, db, depth + 1, deadline, solverState)) { found = true; break; }
-    if (!found) yield* solve(rest, subst, db, depth + 1, deadline, solverState);
+    for (const _ of solve([g.args[0]], subst, db, depth + 1, deadline, currentAncestors)) { found = true; break; }
+    if (!found) yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors);
     return;
   }
 
   // Unification =/2
   if (g.type === "compound" && g.functor === "=" && g.args.length === 2) {
     const s = unify(g.args[0], g.args[1], subst);
-    if (s) yield* solve(rest, s, db, depth + 1, deadline, solverState);
+    if (s) yield* solve(rest, s, db, depth + 1, deadline, currentAncestors);
     return;
   }
   // Not unifiable \=/2
   if (g.type === "compound" && g.functor === "\\=" && g.args.length === 2) {
     if (!unify(deepWalk(g.args[0], subst), deepWalk(g.args[1], subst), new Map()))
-      yield* solve(rest, subst, db, depth + 1, deadline, solverState);
+      yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors);
     return;
   }
 
   // Arithmetic is/2
   if (g.type === "compound" && g.functor === "is" && g.args.length === 2) {
     const val = evalArith(g.args[1], subst);
-    if (val !== null) { const s = unify(g.args[0], num(val), subst); if (s) yield* solve(rest, s, db, depth + 1, deadline, solverState); }
+    if (val !== null) { const s = unify(g.args[0], num(val), subst); if (s) yield* solve(rest, s, db, depth + 1, deadline, currentAncestors); }
     return;
   }
   // Comparisons
   if (g.type === "compound" && CMP[g.functor] && g.args.length === 2) {
     const a = evalArith(g.args[0], subst), b = evalArith(g.args[1], subst);
-    if (a !== null && b !== null && CMP[g.functor](a, b)) yield* solve(rest, subst, db, depth + 1, deadline, solverState);
+    if (a !== null && b !== null && CMP[g.functor](a, b)) yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors);
     return;
   }
 
@@ -469,7 +482,7 @@ function* solve(goals, subst, db, depth = 0, deadline = 0, solverState = { goalH
     let cur = deepWalk(g.args[1], subst);
     while (cur.type === "compound" && cur.functor === "." && cur.args.length === 2) {
       const s = unify(g.args[0], cur.args[0], subst);
-      if (s) yield* solve(rest, s, db, depth + 1, deadline, solverState);
+      if (s) yield* solve(rest, s, db, depth + 1, deadline, currentAncestors);
       cur = deepWalk(cur.args[1], subst);
     }
     return;
@@ -477,7 +490,7 @@ function* solve(goals, subst, db, depth = 0, deadline = 0, solverState = { goalH
 
   // append/3
   if (g.type === "compound" && g.functor === "append" && g.args.length === 3) {
-    yield* solveAppend(g.args[0], g.args[1], g.args[2], rest, subst, db, depth, deadline, solverState);
+    yield* solveAppend(g.args[0], g.args[1], g.args[2], rest, subst, db, depth, deadline, currentAncestors);
     return;
   }
 
@@ -485,28 +498,28 @@ function* solve(goals, subst, db, depth = 0, deadline = 0, solverState = { goalH
   if (g.type === "compound" && g.functor === "length" && g.args.length === 2) {
     const arr = listToArray(deepWalk(g.args[0], subst), subst);
     const s = unify(g.args[1], num(arr.length), subst);
-    if (s) yield* solve(rest, s, db, depth + 1, deadline, solverState);
+    if (s) yield* solve(rest, s, db, depth + 1, deadline, currentAncestors);
     return;
   }
 
   // findall/3
   if (g.type === "compound" && g.functor === "findall" && g.args.length === 3) {
     const results = [];
-    for (const s of solve([g.args[1]], subst, db, depth + 1, deadline, solverState)) results.push(deepWalk(g.args[0], s));
+    for (const s of solve([g.args[1]], subst, db, depth + 1, deadline, currentAncestors)) results.push(deepWalk(g.args[0], s));
     const s = unify(g.args[2], list(results), subst);
-    if (s) yield* solve(rest, s, db, depth + 1, deadline, solverState);
+    if (s) yield* solve(rest, s, db, depth + 1, deadline, currentAncestors);
     return;
   }
 
   // forall/2: succeed if for every solution of Cond, Action also succeeds
   if (g.type === "compound" && g.functor === "forall" && g.args.length === 2) {
     let ok = true;
-    for (const s of solve([g.args[0]], subst, db, depth + 1, deadline, solverState)) {
+    for (const s of solve([g.args[0]], subst, db, depth + 1, deadline, currentAncestors)) {
       let actionOk = false;
-      for (const _ of solve([g.args[1]], s, db, depth + 1, deadline, solverState)) { actionOk = true; break; }
+      for (const _ of solve([g.args[1]], s, db, depth + 1, deadline, currentAncestors)) { actionOk = true; break; }
       if (!actionOk) { ok = false; break; }
     }
-    if (ok) yield* solve(rest, subst, db, depth + 1, deadline, solverState);
+    if (ok) yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors);
     return;
   }
 
@@ -514,27 +527,27 @@ function* solve(goals, subst, db, depth = 0, deadline = 0, solverState = { goalH
   if (g.type === "compound" && (g.functor === "write" || g.functor === "writeln") && g.args.length === 1) {
     const s = termToString(deepWalk(g.args[0], subst));
     if (g.functor === "writeln") console.log(s); else process.stdout.write(s);
-    yield* solve(rest, subst, db, depth + 1, deadline, solverState);
+    yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors);
     return;
   }
   // nl/0
   if (g.type === "atom" && g.name === "nl") {
     console.log();
-    yield* solve(rest, subst, db, depth + 1, deadline, solverState);
+    yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors);
     return;
   }
 
   // Type checks
   if (g.type === "compound" && g.args.length === 1) {
     const a = deepWalk(g.args[0], subst);
-    if (g.functor === "number" && a.type === "number") { yield* solve(rest, subst, db, depth + 1, deadline, solverState); return; }
-    if (g.functor === "atom" && a.type === "atom") { yield* solve(rest, subst, db, depth + 1, deadline, solverState); return; }
-    if (g.functor === "var" && a.type === "var") { yield* solve(rest, subst, db, depth + 1, deadline, solverState); return; }
-    if (g.functor === "nonvar" && a.type !== "var") { yield* solve(rest, subst, db, depth + 1, deadline, solverState); return; }
+    if (g.functor === "number" && a.type === "number") { yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors); return; }
+    if (g.functor === "atom" && a.type === "atom") { yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors); return; }
+    if (g.functor === "var" && a.type === "var") { yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors); return; }
+    if (g.functor === "nonvar" && a.type !== "var") { yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors); return; }
     if (g.functor === "is_list") {
       let c = a;
       while (c.type === "compound" && c.functor === "." && c.args.length === 2) c = c.args[1];
-      if (c.type === "atom" && c.name === "[]") { yield* solve(rest, subst, db, depth + 1, deadline, solverState); }
+      if (c.type === "atom" && c.name === "[]") { yield* solve(rest, subst, db, depth + 1, deadline, currentAncestors); }
       return;
     }
     // Fall through to user-defined clauses for other compound/1 terms
@@ -555,19 +568,19 @@ function* solve(goals, subst, db, depth = 0, deadline = 0, solverState = { goalH
   for (const clause of clauses) {
     const renamed = renameClause(clause);
     const s = unify(g, renamed.head, new Map(subst));
-    if (s) yield* solve([...renamed.body, ...rest], s, db, depth + 1, deadline, solverState);
+    if (s) yield* solve([...renamed.body, ...rest], s, db, depth + 1, deadline, currentAncestors);
   }
 }
 
 // append/3 implementation via backtracking
-function* solveAppend(l1, l2, l3, rest, subst, db, depth, deadline = 0, solverState = { goalHistory: new Set() }) {
+function* solveAppend(l1, l2, l3, rest, subst, db, depth, deadline = 0, ancestors = null) {
   // Base: append([], L, L)
   const s1 = unify(l1, NIL, subst);
-  if (s1) { const s2 = unify(l2, l3, s1); if (s2) yield* solve(rest, s2, db, depth + 1, deadline, solverState); }
+  if (s1) { const s2 = unify(l2, l3, s1); if (s2) yield* solve(rest, s2, db, depth + 1, deadline, ancestors); }
   // Recursive: append([H|T1], L2, [H|T3]) :- append(T1, L2, T3)
   const h = variable(`_ap${_vc}_H`), t1 = variable(`_ap${_vc}_T1`), t3 = variable(`_ap${_vc++}_T3`);
   const s3 = unify(l1, compound(".", [h, t1]), subst);
-  if (s3) { const s4 = unify(l3, compound(".", [h, t3]), s3); if (s4) yield* solveAppend(t1, l2, t3, rest, s4, db, depth + 1, deadline, solverState); }
+  if (s3) { const s4 = unify(l3, compound(".", [h, t3]), s3); if (s4) yield* solveAppend(t1, l2, t3, rest, s4, db, depth + 1, deadline, ancestors); }
 }
 
 function listToArray(term, subst) {
@@ -635,7 +648,7 @@ function termToReadable(term) {
 
 export function createSession(sessionOptions = {}) {
   const defaultTimeoutMs = sessionOptions.queryTimeoutMs ?? DEFAULT_QUERY_TIMEOUT_MS;
-  const db = createIndexedDb();
+  const db = sessionOptions.baseDb ? sessionOptions.baseDb.clone() : createIndexedDb();
 
   function addClause(clause) {
     db.addClause(clause);
@@ -657,6 +670,7 @@ export function createSession(sessionOptions = {}) {
     consult(text) { consultText(text); },
     consultFile(path) { consultFile(path); },
     assert(text) { consultText(text); },
+    snapshot() { return db.clone(); },
 
     *query(goalText, options = {}) {
       const timeout = options.queryTimeoutMs ?? defaultTimeoutMs;
@@ -670,8 +684,7 @@ export function createSession(sessionOptions = {}) {
       goals.forEach(collectVars);
 
       try {
-        const solverState = { goalHistory: new Set() };
-        for (const subst of solve(goals, new Map(), db, 0, deadline, solverState)) {
+        for (const subst of solve(goals, new Map(), db, 0, deadline, null)) {
           const result = {};
           for (const v of goalVars) {
             if (subst.has(v)) result[v] = termToReadable(deepWalk(variable(v), subst));
@@ -706,6 +719,10 @@ export function createSession(sessionOptions = {}) {
     get db() { return db.rawMap || db; },
     get indexedDb() { return db; },
   };
+}
+
+export function createSessionFromSnapshot(snapshotDb, sessionOptions = {}) {
+  return createSession({ ...sessionOptions, baseDb: snapshotDb });
 }
 
 // ═══════════════════════════════════════════════════════════

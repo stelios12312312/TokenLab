@@ -3721,6 +3721,76 @@ const DEFAULT_SUITES = [
       /^\.agent\/skills\/iterative-planner\/scripts\/lib\/ive_scenario_harness\.mjs$/,
     ],
   }),
+  suite({
+    id: "prolog-solver-continuation",
+    category: "ontology",
+    label: "Prolog solver continuation and depth verification",
+    command: ["node", join(TESTS_ROOT, "test_prolog_solver_continuation.mjs")],
+    phases: ["solver", "prolog", "planner-core"],
+    surfaces: ["ontology", "prolog", "planner_core"],
+    fixtures: [
+      skillRel("tests/test_prolog_solver_continuation.mjs"),
+      skillRel("scripts/lib/prolog.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_prolog_solver_continuation\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/prolog\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "local-only-mirror-guard",
+    category: "structured_plan",
+    label: "Local-only and remote-read authority boundary guards",
+    command: ["node", join(TESTS_ROOT, "test_local_only_mirror_guard.mjs")],
+    phases: ["program-manager", "authority", "planner-core"],
+    surfaces: ["structured_plan", "program_manager", "authority"],
+    fixtures: [
+      skillRel("tests/test_local_only_mirror_guard.mjs"),
+      skillRel("scripts/lib/github_mirror.mjs"),
+      skillRel("scripts/program_manager.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_local_only_mirror_guard\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/github_mirror\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/program_manager\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "boost-workflow",
+    category: "workflows",
+    label: "Boost workflow fast-track and intake normalization",
+    command: ["node", join(TESTS_ROOT, "test_boost_workflow.mjs")],
+    phases: ["workflows", "planner-core"],
+    surfaces: ["workflows", "planner_core", "task_intake"],
+    fixtures: [
+      skillRel("tests/test_boost_workflow.mjs"),
+      ".agent/workflows/boost.md",
+      skillRel("scripts/task_intake.mjs"),
+      skillRel("scripts/lib/plan_utils.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_boost_workflow\.mjs$/,
+      /^\.agent\/workflows\/boost\.md$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/task_intake\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/lib\/plan_utils\.mjs$/,
+    ],
+  }),
+  suite({
+    id: "component-performance-profile",
+    category: "benchmarks",
+    label: "Component performance profile benchmark preservation and isolation",
+    command: ["node", join(TESTS_ROOT, "test_component_performance_profile.mjs")],
+    phases: ["benchmarks", "planner-core"],
+    surfaces: ["benchmarks", "planner_core", "performance"],
+    fixtures: [
+      skillRel("tests/test_component_performance_profile.mjs"),
+      skillRel("scripts/component_performance_profile.mjs"),
+    ],
+    changedFilePatterns: [
+      /^\.agent\/skills\/iterative-planner\/tests\/test_component_performance_profile\.mjs$/,
+      /^\.agent\/skills\/iterative-planner\/scripts\/component_performance_profile\.mjs$/,
+    ],
+  }),
 ];
 
 function captureExcerpt(value) {

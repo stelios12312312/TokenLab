@@ -7,6 +7,9 @@ export function normalizeRemoteMode(value, { fallback = null } = {}) {
   const raw = String(value ?? "").trim();
   if (!raw) return fallback;
   const normalized = raw.toLowerCase().replace(/_/g, "-");
+  if (normalized === "local" || normalized === "local-only") return "local-only";
+  if (normalized === "read" || normalized === "remote-read") return "remote-read";
+  if (normalized === "sync" || normalized === "remote-sync") return "remote-sync";
   if (REMOTE_MODES.includes(normalized)) return normalized;
   throw new Error(`Unsupported remote mode: ${value}. Expected one of ${REMOTE_MODES.join(", ")}`);
 }

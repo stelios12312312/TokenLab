@@ -24,6 +24,7 @@ import {
   looksLikeAnalysisGoal,
 } from "./plan_shape.mjs";
 import { detectIrreversibleActionIntent } from "./irreversible_action_contract.mjs";
+import { normalizeClientGoal } from "./plan_utils.mjs";
 
 const QUESTION_LEADS = [
   /^\s*(what|why|how|when|where|who|which|whose|whom)\b/i,
@@ -230,14 +231,43 @@ function policyMayOverrideRoute({
 }
 
 export function computeTriage({ goalText = "", plannedFiles = [], intentContract = null, plannerPolicy = null, cwd = process.cwd() } = {}) {
-  const goal = String(goalText || "").trim();
+  const normalized = normalizeClientGoal(goalText);
+  let goal = normalized.cleanGoal;
+  const isBoost = normalized.hasBoost;
+
+  const policy = normalizePlannerPolicy(plannerPolicy);
+
+  if (isBoost && (!goal || goal === "/boost")) {
+    return {
+      complexity_score: 5,
+      recommended_path: "standard_planner",
+      operator_action: "planner",
+      operator_question: null,
+      summary: "Fast-track planning (/boost). Standard planner with relaxed exploration depth and early story invariants.",
+      reasons: ["explicit /boost fast-track workflow requested"],
+      shape: {
+        primary: "planner-core",
+        source: "workflow",
+      },
+      looks_like_question: false,
+      simple_read_only_action: false,
+      trivial_text_correction: false,
+      word_count: 1,
+      planner_policy: {
+        present: policy.present,
+        default_route: policy.default_route,
+        applied: false,
+      },
+      irreversible_action: null,
+    };
+  }
+
   const reasons = [];
   const shape = detectPlanShape({ goalText: goal, plannedFiles, intentContract });
   const simpleReadOnlyAction = looksLikeSimpleReadOnlyAction(goal);
   const trivialTextCorrection = looksLikeTrivialTextCorrection(goal);
   const hasEngineeringVerb = hasPositiveEngineeringIntent(goal);
   const decision = userDecisionNeeded(goal, { cwd });
-  const policy = normalizePlannerPolicy(plannerPolicy);
 
   let score = 5; // start at "standard"
 
@@ -355,6 +385,12 @@ export function computeTriage({ goalText = "", plannedFiles = [], intentContract
   } else {
     recommended_path = "full_planner";
     summary = "Full planner with safe-change-power rigor. High complexity / high-risk surface.";
+  }
+
+  if (isBoost && (recommended_path === "skip_planner" || recommended_path === "lightweight")) {
+    recommended_path = "standard_planner";
+    summary = "Fast-track planning (/boost). Standard planner with relaxed exploration depth and early story invariants.";
+    reasons.push("explicit /boost fast-track workflow requested");
   }
 
   let policyApplied = false;

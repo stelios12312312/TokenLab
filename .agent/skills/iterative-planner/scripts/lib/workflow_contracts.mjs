@@ -58,6 +58,7 @@ const ROUTED_PLANNER_COMMANDS = Object.freeze(new Set([
 ]));
 
 const INTERNAL_WORKFLOW_CONTRACT_PROFILES = Object.freeze({
+  "/boost": "implementation_full",
   "/safe-change-power": "implementation_full",
   "/safe-plan": "planning_only",
   "/red-team-audit": "audit",
@@ -140,14 +141,16 @@ export function getParkedWorkflowDir(projectRoot = process.cwd()) {
 }
 
 export function loadWorkflowRegistry(projectRoot = process.cwd()) {
-  const path = join(getSkillRootFromProject(projectRoot), "config", "workflow_registry.json");
+  const customPath = join(getSkillRootFromProject(projectRoot), "config", "workflow_registry.json");
+  const path = existsSync(customPath) ? customPath : WORKFLOW_REGISTRY_PATH;
   const parsed = safeReadJson(path, null);
   const workflows = Array.isArray(parsed?.workflows) ? parsed.workflows : [];
   return { path, version: parsed?.version || null, workflows };
 }
 
 export function loadWorkflowContractProfiles(projectRoot = process.cwd()) {
-  const path = join(getSkillRootFromProject(projectRoot), "config", "workflow_contract_profiles.json");
+  const customPath = join(getSkillRootFromProject(projectRoot), "config", "workflow_contract_profiles.json");
+  const path = existsSync(customPath) ? customPath : WORKFLOW_CONTRACT_PROFILE_PATH;
   const parsed = safeReadJson(path, null);
   const profiles = parsed?.profiles && typeof parsed.profiles === "object" ? parsed.profiles : {};
   return {
@@ -159,7 +162,8 @@ export function loadWorkflowContractProfiles(projectRoot = process.cwd()) {
 }
 
 export function loadWorkflowMigrationInventory(projectRoot = process.cwd()) {
-  const path = join(getSkillRootFromProject(projectRoot), "config", "workflow_migration_inventory.json");
+  const customPath = join(getSkillRootFromProject(projectRoot), "config", "workflow_migration_inventory.json");
+  const path = existsSync(customPath) ? customPath : WORKFLOW_MIGRATION_INVENTORY_PATH;
   const parsed = safeReadJson(path, null);
   const entries = Array.isArray(parsed?.entries) ? parsed.entries : [];
   return {

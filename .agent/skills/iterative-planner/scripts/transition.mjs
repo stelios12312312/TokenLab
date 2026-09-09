@@ -12,6 +12,7 @@
 //   node transition.mjs validate-to-close    Run all checks for VALIDATE → CLOSE
 //   node transition.mjs notify-user          Run all checks before presenting results
 //   node transition.mjs refresh-registry     Re-sign an intentional registry change without changing phase
+//   node transition.mjs verify-and-close     Fast-track express lane: EXECUTE/REFLECT/VALIDATE → CLOSE in one gate
 // Add --dry-run to execute the identical evaluator with persistence disabled.
 //
 // Exit codes: 0 = all pass (transition allowed), 1 = semantic FAIL, 3 = planner tool error.
@@ -92,6 +93,7 @@ const {
   writeGateEvaluationSession,
 } = await import("./lib/gate_evaluation_session.mjs");
 const { validateCoverageContract } = await import("./story_registry.mjs");
+const { syncTaskToPlanDir } = await import("./lib/task_contract.mjs");
 const { plansDir, knowledgeDir } = getPaths(cwd);
 const ACTIVE_PLAN_ALIAS_LABEL = "plans/ACTIVE_PLAN.md";
 const RITUAL_TOOL_ERROR_CODE = "TOOL-RIT-001";
@@ -842,6 +844,227 @@ export async function runRegistryRefresh(opts = {}) {
 }
 
 // ---------------------------------------------------------------------------
+// Verify-and-close express lane (fast-track completion for routine work)
+// ---------------------------------------------------------------------------
+
+const {
+  runVerifyAndCloseProofs,
+  evaluateVerifyAndCloseEligibility,
+  buildVerificationReceipt,
+  writeVerificationReceipt,
+  readVerificationReceipt,
+  DEFAULT_VERIFY_CLOSE_TEST_CMD,
+} = await import("./lib/verify_close_lane.mjs");
+
+function normalizeVerifyAndCloseResults(results, planDirName) {
+  return normalizeGateResultsForTransition(results, { gate: "verify-and-close", planId: planDirName });
+}
+
+export async function runVerifyAndClose(opts = {}) {
+  const dryRun = opts.dryRun === true;
+  const force = opts.force === true;
+  const testCmd = typeof opts.testCmd === "string" && opts.testCmd.trim()
+    ? opts.testCmd.trim()
+    : DEFAULT_VERIFY_CLOSE_TEST_CMD;
+  const generatedAt = nowISO();
+  const { planDirName, planDir, source } = resolvePlanTarget(plansDir, {
+    exitOnMissing: false,
+    plan: opts.plan,
+  });
+
+  printHeader(
+    `TRANSITION: verify-and-close${dryRun ? " [DRY RUN]" : ""}`,
+    `Plan: ${planDirName || opts.plan || "unknown"}`,
+  );
+  if (source && source !== "pointer") {
+    console.log(`  Target source: ${source}`);
+    console.log();
+  }
+
+  const results = [];
+  if (!planDirName || !planDir) {
+    results.push(withFailureCode(check(
+      "Active plan resolution",
+      FAIL,
+      "No active or explicit plan could be resolved.",
+    ), "GATE-PLAN-001"));
+    printResults(normalizeVerifyAndCloseResults(results, opts.plan || "unknown"));
+    return 1;
+  }
+
+  const stateRead = readStateJsonWithProvenance(planDir);
+  const stateJson = stateRead.state;
+  const stateValidation = validateStateJson(stateJson);
+  if (!stateValidation.valid) {
+    results.push(withFailureCode(check(
+      "Canonical plan state",
+      FAIL,
+      stateValidation.errors.join("; ") || "state.json is missing or invalid",
+    ), "GATE-RUN-001"));
+    printResults(normalizeVerifyAndCloseResults(results, planDirName));
+    return 1;
+  }
+
+  results.push(check("Canonical plan state", PASS, `State is ${stateJson.state}`));
+  results.push(...evaluateVerifyAndCloseEligibility({ planDir, stateJson, force }));
+
+  const eligibilityBlocked = results.some(gateResultBlocks);
+  let proofs = { testCmd, testExitCode: null, invariantExitCode: null };
+  if (!eligibilityBlocked) {
+    printSection("Express Lane Proofs");
+    const proofRun = runVerifyAndCloseProofs({ cwd, planDir, planDirName, testCmd });
+    results.push(...proofRun.results);
+    proofs = proofRun.proofs;
+  } else {
+    console.log("  Proofs skipped — eligibility preconditions not met.");
+    console.log();
+  }
+
+  const normalized = normalizeVerifyAndCloseResults(results, planDirName);
+  const totalFail = normalized.filter(gateResultBlocks).length;
+  const receiptBase = {
+    projectRoot: cwd,
+    planId: planDirName,
+    gate: "verify-and-close",
+    sourceState: stateJson.state,
+    targetState: "CLOSE",
+    results: normalized,
+    generatedAt,
+  };
+  const buildReceipt = (persistence = {}) => buildTransitionReceipt({
+    ...receiptBase,
+    persistence,
+  });
+
+  if (dryRun || totalFail > 0) {
+    const receipt = buildReceipt();
+    printResults(normalized);
+    console.log();
+    console.log(renderTransitionVerdict(receipt));
+    return totalFail > 0 ? 1 : 0;
+  }
+
+  // Persistence boundary: lock, re-verify preconditions atomically, commit.
+  const releaseLock = acquireStateLock(planDir);
+  if (!releaseLock) {
+    const lockedResults = normalizeVerifyAndCloseResults([
+      ...results,
+      withFailureCode(check(
+        "Canonical state lock",
+        FAIL,
+        "Could not acquire state.json lock — concurrent transition detected.",
+      ), "GATE-STA-001"),
+    ], planDirName);
+    const receipt = writeTransitionReceipt(
+      planDir,
+      buildTransitionReceipt({ ...receiptBase, results: lockedResults }),
+      { projectRoot: cwd },
+    ).receipt;
+    console.log();
+    console.log(renderTransitionVerdict(receipt));
+    return 1;
+  }
+
+  try {
+    const lockedStateRead = readStateJsonWithProvenance(planDir);
+    const lockedState = lockedStateRead.state;
+    const lockedValidation = validateStateJson(lockedState);
+    const lockedRegistry = readStoryRegistrySnapshot(cwd);
+    const inputChanged = !lockedValidation.valid ||
+      lockedState.state !== stateJson.state ||
+      JSON.stringify(lockedState.transitions) !== JSON.stringify(stateJson.transitions) ||
+      !lockedRegistry.present ||
+      !lockedRegistry.ok;
+    if (inputChanged) {
+      const lockedResults = normalizeVerifyAndCloseResults([
+        ...results,
+        withFailureCode(check(
+          "Input stability",
+          FAIL,
+          "Plan state or story registry changed after evaluation; rerun verify-and-close against the current bytes.",
+        ), "GATE-STA-002"),
+      ], planDirName);
+      const receipt = writeTransitionReceipt(
+        planDir,
+        buildTransitionReceipt({ ...receiptBase, results: lockedResults }),
+        { projectRoot: cwd },
+      ).receipt;
+      console.log();
+      console.log(renderTransitionVerdict(receipt));
+      return 1;
+    }
+
+    const receiptOnDisk = readVerificationReceipt(planDir);
+    if (!receiptOnDisk.present) {
+      writeVerificationReceipt(planDir, buildVerificationReceipt({
+        planDirName,
+        testCmd: proofs.testCmd,
+        testExitCode: proofs.testExitCode,
+        invariantExitCode: proofs.invariantExitCode,
+      }));
+      console.log(`  ↳ Wrote ${planDirName}/verification_receipt.json`);
+    }
+
+    const previousState = lockedState.state;
+    lockedState.state = "CLOSE";
+    lockedState.transitions = Array.isArray(lockedState.transitions) ? lockedState.transitions : [];
+    lockedState.transitions.push({
+      from: previousState,
+      to: "CLOSE",
+      timestamp: nowISO(),
+      gate_result: "PASS",
+      express_lane: "verify-and-close",
+      proofs: {
+        test_command: proofs.testCmd,
+        test_exit_code: proofs.testExitCode,
+        invariant_exit_code: proofs.invariantExitCode,
+      },
+    });
+    lockedState.rule_bundle_version = getRuleBundleVersion();
+
+    const stateWrite = writeStateJsonResult(planDir, lockedState, {
+      expected: lockedStateRead.provenance,
+      allowPhaseMutation: true,
+      mutationOrigin: "transition:verify-and-close",
+      deferFinalize: true,
+    });
+    if (stateWrite.status !== "committed") {
+      const failedResults = normalizeVerifyAndCloseResults([
+        ...results,
+        withFailureCode(check(
+          "State publication",
+          FAIL,
+          `state.json publication ${stateWrite.status} (${stateWrite.reason || "no structured result"}); the transition cannot claim a state change.`,
+        ), "GATE-STA-003"),
+      ], planDirName);
+      const receipt = writeTransitionReceipt(
+        planDir,
+        buildTransitionReceipt({ ...receiptBase, results: failedResults }),
+        { projectRoot: cwd },
+      ).receipt;
+      console.log();
+      console.log(renderTransitionVerdict(receipt));
+      return 1;
+    }
+
+    const receiptWrite = writeTransitionReceipt(
+      planDir,
+      buildReceipt({ state: true }),
+      { projectRoot: cwd },
+    );
+    const stateFinalization = finalizeOwnedFileReplace(stateWrite);
+    if (stateFinalization.status !== "committed") {
+      throw new Error(`verify-and-close state finalization ${stateFinalization.status}: ${stateFinalization.reason}`);
+    }
+    console.log();
+    console.log(renderTransitionVerdict(receiptWrite.receipt));
+    return 0;
+  } finally {
+    releaseLock();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Gate transitions
 // ---------------------------------------------------------------------------
 
@@ -949,6 +1172,12 @@ async function runTransition(gate, opts = {}) {
     console.log(`  Cache invalidated: ${reuseVerdict.reason}; running the complete evaluator.`);
     console.log();
   }
+  if (!dryRun && !cachedSession) {
+    // Direct atomic execution: no prior dry-run session is required. The
+    // complete evaluator runs in-process and preconditions are re-validated
+    // under the canonical state lock before anything is persisted.
+    console.log("  Direct gate execution (no prior dry-run required): running the complete evaluator atomically.");
+  }
   preparationReport = await prepareAttemptedGate({ gate, planDirName, results: allResults });
   const emitEarlyBlock = (row, exitCode = 2) => {
     const normalized = normalizeGateResults([...allResults, row], { gate, planId: planDirName });
@@ -1054,7 +1283,7 @@ async function runTransition(gate, opts = {}) {
     const persistedFails = stateJsonForCooldown.circuit_breakers?.[gate]?.total_fails ?? 0;
     if (persistedFails >= CIRCUIT_BREAKER_THRESHOLD) {
       const row = withFailureCode(check(
-        "Persistent gate circuit breaker",
+        "Persistent gate circuit breaker (CIRCUIT_BREAKER_OPEN)",
         FAIL,
         `Gate '${gate}' has failed ${persistedFails} times total (threshold: ${CIRCUIT_BREAKER_THRESHOLD}).`
       ), "GATE-GAR-002");
@@ -1618,6 +1847,25 @@ async function runTransition(gate, opts = {}) {
     console.log();
   }
 
+  // Share a single semanticEngine instance across reachability audit and semantic checks
+  let sharedSemanticEngine = null;
+  if (gateDef?.reachability_audit || !gateDef?.handoff_only) {
+    try {
+      const { createSemanticEngine } = await import(join(skillPath, "scripts", "lib", "semantic_engine.mjs"));
+      sharedSemanticEngine = createSemanticEngine({
+        cwd,
+        skillPath,
+        refreshOntology: sharedPlanRefresh ? false : true,
+        transientCloseSignals: sharedPlanRefresh?.closeSignals || null,
+        transientOntologyFacts: (typeof sharedPlanRefresh?.ontology?.facts === "string" ? sharedPlanRefresh.ontology.facts : "") || "",
+        ontologyProjectionProfile: "gate",
+        queryTimeoutMs: 10000,
+      });
+    } catch {
+      // Best-effort shared engine creation — falls back to standard on-demand creation
+    }
+  }
+
   // Step 3.75: Reachability audit (RT-HARDENING-007)
   // Exhaustive state-space analysis — detects deadlocks, forbidden paths,
   // gate bypasses, and privilege escalation routes via Prolog backtracking.
@@ -1627,7 +1875,10 @@ async function runTransition(gate, opts = {}) {
     printSection("Reachability Audit (compulsory)");
     try {
       const { runReachabilityAudit } = await import(join(skillPath, "scripts", "rule_engine.mjs"));
-      const reachResults = runReachabilityAudit({ refreshSnapshot: sharedPlanRefresh });
+      const reachResults = runReachabilityAudit({
+        refreshSnapshot: sharedPlanRefresh,
+        semanticEngine: sharedSemanticEngine,
+      });
       const reachCounts = printResults(reachResults);
       allResults.push(...reachResults);
     } catch (e) {
@@ -1657,7 +1908,10 @@ async function runTransition(gate, opts = {}) {
       printSection("Semantic Checks (Prolog)");
       try {
         const { runSemanticChecks, enrichViolationsWithFixes } = await import(ruleEnginePath);
-        let semanticResults = runSemanticChecks(gate, planDir, { refreshSnapshot: sharedPlanRefresh });
+        let semanticResults = runSemanticChecks(gate, planDir, {
+          refreshSnapshot: sharedPlanRefresh,
+          semanticEngine: sharedSemanticEngine,
+        });
         // Phase B: enrich invariant violations with supervisor-generated fix commands.
         // Best-effort — degrades gracefully if supervisor or LLM is unavailable.
         // Skipped when there are no violations to enrich (zero LLM cost).
@@ -2571,6 +2825,9 @@ export async function transitionCli(cliArgs = process.argv.slice(2)) {
 const gate = cliArgs[0];
 let planOverride = null;
 let dryRun = false;
+let force = false;
+let testCmd = null;
+let autoFix = false;
 let cliError = null;
 for (let i = 1; i < cliArgs.length; i++) {
   if (cliArgs[i] === "--plan") {
@@ -2581,6 +2838,16 @@ for (let i = 1; i < cliArgs.length; i++) {
     planOverride = cliArgs[++i];
   } else if (cliArgs[i] === "--dry-run") {
     dryRun = true;
+  } else if (cliArgs[i] === "--force") {
+    force = true;
+  } else if (cliArgs[i] === "--fix" || cliArgs[i] === "--auto-repair") {
+    autoFix = true;
+  } else if (cliArgs[i] === "--test-cmd") {
+    if (!cliArgs[i + 1] || cliArgs[i + 1].startsWith("--")) {
+      cliError = "--test-cmd requires a command value";
+      break;
+    }
+    testCmd = cliArgs[++i];
   } else {
     cliError = `Unknown flag '${cliArgs[i]}'`;
     break;
@@ -2591,17 +2858,24 @@ if (!gate || gate === "--help" || gate === "help") {
   console.log(`transition.mjs — Unified gate wrapper for iterative planner state transitions
 
 Usage:
-  node transition.mjs explore-to-plan [--dry-run] [--plan <plan-dir>]      EXPLORE → PLAN gate
-  node transition.mjs plan-to-execute [--dry-run] [--plan <plan-dir>]      PLAN → EXECUTE gate
-  node transition.mjs execute-to-reflect [--dry-run] [--plan <plan-dir>]   EXECUTE → REFLECT gate (red-team)
-  node transition.mjs reflect-to-validate [--dry-run] [--plan <plan-dir>]  REFLECT → VALIDATE gate
-  node transition.mjs validate-to-close [--dry-run] [--plan <plan-dir>]    VALIDATE → CLOSE gate
-  node transition.mjs notify-user [--dry-run] [--plan <plan-dir>]          KB Notification Gate
-  node transition.mjs refresh-registry [--dry-run] [--plan <plan-dir>]     Phase-neutral story-registry signer
+  node transition.mjs explore-to-plan [--dry-run] [--fix] [--plan <plan-dir>]      EXPLORE → PLAN gate
+  node transition.mjs plan-to-execute [--dry-run] [--fix] [--plan <plan-dir>]      PLAN → EXECUTE gate
+  node transition.mjs execute-to-reflect [--dry-run] [--fix] [--plan <plan-dir>]   EXECUTE → REFLECT gate (red-team)
+  node transition.mjs reflect-to-validate [--dry-run] [--fix] [--plan <plan-dir>]  REFLECT → VALIDATE gate
+  node transition.mjs validate-to-close [--dry-run] [--fix] [--plan <plan-dir>]    VALIDATE → CLOSE gate
+  node transition.mjs notify-user [--dry-run] [--fix] [--plan <plan-dir>]          KB Notification Gate
+  node transition.mjs refresh-registry [--dry-run] [--fix] [--plan <plan-dir>]     Phase-neutral story-registry signer
+  node transition.mjs verify-and-close [--dry-run] [--fix] [--plan <plan-dir>]
+                           [--test-cmd <cmd>] [--force]                   Fast-track express lane: EXECUTE/REFLECT/VALIDATE → CLOSE
 
 This single command runs health checks, gate verification, and checklists.
 --dry-run runs the identical evaluator but writes no planner or project files.
-If it outputs FAIL, you may NOT proceed.`);
+--fix automatically synchronizes task.yaml into canonical plan artifacts before evaluation.
+If it outputs FAIL, you may NOT proceed.
+verify-and-close replaces the reflect → validate → close → notify carousel for
+routine/bug-fix work: it requires test proof, invariant proof, and a
+verification_receipt.json (auto-generated from the proofs when absent). It is
+only available to fast-track plans (/boost or [FAST_TRACK]) unless --force.`);
   process.exit(0);
 }
 
@@ -2611,10 +2885,20 @@ if (cliError) {
 }
 
 const validGates = Object.keys(GATE_REGISTRY);
-const validOperations = [...validGates, "refresh-registry"];
+const validOperations = [...validGates, "refresh-registry", "verify-and-close"];
 if (!validOperations.includes(gate)) {
   console.error(`ERROR: Unknown gate '${gate}'. Valid gates/operations: ${validOperations.join(", ")}`);
   process.exit(1);
+}
+
+if (gate === "verify-and-close") {
+  try {
+    process.exitCode = await runVerifyAndClose({ plan: planOverride, dryRun, force, testCmd });
+  } catch (error) {
+    console.error(error.stack || error.message);
+    process.exitCode = 2;
+  }
+  return;
 }
 
 if (gate === "refresh-registry") {
@@ -2651,6 +2935,17 @@ if (replayDir) {
 }
 
 try {
+  if (autoFix) {
+    const resolvedForFix = resolvePlanTarget(plansDir, { exitOnMissing: false, plan: planOverride });
+    if (resolvedForFix?.planDir) {
+      const fixResult = syncTaskToPlanDir(resolvedForFix.planDir, { write: !dryRun });
+      if (!fixResult.ok) throw new Error(`Task repair refused: ${fixResult.error || fixResult.errors?.join("; ")}`);
+      if (fixResult.changed) {
+        console.log(`  🔧 Auto-repair: synchronized task.yaml into canonical plan artifacts\n`);
+      }
+    }
+  }
+
   process.exitCode = await runTransition(gate, { plan: planOverride, dryRun });
 } catch (error) {
   const resolvedPlan = resolvePlanTarget(plansDir, { exitOnMissing: false, plan: planOverride });

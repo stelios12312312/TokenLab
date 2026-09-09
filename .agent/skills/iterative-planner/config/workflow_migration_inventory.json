@@ -10,6 +10,14 @@
       "notes": "Phase 4 routes /advisor through planner advise plus bounded composition rules."
     },
     {
+      "workflow": "/boost",
+      "v6_purpose": "Fast-track planning and execution workflow with relaxed explore depth",
+      "v7_action": "New",
+      "v7_owner": "Human + Agent A",
+      "contract_profile": "implementation_full",
+      "notes": "User slash command for accelerated planner workflow with fast-track mode enabled."
+    },
+    {
       "workflow": "/consolidate-annotations",
       "v6_purpose": "Annotation cleanup before broader audits",
       "v7_action": "Keep unchanged",

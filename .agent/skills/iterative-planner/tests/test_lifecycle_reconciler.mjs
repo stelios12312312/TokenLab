@@ -842,6 +842,14 @@ const convergenceTicket = (convergenceProgramPacket.tickets || [])
 if (convergenceTicket?.lifecycle === "in_progress" && childPlanIsClosed(convergenceTicket)) {
   expectedShippedOpen.push(convergenceTicket.id);
 }
+const v11ProgramPacketPath = "plans/programs/v11-harness-redesign/program_packet.json";
+if (existsSync(v11ProgramPacketPath)) {
+  const v11ProgramPacket = JSON.parse(readFileSync(v11ProgramPacketPath, "utf-8"));
+  const v11Ticket = (v11ProgramPacket.tickets || []).find((ticket) => ticket.id === "T-INTAKE-17E78467");
+  if (v11Ticket?.lifecycle === "in_progress" && childPlanIsClosed(v11Ticket)) {
+    expectedShippedOpen.push(v11Ticket.id);
+  }
+}
 assert.deepEqual(
   [...shippedByTicket.keys()].sort(),
   expectedShippedOpen.sort(),

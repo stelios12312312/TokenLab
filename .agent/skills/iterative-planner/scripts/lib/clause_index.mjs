@@ -53,6 +53,17 @@ export class ClauseIndex {
     return "*";
   }
 
+  clone() {
+    const copy = new ClauseIndex(this.key);
+    copy.allClauses = this.allClauses.slice();
+    copy.varClauses = this.varClauses.slice();
+    copy.argIndex = new Map();
+    for (const [subKey, clauses] of this.argIndex.entries()) {
+      copy.argIndex.set(subKey, clauses.slice());
+    }
+    return copy;
+  }
+
   [Symbol.iterator]() {
     return this.allClauses[Symbol.iterator]();
   }
@@ -62,8 +73,8 @@ export class ClauseIndex {
   }
 }
 
-export function createIndexedDb() {
-  const map = new Map();
+export function createIndexedDb(initialMap = null) {
+  const map = initialMap instanceof Map ? new Map(initialMap) : new Map();
   return {
     get(key) { return map.get(key); },
     has(key) { return map.has(key); },
@@ -77,6 +88,21 @@ export function createIndexedDb() {
       if (!key) throw new Error(`Invalid clause head: ${JSON.stringify(clause.head)}`);
       if (!map.has(key)) map.set(key, new ClauseIndex(key));
       map.get(key).add(clause);
+    },
+    clone() {
+      const clonedMap = new Map();
+      for (const [key, index] of map.entries()) {
+        clonedMap.set(key, index.clone());
+      }
+      return createIndexedDb(clonedMap);
+    },
+    copyFrom(sourceDb) {
+      const sourceMap = sourceDb?.rawMap || sourceDb;
+      if (sourceMap && typeof sourceMap.entries === "function") {
+        for (const [key, index] of sourceMap.entries()) {
+          map.set(key, typeof index.clone === "function" ? index.clone() : index);
+        }
+      }
     },
     clear() { map.clear(); },
     keys() { return map.keys(); },

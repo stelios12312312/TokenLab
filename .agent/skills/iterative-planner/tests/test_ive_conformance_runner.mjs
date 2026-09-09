@@ -539,7 +539,7 @@ assert(visualizerContractSuite?.fixtures.includes("apps/ive-visualizer/scripts/l
 assert(visualizerContractSuite?.fixtures.includes("apps/ive-visualizer/scripts/generate-live-payload.mjs"), "visualizer contract suite owns live-payload generator fixture");
 
 let selected = selectSuites(DEFAULT_SUITES, ["ontology"]);
-assert(sameIds(selected, ["ml-ontology-invariants", "ontology-adoption", "ontology-cli-source-truth", "ontology-invariants", "prolog-value-audit", "trace-coverage-maturity"]), "--only category selects matching suites");
+assert(sameIds(selected, ["ml-ontology-invariants", "ontology-adoption", "ontology-cli-source-truth", "ontology-invariants", "prolog-solver-continuation", "prolog-value-audit", "trace-coverage-maturity"]), "--only category selects matching suites");
 
 selected = selectSuites(DEFAULT_SUITES, ["ripple-check"]);
 assert(selected.length === 1 && selected[0].category === "ripple", "--only id selects one suite");
@@ -936,7 +936,7 @@ selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-pla
 assert(sameIds(selected, ["annotation-discipline-gate", "capability-connectivity", "ripple-check"]), "--changed-files selects exactly annotation discipline, connectivity, and ripple suites");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/plan_utils.mjs"]);
-assert(sameIds(selected, ["capability-connectivity", "ml-ontology-invariants", "plan-target-ownership", "preplanning-scaffolding", "red-team-depth-gate", "ripple-check", "seeded-defect-harness", "transition-dry-run-equivalence"]), "--changed-files selects exactly ML ontology, plan-target ownership, preplanning, red-team depth, seeded-defect harness, dry-run equivalence, connectivity, and ripple suites for plan_utils");
+assert(sameIds(selected, ["boost-workflow", "capability-connectivity", "ml-ontology-invariants", "plan-target-ownership", "preplanning-scaffolding", "red-team-depth-gate", "ripple-check", "seeded-defect-harness", "transition-dry-run-equivalence"]), "--changed-files selects exactly ML ontology, plan-target ownership, preplanning, red-team depth, seeded-defect harness, dry-run equivalence, connectivity, and ripple suites for plan_utils");
 
 selected = selectSuites(DEFAULT_SUITES, [], "all", [".agent/skills/iterative-planner/scripts/lib/plan_artifact_renderer.mjs"]);
 assert(sameIds(selected, ["capability-connectivity", "plan-artifact-renderer", "ripple-check"]), "--changed-files selects exactly plan artifact renderer, connectivity, and ripple for renderer library");
@@ -1637,8 +1637,8 @@ const transitionGateIndex = DEFAULT_SUITES.findIndex((suite) => suite.id === "tr
 const programManagerWaveSuite = DEFAULT_SUITES[programManagerIndex];
 const migrationBootstrapWaveSuite = DEFAULT_SUITES[migrationBootstrapIndex];
 assert(
-  DEFAULT_SUITES.length === 144
-    && DEFAULT_SUITES.filter((suite) => suite.required).length === 143
+  DEFAULT_SUITES.length === 148
+    && DEFAULT_SUITES.filter((suite) => suite.required).length === 147
     && programManagerIndex === 30 && migrationBootstrapIndex === 119 && transitionGateIndex === 12
     && programManagerWaveSuite?.timeout_ms === 300000 && migrationBootstrapWaveSuite?.timeout_ms === 900000,
   "live catalog denominator, required count, wave positions, serial control, and declared timeouts remain canonical",

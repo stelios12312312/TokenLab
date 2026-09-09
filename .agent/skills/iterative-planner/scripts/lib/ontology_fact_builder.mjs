@@ -381,9 +381,13 @@ export function renderOntologyProlog(documents, authorityReceipt = null, { profi
   }
   const allStories = documents.specification?.stories || [];
   const allPlans = documents.specification?.plans || [];
+  // Terminal-phase plans are historical: no gate rule can act on them, so the
+  // "gate" projection drops them (and their observations) entirely. The
+  // "full" projection keeps them for archival queries.
+  const isTerminalPlan = (record) => ["close", "closed", "abandoned"].includes(String(record.phase || "").toLowerCase());
   const gateRelevantPlanIds = new Set(
     allPlans
-      .filter((record) => !["close", "closed", "abandoned"].includes(String(record.phase || "").toLowerCase()))
+      .filter((record) => !isTerminalPlan(record))
       .map((record) => record.id)
   );
   const gateObservedPlans = new Set(
@@ -401,7 +405,7 @@ export function renderOntologyProlog(documents, authorityReceipt = null, { profi
       .filter(Boolean),
   ]);
   const projectedStories = allStories.filter((record) => profile === "full" || gateStoryIds.has(record.id));
-  const projectedPlans = allPlans.filter((record) => profile === "full" || gateObservedPlans.has(record.id));
+  const projectedPlans = allPlans.filter((record) => profile === "full" || (gateObservedPlans.has(record.id) && !isTerminalPlan(record)));
   const storyCriterionIds = new Set(
     projectedStories
       .flatMap((storyRecord) => Array.isArray(storyRecord.acceptance_criteria) ? storyRecord.acceptance_criteria : [])

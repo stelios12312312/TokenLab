@@ -76,6 +76,10 @@ import { collectKbSignoff } from "./lib/kb_signoff.mjs";
 import { evaluateQuantPersonaGate, summarizeQuantPersonaGate } from "./lib/quant_persona_gate.mjs";
 import { computePlanLearnedObligationsSignal } from "./lib/learned_obligations.mjs";
 import { loadMistakeRegistry } from "./lib/mistake_registry.mjs";
+import {
+  runVerifyAndCloseProofs,
+  evaluateVerifyAndCloseEligibility,
+} from "./lib/verify_close_lane.mjs";
 import { evaluateDirtyInputProofArtifacts } from "./lib/repo_state_stamp.mjs";
 import {
   evaluateLeakageProofArtifactRequirements,
@@ -3507,7 +3511,21 @@ const GATES = {
   "validate-to-close": gateValidateToClose,
   "reflect-to-close": gateReflectToCloseLegacy,
   "notify-user": gateNotifyUser,
+  "verify-and-close": gateVerifyAndClose,
 };
+
+// Fast-track express lane: satisfies completion requirements with executable
+// proofs (test run + invariant check + verification_receipt.json) instead of
+// the four sequential essay gates. Mirrors transition.mjs verify-and-close.
+function gateVerifyAndClose(planDir) {
+  const results = [];
+  const stateJson = readStateJson(planDir);
+  const currentState = String(stateJson?.state || "").toUpperCase();
+  results.push(...evaluateVerifyAndCloseEligibility({ planDir, stateJson }));
+  if (results.some((row) => row.status === FAIL)) return results;
+  results.push(...runVerifyAndCloseProofs({ cwd, planDir, planDirName: basename(planDir) }).results);
+  return results;
+}
 
 export function mistakeHookTargetIntegrityResult(missingHookTargets = []) {
   const missing = Array.isArray(missingHookTargets) ? missingHookTargets : [];
@@ -3558,6 +3576,7 @@ Gates:
   validate-to-close   Check VALIDATE → CLOSE transition requirements
   reflect-to-close    Legacy compatibility close-readiness check (not part of the canonical transition chain)
   notify-user         Check KB Notification Gate before presenting results
+  verify-and-close    Fast-track express lane (test proof + invariant proof + verification_receipt.json)
 
 Reads from an explicit target plan, thread-local target, or plans/.current_plan.
 Exit code 0 = all checks PASS, 1 = any FAIL.

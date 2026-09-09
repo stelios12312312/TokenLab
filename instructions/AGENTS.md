@@ -81,6 +81,7 @@ If the user did not name a workflow, do not make them choose from the whole cata
 | Unsure what to do, stuck plan, unfamiliar CI failure, or confusing planner state | `/advisor` | Produces one recommended next move and may dispatch to another workflow. |
 | Broad idea, roadmap, backlog item, GitHub Issue/Project item, or ticket generation | `/program-manager` | Creates or updates a local Program Packet before implementation or GitHub publishing. |
 | One bounded implementation, bug fix, refactor, or docs/code change | `/safe-change` | Runs the lightest safe planner path with regression protection. |
+| Fast-track targeted code change, bug fix, or audit remediation | `/boost` | Runs accelerated planner flow with relaxed explore depth and early story invariants. |
 | High-risk, shared-surface, cross-system, migration, security, or hard-to-reverse change | `/safe-change-power` | Escalates proof and audit depth before execution. |
 | Need a plan or design only, with no code edits yet | `/safe-plan` | Builds the plan and stops before implementation. |
 | Trivial, read-only, operational, or analysis-only request | `/ignore-planner` | Explicitly bypasses planner ceremony while keeping a bounded accountability note. |
@@ -100,6 +101,7 @@ Specialist workflows below are still available, but most users should only need 
 | `/sme-improvement` | `.agent/workflows/sme-improvement.md` | Goal-aligned strategic/process improvement discovery using repo goals and persona committee outputs |
 | `/safe-plan` | `.agent/workflows/safe-plan.md` | Build a detailed, mistake-aware plan without writing code yet |
 | `/safe-change` | `.agent/workflows/safe-change.md` | Any code change with regression protection |
+| `/boost` | `.agent/workflows/boost.md` | Fast-track targeted code change or audit remediation with relaxed initial depth |
 | `/safe-change-power` | `.agent/workflows/safe-change-power.md` | High-risk or cross-system changes |
 | `/ignore-planner` | `.agent/workflows/ignore-planner.md` | Explicitly bypass the planner for trivial, operational, or analysis-only work |
 | `/story-bootstrap` | `.agent/workflows/story-bootstrap.md` | Story registry is missing, empty, or has insufficient coverage |

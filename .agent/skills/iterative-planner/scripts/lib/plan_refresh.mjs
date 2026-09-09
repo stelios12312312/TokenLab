@@ -30,6 +30,7 @@ import {
   verificationStatusIsPass,
   verificationStatusSatisfies,
 } from "./verification_status_vocabulary.mjs";
+import { syncTaskToPlanDir } from "./task_contract.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1271,6 +1272,12 @@ export function refreshPlanArtifacts({
   const planDir = join(plansDir, activePlanDirName);
   if (!existsSync(planDir)) {
     return { refreshed: false, skipped: "missing_plan_dir", planDirName: activePlanDirName };
+  }
+
+  // Validate task input before any refresh-owned persistence.
+  const taskCheck = syncTaskToPlanDir(planDir, { write: false });
+  if (!taskCheck.ok) {
+    throw new Error(`Task contract integrity: ${taskCheck.error || taskCheck.errors?.join("; ")}`);
   }
 
   if (syncFindings) {
