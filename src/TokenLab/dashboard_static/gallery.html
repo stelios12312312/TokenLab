@@ -512,39 +512,17 @@
       background: #172624;
       color: var(--lime);
     }
-    .rating-badge {
+    .score-band {
       display: inline-flex;
       align-items: center;
-      justify-content: center;
-      padding: 2px 7px;
+      padding: 1px 7px;
+      margin-left: 6px;
       border-radius: 999px;
-      font-size: .68rem;
-      font-weight: 800;
-      letter-spacing: .04em;
-      margin-left: 5px;
-      border: 1px solid rgba(255, 255, 255, .18);
-    }
-    .rating-badge.grade-AAA,
-    .rating-badge.grade-AA {
-      background: rgba(34, 197, 94, .18);
-      color: #86efac;
-      border-color: rgba(34, 197, 94, .45);
-    }
-    .rating-badge.grade-A {
-      background: rgba(56, 189, 248, .18);
-      color: #7dd3fc;
-      border-color: rgba(56, 189, 248, .45);
-    }
-    .rating-badge.grade-BBB {
-      background: rgba(245, 158, 11, .18);
-      color: #fcd34d;
-      border-color: rgba(245, 158, 11, .45);
-    }
-    .rating-badge.grade-BB,
-    .rating-badge.grade-B {
-      background: rgba(239, 68, 68, .18);
-      color: #fca5a5;
-      border-color: rgba(239, 68, 68, .45);
+      font-size: .66rem;
+      font-weight: 760;
+      color: var(--text);
+      background: rgba(148, 163, 184, .14);
+      border: 1px solid rgba(148, 163, 184, .3);
     }
     .score-cell-wrap {
       display: flex;
@@ -562,7 +540,10 @@
     .score-bar-fill {
       height: 100%;
       border-radius: 999px;
+      background: var(--aqua);
     }
+    .quantiles-table .is-secondary-col { color: var(--muted); }
+    .quantiles-table td.is-secondary-col .score-bar-fill { background: var(--muted); }
     #product-provenance-table th,
     #product-provenance-table td {
       text-align: left;
@@ -574,6 +555,9 @@
       grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
       gap: 10px;
     }
+    #product-downloads { grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr)); }
+    #product-downloads .download { min-width: 0; flex-wrap: wrap; }
+    #product-downloads .download strong { min-width: 0; overflow-wrap: anywhere; }
     #product-downloads .download small {
       color: var(--aqua);
       font-weight: 700;
@@ -666,9 +650,43 @@
       border-color: var(--aqua);
       transform: translateY(-2px);
     }
-    .podium-card.is-selected {
-      border: 2px solid var(--lime);
-      background: linear-gradient(155deg, rgba(184, 245, 106, .08), rgba(14, 21, 36, .96));
+    .podium-card.is-winner {
+      border-color: rgba(184, 245, 106, .55);
+      background: linear-gradient(155deg, rgba(184, 245, 106, .07), rgba(14, 21, 36, .96));
+    }
+    .podium-card.is-inspecting {
+      outline: 2px solid #cbd5e1;
+      outline-offset: 2px;
+    }
+    .podium-card:focus-visible { outline: 3px solid var(--aqua); outline-offset: 3px; }
+    .podium-badges { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+    .podium-inspect-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: .64rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      color: #e2e8f0;
+      border: 1px solid #cbd5e1;
+      background: rgba(203, 213, 225, .1);
+    }
+    .podium-score-label {
+      display: block;
+      font-size: .64rem;
+      font-weight: 700;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .podium-sponsor {
+      margin: 0;
+      padding-top: 8px;
+      border-top: 1px dashed rgba(42, 53, 74, .9);
+      font-size: .7rem;
+      line-height: 1.4;
+      color: var(--muted);
     }
     .podium-card-top {
       display: flex;
@@ -714,7 +732,7 @@
       flex-shrink: 0;
     }
     .podium-score-num {
-      font-size: 1.2rem;
+      font-size: 1.25rem;
       font-weight: 900;
       font-variant-numeric: tabular-nums;
       letter-spacing: -.03em;
@@ -799,15 +817,211 @@
       font-weight: 780;
       cursor: pointer;
     }
-    .reset-sliders-btn:hover {
+    .reset-sliders-btn:hover:not(:disabled) {
       background: rgba(95, 225, 210, .17);
     }
+    .reset-sliders-btn:disabled { opacity: .6; cursor: default; color: var(--muted); border-color: var(--line); background: transparent; }
+    .sr-only {
+      position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+      overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+    }
+    .product-evidence-strip {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 4px 9px;
+      padding: 9px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 189, 89, .38);
+      background: rgba(255, 189, 89, .07);
+      color: var(--text);
+      font-size: .76rem;
+      font-weight: 650;
+      line-height: 1.45;
+    }
+    .product-evidence-strip .evidence-sep { color: var(--gold); }
+    .evidence-link {
+      appearance: none;
+      margin-left: auto;
+      padding: 3px 10px;
+      border: 1px solid rgba(255, 189, 89, .5);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--gold);
+      font: inherit;
+      font-size: .72rem;
+      cursor: pointer;
+    }
+    .product-grid-panel { padding: 14px 16px; transition: opacity .15s; }
+    .product-grid-panel.is-updating { opacity: .6; }
+    .product-grid-head h3 { margin: 0 0 4px; font-size: .95rem; }
+    .product-score-grid {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 4px;
+      font-size: .76rem;
+    }
+    .product-score-grid th {
+      color: var(--muted);
+      font-size: .68rem;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-align: center;
+      padding: 4px 6px;
+      vertical-align: bottom;
+    }
+    .product-score-grid th[scope="row"] {
+      text-align: left;
+      color: var(--text);
+      font-size: .74rem;
+      font-weight: 700;
+      letter-spacing: 0;
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    .product-score-grid th.is-focused { color: var(--text); }
+    .product-score-grid tr.is-focused th[scope="row"] { color: var(--lime); }
+    .grid-swatch { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: middle; }
+    .grid-cell-btn {
+      appearance: none;
+      width: 100%;
+      min-width: 76px;
+      min-height: 44px;
+      display: grid;
+      place-items: center;
+      gap: 1px;
+      padding: 4px 6px;
+      border: 1px solid rgba(42, 53, 74, .8);
+      border-radius: 8px;
+      background: #131c2e;
+      color: var(--text);
+      font: inherit;
+      cursor: pointer;
+    }
+    .grid-cell-btn strong { font-size: .9rem; font-variant-numeric: tabular-nums; }
+    .grid-cell-btn small { font-size: .64rem; color: #dbe2ea; font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .grid-cell-btn:hover { border-color: var(--aqua); }
+    .grid-cell-btn[aria-pressed="true"] { border: 2px solid #f4f1e8; }
+    .product-grid-empty { padding: 14px; color: var(--muted); text-align: left; }
+    .product-grid-legend { margin: 8px 0 0; font-size: .7rem; color: var(--muted); }
+    .product-changes-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      font-size: .76rem;
+      color: var(--muted);
+    }
+    .product-changes-bar.has-changes { border-color: rgba(255, 189, 89, .5); color: var(--gold); }
+    .product-changes-bar .reset-sliders-btn { width: auto; margin: 0; padding: 5px 10px; }
+    .control-meta { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 4px; }
+    .scope-chip, .changed-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 1px 7px;
+      border-radius: 999px;
+      font-size: .62rem;
+      font-weight: 800;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      border: 1px solid var(--line);
+    }
+    .scope-chip.is-shared { color: var(--aqua); border-color: rgba(95, 225, 210, .45); }
+    .scope-chip.is-fund { color: var(--gold); border-color: rgba(255, 189, 89, .45); }
+    .changed-chip { display: none; color: var(--ink); background: var(--gold); border-color: var(--gold); }
+    .control.is-changed .changed-chip { display: inline-flex; }
+    .control-num-wrap { position: relative; display: flex; align-items: center; gap: 4px; }
+    .control-num-wrap input { min-width: 0; width: 100%; }
+    .control-unit { color: var(--muted); font-size: .7rem; font-weight: 700; flex-shrink: 0; }
+    .control-error { margin: 6px 0 0; color: #ffc2c5; font-size: .72rem; line-height: 1.35; }
+    .control-error:empty { display: none; }
+    .control.is-invalid input[type="number"] { border-color: var(--red); }
+    .product-results { display: grid; gap: 14px; min-width: 0; transition: opacity .15s; }
+    .product-results.is-updating { opacity: .55; }
+    .product-results.is-stale { opacity: .6; filter: grayscale(.6); }
+    .product-results-status {
+      position: sticky;
+      top: 8px;
+      z-index: 3;
+      justify-self: end;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(95, 225, 210, .5);
+      background: #0e1524;
+      color: var(--aqua);
+      font-size: .76rem;
+      font-weight: 760;
+    }
+    .product-spinner {
+      width: 10px; height: 10px; border-radius: 50%;
+      border: 2px solid rgba(95, 225, 210, .3); border-top-color: var(--aqua);
+      animation: product-spin .8s linear infinite;
+    }
+    @keyframes product-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .product-spinner { animation: none; } }
+    .product-results-alert {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 12px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 122, 128, .6);
+      background: rgba(255, 122, 128, .1);
+      color: #ffc2c5;
+      font-size: .8rem;
+      line-height: 1.45;
+    }
+    .product-results-alert p { margin: 0; flex: 1 1 260px; }
+    .product-results-alert .reset-sliders-btn { width: auto; margin: 0; color: #ffc2c5; border-color: rgba(255, 122, 128, .6); background: transparent; }
+    .product-kpi-title { margin: 0 0 8px; font-size: .92rem; }
+    .product-kpi-sub { color: var(--muted); font-weight: 600; }
+    #product-kpi-cards .metric-card.is-secondary { background: transparent; border-style: dashed; }
+    #product-kpi-cards .metric-card.is-secondary strong { color: var(--muted); font-size: 1rem; }
+    .prov-status {
+      display: inline-flex;
+      padding: 1px 8px;
+      border-radius: 999px;
+      font-size: .66rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      border: 1px solid var(--line);
+      white-space: nowrap;
+    }
+    .prov-status.is-documented { color: var(--lime); border-color: rgba(184, 245, 106, .45); }
+    .prov-status.is-assumption { color: var(--gold); border-color: rgba(255, 189, 89, .5); }
+    .prov-status.is-na { color: var(--muted); }
+    .prov-confidence { display: block; margin-top: 3px; color: var(--muted); font-size: .66rem; }
+    #product-provenance-table a { color: var(--aqua); overflow-wrap: anywhere; }
     @media (max-width: 1180px) {
       #product-kpi-cards, .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .product-charts-grid, .podium-grid { grid-template-columns: 1fr; }
     }
     @media (max-width: 960px) {
       .product-studio-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 480px) {
+      .product-studio-body { padding: 12px 12px 16px; }
+      .podium-stats-row { grid-template-columns: 1fr 1fr; }
+      .product-score-grid th[scope="row"] { white-space: normal; }
+      .product-grid-panel { padding: 12px 8px; }
+      .product-score-grid { border-spacing: 2px; table-layout: fixed; }
+      .product-score-grid th { font-size: .6rem; letter-spacing: 0; padding: 2px; overflow-wrap: anywhere; }
+      .product-score-grid th[scope="row"] { font-size: .66rem; width: 30%; }
+      .grid-swatch { display: block; margin: 0 auto 3px; }
+      .grid-cell-btn { min-width: 0; min-height: 40px; padding: 3px 2px; }
+      .grid-cell-btn strong { font-size: .8rem; }
+      .grid-cell-btn small { display: none; }
+      .evidence-link { margin-left: 0; }
     }
     @media (max-width: 560px) {
       #product-kpi-cards, .cards { grid-template-columns: 1fr; }
@@ -1038,16 +1252,33 @@
         <div>
           <span class="eyebrow">Consulting &amp; Advisory Demonstration</span>
           <h2 id="product-studio-title">Tokenised Investment Product Studio: Returns, Fees &amp; Liquidity</h2>
-          <p id="product-studio-subtitle">Interactive simulation backed by TokenLab's <code>TokenisedProductEconomy</code> engine. Compare product designs, stress scenarios, investor returns, issuer break-even scale, and redemption settlement queues.</p>
+          <p id="product-studio-subtitle">Interactive simulation backed by TokenLab's <code>TokenisedProductEconomy</code> engine. Compare fund structures across stress scenarios: investor returns, exit liquidity, and sponsor break-even scale.</p>
         </div>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-          <span id="product-studio-status" class="run-id" aria-live="polite">Ready</span>
-          <button class="run-button" id="product-run-button" type="button" style="width:auto;margin-top:0;min-height:42px;padding:9px 18px;">Run Product Advisory Simulation</button>
+          <span id="product-studio-status" class="run-id" aria-live="polite">Loading…</span>
+          <button class="run-button" id="product-run-button" type="button" style="width:auto;margin-top:0;min-height:42px;padding:9px 18px;">Re-run simulation</button>
         </div>
       </div>
       <div class="product-studio-body">
-        <div class="scenario-pills-bar" role="group" aria-label="Quick market scenario selector">
-          <span class="scenario-pills-label">⚡ 1-Click Stress Regime:</span>
+        <div class="product-evidence-strip" id="product-evidence-strip" role="note" aria-label="Evidence basis">Loading evidence basis…</div>
+
+        <div class="panel product-grid-panel" id="product-scenario-grid-panel">
+          <div class="product-grid-head">
+            <h3 id="product-grid-title">Investor score in every scenario</h3>
+            <p id="product-grid-caption" class="chart-caption">Each cell is a fund's investor score (0–100, not a credit rating) under one scenario. Select a cell to inspect that fund and scenario below.</p>
+          </div>
+          <div tabindex="0" role="region" aria-labelledby="product-grid-title" class="table-scroll-wrap">
+            <table class="product-score-grid" id="product-scenario-grid">
+              <caption class="sr-only" id="product-grid-sr-caption">Investor score by scenario (rows) and fund (columns)</caption>
+              <thead></thead>
+              <tbody><tr><td class="product-grid-empty">Loading scores…</td></tr></tbody>
+            </table>
+          </div>
+          <p class="product-grid-legend" id="product-grid-legend">Brighter cell = higher score · ★ = highest score in that scenario · outlined cell = what you are inspecting</p>
+        </div>
+
+        <div class="scenario-pills-bar" role="group" aria-labelledby="product-scenario-pills-label">
+          <span class="scenario-pills-label" id="product-scenario-pills-label">Scenario:</span>
           <div id="product-scenario-pills" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
         </div>
         <div class="product-studio-grid">
@@ -1057,164 +1288,160 @@
               <select id="product-case-study-select"></select>
             </div>
             <div class="field">
-              <label for="product-design-select">2. Product design (focus)</label>
+              <label for="product-design-select">2. Fund to inspect</label>
               <select id="product-design-select"></select>
             </div>
             <div class="field">
-              <label for="product-scenario-select">3. Stress scenario</label>
+              <label for="product-scenario-select">3. Scenario</label>
               <select id="product-scenario-select"></select>
             </div>
             <p id="product-scenario-desc" style="color:var(--muted);font-size:.78rem;line-height:1.45;margin:4px 0 12px;padding:9px 11px;border-radius:10px;background:#0e1524;border:1px solid var(--line);"></p>
-            <button type="button" class="reset-sliders-btn" id="product-reset-sliders-btn">↺ Reset Sliders to Published Filing Defaults</button>
-            <span class="field-label" style="margin-bottom:10px;">4. Key Assumption Levers</span>
+            <div class="product-changes-bar" id="product-changes-bar">
+              <span id="product-changes-count" aria-live="polite">No assumptions changed</span>
+              <button type="button" class="reset-sliders-btn" id="product-reset-sliders-btn" disabled>↺ Reset</button>
+            </div>
+            <span class="field-label" style="margin-bottom:6px;">4. Key assumption levers</span>
+            <p class="control-copy" id="product-scope-note" style="margin:0 0 12px;"></p>
             <div id="product-controls" class="controls" style="padding-right:4px;"></div>
           </div>
           <div class="product-studio-main">
-            <div class="product-summary-banner" id="product-plain-english-summary" aria-live="polite">
-              <div class="product-summary-header">
-                <span class="product-summary-badge" id="product-summary-badge">Real-World RWA Benchmark · What You Are Seeing</span>
-                <span style="font-size:.73rem;color:var(--muted);">Click any Fund Card below or Stress Pill above to compare live results</span>
-              </div>
-              <p id="product-summary-lead">
-                <strong>Yes — this is a real-world benchmark case study:</strong> You are comparing three live institutional tokenised funds (<strong>BlackRock BUIDL</strong>, <strong>Maple SyrupUSDC</strong>, and <strong>Hamilton Lane SCOPE</strong>) whose yields, fee schedules, liquidity buffers, and redemption gates come from published SEC filings and offering docs, tested on a standardised <strong>$25M AUM</strong> portfolio.
-              </p>
-              <p class="sub-takeaway" id="product-summary-takeaway">
-                Select any product or stress scenario on the left to see how investor net return, secondary token price, unpaid redemption queues, and issuer profitability evolve over 36 months.
-              </p>
+            <div class="product-results-status" id="product-results-status" hidden><span class="product-spinner" aria-hidden="true"></span>Updating…</div>
+            <div class="product-results-alert" id="product-results-alert" role="alert" hidden>
+              <p id="product-results-alert-text"></p>
+              <button type="button" class="reset-sliders-btn" id="product-results-retry">Retry</button>
             </div>
-
-            <div>
-              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
-                <span class="field-label" style="margin:0;color:var(--lime);">🏆 Side-by-Side Fund Rankings &amp; Plain-English Verdict (Click Any Fund Card to Inspect)</span>
-                <span style="font-size:.72rem;color:var(--muted);">Ranked by 5-Pillar Quantitative Score (0–100)</span>
+            <div class="product-results" id="product-results" aria-busy="false">
+              <div class="product-summary-banner" id="product-plain-english-summary">
+                <div class="product-summary-header">
+                  <span class="product-summary-badge" id="product-summary-badge">What you are seeing</span>
+                  <span style="font-size:.73rem;color:var(--muted);">Select a fund card, grid cell or scenario to compare</span>
+                </div>
+                <p id="product-summary-lead">Loading case study…</p>
+                <p class="sub-takeaway" id="product-summary-takeaway"></p>
               </div>
-              <div class="podium-grid" id="product-podium-cards"></div>
-            </div>
 
-            <div class="studio-view-tabs" id="product-view-tabs">
-              <span style="font-size:.74rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;">Dashboard View:</span>
-              <div class="studio-view-buttons">
-                <button type="button" class="studio-view-btn" data-studio-view="guided" aria-pressed="true">✨ Guided Overview (Clean)</button>
-                <button type="button" class="studio-view-btn" data-studio-view="charts" aria-pressed="false">📈 Charts &amp; Trajectories</button>
-                <button type="button" class="studio-view-btn" data-studio-view="tables" aria-pressed="false">🏆 5-Pillar Scorecard &amp; Full Table</button>
-                <button type="button" class="studio-view-btn" data-studio-view="filings" aria-pressed="false">📚 SEC Filings &amp; Downloads</button>
+              <div>
+                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+                  <h3 class="field-label" id="product-podium-title" style="margin:0;color:var(--lime);">Fund ranking in this scenario (select a card to inspect it)</h3>
+                  <span style="font-size:.72rem;color:var(--muted);">Ranked by investor score (0–100)</span>
+                </div>
+                <div class="podium-grid" id="product-podium-cards" role="group" aria-labelledby="product-podium-title"></div>
               </div>
-            </div>
 
-            <div class="metric-cards cards" id="product-kpi-cards"></div>
-
-            <div class="panel" id="product-charts-panel" style="padding:14px 16px;">
-              <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
-                <h3 style="margin:0;font-size:.95rem;">36-Month Trajectory Comparison Across All 3 Products</h3>
-                <div class="legend" id="product-chart-legend" style="padding:0;">
-                  <span class="legend-item"><i style="background:#38bdf8"></i><span>BlackRock BUIDL (Treasury)</span></span>
-                  <span class="legend-item"><i style="background:#ffbd59"></i><span>Maple SyrupUSDC (Credit Pool)</span></span>
-                  <span class="legend-item"><i style="background:#b8f56a"></i><span>Hamilton Lane SCOPE (Senior Credit)</span></span>
-                  <span style="color:var(--muted);font-size:.73rem;margin-left:4px;">(Chart 1: Solid = Executable Price, Dashed = NAV/Token)</span>
+              <div class="studio-view-tabs" id="product-view-tabs">
+                <span style="font-size:.74rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;">View:</span>
+                <div class="studio-view-buttons">
+                  <button type="button" class="studio-view-btn" data-studio-view="guided" data-focus-key="view:guided" aria-pressed="true">Overview</button>
+                  <button type="button" class="studio-view-btn" data-studio-view="charts" data-focus-key="view:charts" aria-pressed="false">Charts</button>
+                  <button type="button" class="studio-view-btn" data-studio-view="tables" data-focus-key="view:tables" aria-pressed="false">Scorecard &amp; full table</button>
+                  <button type="button" class="studio-view-btn" data-studio-view="sources" data-focus-key="view:sources" aria-pressed="false">Sources, assumptions &amp; downloads</button>
                 </div>
               </div>
-              <div class="product-charts-grid">
-                <div class="product-chart-card">
-                  <h4>1. Token Price vs. $1.00 NAV ($)</h4>
-                  <p class="chart-caption">Solid line = Secondary market exit price. Drop below $1.00 = liquidity discount during stress.</p>
-                  <div id="product-chart-nav"></div>
+
+              <div id="product-kpi-block">
+                <h3 class="product-kpi-title" id="product-kpi-title">Inspecting: —</h3>
+                <div class="metric-cards cards" id="product-kpi-cards"></div>
+              </div>
+
+              <div class="panel" id="product-charts-panel" style="padding:14px 16px;">
+                <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+                  <h3 style="margin:0;font-size:.95rem;">36-month trajectories, all funds (selected scenario)</h3>
+                  <div class="legend" id="product-chart-legend" style="padding:0;"></div>
                 </div>
-                <div class="product-chart-card">
-                  <h4>2. Unpaid Redemption Queue ($M)</h4>
-                  <p class="chart-caption">Redemptions stuck waiting behind a gate or liquidity shortfall ($0M = instant settlement).</p>
-                  <div id="product-chart-queue"></div>
-                </div>
-                <div class="product-chart-card">
-                  <h4>3. Cumulative Issuer Net Profit ($k)</h4>
-                  <p class="chart-caption">Fee revenue minus fixed compliance/oracle overhead ($269k/yr). Upward slope = profitable scale.</p>
-                  <div id="product-chart-profit"></div>
+                <div class="product-charts-grid">
+                  <div class="product-chart-card">
+                    <h4>1. Secondary exit price vs. NAV per token ($)</h4>
+                    <p class="chart-caption">Solid = modelled secondary (immediate-exit) price. Dashed = NAV per token. The gap is the cost of exiting now instead of waiting in the redemption queue.</p>
+                    <div id="product-chart-nav"></div>
+                  </div>
+                  <div class="product-chart-card">
+                    <h4>2. Unpaid redemption queue ($)</h4>
+                    <p class="chart-caption">Redemptions waiting behind a gate or a cash shortfall ($0 = paid in the month requested).</p>
+                    <div id="product-chart-queue"></div>
+                  </div>
+                  <div class="product-chart-card">
+                    <h4>3. Cumulative sponsor net profit ($)</h4>
+                    <p class="chart-caption" id="product-chart-profit-caption">Fee revenue minus fixed operating costs. Upward slope = profitable at this scale.</p>
+                    <div id="product-chart-profit"></div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div class="panel" id="product-comparison-panel" style="padding:14px 16px;">
-              <details class="studio-details" id="product-comparison-details" open>
-                <summary id="product-comparison-heading" style="font-size:.93rem;">Full 10-Metric Financial &amp; Liquidity Comparison Table (Selected Scenario)</summary>
-                <div tabindex="0" role="region" aria-labelledby="product-comparison-heading" class="table-scroll-wrap" style="margin-top:10px;">
-                  <table class="quantiles-table" id="product-comparison-table">
-                    <thead>
-                      <tr>
-                        <th>Product / Design</th>
-                        <th>Composite Score &amp; Grade</th>
-                        <th>Investor Net Return (TWR p.a.)</th>
-                        <th>Ending NAV/Token</th>
-                        <th>Executable Exit Price</th>
-                        <th>Min Secondary Price</th>
-                        <th>Issuer 3-Yr Profit</th>
-                        <th>Break-Even AUM</th>
-                        <th>Max Payment Wait</th>
-                        <th>Liquidity &amp; Haircut Cost</th>
-                      </tr>
-                    </thead>
+              <div class="panel" id="product-comparison-panel" style="padding:14px 16px;">
+                <details class="studio-details" id="product-comparison-details" open>
+                  <summary id="product-comparison-heading" style="font-size:.93rem;">Full comparison table (selected scenario)</summary>
+                  <div tabindex="0" role="region" aria-labelledby="product-comparison-heading" class="table-scroll-wrap" style="margin-top:10px;">
+                    <table class="quantiles-table" id="product-comparison-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">Fund</th>
+                          <th scope="col">Investor score</th>
+                          <th scope="col">Return (TWR p.a.)</th>
+                          <th scope="col">Investor IRR p.a.</th>
+                          <th scope="col">Forced-exit return p.a.</th>
+                          <th scope="col">Max exit discount vs NAV</th>
+                          <th scope="col">Wait to payment (avg / max)</th>
+                          <th scope="col">Min liquidity coverage</th>
+                          <th scope="col">Sponsor 3-yr profit</th>
+                          <th scope="col">Sponsor break-even AUM</th>
+                        </tr>
+                      </thead>
+                      <tbody></tbody>
+                    </table>
+                  </div>
+                </details>
+              </div>
+
+              <div class="panel" id="product-scorecard-panel" style="padding:14px 16px;">
+                <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px;">
+                  <h3 id="product-scorecard-heading" style="margin:0;font-size:.95rem;">Investor scorecard (selected scenario)</h3>
+                  <span id="product-scorecard-weights" style="font-size:.73rem;color:var(--muted);">0–100 · not a credit rating</span>
+                </div>
+                <div tabindex="0" role="region" aria-labelledby="product-scorecard-heading" class="table-scroll-wrap">
+                  <table class="quantiles-table" id="product-scorecard-table">
+                    <thead><tr></tr></thead>
                     <tbody></tbody>
                   </table>
                 </div>
-              </details>
-            </div>
-
-            <div class="panel" id="product-scorecard-panel" style="padding:14px 16px;">
-              <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px;">
-                <h3 id="product-scorecard-heading" style="margin:0;font-size:.95rem;">5-Pillar Quantitative Product Scorecard &amp; Institutional Rating (Paper-Ready Evaluation)</h3>
-                <span style="font-size:.73rem;color:var(--muted);">0–100 Scale · P1 Yield (25%) · P2 Exit SLA (25%) · P3 Peg Stability (20%) · P4 Issuer Scale (15%) · P5 Stress Survival (15%)</span>
+                <p class="chart-caption" style="margin:8px 0 0;">Sponsor viability is scored separately: it measures whether the sponsor can cover its fixed costs, not what the investor receives, and is not part of the investor score.</p>
               </div>
-              <div tabindex="0" role="region" aria-labelledby="product-scorecard-heading" class="table-scroll-wrap">
-                <table class="quantiles-table" id="product-scorecard-table">
-                  <thead>
-                    <tr>
-                      <th>Product / Design</th>
-                      <th>P1: Investor Yield (25%)</th>
-                      <th>P2: Exit Speed / SLA (25%)</th>
-                      <th>P3: $1.00 Peg Stability (20%)</th>
-                      <th>P4: Issuer Profit Scale (15%)</th>
-                      <th>P5: Crisis Survival (15%)</th>
-                      <th>Composite Score &amp; Grade</th>
-                    </tr>
-                  </thead>
-                  <tbody></tbody>
-                </table>
-              </div>
-            </div>
 
-            <div class="panel" id="product-provenance-panel" style="padding:14px 16px;" hidden>
-              <details class="studio-details" id="product-provenance-details">
-                <summary>Real-World RWA Term-Sheet Provenance &amp; Calibration Reference (SEC Filings, Fee Schedules &amp; Gate Mechanics)</summary>
-                <p style="margin:8px 0 10px;color:var(--muted);font-size:.78rem;line-height:1.45;">
-                  Exact separation of <strong>published real-world fund parameters</strong> (underlying assets, management/performance fees, liquidity facilities, and redemption gates) vs. <strong>standardised benchmark assumptions</strong> ($25M starting AUM and stress-flow shocks).
-                </p>
-                <div tabindex="0" role="region" aria-label="Real-World RWA Term-Sheet Provenance Table" class="table-scroll-wrap">
+              <div class="panel" id="product-provenance-panel" style="padding:14px 16px;" hidden>
+                <h3 id="product-provenance-heading" style="margin:0 0 6px;font-size:.95rem;">Sources &amp; assumptions per parameter</h3>
+                <p id="product-provenance-copy" style="margin:0 0 10px;color:var(--muted);font-size:.78rem;line-height:1.45;"></p>
+                <div class="field" style="max-width:320px;">
+                  <label for="product-provenance-filter">Show parameters for</label>
+                  <select id="product-provenance-filter"></select>
+                </div>
+                <div tabindex="0" role="region" aria-labelledby="product-provenance-heading" class="table-scroll-wrap">
                   <table class="quantiles-table" id="product-provenance-table">
                     <thead>
                       <tr>
-                        <th>Product &amp; Ticker</th>
-                        <th>Issuer / Manager</th>
-                        <th>Underlying Asset Class &amp; Gross Yield</th>
-                        <th>Published Fee &amp; Hurdle Schedule</th>
-                        <th>Liquidity Buffer, Facility &amp; Gate</th>
-                        <th>Settlement Lag &amp; Haircut</th>
-                        <th>Primary Public Filing / Source &amp; Synthetic Calibration</th>
+                        <th scope="col">Fund</th>
+                        <th scope="col">Parameter</th>
+                        <th scope="col">Value used</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Source</th>
+                        <th scope="col">As of</th>
+                        <th scope="col">Note</th>
                       </tr>
                     </thead>
                     <tbody></tbody>
                   </table>
                 </div>
-              </details>
-            </div>
+              </div>
 
-            <div class="panel" style="padding:14px 16px;">
-              <h4 style="margin:0 0 10px;font-size:.9rem;">Export Run Data, CSV Tables &amp; Self-Contained Client HTML Report</h4>
-              <div class="downloads" id="product-downloads"></div>
-              <details class="studio-details" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
-                <summary>View Methodology Scope, Cost-Bearer Attribution &amp; Model Limitations</summary>
-                <div class="boundary" id="product-studio-boundary" style="margin:10px 0 8px;padding:12px 14px;font-size:.78rem;">
-                  Illustrative / Synthetic Case Study Notice: All portfolio yields, fee schedules, and investor withdrawal sensitivities in this demonstration are synthetic. Outputs represent conditional implications of the selected assumptions and are not empirically calibrated forecasts.
-                </div>
-                <div id="product-assumptions-limitations" style="margin-top:8px;color:var(--muted);font-size:.78rem;line-height:1.5;display:grid;gap:6px;"></div>
-              </details>
+              <div class="panel" id="product-downloads-panel" style="padding:14px 16px;">
+                <h4 style="margin:0 0 10px;font-size:.9rem;">Export run data, CSV tables &amp; self-contained HTML report</h4>
+                <div class="downloads" id="product-downloads"></div>
+                <details class="studio-details" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
+                  <summary>Methodology scope &amp; model limitations</summary>
+                  <div class="boundary" id="product-studio-boundary" style="margin:10px 0 8px;padding:12px 14px;font-size:.78rem;">
+                    Illustrative case study: outputs are conditional on the stated assumptions, are not forecasts of any named fund, and are not credit ratings or investment advice.
+                  </div>
+                  <div id="product-assumptions-limitations" style="margin-top:8px;color:var(--muted);font-size:.78rem;line-height:1.5;display:grid;gap:6px;"></div>
+                </details>
+              </div>
             </div>
           </div>
         </div>
@@ -2949,7 +3176,24 @@
       topologyResizeFrame = requestAnimationFrame(renderTopology);
     });
     // --- Tokenised Product Advisory Studio (Case Study Demonstration) ------
-    const productStudio = { catalog: null, allCatalogs: {}, running: false };
+    const productStudio = {
+      catalog: null,
+      allCatalogs: {},
+      running: false,
+      pending: false,
+      pendingForce: false,
+      debounceTimer: 0,
+      userValues: {},
+      lastResult: null,
+      lastRequestKey: "",
+      grid: null,
+      gridKey: "",
+      errorMessage: "",
+      advancedOpen: false,
+      focusDesign: "",
+      focusScenario: ""
+    };
+    const PRODUCT_INPUT_DEBOUNCE_MS = 250;
     const productDesignColors = {
       design_a_liquid_low_fee: "#38bdf8",
       design_b_gated_high_fee: "#ffbd59",
@@ -2958,6 +3202,19 @@
       maple_syrup_usdc: "#ffbd59",
       hamilton_lane_scope: "#b8f56a"
     };
+    const investorPillars = [
+      ["risk_adjusted_yield_score", "Risk-adjusted yield"],
+      ["exit_liquidity_score", "Exit liquidity"],
+      ["capital_stability_score", "Capital stability"],
+      ["liquidity_resilience_score", "Liquidity resilience"]
+    ];
+    const keyLeverKeys = new Set([
+      "initial_aum",
+      "month12_institutional_shock",
+      "management_fee_annual",
+      "income_share_fee_rate",
+      "gate_max_pct_nav_per_period"
+    ]);
 
     function setWorkspaceMode(mode) {
       const heroEl = document.querySelector(".hero");
@@ -3000,44 +3257,115 @@
       setWorkspaceMode("product");
     }
 
+    // One set of formatters for every number the studio shows.
+    function productFinite(value) {
+      return value !== null && value !== undefined && value !== "" && Number.isFinite(Number(value));
+    }
+
+    function fmtUsd(value, options = {}) {
+      if (!productFinite(value)) return "—";
+      const n = Number(value);
+      const abs = Math.abs(n);
+      let body;
+      if (abs >= 999.5e6) body = `$${(abs / 1e9).toFixed(2)}B`;
+      else if (abs >= 9.995e6) body = `$${(abs / 1e6).toFixed(1)}M`;
+      else if (abs >= 999.5e3) body = `$${(abs / 1e6).toFixed(2)}M`;
+      else if (abs >= 1e3) body = `$${(abs / 1e3).toFixed(0)}k`;
+      else body = `$${abs.toFixed(0)}`;
+      if (n < 0 && body !== "$0") return `−${body}`;
+      if (options.sign && n > 0) return `+${body}`;
+      return body;
+    }
+
+    function fmtPct(value, digits = 2) {
+      if (!productFinite(value)) return "—";
+      const n = Number(value) * 100;
+      const text = Math.abs(n).toFixed(digits);
+      return `${n < 0 && Number(text) !== 0 ? "−" : ""}${text}%`;
+    }
+
+    function fmtMonths(value) {
+      if (!productFinite(value)) return "—";
+      const n = Number(value);
+      return `${Number.isInteger(n) ? n.toFixed(0) : n.toFixed(1)} mo`;
+    }
+
+    function fmtPrice(value) {
+      return productFinite(value) ? `$${Number(value).toFixed(4)}` : "—";
+    }
+
+    function fmtScore(value) {
+      return productFinite(value) ? Number(value).toFixed(1) : "—";
+    }
+
+    function fmtBand(band) {
+      return band ? `band ${String(band).replace("-", "–")}` : "—";
+    }
+
+    function fmtBreakeven(value) {
+      return productFinite(value) ? fmtUsd(value) : "Not achievable";
+    }
+
+    function fmtRatio(value) {
+      return productFinite(value) ? `${Number(value).toFixed(2)}×` : "—";
+    }
+
+    function fmtIsoDate(iso) {
+      if (!iso) return "";
+      const d = new Date(`${iso}T00:00:00Z`);
+      if (Number.isNaN(d.getTime())) return String(iso);
+      return new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }).format(d);
+    }
+
+    function productScenarioById(id) {
+      const cat = productStudio.catalog;
+      return cat ? (cat.scenarios || []).find((s) => s.scenario_id === id) : undefined;
+    }
+
+    function productDesignById(id) {
+      const cat = productStudio.catalog;
+      return cat ? (cat.designs || []).find((d) => d.design_id === id) : undefined;
+    }
+
+    function productDesignLabel(id) {
+      const d = productDesignById(id);
+      return d ? (d.short_label || d.name) : id;
+    }
+
+    function productIsRealStudy(cat) {
+      return Boolean(cat && (cat.per_product_portfolio || (cat.real_world_provenance || []).length));
+    }
+
+    // Keep keyboard focus on the activated control when a render replaces it.
+    function preserveFocus(render) {
+      const active = document.activeElement;
+      const key = active && active.dataset ? active.dataset.focusKey : "";
+      render();
+      if (!key) return;
+      if (document.activeElement && document.activeElement !== document.body && document.contains(active)) return;
+      const next = document.querySelector(`[data-focus-key="${CSS.escape(key)}"]`);
+      if (next) next.focus({ preventScroll: true });
+    }
+
     function setStudioViewMode(viewMode) {
-      const kpiEl = $("product-kpi-cards");
+      const kpiEl = $("product-kpi-block");
       const chartsEl = $("product-charts-panel");
       const compPanel = $("product-comparison-panel");
       const compDetails = $("product-comparison-details");
       const scorePanel = $("product-scorecard-panel");
       const provPanel = $("product-provenance-panel");
-      const provDetails = $("product-provenance-details");
+      const hasProvenance = Boolean(productStudio.catalog && (productStudio.catalog.real_world_provenance || []).length);
       document.querySelectorAll("#product-view-tabs .studio-view-btn").forEach((btn) => {
         btn.setAttribute("aria-pressed", String(btn.dataset.studioView === viewMode));
       });
       if (viewMode === "charts") {
-        if (kpiEl) kpiEl.hidden = false;
-        if (chartsEl) chartsEl.hidden = false;
-        if (compPanel) compPanel.hidden = true;
-        if (scorePanel) scorePanel.hidden = true;
+        kpiEl.hidden = false; chartsEl.hidden = false; compPanel.hidden = true; scorePanel.hidden = true; provPanel.hidden = true;
       } else if (viewMode === "tables") {
-        if (kpiEl) kpiEl.hidden = true;
-        if (chartsEl) chartsEl.hidden = true;
-        if (compPanel) compPanel.hidden = false;
-        if (compDetails) compDetails.open = true;
-        if (scorePanel) scorePanel.hidden = false;
-      } else if (viewMode === "filings") {
-        if (kpiEl) kpiEl.hidden = true;
-        if (chartsEl) chartsEl.hidden = true;
-        if (compPanel) compPanel.hidden = true;
-        if (scorePanel) scorePanel.hidden = false;
-        if (provPanel && (productStudio.catalog && (productStudio.catalog.real_world_provenance || []).length)) {
-          provPanel.hidden = false;
-        }
-        if (provDetails) provDetails.open = true;
+        kpiEl.hidden = true; chartsEl.hidden = true; compPanel.hidden = false; compDetails.open = true; scorePanel.hidden = false; provPanel.hidden = true;
+      } else if (viewMode === "sources") {
+        kpiEl.hidden = true; chartsEl.hidden = true; compPanel.hidden = true; scorePanel.hidden = true; provPanel.hidden = !hasProvenance;
       } else {
-        // Guided overview: Podium + KPIs + Charts + 5-Pillar Scorecard visible; 10-column raw table collapsed
-        if (kpiEl) kpiEl.hidden = false;
-        if (chartsEl) chartsEl.hidden = false;
-        if (compPanel) compPanel.hidden = false;
-        if (compDetails) compDetails.open = false;
-        if (scorePanel) scorePanel.hidden = false;
+        kpiEl.hidden = false; chartsEl.hidden = false; compPanel.hidden = false; compDetails.open = false; scorePanel.hidden = false; provPanel.hidden = true;
       }
     }
 
@@ -3045,38 +3373,72 @@
       btn.addEventListener("click", () => setStudioViewMode(btn.dataset.studioView || "guided"));
     });
 
-    const scenarioPillLabels = {
-      baseline: "🟢 1. Calm Baseline",
-      rate_cut: "📉 2. Rate Cut (-150 bps)",
-      rate_spike: "📈 3. Rate Spike (+150 bps)",
-      concentrated_withdrawals: "🔴 4. 30% Institutional Run",
-      slow_settlement: "⏳ 5. Slow Settlement (2m Lag)",
-      credit_loss: "⚠️ 6. Credit Default Shock",
-      combined_adverse: "🔥 7. Combined Crisis",
-      fee_compression: "💸 8. Fee Compression"
-    };
+    function renderEvidenceStrip(cat) {
+      const strip = $("product-evidence-strip");
+      strip.replaceChildren();
+      const params = (cat.real_world_provenance || []).flatMap((p) => p.parameters || []);
+      const nDocumented = params.filter((p) => p.status === "documented").length;
+      const nAssumption = params.filter((p) => p.status === "assumption").length;
+      const firstDesign = (cat.designs || [])[0];
+      const aum = firstDesign && firstDesign.defaults ? firstDesign.defaults.initial_aum : null;
+      const items = productIsRealStudy(cat)
+        ? [
+            cat.calibration_date ? `Public terms as of ${fmtIsoDate(cat.calibration_date)}` : "Public terms",
+            `${nDocumented} documented · ${nAssumption} flagged assumptions`,
+            `${fmtUsd(aum)} normalised starting AUM`,
+            "Synthetic stress scenarios",
+            "Modelled secondary price",
+            "Not a credit rating or investment advice"
+          ]
+        : [
+            "Synthetic design study: archetype terms, not real funds",
+            `${fmtUsd(aum)} portfolio`,
+            "Synthetic stress scenarios",
+            "Modelled secondary price",
+            "Not a credit rating or investment advice"
+          ];
+      items.forEach((text, i) => {
+        if (i) {
+          const sep = document.createElement("span");
+          sep.className = "evidence-sep";
+          sep.setAttribute("aria-hidden", "true");
+          sep.textContent = "·";
+          strip.append(sep);
+        }
+        const span = document.createElement("span");
+        span.textContent = text;
+        strip.append(span);
+      });
+      if (params.length) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "evidence-link";
+        btn.dataset.focusKey = "evidence:sources";
+        btn.textContent = "See every source";
+        btn.addEventListener("click", () => {
+          setStudioViewMode("sources");
+          const panel = $("product-provenance-panel");
+          if (panel) panel.scrollIntoView({ behavior: "smooth", block: "start" });
+        });
+        strip.append(btn);
+      }
+    }
 
-    function renderScenarioPills(cat, activeScenarioId) {
+    function renderScenarioPills() {
       const wrap = $("product-scenario-pills");
+      const cat = productStudio.catalog;
       if (!wrap || !cat) return;
+      const activeScenarioId = $("product-scenario-select").value;
       wrap.replaceChildren();
       (cat.scenarios || []).forEach((s) => {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = "scenario-pill-btn";
+        btn.dataset.focusKey = `pill:${s.scenario_id}`;
         btn.setAttribute("aria-pressed", String(s.scenario_id === activeScenarioId));
-        btn.textContent = scenarioPillLabels[s.scenario_id] || s.name;
-        btn.addEventListener("click", () => {
-          const sSel = $("product-scenario-select");
-          if (sSel) {
-            sSel.value = s.scenario_id;
-            const dSel = $("product-design-select");
-            $("product-scenario-desc").textContent = s.description || "";
-            renderScenarioPills(cat, s.scenario_id);
-            renderProductControls(dSel ? dSel.value : "", s.scenario_id);
-            runProductStudio();
-          }
-        });
+        btn.textContent = s.short_label || s.name;
+        btn.title = s.name;
+        btn.addEventListener("click", () => selectProductView(null, s.scenario_id));
         wrap.append(btn);
       });
     }
@@ -3091,166 +3453,639 @@
         const swatch = document.createElement("i");
         swatch.style.background = productDesignColors[d.design_id] || "#7aa8ff";
         const lbl = document.createElement("span");
-        lbl.textContent = d.name;
+        lbl.textContent = d.short_label || d.name;
         span.append(swatch, lbl);
         leg.append(span);
       });
-      const note = document.createElement("span");
-      note.style.cssText = "color:var(--muted);font-size:.76rem;margin-left:8px;";
-      note.textContent = "(Chart 1: Solid = Secondary Executable Price, Dashed = Accounting NAV/Token)";
-      leg.append(note);
     }
 
-    function renderProductProvenance(cat) {
-      const panel = $("product-provenance-panel");
+    function renderProductProvenance() {
+      const cat = productStudio.catalog;
       const tbody = document.querySelector("#product-provenance-table tbody");
-      if (!panel || !tbody) return;
+      const filter = $("product-provenance-filter");
+      const copy = $("product-provenance-copy");
+      if (!tbody || !cat) return;
       tbody.replaceChildren();
-      const rows = (cat && cat.real_world_provenance) || [];
-      if (!rows.length) {
-        panel.hidden = true;
-        return;
-      }
-      panel.hidden = false;
-      rows.forEach((p) => {
-        const tr = document.createElement("tr");
-        const prodCell = p.ticker
-          ? `${p.product_name || p.design_id} (${p.ticker})`
-          : (p.product_name || p.design_id || "—");
-        const issuerCell = (p.issuer && p.network_rail)
-          ? `${p.issuer} · ${p.network_rail}`
-          : (p.issuer_and_infra || p.issuer || p.network_rail || "—");
-        const assetCell = p.gross_yield_benchmark
-          ? `${p.asset_class || ""} (${p.gross_yield_benchmark})`
-          : (p.asset_class || "—");
-        const feeBase = p.published_fees || p.documented_terms || "—";
-        const feeCell = (p.reward_token_mechanics && p.reward_token_mechanics !== "None")
-          ? `${feeBase} | ${p.reward_token_mechanics}`
-          : feeBase;
-        const liqParts = [p.liquidity_buffer_and_facility, p.redemption_gate].filter(Boolean);
-        const liqCell = liqParts.length ? liqParts.join(" | ") : (p.documented_terms || "—");
-        const lagParts = [p.settlement_lag, p.stress_haircut].filter(Boolean);
-        const lagCell = lagParts.length ? lagParts.join(" | ") : (p.synthetic_assumptions || "—");
-        const srcParts = [
-          p.primary_source ? `Source: ${p.primary_source}` : "",
-          p.synthetic_assumptions ? `Synthetic calibration: ${p.synthetic_assumptions}` : ""
-        ].filter(Boolean);
-        const srcCell = srcParts.length ? srcParts.join(" — ") : "—";
-        const cells = [prodCell, issuerCell, assetCell, feeCell, liqCell, lagCell, srcCell];
-        cells.forEach((c) => {
-          const td = document.createElement("td");
-          td.textContent = c;
-          tr.append(td);
+      const funds = cat.real_world_provenance || [];
+      const wanted = filter && filter.value ? filter.value : "all";
+      const dateText = cat.calibration_date ? ` as of ${fmtIsoDate(cat.calibration_date)}` : "";
+      copy.textContent = `Every fund parameter the model uses${dateText}. "Documented" values come from the dated public source shown; "assumption" values have no public source and are swept in the sensitivity analysis. Starting AUM, investor behaviour and the stress scenarios are standardised and synthetic for every fund.`;
+      funds.filter((f) => wanted === "all" || f.design_id === wanted).forEach((fund) => {
+        (fund.parameters || []).forEach((p) => {
+          const tr = document.createElement("tr");
+          const cells = [
+            p.design_label || fund.ticker || fund.design_id,
+            p.parameter || p.parameter_key || "—",
+            p.value === undefined || p.value === null || p.value === "" ? "—" : String(p.value)
+          ];
+          cells.forEach((c) => {
+            const td = document.createElement("td");
+            td.textContent = c;
+            tr.append(td);
+          });
+          const statusTd = document.createElement("td");
+          const chip = document.createElement("span");
+          const status = String(p.status || "assumption");
+          chip.className = `prov-status ${status === "documented" ? "is-documented" : status === "assumption" ? "is-assumption" : "is-na"}`;
+          chip.textContent = status;
+          statusTd.append(chip);
+          if (p.confidence) {
+            const conf = document.createElement("small");
+            conf.className = "prov-confidence";
+            conf.textContent = `${p.confidence} confidence`;
+            statusTd.append(conf);
+          }
+          tr.append(statusTd);
+          const srcTd = document.createElement("td");
+          let safeUrl = "";
+          try {
+            const u = new URL(String(p.url || ""));
+            if (u.protocol === "https:" || u.protocol === "http:") safeUrl = u.href;
+          } catch (_e) { safeUrl = ""; }
+          if (safeUrl) {
+            const a = document.createElement("a");
+            a.href = safeUrl;
+            a.target = "_blank";
+            a.rel = "noopener noreferrer";
+            a.textContent = p.source || safeUrl;
+            srcTd.append(a);
+          } else {
+            srcTd.textContent = p.source || "—";
+          }
+          tr.append(srcTd);
+          [p.as_of ? fmtIsoDate(p.as_of) : "—", p.note || "—"].forEach((c) => {
+            const td = document.createElement("td");
+            td.textContent = c;
+            tr.append(td);
+          });
+          tbody.append(tr);
         });
-        tbody.append(tr);
       });
     }
 
-    const keyLeverKeys = new Set([
-      "initial_aum",
-      "month12_institutional_shock",
-      "management_fee_annual",
-      "redemption_gate_rate_per_period"
-    ]);
+    function setupProvenanceFilter(cat) {
+      const filter = $("product-provenance-filter");
+      if (!filter) return;
+      filter.replaceChildren();
+      const all = document.createElement("option");
+      all.value = "all";
+      all.textContent = "All funds";
+      filter.append(all);
+      (cat.real_world_provenance || []).forEach((f) => {
+        const opt = document.createElement("option");
+        opt.value = f.design_id;
+        opt.textContent = productDesignLabel(f.design_id);
+        filter.append(opt);
+      });
+      filter.value = "all";
+    }
 
-    function renderProductControls(designId, scenarioId) {
-      if (!productStudio.catalog) return;
-      const design = productStudio.catalog.designs.find((d) => d.design_id === designId) || productStudio.catalog.designs[0];
-      const scenario = productStudio.catalog.scenarios.find((s) => s.scenario_id === scenarioId) || productStudio.catalog.scenarios[0];
-      const byDesignMap = (scenario && scenario.control_defaults_by_design) || {};
-      const scenCtrlDefaults = (design && byDesignMap[design.design_id]) || (scenario && scenario.control_defaults) || {};
-      const designDefaults = (design && design.defaults) || {};
+    // --- Assumption levers --------------------------------------------------
+    function productControlDefault(ctrl, designId, scenarioId) {
+      const design = productDesignById(designId) || productStudio.catalog.designs[0];
+      const scenario = productScenarioById(scenarioId) || productStudio.catalog.scenarios[0];
+      const byDesign = (scenario && scenario.control_defaults_by_design) || {};
+      const scen = (design && byDesign[design.design_id]) || (scenario && scenario.control_defaults) || {};
+      if (scen[ctrl.key] !== undefined) return Number(scen[ctrl.key]);
+      const dd = (design && design.defaults) || {};
+      if (dd[ctrl.key] !== undefined) return Number(dd[ctrl.key]);
+      return Number(ctrl.default);
+    }
+
+    function decimalsOf(value) {
+      const s = String(Number(Number(value).toPrecision(10)));
+      if (s.includes("e-")) return Number(s.split("e-")[1]);
+      const i = s.indexOf(".");
+      return i < 0 ? 0 : s.length - i - 1;
+    }
+
+    // Number boxes show people-friendly units: % for rates and shares, $M for dollars.
+    function controlDisplay(ctrl) {
+      const isPct = ctrl.unit === "decimal_rate" || ctrl.unit === "decimal_share";
+      const scale = isPct ? 100 : ctrl.unit === "USD" ? 1e-6 : 1;
+      const step = Number((Number(ctrl.step) * scale).toPrecision(10));
+      const unit = isPct ? "%" : ctrl.unit === "USD" ? "$M" : ctrl.unit === "multiplier" ? "×" : ctrl.unit;
+      return { scale, step, digits: decimalsOf(step), rawDigits: decimalsOf(ctrl.step), unit, isPct };
+    }
+
+    function toDisplayValue(ctrl, raw) {
+      const d = controlDisplay(ctrl);
+      return Number((Number(raw) * d.scale).toFixed(d.digits));
+    }
+
+    function fromDisplayValue(ctrl, shown) {
+      const d = controlDisplay(ctrl);
+      const raw = Number((Number(shown) / d.scale).toFixed(d.rawDigits));
+      return ctrl.unit === "months" ? Math.round(raw) : raw;
+    }
+
+    function formatControlValue(ctrl, raw) {
+      const n = Number(raw);
+      if (!Number.isFinite(n)) return "—";
+      const d = controlDisplay(ctrl);
+      if (d.isPct) {
+        if (ctrl.key === "gate_max_pct_nav_per_period" && n >= 1) return "100% (uncapped)";
+        return fmtPct(n, Math.max(0, d.digits));
+      }
+      if (ctrl.unit === "USD") return fmtUsd(n);
+      if (ctrl.unit === "months") return `${n.toFixed(0)} ${n === 1 ? "month" : "months"}`;
+      if (ctrl.unit === "multiplier") return `${n.toFixed(2)}×`;
+      return `${n} ${ctrl.unit}`;
+    }
+
+    function formatDisplayNumber(ctrl, shown) {
+      const d = controlDisplay(ctrl);
+      const text = Number(shown).toFixed(d.digits);
+      if (d.unit === "%") return `${text}%`;
+      if (d.unit === "$M") return `$${text}M`;
+      if (d.unit === "×") return `${text}×`;
+      return `${text} ${d.unit}`;
+    }
+
+    function validateControlInput(ctrl, text) {
+      const d = controlDisplay(ctrl);
+      const minShown = toDisplayValue(ctrl, ctrl.min);
+      const maxShown = toDisplayValue(ctrl, ctrl.max);
+      if (String(text).trim() === "") return { ok: false, message: "Enter a number." };
+      const v = Number(text);
+      if (!Number.isFinite(v)) return { ok: false, message: "Enter a number." };
+      if (v < minShown - 1e-9 || v > maxShown + 1e-9) {
+        return { ok: false, message: `Must be between ${formatDisplayNumber(ctrl, minShown)} and ${formatDisplayNumber(ctrl, maxShown)}.` };
+      }
+      const k = (v - minShown) / d.step;
+      if (Math.abs(k - Math.round(k)) > 1e-6) {
+        return { ok: false, message: `Use steps of ${formatDisplayNumber(ctrl, d.step)}.` };
+      }
+      return { ok: true, value: fromDisplayValue(ctrl, v) };
+    }
+
+    function productSharedKeys() {
+      return new Set((productStudio.catalog && productStudio.catalog.shared_override_keys) || []);
+    }
+
+    function setProductUserValue(ctrl, raw, defaultValue) {
+      const tol = Math.max(Math.abs(Number(ctrl.step)) * 1e-6, 1e-12);
+      if (Math.abs(Number(raw) - Number(defaultValue)) <= tol) {
+        delete productStudio.userValues[ctrl.key];
+      } else {
+        productStudio.userValues[ctrl.key] = raw;
+      }
+      const wrap = document.querySelector(`#product-controls .control[data-pcontrol="${ctrl.key}"]`);
+      if (wrap) wrap.classList.toggle("is-changed", Object.prototype.hasOwnProperty.call(productStudio.userValues, ctrl.key));
+      updateProductChangesBar();
+    }
+
+    function updateProductChangesBar() {
+      const n = Object.keys(productStudio.userValues).length;
+      $("product-changes-count").textContent = n === 0
+        ? "No assumptions changed"
+        : `${n} assumption${n === 1 ? "" : "s"} changed`;
+      const btn = $("product-reset-sliders-btn");
+      btn.disabled = n === 0;
+      btn.textContent = n === 0 ? "↺ Reset" : `↺ Reset ${n === 1 ? "it" : "all " + n}`;
+      $("product-changes-bar").classList.toggle("has-changes", n > 0);
+    }
+
+    function renderProductControls() {
+      const cat = productStudio.catalog;
+      if (!cat) return;
+      const designId = $("product-design-select").value;
+      const scenarioId = $("product-scenario-select").value;
+      const shared = productSharedKeys();
+      const fundLabel = productDesignLabel(designId);
       const container = $("product-controls");
       container.replaceChildren();
+
+      const sharedNames = cat.controls.filter((c) => shared.has(c.key)).map((c) => c.label.replace(/\s*\(.*\)\s*$/, ""));
+      $("product-scope-note").textContent = cat.per_product_portfolio
+        ? `"All funds" levers (${sharedNames.join(", ")}) apply to every fund. "${fundLabel} only" levers change just the fund you are inspecting; the other funds keep their own published terms. Fund-only changes are cleared when you inspect another fund.`
+        : `"All funds" levers describe the shared portfolio and apply to every design. "${fundLabel} only" levers change just the design you are inspecting. Design-only changes are cleared when you inspect another design.`;
+
       const advDetails = document.createElement("details");
       advDetails.className = "studio-details";
       advDetails.style.cssText = "padding-top:10px;border-top:1px solid var(--line);";
+      advDetails.open = productStudio.advancedOpen;
+      advDetails.addEventListener("toggle", () => { productStudio.advancedOpen = advDetails.open; });
       const advSummary = document.createElement("summary");
-      advSummary.textContent = "⚙️ 6 Advanced Sliders (Yield, Defaults, Lag)";
+      const advNames = [];
       const advGrid = document.createElement("div");
       advGrid.className = "controls";
       advGrid.style.marginTop = "12px";
-      advDetails.append(advSummary, advGrid);
 
-      productStudio.catalog.controls.forEach((ctrl) => {
-        let defVal = ctrl.default;
-        if (scenCtrlDefaults[ctrl.key] !== undefined) {
-          defVal = scenCtrlDefaults[ctrl.key];
-        } else if (designDefaults[ctrl.key] !== undefined) {
-          defVal = designDefaults[ctrl.key];
-        }
+      cat.controls.forEach((ctrl) => {
+        const defVal = productControlDefault(ctrl, designId, scenarioId);
+        const isChanged = Object.prototype.hasOwnProperty.call(productStudio.userValues, ctrl.key);
+        const value = isChanged ? productStudio.userValues[ctrl.key] : defVal;
+        const disp = controlDisplay(ctrl);
+        const isShared = shared.has(ctrl.key);
+        const ids = {
+          label: `pc-label-${ctrl.key}`,
+          num: `pc-num-${ctrl.key}`,
+          range: `pc-range-${ctrl.key}`,
+          copy: `pc-copy-${ctrl.key}`,
+          scope: `pc-scope-${ctrl.key}`,
+          err: `pc-err-${ctrl.key}`
+        };
+
         const wrap = document.createElement("div");
-        wrap.className = "control";
+        wrap.className = "control" + (isChanged ? " is-changed" : "");
         wrap.dataset.pcontrol = ctrl.key;
         const head = document.createElement("div");
         head.className = "control-head";
         const lbl = document.createElement("label");
+        lbl.id = ids.label;
+        lbl.htmlFor = ids.num;
         lbl.textContent = ctrl.label;
         const out = document.createElement("output");
+        out.htmlFor = ids.num;
         head.append(lbl, out);
+        const meta = document.createElement("div");
+        meta.className = "control-meta";
+        const scope = document.createElement("span");
+        scope.id = ids.scope;
+        scope.className = `scope-chip ${isShared ? "is-shared" : "is-fund"}`;
+        scope.textContent = isShared ? "All funds" : `${fundLabel} only`;
+        scope.title = isShared ? "Applies to every fund in the comparison" : `Changes only ${fundLabel}; other funds keep their own terms`;
+        const changed = document.createElement("span");
+        changed.className = "changed-chip";
+        changed.textContent = "Changed";
+        meta.append(scope, changed);
         const copy = document.createElement("p");
         copy.className = "control-copy";
+        copy.id = ids.copy;
         copy.textContent = ctrl.description;
         const inputs = document.createElement("div");
         inputs.className = "control-inputs";
         const range = document.createElement("input");
         range.type = "range";
+        range.id = ids.range;
+        range.dataset.focusKey = `ctrl-range:${ctrl.key}`;
+        range.setAttribute("aria-labelledby", ids.label);
+        range.setAttribute("aria-describedby", `${ids.scope} ${ids.copy}`);
+        const numWrap = document.createElement("div");
+        numWrap.className = "control-num-wrap";
         const num = document.createElement("input");
         num.type = "number";
+        num.id = ids.num;
+        num.inputMode = "decimal";
+        num.dataset.focusKey = `ctrl-num:${ctrl.key}`;
+        num.setAttribute("aria-describedby", `${ids.scope} ${ids.copy} ${ids.err}`);
+        const unit = document.createElement("span");
+        unit.className = "control-unit";
+        unit.setAttribute("aria-hidden", "true");
+        unit.textContent = disp.unit;
+        numWrap.append(num, unit);
         [range, num].forEach((inp) => {
-          inp.min = String(ctrl.min);
-          inp.max = String(ctrl.max);
-          inp.step = String(ctrl.step);
-          inp.value = String(defVal);
+          inp.min = String(toDisplayValue(ctrl, ctrl.min));
+          inp.max = String(toDisplayValue(ctrl, ctrl.max));
+          inp.step = String(disp.step);
+          inp.value = String(toDisplayValue(ctrl, value));
         });
-        const fmt = (v) => {
-          const n = Number(v);
-          if (ctrl.unit === "decimal_rate" || ctrl.unit === "decimal_share") return `${(n * 100).toFixed(2)}%`;
-          if (ctrl.unit === "USD") return `$${(n / 1e6).toFixed(2)}M`;
-          return `${n} ${ctrl.unit}`;
+        const err = document.createElement("p");
+        err.className = "control-error";
+        err.id = ids.err;
+        err.setAttribute("aria-live", "polite");
+
+        const showValue = (raw) => {
+          const text = formatControlValue(ctrl, raw);
+          out.textContent = text;
+          range.setAttribute("aria-valuetext", text);
         };
-        out.textContent = fmt(defVal);
-        range.addEventListener("input", () => { num.value = range.value; out.textContent = fmt(range.value); });
-        num.addEventListener("input", () => { range.value = num.value; out.textContent = fmt(num.value); });
-        range.addEventListener("change", () => runProductStudio());
-        num.addEventListener("change", () => runProductStudio());
-        inputs.append(range, num);
-        wrap.append(head, copy, inputs);
+        const clearError = () => {
+          num.removeAttribute("aria-invalid");
+          err.textContent = "";
+          wrap.classList.remove("is-invalid");
+        };
+        showValue(value);
+
+        range.addEventListener("input", () => {
+          clearError();
+          num.value = range.value;
+          const raw = fromDisplayValue(ctrl, range.value);
+          showValue(raw);
+          setProductUserValue(ctrl, raw, defVal);
+          scheduleProductRun();
+        });
+        range.addEventListener("change", () => flushProductRun());
+        const onNumber = (immediate) => {
+          const check = validateControlInput(ctrl, num.value);
+          if (!check.ok) {
+            num.setAttribute("aria-invalid", "true");
+            err.textContent = `${check.message} Not applied.`;
+            wrap.classList.add("is-invalid");
+            clearTimeout(productStudio.debounceTimer);
+            if (!productStudio.running) setProductUpdating(false);
+            $("product-studio-status").textContent = "Fix the highlighted input to update";
+            return;
+          }
+          clearError();
+          range.value = String(toDisplayValue(ctrl, check.value));
+          showValue(check.value);
+          setProductUserValue(ctrl, check.value, defVal);
+          if (immediate) flushProductRun(); else scheduleProductRun(600);
+        };
+        num.addEventListener("input", () => onNumber(false));
+        num.addEventListener("change", () => onNumber(true));
+        inputs.append(range, numWrap);
+        wrap.append(head, meta, copy, inputs, err);
         if (keyLeverKeys.has(ctrl.key)) {
           container.append(wrap);
         } else {
+          advNames.push(ctrl.label.replace(/\s*\(.*\)\s*$/, ""));
           advGrid.append(wrap);
         }
       });
       if (advGrid.childElementCount > 0) {
+        advSummary.textContent = `More assumptions (${advGrid.childElementCount})`;
+        const advList = document.createElement("p");
+        advList.className = "control-copy";
+        advList.style.margin = "6px 0 0";
+        advList.textContent = advNames.join(" · ");
+        advDetails.append(advSummary, advList, advGrid);
         container.append(advDetails);
       }
+      updateProductChangesBar();
     }
 
-    if ($("product-reset-sliders-btn")) {
-      $("product-reset-sliders-btn").addEventListener("click", () => {
-        const dSel = $("product-design-select");
-        const sSel = $("product-scenario-select");
-        if (dSel && sSel) {
-          renderProductControls(dSel.value, sSel.value);
-          runProductStudio();
-        }
-      });
+    function productHasInvalidInputs() {
+      return Boolean(document.querySelector('#product-controls input[aria-invalid="true"]'));
     }
 
     function collectProductOverrides() {
       const ov = {};
       if (!productStudio.catalog) return ov;
       productStudio.catalog.controls.forEach((ctrl) => {
-        const num = document.querySelector(`#product-controls .control[data-pcontrol="${ctrl.key}"] input[type="number"]`);
-        if (num) {
-          ov[ctrl.key] = ctrl.unit === "months" ? Number.parseInt(num.value, 10) : Number.parseFloat(num.value);
+        if (Object.prototype.hasOwnProperty.call(productStudio.userValues, ctrl.key)) {
+          const v = Number(productStudio.userValues[ctrl.key]);
+          ov[ctrl.key] = ctrl.unit === "months" ? Math.round(v) : v;
         }
       });
       return ov;
     }
 
-    function drawProductMultiLineSvg(containerId, seriesByDesign, valueKey, scaleFactor, yUnitLabel, dashedSecondaryKey, selectedDesignId) {
+    function selectProductView(designId, scenarioId) {
+      const dSel = $("product-design-select");
+      const sSel = $("product-scenario-select");
+      let changed = false;
+      if (designId && productStudio.focusDesign !== designId) {
+        productStudio.focusDesign = designId;
+        // Fund-only edits belong to the fund that was being inspected.
+        const shared = productSharedKeys();
+        Object.keys(productStudio.userValues).forEach((k) => { if (!shared.has(k)) delete productStudio.userValues[k]; });
+        changed = true;
+      }
+      if (scenarioId && productStudio.focusScenario !== scenarioId) {
+        productStudio.focusScenario = scenarioId;
+        changed = true;
+      }
+      dSel.value = productStudio.focusDesign;
+      sSel.value = productStudio.focusScenario;
+      if (!changed) return;
+      const s = productScenarioById(sSel.value);
+      $("product-scenario-desc").textContent = s ? s.description : "";
+      preserveFocus(() => {
+        renderScenarioPills();
+        renderProductControls();
+        renderScenarioGrid();
+      });
+      runProductStudio();
+    }
+
+    if ($("product-reset-sliders-btn")) {
+      $("product-reset-sliders-btn").addEventListener("click", () => {
+        productStudio.userValues = {};
+        renderProductControls();
+        renderScenarioGrid();
+        runProductStudio();
+      });
+    }
+
+    // --- Running: latest input wins -----------------------------------------
+    function scheduleProductRun(delay = PRODUCT_INPUT_DEBOUNCE_MS) {
+      clearTimeout(productStudio.debounceTimer);
+      setProductUpdating(true);
+      productStudio.debounceTimer = setTimeout(() => runProductStudio(), delay);
+    }
+
+    function flushProductRun() {
+      clearTimeout(productStudio.debounceTimer);
+      runProductStudio();
+    }
+
+    function productGridKey(caseStudyId, designId, overrides) {
+      // The grid depends on the focused fund only through fund-only overrides.
+      const shared = productSharedKeys();
+      const fundOnly = Object.keys(overrides).some((k) => !shared.has(k));
+      return JSON.stringify([caseStudyId, fundOnly ? designId : "", overrides]);
+    }
+
+    function buildProductRequest() {
+      const csSel = $("product-case-study-select");
+      const overrides = collectProductOverrides();
+      const body = {
+        case_study_id: csSel && csSel.value ? csSel.value : (productStudio.catalog.case_study_id || ""),
+        design_id: $("product-design-select").value,
+        scenario_id: $("product-scenario-select").value,
+        overrides
+      };
+      return { body, key: JSON.stringify(body), gridKey: productGridKey(body.case_study_id, body.design_id, overrides) };
+    }
+
+    function setProductUpdating(on) {
+      const results = $("product-results");
+      results.classList.toggle("is-updating", on);
+      results.setAttribute("aria-busy", String(on));
+      $("product-results-status").hidden = !on;
+      if (on) $("product-studio-status").textContent = "Updating…";
+    }
+
+    function showProductError(message) {
+      productStudio.errorMessage = message;
+      const last = productStudio.lastResult;
+      const shownFor = last
+        ? ` The results below still show ${last.design_label || last.design_id} under "${last.scenario_name || last.scenario_id}" with the previous inputs.`
+        : " No results have loaded yet.";
+      $("product-results-alert-text").textContent = `Results are out of date: the latest update failed. Server message: ${message}.${shownFor}`;
+      $("product-results-alert").hidden = false;
+      $("product-results").classList.add("is-stale");
+      $("product-studio-status").textContent = "Update failed";
+    }
+
+    function clearProductError() {
+      productStudio.errorMessage = "";
+      $("product-results-alert").hidden = true;
+      $("product-results").classList.remove("is-stale");
+    }
+
+    $("product-results-retry").addEventListener("click", () => runProductStudio({ force: true }));
+
+    async function runProductStudio(options = {}) {
+      if (!productStudio.catalog) return;
+      clearTimeout(productStudio.debounceTimer);
+      if (productStudio.running) {
+        productStudio.pending = true;
+        productStudio.pendingForce = productStudio.pendingForce || Boolean(options.force);
+        setProductUpdating(true);
+        return;
+      }
+      if (productHasInvalidInputs()) {
+        setProductUpdating(false);
+        $("product-studio-status").textContent = "Fix the highlighted input to update";
+        return;
+      }
+      const req = buildProductRequest();
+      const needGrid = req.gridKey !== productStudio.gridKey;
+      if (!options.force && !needGrid && !productStudio.errorMessage && req.key === productStudio.lastRequestKey) {
+        setProductUpdating(false);
+        if (productStudio.lastResult) renderProductStatus(productStudio.lastResult);
+        return;
+      }
+      productStudio.running = true;
+      setProductUpdating(true);
+      $("product-scenario-grid-panel").classList.toggle("is-updating", needGrid);
+      try {
+        const resp = await fetch("/api/product-studio/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(Object.assign({}, req.body, { include_scenario_grid: needGrid }))
+        });
+        let data = null;
+        try { data = await resp.json(); } catch (_e) { data = null; }
+        if (!resp.ok || !data || data.status === "error") {
+          throw new Error((data && data.error) || `server returned HTTP ${resp.status}`);
+        }
+        productStudio.lastRequestKey = req.key;
+        productStudio.lastResult = data;
+        if (Array.isArray(data.scenario_grid)) {
+          productStudio.grid = data.scenario_grid;
+          productStudio.gridKey = req.gridKey;
+        }
+        clearProductError();
+        preserveFocus(() => {
+          renderProductStudioResult(data);
+          renderScenarioGrid();
+        });
+      } catch (err) {
+        showProductError((err && err.message) ? err.message.replace(/\.$/, "") : "network error");
+        renderScenarioGrid();
+      } finally {
+        productStudio.running = false;
+        $("product-scenario-grid-panel").classList.remove("is-updating");
+        if (productStudio.pending) {
+          const force = productStudio.pendingForce;
+          productStudio.pending = false;
+          productStudio.pendingForce = false;
+          runProductStudio({ force });
+        } else {
+          setProductUpdating(false);
+          if (!productStudio.errorMessage && productStudio.lastResult) renderProductStatus(productStudio.lastResult);
+        }
+      }
+    }
+
+    function renderProductStatus(res) {
+      const s = productScenarioById(res.scenario_id);
+      $("product-studio-status").textContent = `${res.product_run_id || "Updated"} · ${productDesignLabel(res.design_id)} · ${s ? s.short_label : res.scenario_name}`;
+    }
+
+    // --- Across-scenario grid -----------------------------------------------
+    function renderScenarioGrid() {
+      const cat = productStudio.catalog;
+      const table = $("product-scenario-grid");
+      if (!cat || !table) return;
+      const thead = table.querySelector("thead");
+      const tbody = table.querySelector("tbody");
+      thead.replaceChildren();
+      tbody.replaceChildren();
+      const focusedDesign = $("product-design-select").value;
+      const focusedScenario = $("product-scenario-select").value;
+      const headRow = document.createElement("tr");
+      const corner = document.createElement("th");
+      corner.scope = "col";
+      corner.textContent = "Scenario";
+      headRow.append(corner);
+      cat.designs.forEach((d) => {
+        const th = document.createElement("th");
+        th.scope = "col";
+        const sw = document.createElement("i");
+        sw.className = "grid-swatch";
+        sw.style.background = productDesignColors[d.design_id] || "#7aa8ff";
+        sw.setAttribute("aria-hidden", "true");
+        th.append(sw, document.createTextNode(d.short_label || d.name));
+        if (d.design_id === focusedDesign) th.classList.add("is-focused");
+        headRow.append(th);
+      });
+      thead.append(headRow);
+
+      const cells = new Map();
+      (productStudio.grid || []).forEach((g) => cells.set(`${g.design_id}|${g.scenario_id}`, g));
+      if (!cells.size) {
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = cat.designs.length + 1;
+        td.className = "product-grid-empty";
+        td.textContent = productStudio.errorMessage ? "Scores unavailable (update failed)." : "Loading scores…";
+        tr.append(td);
+        tbody.append(tr);
+      }
+      if (cells.size) cat.scenarios.forEach((s) => {
+        const tr = document.createElement("tr");
+        if (s.scenario_id === focusedScenario) tr.classList.add("is-focused");
+        const th = document.createElement("th");
+        th.scope = "row";
+        th.textContent = s.short_label || s.name;
+        th.title = s.name;
+        tr.append(th);
+        const scores = cat.designs.map((d) => {
+          const g = cells.get(`${d.design_id}|${s.scenario_id}`);
+          return g ? Number(g.investor_score_100) : -Infinity;
+        });
+        const best = Math.max(...scores);
+        cat.designs.forEach((d, i) => {
+          const g = cells.get(`${d.design_id}|${s.scenario_id}`);
+          const td = document.createElement("td");
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "grid-cell-btn";
+          btn.dataset.focusKey = `grid:${d.design_id}:${s.scenario_id}`;
+          const isSel = d.design_id === focusedDesign && s.scenario_id === focusedScenario;
+          btn.setAttribute("aria-pressed", String(isSel));
+          if (g) {
+            const score = Number(g.investor_score_100);
+            const t = Math.max(0, Math.min(1, score / 100));
+            btn.style.background = `rgba(95, 225, 210, ${(0.05 + 0.33 * t).toFixed(3)})`;
+            const strong = document.createElement("strong");
+            strong.textContent = `${scores[i] === best && best > -Infinity ? "★ " : ""}${fmtScore(score)}`;
+            const small = document.createElement("small");
+            small.textContent = `${fmtPct(g.investor_annualised_return_pct)} · ${fmtMonths(g.max_time_to_payment_periods)}`;
+            btn.append(strong, small);
+            btn.setAttribute("aria-label", `${d.short_label || d.name}, ${s.short_label || s.name}: investor score ${fmtScore(score)}${scores[i] === best ? ", best in this scenario" : ""}; return ${fmtPct(g.investor_annualised_return_pct)} a year; longest wait ${fmtMonths(g.max_time_to_payment_periods)}; max exit discount ${fmtPct(g.max_exit_discount_vs_nav)}`);
+            btn.title = `Return ${fmtPct(g.investor_annualised_return_pct)} p.a. (TWR) · longest wait ${fmtMonths(g.max_time_to_payment_periods)} · max exit discount ${fmtPct(g.max_exit_discount_vs_nav)}`;
+          } else {
+            btn.textContent = "—";
+            btn.setAttribute("aria-label", `${d.short_label || d.name}, ${s.short_label || s.name}: no score`);
+          }
+          btn.addEventListener("click", () => selectProductView(d.design_id, s.scenario_id));
+          td.append(btn);
+          tr.append(td);
+        });
+        tbody.append(tr);
+      });
+
+      const caption = $("product-grid-caption");
+      const n = Object.keys(productStudio.userValues).length;
+      const req = buildProductRequest();
+      const stale = cells.size > 0 && productStudio.gridKey !== req.gridKey;
+      const base = "Each cell is a fund's investor score (0–100, not a credit rating) under one scenario; the small line is return p.a. and the longest wait to payment. Select a cell to inspect it below.";
+      const scopeText = n === 0
+        ? " Every fund uses its published terms and each scenario's own stress settings."
+        : ` Your ${n} changed assumption${n === 1 ? "" : "s"} apply to every row; fund-only changes affect the ${productDesignLabel(focusedDesign)} column only.`;
+      const staleText = !stale ? "" : productStudio.errorMessage ? "Out of date (last update failed). " : "Updating… ";
+      caption.textContent = `${staleText}${base}${scopeText}`;
+    }
+
+    // --- Results --------------------------------------------------------------
+    function drawProductMultiLineSvg(containerId, seriesByDesign, valueKey, tickFormat, dashedSecondaryKey, selectedDesignId, shockMarker, ariaLabel) {
       const container = $(containerId);
       container.replaceChildren();
       const rawEntries = Object.entries(seriesByDesign || {});
@@ -3261,29 +4096,25 @@
       if (!xs.length) return;
       let yMin = Infinity, yMax = -Infinity;
       entries.forEach(([, s]) => {
-        (s[valueKey] || []).forEach((v) => {
-          const sv = v * scaleFactor;
-          if (sv < yMin) yMin = sv;
-          if (sv > yMax) yMax = sv;
-        });
-        if (dashedSecondaryKey) {
-          (s[dashedSecondaryKey] || []).forEach((v) => {
-            const sv = v * scaleFactor;
-            if (sv < yMin) yMin = sv;
-            if (sv > yMax) yMax = sv;
+        [valueKey, dashedSecondaryKey].filter(Boolean).forEach((k) => {
+          (s[k] || []).forEach((v) => {
+            if (v < yMin) yMin = v;
+            if (v > yMax) yMax = v;
           });
-        }
+        });
       });
       if (!Number.isFinite(yMin)) { yMin = 0; yMax = 1; }
       const span = Math.max(yMax - yMin, 1e-6);
-      const yPad = Math.max(span * 0.14, 0.01);
-      const width = 410, height = 215, pad = { left: 56, right: 16, top: 14, bottom: 28 };
+      const yPad = Math.max(span * 0.14, Math.abs(yMax) * 1e-4, 1e-4);
+      const width = 410, height = 215, pad = { left: 62, right: 16, top: 14, bottom: 28 };
       const xMin = Math.min(...xs), xMax = Math.max(...xs);
       const x = (v) => pad.left + ((v - xMin) / Math.max(1, xMax - xMin)) * (width - pad.left - pad.right);
-      const y = (v) => pad.top + (1 - (v - (yMin - yPad)) / Math.max(1e-9, (yMax - yMin + 2 * yPad))) * (height - pad.top - pad.bottom);
+      const y = (v) => pad.top + (1 - (v - (yMin - yPad)) / Math.max(1e-12, (yMax - yMin + 2 * yPad))) * (height - pad.top - pad.bottom);
 
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
       svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.setAttribute("role", "img");
+      svg.setAttribute("aria-label", ariaLabel || "Trajectory chart");
       for (let i = 0; i <= 3; i += 1) {
         const yPos = pad.top + i * (height - pad.top - pad.bottom) / 3;
         const line = document.createElementNS(svg.namespaceURI, "line");
@@ -3296,11 +4127,10 @@
         lbl.setAttribute("text-anchor", "end"); lbl.setAttribute("fill", "#aeb8c8");
         lbl.setAttribute("font-size", "10");
         const val = (yMax + yPad) - i * (yMax - yMin + 2 * yPad) / 3;
-        lbl.textContent = `${val.toFixed(2)}${yUnitLabel || ""}`;
+        lbl.textContent = tickFormat(val);
         svg.append(lbl);
       }
-      // Subtle Month 12 shock guide line
-      if (12 >= xMin && 12 <= xMax) {
+      if (shockMarker && 12 >= xMin && 12 <= xMax) {
         const m12x = x(12);
         const mLine = document.createElementNS(svg.namespaceURI, "line");
         mLine.setAttribute("x1", m12x); mLine.setAttribute("x2", m12x);
@@ -3311,19 +4141,20 @@
       }
       [0, 12, 24, 36].filter((m) => m >= xMin && m <= xMax).forEach((m) => {
         const xPos = x(m);
+        const isShock = shockMarker && m === 12;
         const tick = document.createElementNS(svg.namespaceURI, "text");
         tick.setAttribute("x", xPos);
         tick.setAttribute("y", height - 7);
         tick.setAttribute("text-anchor", m === xMin ? "start" : m === xMax ? "end" : "middle");
-        tick.setAttribute("fill", m === 12 ? "#ffbd59" : "#8b98ad");
+        tick.setAttribute("fill", isShock ? "#ffbd59" : "#8b98ad");
         tick.setAttribute("font-size", "9.5");
-        tick.textContent = m === 12 ? "M12 (Shock)" : `M${m}`;
+        tick.textContent = isShock ? "M12 (shock)" : `M${m}`;
         svg.append(tick);
       });
       entries.forEach(([dId, s]) => {
         const isSel = !selectedDesignId || dId === selectedDesignId;
         if (dashedSecondaryKey && Array.isArray(s[dashedSecondaryKey])) {
-          const dashedPts = s[dashedSecondaryKey].map((v, i) => `${x(xs[i])},${y(v * scaleFactor)}`).join(" ");
+          const dashedPts = s[dashedSecondaryKey].map((v, i) => `${x(xs[i])},${y(v)}`).join(" ");
           const dashedPoly = document.createElementNS(svg.namespaceURI, "polyline");
           dashedPoly.setAttribute("points", dashedPts);
           dashedPoly.setAttribute("fill", "none");
@@ -3333,7 +4164,7 @@
           dashedPoly.setAttribute("opacity", isSel ? "0.85" : "0.55");
           svg.append(dashedPoly);
         }
-        const pts = (s[valueKey] || []).map((v, i) => `${x(xs[i])},${y(v * scaleFactor)}`).join(" ");
+        const pts = (s[valueKey] || []).map((v, i) => `${x(xs[i])},${y(v)}`).join(" ");
         const poly = document.createElementNS(svg.namespaceURI, "polyline");
         poly.setAttribute("points", pts);
         poly.setAttribute("fill", "none");
@@ -3345,56 +4176,65 @@
       container.append(svg);
     }
 
-    function buildPodiumVerdict(row, rankIndex) {
-      const waitMo = Number(row.max_time_to_payment_periods || 0);
-      const minPx = Number(row.min_secondary_market_price || 1);
-      const profitK = Number(row.issuer_cumulative_profit_fiat || 0) / 1e3;
-      const beStr = formatBreakevenAum(row.breakeven_aum_fiat);
-      if (!row.payment_sla_met || waitMo > 3.0) {
-        return `⚠️ Redemption gate locks exits for ${waitMo.toFixed(1)} mo (SLA Breach) and secondary price drops to $${minPx.toFixed(4)} (${((1 - minPx) * 100).toFixed(1)}% discount).`;
+    function productRankedRows(res) {
+      return (res.design_comparison || []).slice().sort((a, b) => Number(b.investor_score_100 || 0) - Number(a.investor_score_100 || 0));
+    }
+
+    function buildPodiumVerdict(row, scenario, slaPeriods) {
+      const wait = Number(row.max_time_to_payment_periods || 0);
+      const disc = Number(row.max_exit_discount_vs_nav || 0);
+      const stressed = Boolean(scenario && scenario.is_stress);
+      const parts = [];
+      if (!row.payment_sla_met || wait > slaPeriods) {
+        parts.push(`Some redemptions wait up to ${fmtMonths(wait)}, beyond the ${slaPeriods}-month target; selling immediately costs up to ${fmtPct(disc, 1)} below NAV.`);
+      } else if (wait === 0 && disc < 0.0005) {
+        parts.push(stressed
+          ? "Pays every redemption in the month requested and the exit price stays at NAV, even under this stress scenario."
+          : "Pays every redemption in the month requested, with no exit discount.");
+      } else {
+        parts.push(`Pays redemptions within ${fmtMonths(wait)}; selling immediately costs up to ${fmtPct(disc, 1)} below NAV.`);
       }
-      if (waitMo === 0 && profitK < 0) {
-        return `✅ Instant 0.0 mo liquidity & $1.00 peg under stress, but low fee margin requires ${beStr} AUM for issuer break-even (${profitK.toFixed(0)}k at current scale).`;
+      if (productFinite(row.excess_return_annual)) {
+        const ex = Number(row.excess_return_annual);
+        parts.push(`Returns ${fmtPct(row.investor_annualised_return_pct)} p.a., ${fmtPct(Math.abs(ex))} ${ex >= 0 ? "above" : "below"} the ${fmtPct(row.risk_free_rate_annual)} risk-free rate.`);
       }
-      if (waitMo > 0) {
-        return `⚖️ Clears withdrawals in ${waitMo.toFixed(1)} mo (within 3m SLA) with $${minPx.toFixed(4)} min price and ${profitK >= 0 ? "+" : ""}$${profitK.toFixed(0)}k issuer profit.`;
+      if (!row.issuer_profitable) {
+        parts.push(productFinite(row.breakeven_aum_fiat)
+          ? `The sponsor loses money at this scale and needs about ${fmtUsd(row.breakeven_aum_fiat)} AUM to break even.`
+          : "The sponsor cannot break even at any AUM on these terms.");
       }
-      return `${rankIndex === 0 ? "🏆 Top-ranked balance: " : "✅ Strong all-weather profile: "}${(row.investor_annualised_return_pct * 100).toFixed(2)}% p.a. net yield, 0.0 mo wait, and +$${profitK.toFixed(0)}k issuer profit.`;
+      return parts.join(" ");
     }
 
     function renderPodiumCards(res) {
       const wrap = $("product-podium-cards");
       if (!wrap || !res || !Array.isArray(res.design_comparison)) return;
       wrap.replaceChildren();
-      const rows = res.design_comparison.slice();
-      const sortedIds = rows
-        .slice()
-        .sort((a, b) => Number(b.composite_score_100 || 0) - Number(a.composite_score_100 || 0))
-        .map((r) => r.design_id);
-
-      rows.forEach((row) => {
-        const rankIdx = sortedIds.indexOf(row.design_id);
+      const scenario = productScenarioById(res.scenario_id);
+      const sla = Number((res.selected_outcomes && res.selected_outcomes.payment_sla_periods) || 3);
+      productRankedRows(res).forEach((row, rankIdx) => {
         const card = document.createElement("button");
         card.type = "button";
-        card.className = "podium-card" + (row.is_selected ? " is-selected" : "");
-        card.addEventListener("click", () => {
-          const dSel = $("product-design-select");
-          const sSel = $("product-scenario-select");
-          if (dSel && dSel.value !== row.design_id) {
-            dSel.value = row.design_id;
-            renderProductControls(dSel.value, sSel ? sSel.value : "");
-            runProductStudio();
-          }
-        });
+        card.className = "podium-card" + (rankIdx === 0 ? " is-winner" : "") + (row.is_selected ? " is-inspecting" : "");
+        card.dataset.focusKey = `podium:${row.design_id}`;
+        card.setAttribute("aria-pressed", String(Boolean(row.is_selected)));
+        card.addEventListener("click", () => selectProductView(row.design_id, null));
 
         const top = document.createElement("div");
         top.className = "podium-card-top";
         const leftBox = document.createElement("div");
+        const badges = document.createElement("div");
+        badges.className = "podium-badges";
         const rankBadge = document.createElement("span");
         rankBadge.className = "podium-rank-badge" + (rankIdx === 0 ? " rank-1" : "");
-        rankBadge.textContent = rankIdx === 0
-          ? "🏆 #1 Best in This Scenario"
-          : `#${rankIdx + 1} Ranked` + (row.is_selected ? " · Focused" : "");
+        rankBadge.textContent = rankIdx === 0 ? "🏆 #1 in this scenario" : `#${rankIdx + 1}`;
+        badges.append(rankBadge);
+        if (row.is_selected) {
+          const insp = document.createElement("span");
+          insp.className = "podium-inspect-tag";
+          insp.textContent = "Inspecting";
+          badges.append(insp);
+        }
         const title = document.createElement("div");
         title.className = "podium-title";
         const sw = document.createElement("span");
@@ -3403,46 +4243,45 @@
         const tText = document.createElement("span");
         tText.textContent = row.design_label;
         title.append(sw, tText);
-        leftBox.append(rankBadge, title);
+        leftBox.append(badges, title);
 
         const scoreBox = document.createElement("div");
         scoreBox.className = "podium-score-box";
         const scoreNum = document.createElement("div");
         scoreNum.className = "podium-score-num";
-        const scVal = Number(row.composite_score_100 || 0);
-        scoreNum.style.color = scoreBarColor(scVal);
-        scoreNum.textContent = `${scVal.toFixed(1)}`;
-        const gradeBadge = document.createElement("span");
-        const gradeStr = row.rating_grade || "—";
-        gradeBadge.className = `rating-badge grade-${gradeStr}`;
-        gradeBadge.textContent = `${gradeStr} / 100`;
-        scoreBox.append(scoreNum, gradeBadge);
+        scoreNum.textContent = fmtScore(row.investor_score_100);
+        const scoreLbl = document.createElement("small");
+        scoreLbl.className = "podium-score-label";
+        scoreLbl.textContent = `Investor score · ${fmtBand(row.investor_score_band)}`;
+        scoreBox.append(scoreNum, scoreLbl);
         top.append(leftBox, scoreBox);
 
         const statsRow = document.createElement("div");
         statsRow.className = "podium-stats-row";
-        const statItems = [
-          ["Net Yield (TWR)", `${(row.investor_annualised_return_pct * 100).toFixed(2)}% p.a.`, "var(--lime)"],
-          ["Exit Wait / SLA", `${row.max_time_to_payment_periods.toFixed(1)} mo (${row.payment_sla_met ? "PASS" : "GATE"})`, row.payment_sla_met ? "var(--aqua)" : "var(--red)"],
-          ["3-Yr Issuer Profit", `${row.issuer_cumulative_profit_fiat >= 0 ? "+" : ""}$${(row.issuer_cumulative_profit_fiat / 1e3).toFixed(0)}k`, row.issuer_profitable ? "var(--text)" : "var(--gold)"]
-        ];
-        statItems.forEach(([lbl, val, col]) => {
+        [
+          ["Return (TWR p.a.)", fmtPct(row.investor_annualised_return_pct)],
+          ["Longest wait", fmtMonths(row.max_time_to_payment_periods)],
+          ["Max exit discount", fmtPct(row.max_exit_discount_vs_nav)]
+        ].forEach(([lbl, val]) => {
           const st = document.createElement("div");
           st.className = "podium-stat";
           const sm = document.createElement("small");
           sm.textContent = lbl;
           const str = document.createElement("strong");
           str.textContent = val;
-          str.style.color = col;
           st.append(sm, str);
           statsRow.append(st);
         });
 
+        const sponsor = document.createElement("p");
+        sponsor.className = "podium-sponsor";
+        sponsor.textContent = `Sponsor viability ${fmtScore(row.sponsor_viability_score_100)}/100 (separate) · break-even AUM ${fmtBreakeven(row.breakeven_aum_fiat)}`;
+
         const verdict = document.createElement("p");
         verdict.className = "podium-verdict";
-        verdict.textContent = buildPodiumVerdict(row, rankIdx);
+        verdict.textContent = buildPodiumVerdict(row, scenario, sla);
 
-        card.append(top, statsRow, verdict);
+        card.append(top, statsRow, verdict, sponsor);
         wrap.append(card);
       });
     }
@@ -3461,190 +4300,173 @@
     }
 
     function renderPlainEnglishSummary(res) {
+      const cat = productStudio.catalog;
       const badgeEl = $("product-summary-badge");
       const leadEl = $("product-summary-lead");
       const takeEl = $("product-summary-takeaway");
       if (!leadEl || !takeEl || !res || !res.selected_outcomes) return;
       const out = res.selected_outcomes;
-      const isRealRwa = Boolean(res.per_product_portfolio || res.case_study_id === "real-rwa-funds-v1");
-      const aumVal = (res.overrides_applied && Number.isFinite(res.overrides_applied.initial_aum))
-        ? res.overrides_applied.initial_aum
-        : 25000000;
-      const aumStr = `$${(aumVal / 1e6).toFixed(1)}M`;
-      if (badgeEl) {
-        badgeEl.textContent = isRealRwa
-          ? "Real-World RWA Benchmark · What You Are Seeing"
-          : "Controlled Synthetic Case Study · What You Are Seeing";
-      }
-      if (isRealRwa) {
+      const isReal = productIsRealStudy(cat) || Boolean(res.per_product_portfolio);
+      const aumStr = fmtUsd(out.initial_aum);
+      const names = (cat.designs || []).map((d) => d.short_label || d.name);
+      const nameParts = [];
+      names.forEach((n, i) => {
+        if (i) nameParts.push(i === names.length - 1 ? " and " : ", ");
+        nameParts.push({ b: n });
+      });
+      badgeEl.textContent = isReal ? "Public-terms case study · What you are seeing" : "Synthetic design study · What you are seeing";
+      if (isReal) {
         setRichCopy(leadEl, [
-          { b: "Yes — Real-World RWA Benchmark: " },
-          "You are comparing three live institutional tokenised funds (",
-          { b: "BlackRock BUIDL" },
-          " on US Treasuries, ",
-          { b: "Maple SyrupUSDC" },
-          " on overcollateralised digital-asset credit, and ",
-          { b: "Hamilton Lane SCOPE" },
-          " on senior private credit) calibrated to their published SEC/offering fee schedules, liquidity buffers, and redemption gates on a standardised ",
+          `${names.length} tokenised fund structures modelled on public terms (`,
+          ...nameParts,
+          `)${cat.calibration_date ? ` as of ${fmtIsoDate(cat.calibration_date)}` : ""}, each normalised to `,
           { b: `${aumStr} starting AUM` },
-          " over 36 months."
+          " over 36 months. Terms without a public source are flagged assumptions; the stress scenarios, investor behaviour and the secondary price are modelled, so results describe these structures, not the future performance of the named funds."
         ]);
       } else {
         setRichCopy(leadEl, [
-          { b: "Controlled Synthetic Reference Study: " },
-          "You are comparing three archetype product structures (",
-          { b: "Design A: Liquid Low-Fee" },
-          ", ",
-          { b: "Design B: Gated High-Fee" },
-          ", and ",
-          { b: "Design C: Balanced + Facility" },
+          `${names.length} archetype product structures (`,
+          ...nameParts,
           ") on an identical ",
           { b: aumStr },
-          " private-credit portfolio to isolate the pure causal impact of fees, gates, and credit lines."
+          " synthetic portfolio, isolating the effect of fees, gates and liquidity facilities."
         ]);
       }
-      const scoreVal = typeof out.composite_score_100 === "number" ? out.composite_score_100 : 0;
-      const gradeStr = out.rating_grade || "—";
-      const takeParts = [
-        { b: `Active Run (${res.design_label || res.design_id} under ${res.scenario_name || res.scenario_id} · Score ${scoreVal.toFixed(1)}/100 [${gradeStr}]): ` },
-        "Delivers ",
-        { b: `${(out.investor_annualised_return_pct * 100).toFixed(2)}% p.a.` },
-        " time-weighted net investor return, "
+      const scenario = productScenarioById(res.scenario_id);
+      const take = [
+        { b: `${res.design_label || res.design_id} · ${scenario ? scenario.short_label : res.scenario_name}: ` },
+        "investor score ",
+        { b: `${fmtScore(out.investor_score_100)}/100` },
+        ` (${fmtBand(out.investor_score_band)}), return `,
+        { b: `${fmtPct(out.investor_annualised_return_pct)} p.a.` },
+        ` (per-unit TWR; risk-free ${fmtPct(out.risk_free_rate_annual)}). `
       ];
-      if (out.issuer_profitable) {
-        takeParts.push(
-          "earns ",
-          { b: `$${(out.issuer_cumulative_profit_fiat / 1e3).toFixed(1)}k` },
-          " 3-yr net profit (Chart 3, above its ",
-          { b: formatBreakevenAum(out.breakeven_aum_fiat) },
-          " break-even AUM), and "
-        );
-      } else {
-        takeParts.push(
-          "posts a 3-yr net loss of ",
-          { b: `$${(out.issuer_cumulative_profit_fiat / 1e3).toFixed(1)}k` },
-          " (Chart 3, below its ",
-          { b: formatBreakevenAum(out.breakeven_aum_fiat) },
-          " break-even AUM), and "
-        );
-      }
       if (out.payment_sla_met) {
-        takeParts.push(
-          "clears all redemptions within ",
-          { b: `${out.max_time_to_payment_periods.toFixed(1)} mo` },
-          " (",
-          { b: "SLA PASS" },
-          ", peak unpaid queue ",
-          { b: `$${(out.peak_unpaid_redemption_obligations_fiat / 1e6).toFixed(2)}M` },
-          ")."
-        );
+        take.push("Redemptions are paid within ", { b: fmtMonths(out.max_time_to_payment_periods) }, ` (peak unpaid queue ${fmtUsd(out.peak_unpaid_redemption_obligations_fiat)}). `);
       } else {
-        takeParts.push(
-          "hits its redemption gate/liquidity constraint — creating a ",
-          { b: `$${(out.peak_unpaid_redemption_obligations_fiat / 1e6).toFixed(2)}M` },
-          " unpaid queue (Chart 2) that takes ",
-          { b: `${out.max_time_to_payment_periods.toFixed(1)} mo` },
-          " to clear (",
-          { b: "SLA BREACH" },
-          " vs. 3m target) and pushes secondary price down to ",
-          { b: `$${out.min_secondary_market_price.toFixed(4)}` },
-          " (Chart 1)."
+        take.push(
+          "The redemption gate or a cash shortfall builds a ",
+          { b: fmtUsd(out.peak_unpaid_redemption_obligations_fiat) },
+          " unpaid queue (Chart 2) taking up to ",
+          { b: fmtMonths(out.max_time_to_payment_periods) },
+          ` to clear, beyond the ${Number(out.payment_sla_periods || 3)}-month target; selling immediately costs up to `,
+          { b: fmtPct(out.max_exit_discount_vs_nav) },
+          " below NAV (Chart 1). "
         );
       }
-      setRichCopy(takeEl, takeParts);
+      take.push(
+        out.issuer_profitable ? "The sponsor earns " : "The sponsor loses ",
+        { b: fmtUsd(Math.abs(Number(out.issuer_cumulative_profit_fiat))) },
+        ` over 3 years (Chart 3); break-even AUM: `,
+        { b: fmtBreakeven(out.breakeven_aum_fiat) },
+        "."
+      );
+      setRichCopy(takeEl, take);
     }
 
-    function formatBreakevenAum(val) {
-      const n = Number(val);
-      if (!Number.isFinite(n) || n >= 500e6) return "N/A (Margin ≤ 0)";
-      return `$${(n / 1e6).toFixed(1)}M`;
-    }
-
-    function scoreBarColor(score) {
-      if (score >= 80) return "#22c55e";
-      if (score >= 65) return "#38bdf8";
-      if (score >= 50) return "#f59e0b";
-      return "#ef4444";
-    }
-
-    function createScoreCell(scoreVal, extraBadgeText) {
+    function createScoreCell(scoreVal, band) {
       const td = document.createElement("td");
       const wrap = document.createElement("div");
       wrap.className = "score-cell-wrap";
       const topRow = document.createElement("div");
       const numSpan = document.createElement("span");
-      numSpan.textContent = `${Number(scoreVal || 0).toFixed(1)}${extraBadgeText ? " / 100" : ""}`;
+      numSpan.textContent = fmtScore(scoreVal);
       topRow.append(numSpan);
-      if (extraBadgeText) {
-        const badge = document.createElement("span");
-        badge.className = `rating-badge grade-${extraBadgeText}`;
-        badge.textContent = extraBadgeText;
-        topRow.append(badge);
+      if (band) {
+        const chip = document.createElement("span");
+        chip.className = "score-band";
+        chip.textContent = fmtBand(band);
+        topRow.append(chip);
       }
       const track = document.createElement("div");
       track.className = "score-bar-track";
+      track.setAttribute("aria-hidden", "true");
       const fill = document.createElement("div");
       fill.className = "score-bar-fill";
       const pct = Math.max(0, Math.min(100, Number(scoreVal || 0)));
       fill.style.width = `${pct}%`;
-      fill.style.background = scoreBarColor(pct);
       track.append(fill);
       wrap.append(topRow, track);
       td.append(wrap);
       return td;
     }
 
+    function productNameCell(row) {
+      const td = document.createElement("td");
+      td.textContent = row.design_label;
+      if (row.is_selected) {
+        const tag = document.createElement("span");
+        tag.className = "podium-inspect-tag";
+        tag.textContent = "Inspecting";
+        td.append(" ", tag);
+      }
+      return td;
+    }
+
+    function renderProductScorecard(res) {
+      const cat = productStudio.catalog;
+      const weights = (cat && cat.investor_score_weights) || {};
+      const headRow = document.querySelector("#product-scorecard-table thead tr");
+      headRow.replaceChildren();
+      const heads = ["Fund"].concat(
+        investorPillars.map(([k, name]) => (productFinite(weights[k]) ? `${name} (${Math.round(weights[k] * 100)}%)` : name)),
+        ["Investor score", "Sponsor viability (separate)"]
+      );
+      heads.forEach((h, i) => {
+        const th = document.createElement("th");
+        th.scope = "col";
+        th.textContent = h;
+        if (i === heads.length - 1) th.className = "is-secondary-col";
+        headRow.append(th);
+      });
+      $("product-scorecard-weights").textContent = "Each pillar 0–100; investor score = weighted sum (weights in brackets). Neutral bands, not a credit rating.";
+      const scBody = document.querySelector("#product-scorecard-table tbody");
+      scBody.replaceChildren();
+      productRankedRows(res).forEach((row) => {
+        const tr = document.createElement("tr");
+        if (row.is_selected) tr.className = "is-selected";
+        tr.append(productNameCell(row));
+        investorPillars.forEach(([k]) => tr.append(createScoreCell(row[k])));
+        tr.append(createScoreCell(row.investor_score_100, row.investor_score_band));
+        const sp = createScoreCell(row.sponsor_viability_score_100);
+        sp.className = "is-secondary-col";
+        tr.append(sp);
+        scBody.append(tr);
+      });
+    }
+
     function renderProductStudioResult(res) {
       const out = res.selected_outcomes;
-      const statusEl = $("product-studio-status");
-      if (statusEl) {
-        statusEl.textContent = `${res.product_run_id || "Updated"} · ${res.scenario_name || res.scenario_id}`;
-      }
+      const cat = productStudio.catalog;
+      renderProductStatus(res);
       renderPlainEnglishSummary(res);
       renderPodiumCards(res);
+      const ranked = productRankedRows(res);
+      const rank = ranked.findIndex((r) => r.design_id === res.design_id) + 1;
+      const scenario = productScenarioById(res.scenario_id);
+      const kpiTitle = $("product-kpi-title");
+      kpiTitle.replaceChildren();
+      kpiTitle.append(document.createTextNode(`Inspecting: ${res.design_label} (rank #${rank})`));
+      const kpiSub = document.createElement("span");
+      kpiSub.className = "product-kpi-sub";
+      kpiSub.textContent = ` · ${scenario ? scenario.short_label : res.scenario_name}`;
+      kpiTitle.append(kpiSub);
+
       const kpi = $("product-kpi-cards");
       kpi.replaceChildren();
-      const compScore = typeof out.composite_score_100 === "number" ? out.composite_score_100 : 0;
-      const grade = out.rating_grade || "—";
+      const pillarText = investorPillars.map(([k, name]) => `${name} ${fmtScore(out[k])}`).join(" · ");
       const kpiItems = [
-        [
-          "5-Pillar Rating & Score",
-          `${compScore.toFixed(1)} / 100 (${grade})`,
-          `Yld ${Number(out.yield_efficiency_score || 0).toFixed(0)} · Liq ${Number(out.liquidity_sla_score || 0).toFixed(0)} · Stab ${Number(out.price_stability_score || 0).toFixed(0)} · Iss ${Number(out.issuer_viability_score || 0).toFixed(0)} · Str ${Number(out.stress_resilience_score || 0).toFixed(0)}`,
-          compScore >= 78 ? "var(--lime)" : compScore >= 65 ? "var(--aqua)" : "var(--gold)"
-        ],
-        [
-          "Investor Net Return (TWR p.a.)",
-          `${(out.investor_annualised_return_pct * 100).toFixed(2)}%`,
-          `3-Yr Cash + Reinvested Dist: $${(out.investor_distributions_total_fiat / 1e6).toFixed(2)}M`,
-          "var(--lime)"
-        ],
-        [
-          "Ending NAV / Executable Price",
-          `$${out.ending_nav_per_token.toFixed(4)} / $${out.ending_executable_redemption_price.toFixed(4)}`,
-          `Min Secondary Market Price: $${out.min_secondary_market_price.toFixed(4)}`,
-          out.min_secondary_market_price < 0.95 ? "var(--gold)" : "var(--text)"
-        ],
-        [
-          "Issuer 3-Yr Net Profit",
-          `$${(out.issuer_cumulative_profit_fiat / 1e3).toFixed(1)}k`,
-          `Analytical Break-Even AUM: ${formatBreakevenAum(out.breakeven_aum_fiat)}`,
-          out.issuer_profitable ? "var(--aqua)" : "var(--red)"
-        ],
-        [
-          "Redemption Wait & SLA",
-          `${out.max_time_to_payment_periods.toFixed(1)} mo (${out.payment_sla_met ? "SLA PASS" : "SLA BREACH"})`,
-          `Peak Unpaid Queue: $${(out.peak_unpaid_redemption_obligations_fiat / 1e6).toFixed(2)}M`,
-          out.payment_sla_met ? "var(--lime)" : "var(--red)"
-        ]
+        ["Investor score (0–100)", `${fmtScore(out.investor_score_100)} · ${fmtBand(out.investor_score_band)}`, pillarText, ""],
+        ["Return (per-unit TWR p.a.)", fmtPct(out.investor_annualised_return_pct), `IRR ${fmtPct(out.investor_irr_annualised_pct)} · forced exit ${fmtPct(out.forced_exit_return_annualised_pct)} · risk-free ${fmtPct(out.risk_free_rate_annual)}`, ""],
+        ["Wait to payment", `${fmtMonths(out.max_time_to_payment_periods)} longest`, `Dollar-weighted average ${fmtMonths(out.weighted_avg_time_to_payment_periods)} · peak unpaid queue ${fmtUsd(out.peak_unpaid_redemption_obligations_fiat)}`, ""],
+        ["Cost of exiting immediately", `${fmtPct(out.max_exit_discount_vs_nav)} max discount`, `Min secondary price ${fmtPrice(out.min_secondary_market_price)} · min liquidity coverage ${fmtRatio(out.min_liquidity_coverage_ratio)}`, ""],
+        ["Sponsor viability (separate)", `${fmtScore(out.sponsor_viability_score_100)} / 100`, `3-yr sponsor profit ${fmtUsd(out.issuer_cumulative_profit_fiat, { sign: true })} · break-even AUM ${fmtBreakeven(out.breakeven_aum_fiat)}`, "is-secondary"]
       ];
-      kpiItems.forEach(([label, val, sub, accentColor]) => {
+      kpiItems.forEach(([label, val, sub, extra]) => {
         const card = document.createElement("div");
-        card.className = "metric-card card";
+        card.className = `metric-card card ${extra}`.trim();
         const sp = document.createElement("span"); sp.textContent = label;
-        const st = document.createElement("strong");
-        st.textContent = val;
-        if (accentColor) st.style.color = accentColor;
+        const st = document.createElement("strong"); st.textContent = val;
         const sm = document.createElement("small"); sm.textContent = sub;
         card.append(sp, st, sm);
         kpi.append(card);
@@ -3652,53 +4474,41 @@
 
       const tbody = document.querySelector("#product-comparison-table tbody");
       tbody.replaceChildren();
-      (res.design_comparison || []).forEach((row) => {
+      ranked.forEach((row) => {
         const tr = document.createElement("tr");
         if (row.is_selected) tr.className = "is-selected";
-        const tdName = document.createElement("td");
-        tdName.textContent = row.design_label + (row.is_selected ? " ★" : "");
-        tr.append(tdName);
-        tr.append(createScoreCell(row.composite_score_100, row.rating_grade || ""));
-        const cells = [
-          `${(row.investor_annualised_return_pct * 100).toFixed(2)}%`,
-          `$${row.ending_nav_per_token.toFixed(4)}`,
-          `$${row.ending_executable_redemption_price.toFixed(4)}`,
-          `$${row.min_secondary_market_price.toFixed(4)}`,
-          `$${(row.issuer_cumulative_profit_fiat / 1e3).toFixed(1)}k`,
-          formatBreakevenAum(row.breakeven_aum_fiat),
-          `${row.max_time_to_payment_periods.toFixed(1)} mo (${row.payment_sla_met ? "PASS" : "BREACH"})`,
-          `$${(row.total_liquidity_and_financing_costs_fiat / 1e3).toFixed(1)}k`
-        ];
-        cells.forEach((c) => {
+        tr.append(productNameCell(row));
+        tr.append(createScoreCell(row.investor_score_100, row.investor_score_band));
+        [
+          fmtPct(row.investor_annualised_return_pct),
+          fmtPct(row.investor_irr_annualised_pct),
+          fmtPct(row.forced_exit_return_annualised_pct),
+          fmtPct(row.max_exit_discount_vs_nav),
+          `${fmtMonths(row.weighted_avg_time_to_payment_periods)} / ${fmtMonths(row.max_time_to_payment_periods)}`,
+          fmtRatio(row.min_liquidity_coverage_ratio),
+          fmtUsd(row.issuer_cumulative_profit_fiat, { sign: true }),
+          fmtBreakeven(row.breakeven_aum_fiat)
+        ].forEach((c) => {
           const td = document.createElement("td");
           td.textContent = c;
           tr.append(td);
         });
         tbody.append(tr);
       });
+      renderProductScorecard(res);
 
-      const scBody = document.querySelector("#product-scorecard-table tbody");
-      if (scBody) {
-        scBody.replaceChildren();
-        (res.design_comparison || []).forEach((row) => {
-          const tr = document.createElement("tr");
-          if (row.is_selected) tr.className = "is-selected";
-          const tdName = document.createElement("td");
-          tdName.textContent = row.design_label + (row.is_selected ? " ★" : "");
-          tr.append(tdName);
-          tr.append(createScoreCell(row.yield_efficiency_score));
-          tr.append(createScoreCell(row.liquidity_sla_score));
-          tr.append(createScoreCell(row.price_stability_score));
-          tr.append(createScoreCell(row.issuer_viability_score));
-          tr.append(createScoreCell(row.stress_resilience_score));
-          tr.append(createScoreCell(row.composite_score_100, row.rating_grade || ""));
-          scBody.append(tr);
-        });
-      }
-
-      drawProductMultiLineSvg("product-chart-nav", res.timeseries_by_design, "secondary_market_price", 1.0, "", "nav_per_token", res.design_id);
-      drawProductMultiLineSvg("product-chart-queue", res.timeseries_by_design, "unpaid_redemption_obligations", 1e-6, "M", null, res.design_id);
-      drawProductMultiLineSvg("product-chart-profit", res.timeseries_by_design, "cumulative_issuer_profit", 1e-3, "k", null, res.design_id);
+      const overrides = res.overrides_applied || {};
+      const shock = Boolean(scenario && scenario.has_withdrawal_shock) || Number(overrides.month12_institutional_shock || 0) > 0;
+      drawProductMultiLineSvg("product-chart-nav", res.timeseries_by_design, "secondary_market_price", (v) => `$${v.toFixed(3)}`, "nav_per_token", res.design_id, shock, "Secondary exit price and NAV per token by month for each fund");
+      drawProductMultiLineSvg("product-chart-queue", res.timeseries_by_design, "unpaid_redemption_obligations", (v) => fmtUsd(v), null, res.design_id, shock, "Unpaid redemption queue in dollars by month for each fund");
+      drawProductMultiLineSvg("product-chart-profit", res.timeseries_by_design, "cumulative_issuer_profit", (v) => fmtUsd(v), null, res.design_id, shock, "Cumulative sponsor net profit in dollars by month for each fund");
+      const costs = ((cat && cat.sponsor_fixed_costs_annual) || []).map(Number).filter(Number.isFinite);
+      const costText = !costs.length
+        ? ""
+        : costs.length === 1
+          ? ` (${fmtUsd(costs[0])}/yr)`
+          : ` (${fmtUsd(Math.min(...costs))}–${fmtUsd(Math.max(...costs))}/yr, by fund)`;
+      $("product-chart-profit-caption").textContent = `Fee revenue minus fixed operating costs${costText}. Upward slope = profitable at this scale.`;
 
       const dlWrap = $("product-downloads");
       dlWrap.replaceChildren();
@@ -3709,61 +4519,28 @@
         const st = document.createElement("strong");
         st.textContent = item.filename;
         const sm = document.createElement("small");
-        sm.textContent = `Export ${item.id.replace("_", " ").toUpperCase()}`;
+        sm.textContent = `Export ${String(item.id).replace(/_/g, " ").toUpperCase()}`;
         a.append(st, sm);
         dlWrap.append(a);
       });
-    }
-
-    async function runProductStudio() {
-      if (productStudio.running || !productStudio.catalog) return;
-      productStudio.running = true;
-      $("product-run-button").disabled = true;
-      const statusEl = $("product-studio-status");
-      if (statusEl) statusEl.textContent = "Running simulation…";
-      try {
-        const csSel = $("product-case-study-select");
-        const resp = await fetch("/api/product-studio/run", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            case_study_id: csSel && csSel.value ? csSel.value : (productStudio.catalog.case_study_id || ""),
-            design_id: $("product-design-select").value,
-            scenario_id: $("product-scenario-select").value,
-            overrides: collectProductOverrides()
-          })
-        });
-        const data = await resp.json();
-        if (resp.ok) {
-          renderProductStudioResult(data);
-        } else if (statusEl) {
-          statusEl.textContent = `Error: ${data.error || resp.statusText}`;
-        }
-      } catch (_err) {
-        if (statusEl) statusEl.textContent = "Simulation error";
-      } finally {
-        productStudio.running = false;
-        $("product-run-button").disabled = false;
-      }
     }
 
     function applyProductCaseStudyCatalog(csId) {
       const cat = (productStudio.allCatalogs && productStudio.allCatalogs[csId]) || productStudio.catalog;
       if (!cat) return;
       productStudio.catalog = cat;
+      productStudio.userValues = {};
+      productStudio.grid = null;
+      productStudio.gridKey = "";
+      productStudio.lastRequestKey = "";
+      productStudio.lastResult = null;
       const titleEl = $("product-studio-title");
       const subEl = $("product-studio-subtitle");
       const boundEl = $("product-studio-boundary");
-      const compHeadEl = $("product-comparison-heading");
       if (titleEl && cat.title) titleEl.textContent = cat.title;
       if (subEl && cat.subtitle) subEl.textContent = cat.subtitle;
       const disclaimerText = cat.disclaimer || (cat.evidence_status && cat.evidence_status.statement) || "";
       if (boundEl && disclaimerText) boundEl.textContent = disclaimerText;
-      if (compHeadEl) {
-        compHeadEl.textContent = cat.per_product_portfolio
-          ? "Side-by-Side Real-World RWA Product Comparison (Each Product with Authentic Asset Class, Fee & Liquidity Mechanics)"
-          : "Side-by-Side Product Design Comparison (Same Portfolio & Scenario)";
-      }
       const dSel = $("product-design-select");
       dSel.replaceChildren();
       cat.designs.forEach((d) => {
@@ -3795,13 +4572,20 @@
       } else if (cat.scenarios.length) {
         sSel.value = cat.scenarios[0].scenario_id;
       }
-      const sObj = cat.scenarios.find((x) => x.scenario_id === sSel.value);
+      productStudio.focusDesign = dSel.value;
+      productStudio.focusScenario = sSel.value;
+      const sObj = productScenarioById(sSel.value);
       $("product-scenario-desc").textContent = sObj ? sObj.description : "";
 
-      renderScenarioPills(cat, sSel.value);
+      renderEvidenceStrip(cat);
+      renderScenarioPills();
       renderProductLegend(cat);
-      renderProductProvenance(cat);
-      renderProductControls(dSel.value, sSel.value);
+      setupProvenanceFilter(cat);
+      renderProductProvenance();
+      renderProductControls();
+      renderScenarioGrid();
+      const sourcesBtn = document.querySelector('#product-view-tabs [data-studio-view="sources"]');
+      if (sourcesBtn) sourcesBtn.textContent = (cat.real_world_provenance || []).length ? "Sources, assumptions & downloads" : "Downloads & limitations";
       setStudioViewMode("guided");
 
       const limBox = $("product-assumptions-limitations");
@@ -3823,34 +4607,27 @@
         const avail = rootCat.available_case_studies || [
           { case_study_id: rootCat.case_study_id, title: rootCat.title || rootCat.case_study_id }
         ];
-        if (csSel) {
-          csSel.replaceChildren();
-          avail.forEach((item) => {
-            const opt = document.createElement("option");
-            opt.value = item.case_study_id;
-            opt.textContent = item.label || item.title;
-            csSel.append(opt);
-          });
-          const defaultCsId = rootCat.default_ui_case_study_id || avail[0].case_study_id;
-          csSel.value = defaultCsId;
-          applyProductCaseStudyCatalog(defaultCsId);
-          csSel.addEventListener("change", () => {
-            applyProductCaseStudyCatalog(csSel.value);
-            runProductStudio();
-          });
-        } else {
-          productStudio.catalog = rootCat;
-          applyProductCaseStudyCatalog(rootCat.case_study_id);
-        }
+        csSel.replaceChildren();
+        avail.forEach((item) => {
+          const opt = document.createElement("option");
+          opt.value = item.case_study_id;
+          opt.textContent = item.label || item.title;
+          csSel.append(opt);
+        });
+        const defaultCsId = rootCat.default_ui_case_study_id || avail[0].case_study_id;
+        productStudio.catalog = rootCat;
+        csSel.value = defaultCsId;
+        applyProductCaseStudyCatalog(defaultCsId);
+        csSel.addEventListener("change", () => {
+          applyProductCaseStudyCatalog(csSel.value);
+          runProductStudio();
+        });
         const dSel = $("product-design-select");
         const sSel = $("product-scenario-select");
-        const updateScenDesc = () => {
-          const s = (productStudio.catalog.scenarios || []).find((x) => x.scenario_id === sSel.value);
-          $("product-scenario-desc").textContent = s ? s.description : "";
-        };
-        dSel.addEventListener("change", () => { renderProductControls(dSel.value, sSel.value); runProductStudio(); });
-        sSel.addEventListener("change", () => { updateScenDesc(); renderScenarioPills(productStudio.catalog, sSel.value); renderProductControls(dSel.value, sSel.value); runProductStudio(); });
-        $("product-run-button").addEventListener("click", runProductStudio);
+        dSel.addEventListener("change", () => selectProductView(dSel.value, null));
+        sSel.addEventListener("change", () => selectProductView(null, sSel.value));
+        $("product-provenance-filter").addEventListener("change", renderProductProvenance);
+        $("product-run-button").addEventListener("click", () => runProductStudio({ force: true }));
         runProductStudio();
       } catch (_e) {
         // Ignore if endpoint is not mounted in legacy single-bundle mode

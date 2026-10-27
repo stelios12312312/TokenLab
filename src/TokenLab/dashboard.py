@@ -72,6 +72,7 @@ class GalleryApplication:
     product_runs: Dict[str, Dict[str, Tuple[str, bytes]]] = field(default_factory=dict)
     run_lock: threading.Lock = field(default_factory=lambda: _GALLERY_RUN_LOCK)
     product_lock: threading.Lock = field(default_factory=threading.Lock)
+    product_run_count: int = 0
     jobs: Any = None
 
     def execute_product_studio(self, request: Mapping[str, Any]) -> Dict[str, Any]:
@@ -82,10 +83,8 @@ class GalleryApplication:
         if not self.product_lock.acquire(timeout=10.0):
             raise GalleryBusyError("another product studio simulation is already running")
         try:
-            if len(self.product_runs) >= MAX_GALLERY_RUNS:
-                raise GalleryCapacityError("product studio run limit reached")
-            run_index = len(self.product_runs) + 1
-            product_run_id = f"product-run-{run_index:04d}"
+            self.product_run_count += 1
+            product_run_id = f"product-run-{self.product_run_count:04d}"
             base_out = getattr(self.gallery, "output_dir", Path("outputs/demo-gallery"))
             export_dir = Path(base_out) / "product_studio_runs" / product_run_id
             result = run_interactive_product_studio_query(
@@ -107,6 +106,11 @@ class GalleryApplication:
                             ),
                         }
                     )
+            # Studio runs are cheap interactive snapshots: keep the most recent
+            # MAX_GALLERY_RUNS downloadable and evict the oldest (dicts keep
+            # insertion order) instead of refusing further interaction.
+            while len(self.product_runs) >= MAX_GALLERY_RUNS:
+                self.product_runs.pop(next(iter(self.product_runs)))
             self.product_runs[product_run_id] = downloads_map
             result["status"] = "success"
             result["product_run_id"] = product_run_id
