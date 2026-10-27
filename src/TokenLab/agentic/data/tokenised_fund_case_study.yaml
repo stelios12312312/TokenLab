@@ -1,4 +1,4 @@
-schema_version: "product_study.v1"
+schema_version: "product_study.v2"
 case_study_id: "tokenised-income-fund-v1"
 title: "Designing a viable tokenised investment product: returns, fees and liquidity."
 subtitle: "Comparative economic design, valuation analysis, and liquidity stress testing for a synthetic $25M tokenised private-credit & treasury income fund over 36 monthly periods."
@@ -9,6 +9,21 @@ evidence_status:
     scenarios in this configuration are synthetic and illustrative. Conditional scenario
     outputs and Monte Carlo percentile bands represent implications of these explicit
     assumptions and must not be interpreted as empirically calibrated market forecasts.
+
+benchmarks:
+  # Synthetic study: assumed risk-free rate for excess-return scoring
+  risk_free_rate_annual: 0.040
+
+# Scenario probabilities for the across-scenario investor score (assumption)
+scenario_weights:
+  baseline: 0.40
+  low_participation: 0.15
+  adverse_asset_return: 0.10
+  concentrated_withdrawals: 0.10
+  delayed_settlement: 0.075
+  reduced_external_liquidity: 0.075
+  combined_adverse: 0.05
+  reverse_stress_test: 0.05
 
 time_convention:
   unit: "month"
@@ -149,6 +164,7 @@ product_designs:
 scenarios:
   baseline:
     scenario_id: "baseline"
+    short_label: "Calm baseline"
     name: "1. Baseline (Steady Income & Normal Turnover)"
     description: "8.50% gross portfolio yield, normal subscription inflows (1.0x), normal redemption turnover (1.0x), 1-month asset settlement lag, and full facility availability."
     overrides:
@@ -160,6 +176,7 @@ scenarios:
 
   low_participation:
     scenario_id: "low_participation"
+    short_label: "Low inflows"
     name: "2. Lower Participation / Slower Growth"
     description: "Subscription inflows fall by 75% (0.25x multiplier) and routine redemptions increase by 35% (1.35x), testing issuer operating cost coverage under stagnant/shrinking AUM."
     overrides:
@@ -171,6 +188,7 @@ scenarios:
 
   adverse_asset_return:
     scenario_id: "adverse_asset_return"
+    short_label: "Lower returns + write-down"
     name: "3. Lower Asset Returns & Credit Write-Down"
     description: "Gross portfolio yield drops by 250 bps (to 6.00% p.a.) alongside discrete -3.5% mark-to-market credit write-downs in Months 12 and 18, triggering endogenous investor redemptions."
     overrides:
@@ -185,6 +203,7 @@ scenarios:
 
   concentrated_withdrawals:
     scenario_id: "concentrated_withdrawals"
+    short_label: "30% institutional run"
     name: "4. Concentrated Institutional Withdrawals"
     description: "Two large institutional allocators redeem 30% of the institutional cohort in Month 12, followed by a 15% HNW redemption wave in Month 13."
     overrides:
@@ -200,6 +219,7 @@ scenarios:
 
   delayed_settlement:
     scenario_id: "delayed_settlement"
+    short_label: "Settlement delay"
     name: "5. Delayed Underlying Asset Settlement (T+3 Months)"
     description: "Underlying private-credit asset liquidations require 3 months to settle into cash (up from 1 month) with a 75 bps liquidation haircut during a moderate Month 12 withdrawal wave."
     overrides:
@@ -215,6 +235,7 @@ scenarios:
 
   reduced_external_liquidity:
     scenario_id: "reduced_external_liquidity"
+    short_label: "Facility cut"
     name: "6. Reduced External Liquidity Facility (75% Haircut on Credit Line)"
     description: "External credit facility capacity is cut by 75% (to $1.0M in Design C) while a 22% institutional + 12% HNW redemption shock hits in Months 12-13."
     overrides:
@@ -229,6 +250,7 @@ scenarios:
 
   combined_adverse:
     scenario_id: "combined_adverse"
+    short_label: "Combined stress"
     name: "7. Combined Adverse Stress (Yield Drop + Write-Down + Run + T+3 Lag + Facility Cut)"
     description: "Simultaneous -200 bps yield compression, -3.0% credit write-down in Month 12, 25% institutional + 15% HNW withdrawal shock, 3-month underlying settlement lag, 90 bps forced-sale haircut, and 50% facility reduction."
     overrides:
@@ -251,7 +273,8 @@ scenarios:
 
   reverse_stress_test:
     scenario_id: "reverse_stress_test"
-    name: "8. Reverse Stress Test (Objective Breaking-Point Search)"
+    short_label: "Severe run"
+    name: "8. Severe Institutional Run"
     description: "Systematic search identifying the minimum shock magnitude at which (a) the 3-month Payment Deadline SLA fails, (b) the 3% Liquidity Buffer floor fails, and (c) Issuer Operating Cost Coverage fails."
     overrides:
       participation_multiplier: 0.60

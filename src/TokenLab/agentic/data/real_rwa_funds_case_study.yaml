@@ -1,70 +1,49 @@
-schema_version: "product_study.v1"
+schema_version: "product_study.v2"
 case_study_id: "real-rwa-funds-v1"
-title: "Real-World RWA Fund Benchmark: BlackRock BUIDL vs. Maple SyrupUSDC vs. Hamilton Lane SCOPE"
-subtitle: "Side-by-side institutional economic modelling, fee/break-even attribution, and liquidity stress-testing of three live on-chain RWA structures normalised to a $25M 36-month benchmark."
+title: "Tokenised RWA Fund Structures: BUIDL vs. syrupUSDC vs. HLSCOPE"
+subtitle: "Investor returns, exit liquidity and sponsor economics of three tokenised fund structures, using public terms as of 27 October 2026, normalised to $25M over 36 months."
+calibration_date: "2026-10-27"
 per_product_portfolio: true
 evidence_status:
-  classification: "empirical_term_sheet_benchmark_with_synthetic_stress_scenarios"
+  classification: "public_terms_with_flagged_assumptions_and_synthetic_stress"
   statement: >
-    Product fee schedules, asset-class yield benchmarks, redemption gates, settlement lags,
-    and liquidity buffer structures are calibrated to publicly documented disclosures for
-    BlackRock BUIDL (Securitize / Circle USDC Buffer), Maple Finance SyrupUSDC, and Hamilton
-    Lane SCOPE (Securitize feeder). To enable an apples-to-apples institutional comparison,
-    all three structures are evaluated on a normalised $25M initial AUM scale over 36 monthly
-    periods across 8 synthetic behavioural and macro stress scenarios.
+    Fund terms (fees, payout form, redemption mechanics and yields) follow the dated public
+    sources recorded per parameter below, as of 27 October 2026. Parameters without a public
+    source are flagged as assumptions and swept in the sensitivity analysis. All three
+    structures are simulated at a normalised $25M starting AUM over 36 months under eight
+    synthetic scenarios; investor behaviour, stress shocks and scenario probabilities are
+    synthetic. Results describe these modelled structures, not the future performance of the
+    named funds, and are not credit ratings or investment advice.
+
+benchmarks:
+  # Risk-free benchmark for excess return: 3-month T-bill proxy = BUIDL 30-day distribution
+  # yield (3.70%, rwa.xyz, 2026-10-27) plus its blended management fee (0.27%).
+  risk_free_rate_annual: 0.0397
+  source: "https://app.rwa.xyz/assets/BUIDL"
+  as_of: "2026-10-27"
 
 real_world_provenance:
   - design_id: "buidl_treasury"
     product_name: "BlackRock USD Institutional Digital Liquidity Fund (BUIDL)"
     ticker: "BUIDL"
-    issuer: "BlackRock Financial Management"
-    network_rail: "Securitize Markets • BNY Mellon • Circle USDC Buffer"
-    issuer_and_infra: "BlackRock Financial Management • Securitize Markets (Transfer Agent) • BNY Mellon (Custodian) • Circle USDC Smart-Contract Buffer"
-    asset_class: "Short-Term US Treasury Bills (<= 3M maturity), Overnight US Treasury Repo & Cash"
-    gross_yield_benchmark: "4.85% p.a. (US T-Bills / SOFR)"
-    published_fees: "35 bps p.a. blended mgmt (20–50 bps across chains) • 0% perf • 0 bps exit • 8 bps admin"
-    reward_token_mechanics: "None"
-    liquidity_buffer_and_facility: "15% cash/repo buffer + $5.0M Circle USDC instant facility (20% of $25M benchmark AUM)"
-    redemption_gate: "Uncapped (24/7 USDC + T+0 primary)"
-    settlement_lag: "T+0 (0-month lag)"
-    stress_haircut: "3 bps bid-ask (8–10 bps in stress)"
-    primary_source: "Securitize BUIDL Form D / Offering Memo & Circle USDC Liquidity Facility Docs; normalised to $25M AUM ($210k/yr fixed overhead)"
-    documented_terms: "4.85% p.a. gross T-bill/SOFR yield benchmark; 20–50 bps p.a. management fee across chains (modelled at 35 bps blended); 0% performance fee; 0% exit fee; uncapped daily/instant redemptions backed by 15% liquid cash/repo buffer and Circle USDC instant redemption liquidity facility ($100M facility on ~$500M scale, modelled proportionally as $5.0M at $25M benchmark AUM); T+0/T+1 underlying T-bill settlement (0-month lag, 3 bps bid-ask haircut)."
-    synthetic_assumptions: "Normalised to $25M starting AUM and $210k/yr fixed issuer/compliance overhead (+10 bps variable cost) to reveal the minimum AUM scale ($84.0M break-even) required for low-fee money-market wrappers to reach issuer profitability."
+    issuer: "BlackRock"
+    network_rail: "Securitize (transfer agent) on Solana, Avalanche, Ethereum, BNB Chain, Aptos and others"
+    issuer_and_infra: "BlackRock • Securitize (transfer agent) • BNY (custodian) • Circle USDC off-ramp (holder-level)"
+    asset_class: "Cash, US Treasury bills and repurchase agreements; stable $1.00 NAV"
   - design_id: "maple_syrup_usdc"
-    product_name: "Maple Finance Institutional Secured Lending (SyrupUSDC)"
-    ticker: "SyrupUSDC"
-    issuer: "Maple Finance & Pool Delegates"
-    network_rail: "Syrup Smart-Contract Vaults (Ethereum / Solana / Base)"
-    issuer_and_infra: "Maple Finance • Syrup Permissionless Smart-Contract Vaults (Ethereum / Solana / Base) • Maple Direct Pool Delegates"
-    asset_class: "Overcollateralised Institutional Digital-Asset & Corporate Credit Loans (Fixed & Open-Term Repo/Margin Loans)"
-    gross_yield_benchmark: "9.60% p.a. (Institutional Secured Loans)"
-    published_fees: "50 bps p.a. platform + 10% delegate perf (>4.50% hurdle) • 15 bps pool-retained exit spread"
-    reward_token_mechanics: "+50 bps p.a. ($125k/yr) SYRUP drip"
-    liquidity_buffer_and_facility: "6% liquid USDC vault buffer + $0.5M protocol liquidity reserve"
-    redemption_gate: "25.0% NAV / monthly cycle cap"
-    settlement_lag: "T+1 month loan maturity cycle"
-    stress_haircut: "45 bps unwind (95–110 bps in freeze)"
-    primary_source: "Maple Finance SyrupUSDC Pool Docs & On-Chain Vault Parameters; normalised to $25M AUM (-3.5% to -4.0% stress credit write-downs)"
-    documented_terms: "9.60% p.a. gross institutional loan yield; 50 bps p.a. platform fee + 10% pool delegate/performance fee above 4.50% hurdle; 15 bps early withdrawal/unwind spread retained by lending pool; ~6% liquid USDC vault buffer; ~30-day (1-month) loan maturity cycle for redemptions exceeding liquid cash; 25% monthly cycle throughput cap; SYRUP token drip reward overlay (~50 bps p.a. equivalent)."
-    synthetic_assumptions: "Normalised to $25M starting AUM with $0.5M internal protocol liquidity reserve (no external bank credit line), 45 bps forced early loan-assignment haircut under stress, and heightened credit default sensitivity in adverse credit scenarios."
+    product_name: "Maple syrupUSDC"
+    ticker: "syrupUSDC"
+    issuer: "Maple Finance"
+    network_rail: "ERC-4626 vault (Ethereum and other chains)"
+    issuer_and_infra: "Maple Finance • on-chain FIFO withdrawal queue"
+    asset_class: "Fixed-rate, open-term, overcollateralised loans to crypto-native institutions (collateral mostly BTC)"
   - design_id: "hamilton_lane_scope"
-    product_name: "Hamilton Lane Senior Credit Opportunities Fund (SCOPE)"
-    ticker: "SCOPE"
-    issuer: "Hamilton Lane Advisors"
-    network_rail: "Securitize On-Chain Feeder (Polygon / Ethereum / Optimism / Solana)"
-    issuer_and_infra: "Hamilton Lane Advisors • On-Chain Feeder via Securitize (Polygon / Ethereum / Optimism / Solana)"
-    asset_class: "Senior Secured First-Lien Floating-Rate Middle-Market Corporate Private Credit Loans (SOFR + 500–600 bps)"
-    gross_yield_benchmark: "10.40% p.a. (SOFR + 550 bps Senior Credit)"
-    published_fees: "140 bps p.a. mgmt (125–150 bps range) + 12.5% incentive (>6.00% hurdle) • 50 bps anti-dilution levy"
-    reward_token_mechanics: "None"
-    liquidity_buffer_and_facility: "8% cash buffer + $3.0M committed NAV credit line (12% of $25M benchmark AUM)"
-    redemption_gate: "Strict 5.0% NAV / month gate"
-    settlement_lag: "T+2 month secondary loan sale lag"
-    stress_haircut: "85 bps loan sale (140–150 bps in freeze)"
-    primary_source: "Hamilton Lane SCOPE / Securitize Feeder Term Sheet; normalised to $25M AUM (-2.0% to -2.5% stress credit write-downs)"
-    documented_terms: "10.40% p.a. gross senior corporate credit yield; 140 bps p.a. management fee (125–150 bps documented feeder range) + 12.5% incentive fee above 6.00% hurdle; 50 bps anti-dilution / early exit protection (60% retained by portfolio, 40% to manager); documented 5.0% monthly NAV redemption gate; T+2 month underlying secondary private-credit loan liquidation lag; $3.0M committed NAV credit facility (12% of $25M benchmark AUM)."
-    synthetic_assumptions: "Normalised to $25M feeder AUM with 85 bps forced-sale secondary loan haircut when redemptions exhaust cash and credit line capacity."
+    product_name: "Hamilton Lane Senior Credit Opportunities Fund (tokenised feeder HLSCOPE)"
+    ticker: "HLSCOPE"
+    issuer: "Hamilton Lane"
+    network_rail: "Securitize feeder on Polygon, Ethereum, Optimism and others"
+    issuer_and_infra: "Hamilton Lane • Securitize feeder (Reg D)"
+    asset_class: "Senior secured, floating-rate private loans (multi-manager), with fund-level leverage"
 
 time_convention:
   unit: "month"
@@ -78,16 +57,18 @@ objectives_tested:
   issuer_operating_profit_floor_fiat: 0.0
 
 underlying_portfolio:
-  name: "Normalised $25M Real-World RWA Benchmark Portfolio (Per-Product Asset Calibration)"
+  name: "Normalised $25M benchmark portfolio (per-fund asset calibration below)"
   initial_aum: 25000000.0
   initial_nav_per_token: 1.0
-  gross_yield_annual: 0.085
+  gross_yield_annual: 0.05
   capital_appreciation_annual: 0.000
-  portfolio_expense_annual: 0.0020
+  portfolio_expense_annual: 0.0
   settlement_lag_periods: 1
   liquidation_haircut_bps: 35.0
   valuation_method: "stated_asset_valuation"
 
+# Investor behaviour is synthetic and shared by all three funds (assumption); each fund
+# overrides only holder counts. Target yields are re-centred on each fund's own net yield.
 investor_cohorts:
   - cohort_id: "institutional"
     name: "Institutional Treasury & Credit Allocators"
@@ -101,7 +82,7 @@ investor_cohorts:
     nav_drawdown_sensitivity: 2.00
     queue_delay_sensitivity: 0.45
   - cohort_id: "hnw"
-    name: "Family Offices & Crypto Hedge Funds"
+    name: "Family Offices & Funds"
     initial_capital_share: 0.30
     num_holders: 20
     base_subscription_rate_period: 0.015
@@ -112,7 +93,7 @@ investor_cohorts:
     nav_drawdown_sensitivity: 1.50
     queue_delay_sensitivity: 0.35
   - cohort_id: "retail"
-    name: "DAO Treasuries & DeFi Composability Holders"
+    name: "Smaller Holders, DAO Treasuries & Protocols"
     initial_capital_share: 0.20
     num_holders: 200
     base_subscription_rate_period: 0.018
@@ -123,123 +104,253 @@ investor_cohorts:
     nav_drawdown_sensitivity: 1.15
     queue_delay_sensitivity: 0.25
 
+# Scenario probabilities for the across-scenario investor score (assumption; also perturbed
+# in the rank-probability analysis).
+scenario_weights:
+  baseline: 0.40
+  low_participation: 0.15
+  adverse_asset_return: 0.10
+  concentrated_withdrawals: 0.10
+  delayed_settlement: 0.075
+  reduced_external_liquidity: 0.075
+  combined_adverse: 0.05
+  reverse_stress_test: 0.05
+
 product_designs:
   buidl_treasury:
     design_id: "buidl_treasury"
-    name: "BlackRock BUIDL (US Treasuries • 35 bps Fee • Uncapped + $5M USDC Buffer)"
-    short_label: "BlackRock BUIDL (Treasuries)"
-    positioning: "Institutional T-bill & overnight repo money-market token (4.85% gross yield, 35 bps blended fee, 0% exit fee, T+0 settlement, 15% cash/repo buffer + $5M Circle USDC instant redemption facility)."
-    target_cash_buffer_pct: 0.15
+    name: "BUIDL structure (tokenised T-bill fund, terms as of Oct 2026)"
+    short_label: "BUIDL (T-bills)"
+    positioning: "Tokenised US Treasury money-market fund: cash, T-bills and repo; stable $1.00 NAV; daily redemptions; income paid out; about 0.27% blended management fee."
+    target_cash_buffer_pct: 0.0
     distribution_policy: "full_net_income"
+    distribution_reinvestment_rate: 1.0
+    expected_annual_redemption_turnover: 0.12
+    real_world: {aum_fiat: 2160000000.0, holders: 101, as_of: "2026-10-27", source: "https://app.rwa.xyz/assets/BUIDL"}
+    cohort_overrides:
+      institutional: {num_holders: 20}
+      hnw: {num_holders: 60}
+      retail: {num_holders: 21}
     portfolio:
-      name: "Short-Term US Treasury Bills & Overnight Repo Portfolio"
-      gross_yield_annual: 0.0485
+      name: "Cash, US Treasury bills and repo"
+      gross_yield_annual: 0.0397
       capital_appreciation_annual: 0.000
-      portfolio_expense_annual: 0.0010
+      portfolio_expense_annual: 0.0
       settlement_lag_periods: 0
       liquidation_haircut_bps: 3.0
       valuation_method: "stated_asset_valuation"
-      target_net_yield_annual: 0.042
+      target_net_yield_annual: 0.037
       reward_token_enabled: false
       reward_token_annual_budget_fiat: 0.0
     issuer:
-      management_fee_annual: 0.0035
-      performance_fee_rate: 0.00
-      hurdle_rate_annual: 0.045
-      redemption_fee_rate: 0.0000
-      redemption_fee_to_issuer_pct: 0.00
-      platform_admin_fee_annual: 0.0008
+      management_fee_annual: 0.0027
+      income_share_fee_rate: 0.0
+      performance_fee_rate: 0.0
+      hurdle_rate_annual: 0.0
+      redemption_fee_rate: 0.0
+      redemption_fee_to_issuer_pct: 0.0
+      platform_admin_fee_annual: 0.0
       platform_admin_cost_bearer: "portfolio"
       fixed_operating_cost_annual: 210000.0
       variable_operating_cost_bps: 10.0
     redemption_rules:
       gate_max_pct_nav_per_period: null
       payment_sla_periods: 3
+      queue_pricing: "payment_date_nav"
     liquidity_facility:
-      max_capacity: 5000000.0
-      interest_rate_annual: 0.0485
-      commitment_fee_annual: 0.0015
+      max_capacity: 0.0
+      interest_rate_annual: 0.0
+      commitment_fee_annual: 0.0
       cost_bearer: "portfolio"
+    secondary_market:
+      required_return_annual: 0.10
+      illiquidity_premium: 0.0
+      max_discount: 0.35
+    provenance:
+      gross_yield_annual: {source: "rwa.xyz BUIDL: 30-day yield 3.70% plus 0.27% blended fee", url: "https://app.rwa.xyz/assets/BUIDL", as_of: "2026-10-27", confidence: "medium", note: "reported yield is distribution-based, so treated as net of fees"}
+      capital_appreciation_annual: {source: "Securitize launch release: seeks a stable $1.00 NAV", url: "https://investors.securitize.io/news/news-details/2024/BlackRock-Launches-Its-First-Tokenized-Fund-BUIDL-on-the-Ethereum-Network-03-20-2024/default.aspx", as_of: "2024-03-20", confidence: "high"}
+      portfolio_expense_annual: {assumption: true, note: "no fund expenses beyond the management fee are disclosed", sweep: [0.0, 0.0005, 0.0010]}
+      settlement_lag_periods: {source: "Ondo: BUIDL redemptions settle within about one business day", url: "https://ondo.finance/blog/building-on-buidl-how-ondo-leverages-blackrocks-tokenized-treasuries", as_of: "2024-08-28", confidence: "high"}
+      liquidation_haircut_bps: {assumption: true, note: "T-bill bid/ask cost", sweep: [1.0, 3.0, 10.0]}
+      reward_token_annual_budget_fiat: {source: "Securitize launch release: no token incentive programme", url: "https://investors.securitize.io/news/news-details/2024/BlackRock-Launches-Its-First-Tokenized-Fund-BUIDL-on-the-Ethereum-Network-03-20-2024/default.aspx", as_of: "2024-03-20", confidence: "medium"}
+      target_cash_buffer_pct: {source: "Holdings are 100% cash, T-bills and repo, all income-earning; no idle buffer modelled", url: "https://investors.securitize.io/news/news-details/2024/BlackRock-Launches-Its-First-Tokenized-Fund-BUIDL-on-the-Ethereum-Network-03-20-2024/default.aspx", as_of: "2024-03-20", confidence: "high"}
+      distribution_policy: {source: "Markets Media: distributions paid daily since January 2025", url: "https://www.marketsmedia.com/securitize-adds-features-for-blackrock-tokenized-treasury-fund/", as_of: "2025-01-23", confidence: "high"}
+      distribution_reinvestment_rate: {assumption: true, note: "paid as new tokens at launch (2024); the form of daily payouts since 2025 is not restated", sweep: [0.0, 0.5, 1.0]}
+      management_fee_annual: {source: "0.50% on Ethereum, Arbitrum, Optimism; 0.20% on Aptos, Avalanche, Polygon, Solana; blended by current supply per chain", url: "https://www.dlnews.com/articles/defi/blackrock-expands-buidl-fund-to-five-more-blockchains/", as_of: "2026-10-27", confidence: "medium", note: "BNB Chain and Tempo fees not published; blend 0.26-0.28%"}
+      income_share_fee_rate: {source: "Fee is a percentage of NAV, not of income", url: "https://www.dlnews.com/articles/defi/blackrock-expands-buidl-fund-to-five-more-blockchains/", as_of: "2024-11-13", confidence: "high"}
+      performance_fee_rate: {source: "rwa.xyz BUIDL: 0% performance fee", url: "https://app.rwa.xyz/assets/BUIDL", as_of: "2026-10-27", confidence: "medium"}
+      hurdle_rate_annual: {applicable: false, note: "no performance fee"}
+      redemption_fee_rate: {source: "rwa.xyz BUIDL: 0% redemption fee", url: "https://app.rwa.xyz/assets/BUIDL", as_of: "2026-10-27", confidence: "medium"}
+      redemption_fee_to_issuer_pct: {applicable: false, note: "no redemption fee"}
+      platform_admin_fee_annual: {source: "Securitize S-1: BlackRock pays Securitize an upfront fee plus a share of average NAV (rate undisclosed); not a fund expense", url: "https://www.sec.gov/Archives/edgar/data/2094496/000162828026051182/secz-20260731.htm", as_of: "2026-07-31", confidence: "medium"}
+      fixed_operating_cost_annual: {assumption: true, note: "illustrative standalone tokenised-fund cost base; BlackRock's actual costs are not public", sweep: [100000.0, 210000.0, 500000.0]}
+      variable_operating_cost_bps: {assumption: true, note: "includes the undisclosed transfer-agent share", sweep: [5.0, 10.0, 20.0]}
+      gate_max_pct_nav_per_period: {source: "Ondo: daily redemptions (USD 250k minimum), no gate", url: "https://ondo.finance/blog/building-on-buidl-how-ondo-leverages-blackrocks-tokenized-treasuries", as_of: "2024-08-28", confidence: "high"}
+      queue_pricing: {source: "Redemptions at the $1.00 NAV on the redemption date", url: "https://ondo.finance/blog/building-on-buidl-how-ondo-leverages-blackrocks-tokenized-treasuries", as_of: "2024-08-28", confidence: "medium"}
+      facility_max_capacity: {source: "Circle's USDC facility buys BUIDL from holders (typically up to 20M USDC, about 1% of AUM); it is not fund borrowing, so no fund-level facility is modelled", url: "https://ondo.finance/blog/the-liquidity-advantage-how-ousg-provides-robust-multi-venue-instant-liquidity", as_of: "2025-04-14", confidence: "verified"}
+      facility_interest_rate_annual: {applicable: false, note: "no fund-level facility"}
+      facility_commitment_fee_annual: {applicable: false, note: "no fund-level facility"}
+      secondary_required_return_annual: {assumption: true, note: "matters only if a redemption queue forms", sweep: [0.06, 0.10, 0.15]}
+      secondary_illiquidity_premium: {assumption: true, note: "Circle's off-ramp and T+0 redemptions keep any discount near zero", sweep: [0.0, 0.0025, 0.01]}
 
   maple_syrup_usdc:
     design_id: "maple_syrup_usdc"
-    name: "Maple SyrupUSDC (Overcollateralised Credit • 50 bps + 10% Perf • T+1 Cycle)"
-    short_label: "Maple SyrupUSDC (Private Credit)"
-    positioning: "Permissionless institutional crypto-credit vault (9.60% gross loan yield, 50 bps platform fee + 10% delegate fee, 15 bps pool-retained unwind spread, 6% liquid buffer, 1-month loan maturity cycle, +50 bps SYRUP reward drip)."
-    target_cash_buffer_pct: 0.06
-    distribution_policy: "full_net_income"
+    name: "syrupUSDC structure (secured lending vault, terms as of Oct 2026)"
+    short_label: "syrupUSDC (secured lending)"
+    positioning: "Accumulating vault lending to crypto-native institutions against overcollateralised loans; fee is 15% of gross interest; FIFO withdrawal queue whose requests keep earning; almost no idle cash."
+    target_cash_buffer_pct: 0.0
+    distribution_policy: "accumulating"
+    distribution_reinvestment_rate: null
+    expected_annual_redemption_turnover: 0.12
+    real_world: {aum_fiat: 983000000.0, holders: 8660, as_of: "2026-10-27", source: "https://app.rwa.xyz/assets/syrupUSDC"}
+    cohort_overrides:
+      institutional: {num_holders: 20}
+      hnw: {num_holders: 640}
+      retail: {num_holders: 8000}
     portfolio:
-      name: "Overcollateralised Institutional Digital-Asset & Corporate Loan Pool"
-      gross_yield_annual: 0.0960
+      name: "Overcollateralised institutional loans"
+      gross_yield_annual: 0.0595
       capital_appreciation_annual: 0.000
-      portfolio_expense_annual: 0.0020
+      portfolio_expense_annual: 0.0
       settlement_lag_periods: 1
       liquidation_haircut_bps: 45.0
       valuation_method: "stated_asset_valuation"
-      target_net_yield_annual: 0.076
-      reward_token_enabled: true
-      reward_token_annual_budget_fiat: 125000.0
+      target_net_yield_annual: 0.0506
+      reward_token_enabled: false
+      reward_token_annual_budget_fiat: 0.0
     issuer:
-      management_fee_annual: 0.0050
-      performance_fee_rate: 0.10
-      hurdle_rate_annual: 0.045
-      redemption_fee_rate: 0.0015
-      redemption_fee_to_issuer_pct: 0.00
-      platform_admin_fee_annual: 0.0010
+      management_fee_annual: 0.0
+      income_share_fee_rate: 0.15
+      performance_fee_rate: 0.0
+      hurdle_rate_annual: 0.0
+      redemption_fee_rate: 0.0
+      redemption_fee_to_issuer_pct: 0.0
+      platform_admin_fee_annual: 0.0
       platform_admin_cost_bearer: "portfolio"
       fixed_operating_cost_annual: 210000.0
       variable_operating_cost_bps: 12.0
     redemption_rules:
-      gate_max_pct_nav_per_period: 0.25
+      gate_max_pct_nav_per_period: null
       payment_sla_periods: 3
+      queue_pricing: "payment_date_nav"
     liquidity_facility:
-      max_capacity: 500000.0
-      interest_rate_annual: 0.0625
-      commitment_fee_annual: 0.0030
+      max_capacity: 0.0
+      interest_rate_annual: 0.0
+      commitment_fee_annual: 0.0
       cost_bearer: "portfolio"
+    secondary_market:
+      required_return_annual: 0.10
+      illiquidity_premium: 0.0025
+      max_discount: 0.35
+    provenance:
+      gross_yield_annual: {source: "Base APY 5.06% net of a 15% interest fee, so 5.95% gross; loan book principal-weighted rate 5.69% (Maple API)", url: "https://api.maple.finance/v2/graphql", as_of: "2026-10-27", confidence: "high"}
+      capital_appreciation_annual: {source: "No impairments recorded on Syrup pools to date (Maple API)", url: "https://api.maple.finance/v2/graphql", as_of: "2026-10-27", confidence: "high", note: "credit losses enter only through stress scenarios"}
+      portfolio_expense_annual: {assumption: true, note: "no pool expenses disclosed beyond the interest-share fee", sweep: [0.0, 0.001, 0.002]}
+      settlement_lag_periods: {source: "Maple risk docs: most withdrawals under 24 hours, could take up to 30 days; loans called on notice", url: "https://docs.maple.finance/syrupusdc-for-lenders/risk", as_of: "2026-10-27", confidence: "verified"}
+      liquidation_haircut_bps: {assumption: true, note: "cost of assigning or calling loans early in stress", sweep: [10.0, 45.0, 100.0]}
+      reward_token_annual_budget_fiat: {source: "Drips programme phased out; final claim window closed 2026-02-18; replaced by partner rewards via Merkl", url: "https://docs.maple.finance/syrupusdc-usdt-usdg-for-lenders/drips-rewards.md", as_of: "2026-10-27", confidence: "verified", note: "what-if: 0, 25 and 50 bps of the $25M benchmark", sweep: [0.0, 62500.0, 125000.0]}
+      target_cash_buffer_pct: {source: "About $58k idle cash on a $975M pool (Maple API)", url: "https://api.maple.finance/v2/graphql", as_of: "2026-10-27", confidence: "high"}
+      distribution_policy: {source: "Yield accrues to the vault share price (ERC-4626)", url: "https://docs.maple.finance/syrupusdc-for-lenders/introduction", as_of: "2026-10-27", confidence: "high"}
+      distribution_reinvestment_rate: {applicable: false, note: "accumulating vault; no payouts"}
+      management_fee_annual: {source: "No NAV-based fee; the management fee is a portion of gross interest", url: "https://docs.maple.finance/technical-resources/protocol-overview/fees.md", as_of: "2026-10-27", confidence: "verified"}
+      income_share_fee_rate: {source: "Management fee = portion of gross interest (docs); current setting 15% (Maple API)", url: "https://docs.maple.finance/technical-resources/protocol-overview/fees.md", as_of: "2026-10-27", confidence: "high", note: "what-if range shown", sweep: [0.10, 0.15, 0.20]}
+      performance_fee_rate: {source: "Fee documentation describes no performance fee or hurdle", url: "https://docs.maple.finance/technical-resources/protocol-overview/fees.md", as_of: "2026-10-27", confidence: "verified"}
+      hurdle_rate_annual: {applicable: false, note: "no performance fee"}
+      redemption_fee_rate: {source: "No mint or redeem fee", url: "https://app.rwa.xyz/assets/syrupUSDC", as_of: "2026-10-27", confidence: "high"}
+      redemption_fee_to_issuer_pct: {applicable: false, note: "no redemption fee"}
+      platform_admin_fee_annual: {source: "The 0.25% platform service fee is charged on principal and paid by borrowers, not lenders", url: "https://docs.maple.finance/technical-resources/protocol-overview/fees.md", as_of: "2026-10-27", confidence: "high"}
+      fixed_operating_cost_annual: {assumption: true, note: "illustrative standalone cost base", sweep: [100000.0, 210000.0, 500000.0]}
+      variable_operating_cost_bps: {assumption: true, sweep: [5.0, 12.0, 25.0]}
+      gate_max_pct_nav_per_period: {source: "Withdrawals processed first-in, first-out as liquidity becomes available; no per-period cap documented", url: "https://docs.maple.finance/syrupusdc-for-lenders/risk", as_of: "2026-10-27", confidence: "verified"}
+      queue_pricing: {source: "Queued withdrawal requests continue to earn interest until processed", url: "https://docs.maple.finance/syrupusdc-for-lenders/risk", as_of: "2026-10-27", confidence: "verified"}
+      facility_max_capacity: {source: "No fund-level liquidity line documented; exits rely on new deposits and loan calls", url: "https://docs.maple.finance/legal/syrupusdc-and-syrupusdt-risks.md", as_of: "2026-10-27", confidence: "medium"}
+      facility_interest_rate_annual: {applicable: false, note: "no fund-level facility"}
+      facility_commitment_fee_annual: {applicable: false, note: "no fund-level facility"}
+      secondary_required_return_annual: {assumption: true, sweep: [0.06, 0.10, 0.15]}
+      secondary_illiquidity_premium: {assumption: true, note: "no depeg episode found; DEX depth is a few million dollars per venue", sweep: [0.0, 0.0025, 0.01]}
 
   hamilton_lane_scope:
     design_id: "hamilton_lane_scope"
-    name: "Hamilton Lane SCOPE (Evergreen Senior Credit • 140 bps + 12.5% Perf • 5% Monthly Gate)"
-    short_label: "Hamilton Lane SCOPE (Evergreen Credit)"
-    positioning: "Tokenised senior secured middle-market corporate credit feeder (10.40% gross yield, 140 bps management fee + 12.5% incentive fee, 50 bps anti-dilution exit levy, 5% monthly NAV gate, T+2 loan settlement lag, and $3.0M credit line)."
+    name: "HLSCOPE structure (evergreen private-credit feeder, terms as of Oct 2026)"
+    short_label: "HLSCOPE (private credit)"
+    positioning: "Tokenised feeder into an evergreen senior secured private-credit fund: monthly liquidity option, accumulating, 0.50% feeder management fee; the redemption gate size is not public."
     target_cash_buffer_pct: 0.08
-    distribution_policy: "full_net_income"
+    distribution_policy: "accumulating"
+    distribution_reinvestment_rate: null
+    expected_annual_redemption_turnover: 0.12
+    real_world: {aum_fiat: 4220000.0, underlying_fund_aum_fiat: 2690000000.0, holders: 37, as_of: "2026-10-27", source: "https://app.rwa.xyz/assets/HLSCOPE"}
+    cohort_overrides:
+      institutional: {num_holders: 2}
+      hnw: {num_holders: 10}
+      retail: {num_holders: 25}
     portfolio:
-      name: "Senior Secured First-Lien Middle-Market Corporate Credit Portfolio"
-      gross_yield_annual: 0.1040
+      name: "Senior secured floating-rate private loans (via the underlying fund)"
+      gross_yield_annual: 0.0658
       capital_appreciation_annual: 0.000
-      portfolio_expense_annual: 0.0025
+      portfolio_expense_annual: 0.0
       settlement_lag_periods: 2
       liquidation_haircut_bps: 85.0
       valuation_method: "stated_asset_valuation"
-      target_net_yield_annual: 0.078
+      target_net_yield_annual: 0.0608
       reward_token_enabled: false
       reward_token_annual_budget_fiat: 0.0
     issuer:
-      management_fee_annual: 0.0140
-      performance_fee_rate: 0.125
-      hurdle_rate_annual: 0.060
-      redemption_fee_rate: 0.0050
-      redemption_fee_to_issuer_pct: 0.40
-      platform_admin_fee_annual: 0.0010
+      management_fee_annual: 0.0050
+      income_share_fee_rate: 0.0
+      performance_fee_rate: 0.0
+      hurdle_rate_annual: 0.06
+      redemption_fee_rate: 0.0
+      redemption_fee_to_issuer_pct: 0.0
+      platform_admin_fee_annual: 0.0
       platform_admin_cost_bearer: "portfolio"
       fixed_operating_cost_annual: 210000.0
       variable_operating_cost_bps: 12.0
     redemption_rules:
       gate_max_pct_nav_per_period: 0.05
       payment_sla_periods: 3
+      queue_pricing: "payment_date_nav"
     liquidity_facility:
-      max_capacity: 3000000.0
+      max_capacity: 0.0
       interest_rate_annual: 0.0625
       commitment_fee_annual: 0.0040
       cost_bearer: "portfolio"
+    secondary_market:
+      required_return_annual: 0.12
+      illiquidity_premium: 0.01
+      max_discount: 0.35
+    provenance:
+      gross_yield_annual: {source: "Underlying SCOPE I-USD class: 4.89% year to date to 2026-09-30 (6.58% annualised); 8.73% p.a. since inception", url: "https://www.hamiltonlane.com/en-us/strategies/evergreen/global/senior-credit-opportunities-fund", as_of: "2026-09-30", confidence: "verified", note: "underlying return is after underlying-fund fees; the feeder fee is applied on top", sweep: [0.0658, 0.0873]}
+      capital_appreciation_annual: {assumption: true, note: "return modelled as income; credit marks enter through stress scenarios", sweep: [-0.01, 0.0, 0.005]}
+      portfolio_expense_annual: {assumption: true, note: "feeder-level expenses not disclosed", sweep: [0.0, 0.001, 0.0025]}
+      settlement_lag_periods: {assumption: true, note: "time to sell private loans", sweep: [1, 2, 3, 4]}
+      liquidation_haircut_bps: {assumption: true, note: "discount on forced private-loan sales", sweep: [25.0, 85.0, 150.0]}
+      reward_token_annual_budget_fiat: {source: "No token incentives", url: "https://app.rwa.xyz/assets/HLSCOPE", as_of: "2026-10-27", confidence: "medium"}
+      target_cash_buffer_pct: {assumption: true, note: "feeder cash holdings not disclosed", sweep: [0.02, 0.05, 0.08, 0.12]}
+      distribution_policy: {source: "rwa.xyz HLSCOPE: income accumulates", url: "https://app.rwa.xyz/assets/HLSCOPE", as_of: "2026-10-27", confidence: "medium"}
+      distribution_reinvestment_rate: {applicable: false, note: "accumulating; no payouts"}
+      management_fee_annual: {source: "rwa.xyz HLSCOPE: 0.50% management fee (an earlier snapshot showed 1.75%; Canadian SCOPE series 1.25%)", url: "https://app.rwa.xyz/assets/HLSCOPE", as_of: "2026-10-27", confidence: "low", sweep: [0.005, 0.0125, 0.0175]}
+      income_share_fee_rate: {source: "Fee is NAV-based", url: "https://app.rwa.xyz/assets/HLSCOPE", as_of: "2026-10-27", confidence: "medium"}
+      performance_fee_rate: {source: "rwa.xyz HLSCOPE: 0% performance fee; no incentive fee found in public sources", url: "https://app.rwa.xyz/assets/HLSCOPE", as_of: "2026-10-27", confidence: "low", note: "what-if: incentive fee over a 6% hurdle", sweep: [0.0, 0.10, 0.125]}
+      hurdle_rate_annual: {applicable: false, note: "no incentive fee documented; 6% is used only in the incentive-fee what-if"}
+      redemption_fee_rate: {source: "rwa.xyz HLSCOPE: 0% redemption fee", url: "https://app.rwa.xyz/assets/HLSCOPE", as_of: "2026-10-27", confidence: "medium", note: "what-if: anti-dilution levy retained by the fund", sweep: [0.0, 0.005, 0.01]}
+      redemption_fee_to_issuer_pct: {applicable: false, note: "no redemption fee"}
+      platform_admin_fee_annual: {assumption: true, note: "Securitize: no transaction fees, but 'other fees do apply' (undisclosed)", sweep: [0.0, 0.001]}
+      fixed_operating_cost_annual: {assumption: true, note: "illustrative standalone cost base; the feeder shares Hamilton Lane's and Securitize's infrastructure", sweep: [100000.0, 210000.0, 500000.0]}
+      variable_operating_cost_bps: {assumption: true, sweep: [5.0, 12.0, 25.0]}
+      gate_max_pct_nav_per_period: {assumption: true, note: "Hamilton Lane: 'option for monthly liquidity'; the gate size is not public", sweep: [0.0167, 0.025, 0.05, 0.10]}
+      queue_pricing: {assumption: true, note: "2023 terms redeemed at the previous quarter's NAV; stale-NAV pricing is not modelled", sweep: ["payment_date_nav", "request_date_nav"]}
+      facility_max_capacity: {assumption: true, note: "no fund-level liquidity facility documented; the fund uses longer-term leverage for yield", sweep: [0.0, 1500000.0, 3000000.0]}
+      facility_interest_rate_annual: {applicable: false, note: "used only in the facility what-if"}
+      facility_commitment_fee_annual: {applicable: false, note: "used only in the facility what-if"}
+      secondary_required_return_annual: {assumption: true, sweep: [0.08, 0.12, 0.20]}
+      secondary_illiquidity_premium: {assumption: true, note: "allowance for uncertainty in private-credit marks", sweep: [0.0, 0.01, 0.03]}
 
 scenarios:
   baseline:
     scenario_id: "baseline"
-    name: "1. Baseline (Documented Term-Sheet Yields & Normal Turnover)"
-    description: "Each product earns its documented asset-class yield (BUIDL 4.85%, SyrupUSDC 9.60%, SCOPE 10.40%) with normal subscription inflows (1.0x), normal redemption turnover (1.0x), and authentic underlying settlement lags (T+0, T+1, T+2)."
+    name: "1. Baseline (current terms, normal turnover)"
+    short_label: "Calm baseline"
+    description: "Each fund earns its current yield (BUIDL 3.97%, syrupUSDC 5.95%, HLSCOPE 6.58% gross) with normal subscriptions (1.0x), normal redemption turnover (1.0x) and its own settlement lag (same-period, 1 month, 2 months)."
     overrides:
       participation_multiplier: 1.0
       redemption_multiplier: 1.0
@@ -249,8 +360,9 @@ scenarios:
 
   low_participation:
     scenario_id: "low_participation"
-    name: "2. Lower On-Chain Inflows / Stagnant AUM Scale"
-    description: "Subscription inflows fall by 75% (0.25x multiplier) and routine redemptions increase by 35% (1.35x), testing whether each issuer's fee margin covers fixed operating costs at ~$25M AUM."
+    name: "2. Low inflows / stagnant AUM"
+    short_label: "Low inflows"
+    description: "Subscriptions fall 75% (0.25x) and routine redemptions rise 35% (1.35x)."
     overrides:
       participation_multiplier: 0.25
       redemption_multiplier: 1.35
@@ -260,12 +372,14 @@ scenarios:
 
   adverse_asset_return:
     scenario_id: "adverse_asset_return"
-    name: "3. Rate Cut & Credit Default Write-Down Shock"
-    description: "Fed rate cuts compress yields by 150–220 bps while private-credit funds suffer discrete borrower default write-downs in Months 12 and 18 (SyrupUSDC -3.5% twice; SCOPE -2.0% twice; BUIDL US Treasuries 0% credit loss)."
+    name: "3. Rate cut and credit write-downs"
+    short_label: "Rate cut + defaults"
+    description: "A 150 bp rate cut lowers every fund's yield and the risk-free rate; the lending funds take write-downs in Months 12 and 18 (syrupUSDC -3.5% twice, HLSCOPE -2.0% twice; none for T-bills)."
     overrides:
       participation_multiplier: 0.70
       redemption_multiplier: 1.15
-      yield_delta_annual: -0.020
+      yield_delta_annual: -0.015
+      risk_free_delta_annual: -0.015
       capital_return_delta_annual: 0.0
       capital_shock_schedule:
         12: -0.025
@@ -273,23 +387,21 @@ scenarios:
       facility_capacity_multiplier: 1.0
       design_overrides:
         buidl_treasury:
-          yield_delta_annual: -0.015
           capital_shock_schedule: {}
         maple_syrup_usdc:
-          yield_delta_annual: -0.022
           capital_shock_schedule:
             12: -0.035
             18: -0.035
         hamilton_lane_scope:
-          yield_delta_annual: -0.018
           capital_shock_schedule:
             12: -0.020
             18: -0.020
 
   concentrated_withdrawals:
     scenario_id: "concentrated_withdrawals"
-    name: "4. Concentrated Institutional DeFi / Treasury Run"
-    description: "Two large institutional allocators tender 30% of the institutional cohort in Month 12, followed by a 15% HNW/hedge-fund withdrawal wave in Month 13."
+    name: "4. Concentrated institutional run"
+    short_label: "30% institutional run"
+    description: "30% of the institutional cohort (about 15% of AUM) tenders in Month 12, followed by 15% of family offices and funds and 8% of smaller holders in Month 13."
     overrides:
       participation_multiplier: 0.80
       redemption_multiplier: 1.0
@@ -303,8 +415,9 @@ scenarios:
 
   delayed_settlement:
     scenario_id: "delayed_settlement"
-    name: "5. Underlying Loan Rollover Freeze & Extended Settlement Lag"
-    description: "Private-credit loan repayments and secondary sales slow down during a Month-12 withdrawal wave (SyrupUSDC lag extends to 3 months / 95 bps haircut; SCOPE lag extends to 4 months / 140 bps haircut; BUIDL T-bills remain T+0 / 8 bps)."
+    name: "5. Loan rollover freeze and longer settlement"
+    short_label: "Settlement freeze"
+    description: "A Month-12 withdrawal wave meets slower asset sales: syrupUSDC lag 3 months and 95 bp haircut; HLSCOPE lag 4 months and 140 bp haircut; T-bills settle same-period at 8 bp."
     overrides:
       participation_multiplier: 0.85
       redemption_multiplier: 1.15
@@ -328,8 +441,9 @@ scenarios:
 
   reduced_external_liquidity:
     scenario_id: "reduced_external_liquidity"
-    name: "6. Liquidity Facility Contraction (75% Cut to Instant Buffer / Credit Line)"
-    description: "External liquidity buffers (Circle USDC buffer in BUIDL, protocol reserve in SyrupUSDC, NAV credit line in SCOPE) are cut by 75% during a 22% institutional + 12% HNW redemption wave."
+    name: "6. Liquidity-provider pullback (75% facility cut) and redemption wave"
+    short_label: "Facility cut + wave"
+    description: "Any fund-level facility is cut by 75% (none of the three documents one, so only the wave bites) during a 22% institutional and 12% family-office redemption wave."
     overrides:
       participation_multiplier: 0.80
       redemption_multiplier: 1.10
@@ -342,12 +456,14 @@ scenarios:
 
   combined_adverse:
     scenario_id: "combined_adverse"
-    name: "7. Combined Macro & Credit Crisis (Yield Drop + Defaults + Run + Settlement Freeze)"
-    description: "Simultaneous yield compression, Month-12 credit write-downs on loan books, 25% institutional + 15% HNW redemption run, extended loan liquidation lags, elevated forced-sale haircuts, and 50% facility reduction."
+    name: "7. Combined crisis (rate cut, defaults, run, settlement freeze)"
+    short_label: "Combined crisis"
+    description: "A 150 bp rate cut, Month-12 write-downs on the lending funds, a 25% institutional and 10-15% family-office run over two months, longer settlement, higher forced-sale haircuts and a 50% facility cut."
     overrides:
       participation_multiplier: 0.35
       redemption_multiplier: 1.25
-      yield_delta_annual: -0.020
+      yield_delta_annual: -0.015
+      risk_free_delta_annual: -0.015
       capital_shock_schedule:
         12: -0.030
       settlement_lag_override: 3
@@ -363,18 +479,15 @@ scenarios:
           retail: 0.10
       design_overrides:
         buidl_treasury:
-          yield_delta_annual: -0.015
           capital_shock_schedule: {}
-          settlement_lag_override: 1
+          settlement_lag_override: 0
           liquidation_haircut_bps_override: 10.0
         maple_syrup_usdc:
-          yield_delta_annual: -0.022
           capital_shock_schedule:
             12: -0.040
           settlement_lag_override: 3
           liquidation_haircut_bps_override: 110.0
         hamilton_lane_scope:
-          yield_delta_annual: -0.018
           capital_shock_schedule:
             12: -0.025
           settlement_lag_override: 4
@@ -382,8 +495,9 @@ scenarios:
 
   reverse_stress_test:
     scenario_id: "reverse_stress_test"
-    name: "8. Reverse Stress Test (Objective Breaking-Point Search)"
-    description: "Systematic search identifying the minimum withdrawal shock or minimum AUM scale at which (a) the 3-month Payment Deadline SLA fails, (b) the 3% Liquidity Buffer floor fails, and (c) Issuer Operating Cost Coverage fails."
+    name: "8. Severe institutional run (35% institutional + 20% family offices)"
+    short_label: "Severe run"
+    description: "A larger Month-12 run with slower settlement; the breaking-point search itself is reported separately in the reverse stress tests."
     overrides:
       participation_multiplier: 0.60
       redemption_multiplier: 1.15
@@ -407,6 +521,17 @@ scenarios:
 monte_carlo:
   default_repetitions: 60
   random_seed: 20261026
+  gross_yield_sd: 0.008
   stochastic_yield_volatility_annual: 0.010
   stochastic_capital_volatility_annual: 0.015
   stochastic_redemption_noise_std: 0.012
+  design_overrides:
+    buidl_treasury:
+      # Stable $1.00 NAV money-market fund (Moody's Aaa-mf assessment, 2026-05-13): no mark-to-market noise
+      gross_yield_sd: 0.003
+      stochastic_yield_volatility_annual: 0.002
+      stochastic_capital_volatility_annual: 0.0
+    maple_syrup_usdc:
+      gross_yield_sd: 0.010
+    hamilton_lane_scope:
+      gross_yield_sd: 0.008

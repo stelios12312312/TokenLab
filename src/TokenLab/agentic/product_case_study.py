@@ -1,16 +1,18 @@
 # -*- coding: utf-8 -*-
 """
-Flagship Case Study & Advisory Runner for Tokenised Financial Products:
+Case Study & Advisory Runner for Tokenised Financial Products:
 “Designing a viable tokenised investment product: returns, fees and liquidity.”
 
 Provides:
 - Configuration loader and factory (`build_product_economy_from_config`)
-- Full 3-design x 8-scenario comparative matrix (`run_design_scenario_matrix`)
+- Design x scenario matrix with per-scenario investor scores (`run_design_scenario_matrix`)
+- Across-scenario investor scores (`compute_through_the_cycle_scores`)
 - Independent closed-form reference case check (`run_independent_reference_case_verification`)
-- One-at-a-time (OAT) parameter sensitivity sweeps (`run_parameter_sensitivity_sweeps`)
+- One-at-a-time sweeps over every flagged calibration assumption (`run_parameter_sensitivity_sweeps`)
 - Systematic reverse stress tests across 3 explicit objectives (`run_reverse_stress_tests`)
-- Seeded Monte Carlo uncertainty (P10/P50/P90) and Spearman rank sensitivity (`run_monte_carlo_product_analysis`)
-- Self-contained HTML report and chart bundle generator (`generate_case_study_bundle`)
+- Seeded Monte Carlo across all scenarios with P10/P50/P90 bands and rank probabilities
+  (`run_monte_carlo_product_analysis`)
+- Self-contained HTML report, chart bundle and generated LaTeX paper tables (`generate_case_study_bundle`)
 - Interactive Studio payload & custom simulation endpoint helper (`run_interactive_product_studio_query`)
 """
 
@@ -21,7 +23,6 @@ import copy
 import hashlib
 import json
 import math
-import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -31,9 +32,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import yaml
-from scipy.stats import spearmanr
 
 from ..simulationcomponents.productclasses import (
+    INVESTOR_PILLAR_KEYS,
+    INVESTOR_SCORE_SCALES,
+    INVESTOR_SCORE_WEIGHTS,
     AssetPortfolioController,
     DiscountedCashFlowValuation,
     ExternalLiquidityFacility,
@@ -44,7 +47,6 @@ from ..simulationcomponents.productclasses import (
     StatedAssetValuation,
     TokenisedProductEconomy,
     ValuationMethod,
-    compute_product_scorecard,
 )
 from ..utils.reporting import ReportBuilder
 
@@ -56,17 +58,132 @@ DEFAULT_CONFIG_PATH = SYNTHETIC_CONFIG_PATH
 CASE_STUDY_REGISTRY: Dict[str, Dict[str, Any]] = {
     "real-rwa-funds-v1": {
         "case_study_id": "real-rwa-funds-v1",
-        "label": "Real-World Live RWA Benchmark: BlackRock BUIDL vs. Maple SyrupUSDC vs. Hamilton Lane SCOPE",
-        "short_label": "Real-World Live RWA Benchmark (BUIDL / SyrupUSDC / SCOPE)",
+        "label": "Tokenised RWA fund structures: BUIDL vs. syrupUSDC vs. HLSCOPE (public terms as of Oct 2026)",
+        "short_label": "Tokenised RWA fund structures (BUIDL / syrupUSDC / HLSCOPE)",
         "path": REAL_RWA_CONFIG_PATH,
     },
     "tokenised-income-fund-v1": {
         "case_study_id": "tokenised-income-fund-v1",
-        "label": "Synthetic Flagship Advisory Study: Designing a Viable Tokenised Fund (Designs A / B / C)",
-        "short_label": "Synthetic Advisory Study (Designs A / B / C)",
+        "label": "Synthetic design study: Designing a viable tokenised fund (Designs A / B / C)",
+        "short_label": "Synthetic design study (Designs A / B / C)",
         "path": SYNTHETIC_CONFIG_PATH,
     },
 }
+
+# Override keys that describe a fund's terms, and where each lives in a design's YAML block.
+# Every key needs a provenance entry (dated source or flagged assumption) in the real-fund study.
+PARAMETER_LOCATIONS: Dict[str, Tuple[Optional[str], str]] = {
+    "gross_yield_annual": ("portfolio", "gross_yield_annual"),
+    "capital_appreciation_annual": ("portfolio", "capital_appreciation_annual"),
+    "portfolio_expense_annual": ("portfolio", "portfolio_expense_annual"),
+    "settlement_lag_periods": ("portfolio", "settlement_lag_periods"),
+    "liquidation_haircut_bps": ("portfolio", "liquidation_haircut_bps"),
+    "reward_token_annual_budget_fiat": ("portfolio", "reward_token_annual_budget_fiat"),
+    "target_cash_buffer_pct": (None, "target_cash_buffer_pct"),
+    "distribution_policy": (None, "distribution_policy"),
+    "distribution_reinvestment_rate": (None, "distribution_reinvestment_rate"),
+    "management_fee_annual": ("issuer", "management_fee_annual"),
+    "income_share_fee_rate": ("issuer", "income_share_fee_rate"),
+    "performance_fee_rate": ("issuer", "performance_fee_rate"),
+    "hurdle_rate_annual": ("issuer", "hurdle_rate_annual"),
+    "redemption_fee_rate": ("issuer", "redemption_fee_rate"),
+    "redemption_fee_to_issuer_pct": ("issuer", "redemption_fee_to_issuer_pct"),
+    "platform_admin_fee_annual": ("issuer", "platform_admin_fee_annual"),
+    "fixed_operating_cost_annual": ("issuer", "fixed_operating_cost_annual"),
+    "variable_operating_cost_bps": ("issuer", "variable_operating_cost_bps"),
+    "gate_max_pct_nav_per_period": ("redemption_rules", "gate_max_pct_nav_per_period"),
+    "queue_pricing": ("redemption_rules", "queue_pricing"),
+    "facility_max_capacity": ("liquidity_facility", "max_capacity"),
+    "facility_interest_rate_annual": ("liquidity_facility", "interest_rate_annual"),
+    "facility_commitment_fee_annual": ("liquidity_facility", "commitment_fee_annual"),
+    "secondary_required_return_annual": ("secondary_market", "required_return_annual"),
+    "secondary_illiquidity_premium": ("secondary_market", "illiquidity_premium"),
+}
+
+PARAMETER_LABELS: Dict[str, str] = {
+    "gross_yield_annual": "Gross asset yield",
+    "capital_appreciation_annual": "Capital appreciation",
+    "portfolio_expense_annual": "Portfolio expenses",
+    "settlement_lag_periods": "Underlying settlement lag",
+    "liquidation_haircut_bps": "Forced-sale haircut",
+    "reward_token_annual_budget_fiat": "Token reward budget",
+    "target_cash_buffer_pct": "Cash buffer (non-earning)",
+    "distribution_policy": "Distribution policy",
+    "distribution_reinvestment_rate": "Distributions paid in kind",
+    "management_fee_annual": "Management fee (NAV-based)",
+    "income_share_fee_rate": "Fee as share of gross income",
+    "performance_fee_rate": "Performance / incentive fee",
+    "hurdle_rate_annual": "Performance-fee hurdle",
+    "redemption_fee_rate": "Redemption / exit fee",
+    "redemption_fee_to_issuer_pct": "Exit fee share paid to manager",
+    "platform_admin_fee_annual": "Platform / admin fee",
+    "fixed_operating_cost_annual": "Sponsor fixed operating cost",
+    "variable_operating_cost_bps": "Sponsor variable cost",
+    "gate_max_pct_nav_per_period": "Redemption gate per month",
+    "queue_pricing": "Queued redemptions priced at",
+    "facility_max_capacity": "Fund-level liquidity facility",
+    "facility_interest_rate_annual": "Facility interest rate",
+    "facility_commitment_fee_annual": "Facility commitment fee",
+    "secondary_required_return_annual": "Secondary buyer required return",
+    "secondary_illiquidity_premium": "Secondary illiquidity premium",
+}
+
+# Accepted override keys and their allowed ranges (numeric) or values (categorical)
+OVERRIDE_RANGES: Dict[str, Any] = {
+    "initial_aum": (1_000_000.0, 1_000_000_000.0),
+    "gross_yield_annual": (0.0, 0.25),
+    "capital_appreciation_annual": (-0.20, 0.20),
+    "portfolio_expense_annual": (0.0, 0.02),
+    "settlement_lag_periods": (0, 12),
+    "liquidation_haircut_bps": (0.0, 1000.0),
+    "target_cash_buffer_pct": (0.0, 0.50),
+    "distribution_reinvestment_rate": (0.0, 1.0),
+    "management_fee_annual": (0.0, 0.03),
+    "income_share_fee_rate": (0.0, 0.50),
+    "performance_fee_rate": (0.0, 0.50),
+    "hurdle_rate_annual": (0.0, 0.20),
+    "redemption_fee_rate": (0.0, 0.05),
+    "redemption_fee_to_issuer_pct": (0.0, 1.0),
+    "platform_admin_fee_annual": (0.0, 0.02),
+    "fixed_operating_cost_annual": (0.0, 10_000_000.0),
+    "variable_operating_cost_bps": (0.0, 100.0),
+    "gate_max_pct_nav_per_period": (0.01, 1.0),
+    "payment_sla_periods": (0, 24),
+    "facility_max_capacity": (0.0, 100_000_000.0),
+    "facility_interest_rate_annual": (0.0, 0.25),
+    "facility_commitment_fee_annual": (0.0, 0.02),
+    "facility_capacity_multiplier": (0.0, 5.0),
+    "reward_token_annual_budget_fiat": (0.0, 10_000_000.0),
+    "secondary_required_return_annual": (0.0, 0.50),
+    "secondary_illiquidity_premium": (0.0, 0.20),
+    "participation_multiplier": (0.0, 3.0),
+    "redemption_multiplier": (0.0, 5.0),
+    "yield_delta_annual": (-0.10, 0.10),
+    "month12_institutional_shock": (0.0, 1.0),
+    "withdrawal_shock_multiplier": (0.0, 5.0),
+    "stochastic_yield_volatility_annual": (0.0, 0.50),
+    "stochastic_capital_volatility_annual": (0.0, 0.50),
+    "stochastic_redemption_noise_std": (0.0, 0.50),
+    "reward_token_enabled": (False, True),
+    "queue_pricing": ("payment_date_nav", "request_date_nav"),
+    "distribution_policy": ("full_net_income", "target_yield", "accumulating"),
+    "platform_admin_cost_bearer": ("portfolio", "issuer"),
+    "facility_cost_bearer": ("portfolio", "issuer"),
+    "valuation_method": ("stated_asset_valuation", "discounted_cash_flow_valuation", "haircut_stress_valuation"),
+}
+_CATEGORICAL_OVERRIDES = {"queue_pricing", "distribution_policy", "platform_admin_cost_bearer", "facility_cost_bearer", "valuation_method"}
+
+# Overrides that apply to every fund in a side-by-side comparison. In the real-fund study each
+# fund keeps its own documented terms; only scale and investor-flow shocks are shared.
+SHARED_OVERRIDE_KEYS_PER_PRODUCT: Tuple[str, ...] = ("initial_aum", "participation_multiplier", "month12_institutional_shock")
+SHARED_OVERRIDE_KEYS_SINGLE_PORTFOLIO: Tuple[str, ...] = (
+    "initial_aum",
+    "gross_yield_annual",
+    "settlement_lag_periods",
+    "liquidation_haircut_bps",
+    "participation_multiplier",
+    "month12_institutional_shock",
+)
 
 
 METRIC_DEFINITIONS: List[Dict[str, str]] = [
@@ -82,70 +199,91 @@ METRIC_DEFINITIONS: List[Dict[str, str]] = [
         "key": "ending_nav_per_token",
         "unit": "USD / token",
         "annualisation": "Point-in-time ratio at period T",
-        "definition": "(Underlying Asset Value - Drawn Credit Facility Principal - Unpaid Redemption Queue Obligations) / Active Shares.",
+        "definition": "(Underlying assets - drawn facility principal - fixed redemption claims - unpaid fee and expense payables) / (active shares + shares escrowed in the redemption queue).",
     },
     {
         "metric": "Executable Redemption Price ($)",
         "key": "ending_executable_redemption_price",
         "unit": "USD / token",
         "annualisation": "Point-in-time primary exit price",
-        "definition": "Primary redemption value per token net of the product's redemption / anti-dilution exit fee: NAV_per_token * (1 - exit_fee_rate).",
+        "definition": "Primary redemption value per token net of the exit fee: NAV_per_token * (1 - exit_fee_rate). Paid when the queue reaches the request.",
     },
     {
-        "metric": "Secondary Market Price ($)",
-        "key": "min_secondary_market_price",
-        "unit": "USD / token",
-        "annualisation": "Minimum point-in-time secondary execution price over 36 months",
-        "definition": "Immediate secondary sale price incorporating illiquidity discount when primary redemption queues or gates bind.",
+        "metric": "Maximum Immediate-Exit Discount (%)",
+        "key": "max_exit_discount_vs_nav",
+        "unit": "% of NAV",
+        "annualisation": "Largest value over the horizon",
+        "definition": "1 - secondary price / NAV. The secondary discount is the carry a buyer forgoes over the expected wait to redemption (required return less the yield the position keeps earning) plus a declared illiquidity premium, on top of any exit fee.",
     },
     {
-        "metric": "Investor Net Annualised Return (%)",
+        "metric": "Investor Time-Weighted Return (% p.a.)",
         "key": "investor_annualised_return_pct",
         "unit": "% p.a. (decimal in tables/JSON)",
-        "annualisation": "Time-Weighted Return (TWR): (prod_t (1 + r_t))^(12 / T) - 1",
-        "definition": "Time-weighted compound annual net economic return on active investor capital (opening NAV + unpaid queue claims), eliminating multi-period subscription/redemption timing distortion.",
+        "annualisation": "Per-unit TWR: (prod_t (NAV_t + D_t) / NAV_{t-1})^(12 / T) - 1",
+        "definition": "Return of one fund unit held throughout, from NAV per share and distributions per share; independent of the timing of other investors' flows.",
     },
     {
-        "metric": "Investor Cash Distributions ($)",
-        "key": "investor_distributions_total_fiat",
-        "unit": "USD ($)",
-        "annualisation": "Cumulative 36-month cash + reinvested income distributions",
-        "definition": "Net portfolio income distributed to token holders after portfolio operating expenses, management fees, admin fees, and performance fees.",
+        "metric": "Investor Money-Weighted Return (IRR, % p.a.)",
+        "key": "investor_irr_annualised_pct",
+        "unit": "% p.a.",
+        "annualisation": "Monthly IRR compounded to annual",
+        "definition": "IRR of the whole investor base: initial capital and subscriptions in, cash distributions and redemption payments out, ending investor equity as terminal value.",
     },
     {
-        "metric": "Issuer Cumulative Net Profit ($)",
-        "key": "issuer_cumulative_profit_fiat",
-        "unit": "USD ($)",
-        "annualisation": "Cumulative 36-month P&L (Annualised = Cumulative / 3.0 yrs)",
-        "definition": "Issuer fee revenue (management + performance + issuer share of exit fees) minus fixed operating costs, variable AUM costs, and any issuer-borne admin/facility expenses.",
+        "metric": "Forced-Exit Return (% p.a.)",
+        "key": "forced_exit_return_annualised_pct",
+        "unit": "% p.a.",
+        "annualisation": "Annualised to the exit month",
+        "definition": "Return of a unit bought at inception and sold at the secondary price in the month with the largest exit discount.",
     },
     {
-        "metric": "Analytical Break-Even AUM ($)",
-        "key": "breakeven_aum_fiat",
-        "unit": "USD ($)",
-        "annualisation": "Annual steady-state scale requirement",
-        "definition": "AUM scale required for the issuer's net recurring fee contribution margin (bps of AUM) to cover annual fixed operating costs.",
+        "metric": "Dollar-Weighted Wait to Payment (Months)",
+        "key": "weighted_avg_time_to_payment_periods",
+        "unit": "Months",
+        "annualisation": "Average over all redemption payments",
+        "definition": "Each redemption payment weighted by its amount and its own wait since the request; unpaid amounts at Month 36 count at their elapsed wait (lower bound).",
     },
     {
         "metric": "Max Time to Full Payment (Months)",
         "key": "max_time_to_payment_periods",
         "unit": "Months (periods)",
         "annualisation": "Discrete monthly steps from redemption tender to full cash payout",
-        "definition": "Longest wait time experienced by any redemption ticket in the FIFO queue before 100% cash settlement is completed.",
+        "definition": "Longest wait from request to full settlement of any redemption ticket in the FIFO queue.",
+    },
+    {
+        "metric": "Investor Score (0-100)",
+        "key": "investor_score_100",
+        "unit": "0-100 score with neutral band (not a credit rating)",
+        "annualisation": "Per scenario; across scenarios as a probability-weighted mean with Monte Carlo P10/P50/P90",
+        "definition": "Weighted mean of excess return over the risk-free rate (30%), exit liquidity (30%), capital stability (20%) and liquidity resilience (20%). Excludes sponsor economics, so higher fees never raise it.",
+    },
+    {
+        "metric": "Sponsor Viability (0-100)",
+        "key": "sponsor_viability_score_100",
+        "unit": "0-100 score",
+        "annualisation": "Steady state",
+        "definition": "50 + 50 * log10(reference AUM / break-even AUM), clipped to [0, 100]; the reference is the documented real AUM when known.",
+    },
+    {
+        "metric": "Analytical Break-Even AUM ($)",
+        "key": "breakeven_aum_fiat",
+        "unit": "USD ($); null when the margin is not positive",
+        "annualisation": "Annual steady-state scale requirement",
+        "definition": "Sponsor fixed costs (including any token-reward budget) / net fee contribution margin (NAV fee + income-share fee + expected performance and exit fees - variable costs).",
+    },
+    {
+        "metric": "Issuer Cumulative Net Profit ($)",
+        "key": "issuer_cumulative_profit_fiat",
+        "unit": "USD ($)",
+        "annualisation": "Cumulative 36-month P&L (accrual basis)",
+        "definition": "Fees charged (management + income-share + performance + issuer share of exit fees) minus fixed and variable operating costs, issuer-borne admin and facility costs, and token-reward costs.",
     },
     {
         "metric": "Total Liquidity & Financing Costs ($)",
         "key": "total_liquidity_and_financing_costs_fiat",
         "unit": "USD ($)",
         "annualisation": "Cumulative 36-month cost",
-        "definition": "Sum of external credit facility interest, undrawn commitment fees, and realised liquidation haircut losses on forced asset sales.",
-    },
-    {
-        "metric": "5-Pillar Composite Score & Rating Grade",
-        "key": "composite_score_100",
-        "unit": "0-100 Score & Institutional Grade (AAA to B)",
-        "annualisation": "Weighted multi-criteria evaluation over 36-month horizon",
-        "definition": "Weighted composite score across Yield Efficiency (25%), Liquidity SLA (25%), Price Stability (20%), Issuer Viability (15%), and Stress Resilience (15%), mapped to institutional grades (AAA >= 85, AA >= 78, A >= 70, BBB >= 62, BB >= 52, B < 52).",
+        "definition": "External credit facility interest and undrawn commitment fees plus realised liquidation haircut losses on forced asset sales.",
     },
 ]
 
@@ -164,22 +302,32 @@ INTERACTIVE_ASSUMPTION_CONTROLS: List[Dict[str, Any]] = [
     {
         "key": "gross_yield_annual",
         "label": "Gross Asset Yield (% p.a.)",
-        "min": 0.03,
+        "min": 0.01,
         "max": 0.14,
-        "step": 0.0005,
+        "step": 0.0001,
         "default": 0.085,
         "unit": "decimal_rate",
         "description": "Annual cash income yield generated by underlying invested assets before fees.",
     },
     {
         "key": "management_fee_annual",
-        "label": "Management Fee (% p.a.)",
-        "min": 0.0010,
-        "max": 0.0200,
-        "step": 0.0005,
+        "label": "Management Fee (% p.a. of NAV)",
+        "min": 0.0,
+        "max": 0.0300,
+        "step": 0.0001,
         "default": 0.0085,
         "unit": "decimal_rate",
         "description": "Annual management fee charged by the issuer on Net Asset Value.",
+    },
+    {
+        "key": "income_share_fee_rate",
+        "label": "Fee as Share of Gross Income (%)",
+        "min": 0.0,
+        "max": 0.30,
+        "step": 0.005,
+        "default": 0.0,
+        "unit": "decimal_share",
+        "description": "Fee charged as a share of the portfolio's gross interest income (how lending platforms such as Maple charge).",
     },
     {
         "key": "redemption_fee_rate",
@@ -189,12 +337,12 @@ INTERACTIVE_ASSUMPTION_CONTROLS: List[Dict[str, Any]] = [
         "step": 0.0005,
         "default": 0.005,
         "unit": "decimal_rate",
-        "description": "Exit / anti-dilution levy charged to redeeming investors on gross redemption claim.",
+        "description": "Exit / anti-dilution levy charged to redeeming investors on gross redemption value.",
     },
     {
         "key": "gate_max_pct_nav_per_period",
-        "label": "Monthly Redemption Gate (% NAV, 1.0 = Uncapped)",
-        "min": 0.02,
+        "label": "Monthly Redemption Gate (% NAV, 100% = Uncapped)",
+        "min": 0.01,
         "max": 1.00,
         "step": 0.01,
         "default": 0.15,
@@ -203,7 +351,7 @@ INTERACTIVE_ASSUMPTION_CONTROLS: List[Dict[str, Any]] = [
     },
     {
         "key": "facility_max_capacity",
-        "label": "External Liquidity Facility ($)",
+        "label": "Fund-Level Liquidity Facility ($)",
         "min": 0.0,
         "max": 10_000_000.0,
         "step": 250_000.0,
@@ -229,7 +377,7 @@ INTERACTIVE_ASSUMPTION_CONTROLS: List[Dict[str, Any]] = [
         "step": 1.0,
         "default": 35.0,
         "unit": "bps",
-        "description": "Permanent discount incurred when selling illiquid portfolio assets to raise cash.",
+        "description": "Permanent discount incurred when selling portfolio assets to raise cash.",
     },
     {
         "key": "participation_multiplier",
@@ -243,15 +391,58 @@ INTERACTIVE_ASSUMPTION_CONTROLS: List[Dict[str, Any]] = [
     },
     {
         "key": "month12_institutional_shock",
-        "label": "Month-12 Institutional Withdrawal Shock (%)",
+        "label": "Month-12 Institutional Withdrawal Shock (% of cohort)",
         "min": 0.0,
-        "max": 0.60,
+        "max": 1.0,
         "step": 0.01,
         "default": 0.0,
         "unit": "decimal_share",
-        "description": "Additional concentrated institutional redemption shock in Month 12.",
+        "description": "Share of the institutional cohort (about half of AUM) that tenders in Month 12.",
     },
 ]
+
+
+def validate_overrides(overrides: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Check user overrides against `OVERRIDE_RANGES`. Raises ValueError naming every
+    rejected field and its allowed range, so callers can show field-level errors.
+    """
+    if not isinstance(overrides, dict):
+        raise ValueError("overrides must be a JSON object")
+    problems: List[str] = []
+    clean: Dict[str, Any] = {}
+    for key, value in overrides.items():
+        if key not in OVERRIDE_RANGES:
+            problems.append(f"{key}: unknown parameter")
+            continue
+        allowed = OVERRIDE_RANGES[key]
+        if key in _CATEGORICAL_OVERRIDES:
+            if value not in allowed:
+                problems.append(f"{key}: must be one of {list(allowed)}")
+            else:
+                clean[key] = value
+            continue
+        if key == "reward_token_enabled":
+            if not isinstance(value, bool):
+                problems.append(f"{key}: must be true or false")
+            else:
+                clean[key] = value
+            continue
+        if isinstance(value, bool) or value is None:
+            problems.append(f"{key}: must be a number in [{allowed[0]}, {allowed[1]}]")
+            continue
+        try:
+            num = float(value)
+        except (TypeError, ValueError):
+            problems.append(f"{key}: must be a number in [{allowed[0]}, {allowed[1]}]")
+            continue
+        if not math.isfinite(num) or num < allowed[0] or num > allowed[1]:
+            problems.append(f"{key}={value} is outside [{allowed[0]}, {allowed[1]}]")
+            continue
+        clean[key] = num
+    if problems:
+        raise ValueError("Invalid overrides: " + "; ".join(problems))
+    return clean
 
 
 def load_case_study_config(
@@ -271,12 +462,61 @@ def load_case_study_config(
         return yaml.safe_load(f)
 
 
+def design_parameter_value(cfg: Dict[str, Any], design_id: str, key: str) -> Any:
+    """Effective configured value of a fund-term parameter for `design_id` (design block, then shared portfolio)."""
+    section, field_name = PARAMETER_LOCATIONS[key]
+    design_cfg = cfg["product_designs"][design_id]
+    if section is None:
+        return design_cfg.get(field_name)
+    block = design_cfg.get(section, {}) or {}
+    if field_name in block:
+        return block[field_name]
+    if section == "portfolio":
+        return cfg["underlying_portfolio"].get(field_name)
+    return None
+
+
+def format_parameter_value(key: str, value: Any) -> str:
+    """Human-readable value for tables and the studio."""
+    if value is None:
+        if key == "gate_max_pct_nav_per_period":
+            return "none (uncapped)"
+        return "n/a"
+    if isinstance(value, str):
+        return {
+            "payment_date_nav": "NAV on payment date",
+            "request_date_nav": "NAV on request date (fixed claim)",
+            "full_net_income": "pays out net income",
+            "accumulating": "accumulates (no payouts)",
+            "target_yield": "target yield",
+        }.get(value, value)
+    num = float(value)
+    if key.endswith("_bps"):
+        return f"{num:.0f} bps"
+    if key == "settlement_lag_periods":
+        return f"{int(num)} month" + ("" if int(num) == 1 else "s")
+    if key in ("fixed_operating_cost_annual", "facility_max_capacity", "reward_token_annual_budget_fiat", "initial_aum"):
+        return f"${num / 1e6:,.2f}M" if num >= 1e6 else f"${num / 1e3:,.0f}k"
+    if key in ("income_share_fee_rate", "performance_fee_rate", "redemption_fee_to_issuer_pct", "distribution_reinvestment_rate"):
+        return f"{num * 100:.1f}%"
+    return f"{num * 100:.2f}%"
+
+
 def _build_valuation_method(name: str, shock_schedule: Optional[Dict[int, float]] = None) -> ValuationMethod:
     if name == "discounted_cash_flow_valuation":
         return DiscountedCashFlowValuation(shock_schedule=shock_schedule)
     if name == "haircut_stress_valuation":
         return HaircutStressValuation(shock_schedule=shock_schedule)
     return StatedAssetValuation(shock_schedule=shock_schedule)
+
+
+def scenario_overrides_for_design(cfg: Dict[str, Any], design_id: str, scenario_id: str) -> Dict[str, Any]:
+    """Scenario overrides with any design-specific overrides merged in."""
+    scen_overrides = copy.deepcopy(cfg["scenarios"][scenario_id].get("overrides", {}) or {})
+    design_scen_ov = scen_overrides.pop("design_overrides", {}) or {}
+    if isinstance(design_scen_ov.get(design_id), dict):
+        scen_overrides.update(copy.deepcopy(design_scen_ov[design_id]))
+    return scen_overrides
 
 
 def build_product_economy_from_config(
@@ -300,10 +540,7 @@ def build_product_economy_from_config(
         port_cfg.update(copy.deepcopy(design_cfg["portfolio"]))
 
     scen_cfg = cfg["scenarios"][scenario_id]
-    scen_overrides = copy.deepcopy(scen_cfg.get("overrides", {}))
-    design_scen_ov = scen_overrides.pop("design_overrides", {})
-    if isinstance(design_scen_ov, dict) and isinstance(design_scen_ov.get(design_id), dict):
-        scen_overrides.update(copy.deepcopy(design_scen_ov[design_id]))
+    scen_overrides = scenario_overrides_for_design(cfg, design_id, scenario_id)
 
     user_ov = dict(custom_overrides or {})
 
@@ -331,14 +568,18 @@ def build_product_economy_from_config(
         scen_overrides["settlement_lag_override"] = int(user_ov["settlement_lag_periods"])
     if "liquidation_haircut_bps" in user_ov:
         scen_overrides["liquidation_haircut_bps_override"] = float(user_ov["liquidation_haircut_bps"])
-    if "participation_multiplier" in user_ov:
-        scen_overrides["participation_multiplier"] = float(user_ov["participation_multiplier"])
-    if "redemption_multiplier" in user_ov:
-        scen_overrides["redemption_multiplier"] = float(user_ov["redemption_multiplier"])
-    if "yield_delta_annual" in user_ov:
-        scen_overrides["yield_delta_annual"] = float(user_ov["yield_delta_annual"])
-    if "facility_capacity_multiplier" in user_ov:
-        scen_overrides["facility_capacity_multiplier"] = float(user_ov["facility_capacity_multiplier"])
+    for key in (
+        "participation_multiplier",
+        "redemption_multiplier",
+        "yield_delta_annual",
+        "facility_capacity_multiplier",
+        "withdrawal_shock_multiplier",
+        "stochastic_yield_volatility_annual",
+        "stochastic_capital_volatility_annual",
+        "stochastic_redemption_noise_std",
+    ):
+        if key in user_ov:
+            scen_overrides[key] = float(user_ov[key])
     if "month12_institutional_shock" in user_ov:
         shock_val = max(0.0, float(user_ov["month12_institutional_shock"]))
         shocks = scen_overrides.setdefault("cohort_withdrawal_shocks", {})
@@ -346,12 +587,6 @@ def build_product_economy_from_config(
             shocks["12"]["institutional"] = shock_val
         m12 = shocks.setdefault(12, {})
         m12["institutional"] = shock_val
-    if "stochastic_yield_volatility_annual" in user_ov:
-        scen_overrides["stochastic_yield_volatility_annual"] = float(user_ov["stochastic_yield_volatility_annual"])
-    if "stochastic_capital_volatility_annual" in user_ov:
-        scen_overrides["stochastic_capital_volatility_annual"] = float(user_ov["stochastic_capital_volatility_annual"])
-    if "stochastic_redemption_noise_std" in user_ov:
-        scen_overrides["stochastic_redemption_noise_std"] = float(user_ov["stochastic_redemption_noise_std"])
 
     periods_per_year = int(cfg["time_convention"]["periods_per_year"])
     valuation_method = _build_valuation_method(val_method_name)
@@ -388,6 +623,7 @@ def build_product_economy_from_config(
             user_ov.get("variable_operating_cost_bps", iss_cfg["variable_operating_cost_bps"])
         ),
         periods_per_year=periods_per_year,
+        income_share_fee_rate=float(user_ov.get("income_share_fee_rate", iss_cfg.get("income_share_fee_rate", 0.0))),
     )
 
     fac_cfg = design_cfg["liquidity_facility"]
@@ -409,32 +645,43 @@ def build_product_economy_from_config(
     redemption_queue = RedemptionQueueManager(
         gate_max_pct_nav_per_period=gate_val,
         payment_sla_periods=int(user_ov.get("payment_sla_periods", red_cfg["payment_sla_periods"])),
+        pricing_mode=str(user_ov.get("queue_pricing", red_cfg.get("queue_pricing", "payment_date_nav"))),
     )
 
+    cohort_overrides = design_cfg.get("cohort_overrides", {}) or {}
+    design_reinvestment = user_ov.get("distribution_reinvestment_rate", design_cfg.get("distribution_reinvestment_rate"))
     cohorts: List[InvestorCohort] = []
     for c_spec in cfg["investor_cohorts"]:
+        spec = dict(c_spec)
+        spec.update(cohort_overrides.get(c_spec["cohort_id"], {}) or {})
         if "target_net_yield_annual" in port_cfg:
             cohort_offset = float(c_spec["target_net_yield_annual"]) - 0.064
             target_net_yield = max(0.0, float(port_cfg["target_net_yield_annual"]) + cohort_offset)
         else:
-            target_net_yield = float(c_spec["target_net_yield_annual"])
+            target_net_yield = float(spec["target_net_yield_annual"])
+        reinvestment = float(design_reinvestment) if design_reinvestment is not None else float(spec["distribution_reinvestment_rate"])
         cohorts.append(
             InvestorCohort(
-                cohort_id=c_spec["cohort_id"],
-                name=c_spec["name"],
-                initial_capital=initial_aum * float(c_spec["initial_capital_share"]),
-                num_holders=int(c_spec["num_holders"]),
-                base_subscription_rate_period=float(c_spec["base_subscription_rate_period"]),
-                distribution_reinvestment_rate=float(c_spec["distribution_reinvestment_rate"]),
-                base_redemption_rate_period=float(c_spec["base_redemption_rate_period"]),
+                cohort_id=spec["cohort_id"],
+                name=spec["name"],
+                initial_capital=initial_aum * float(spec["initial_capital_share"]),
+                num_holders=int(spec["num_holders"]),
+                base_subscription_rate_period=float(spec["base_subscription_rate_period"]),
+                distribution_reinvestment_rate=reinvestment,
+                base_redemption_rate_period=float(spec["base_redemption_rate_period"]),
                 target_net_yield_annual=target_net_yield,
-                return_shortfall_sensitivity=float(c_spec["return_shortfall_sensitivity"]),
-                nav_drawdown_sensitivity=float(c_spec["nav_drawdown_sensitivity"]),
-                queue_delay_sensitivity=float(c_spec["queue_delay_sensitivity"]),
+                return_shortfall_sensitivity=float(spec["return_shortfall_sensitivity"]),
+                nav_drawdown_sensitivity=float(spec["nav_drawdown_sensitivity"]),
+                queue_delay_sensitivity=float(spec["queue_delay_sensitivity"]),
             )
         )
 
+    sec_cfg = design_cfg.get("secondary_market", {}) or {}
     objectives = cfg.get("objectives_tested", {})
+    reward_budget = float(
+        user_ov.get("reward_token_annual_budget_fiat", port_cfg.get("reward_token_annual_budget_fiat", 0.0))
+    )
+    reward_enabled = bool(user_ov.get("reward_token_enabled", port_cfg.get("reward_token_enabled", False) or reward_budget > 0.0))
     return TokenisedProductEconomy(
         name=f"{design_cfg['short_label']} — {scen_cfg['name']}",
         portfolio=portfolio,
@@ -444,11 +691,19 @@ def build_product_economy_from_config(
         cohorts=cohorts,
         distribution_policy=str(user_ov.get("distribution_policy", design_cfg["distribution_policy"])),
         initial_nav_per_token=float(port_cfg.get("initial_nav_per_token", 1.0)),
-        min_liquidity_buffer_pct_nav=float(objectives.get("min_liquidity_buffer_pct_nav", 0.03)),
-        reward_token_enabled=bool(user_ov.get("reward_token_enabled", port_cfg.get("reward_token_enabled", False))),
-        reward_token_annual_budget_fiat=float(
-            user_ov.get("reward_token_annual_budget_fiat", port_cfg.get("reward_token_annual_budget_fiat", 0.0))
+        secondary_required_return_annual=float(
+            user_ov.get("secondary_required_return_annual", sec_cfg.get("required_return_annual", 0.12))
         ),
+        secondary_illiquidity_premium=float(
+            user_ov.get("secondary_illiquidity_premium", sec_cfg.get("illiquidity_premium", 0.01))
+        ),
+        secondary_max_discount=float(sec_cfg.get("max_discount", 0.35)),
+        min_liquidity_buffer_pct_nav=float(objectives.get("min_liquidity_buffer_pct_nav", 0.03)),
+        reward_token_enabled=reward_enabled,
+        reward_token_annual_budget_fiat=reward_budget,
+        expected_annual_redemption_turnover=float(design_cfg.get("expected_annual_redemption_turnover", 0.12)),
+        risk_free_rate_annual=float((cfg.get("benchmarks", {}) or {}).get("risk_free_rate_annual", 0.0)),
+        reference_real_aum_fiat=(design_cfg.get("real_world", {}) or {}).get("aum_fiat"),
         scenario_overrides=scen_overrides,
         random_seed=random_seed,
     )
@@ -478,12 +733,10 @@ def run_independent_reference_case_verification() -> Dict[str, Any]:
     - Horizon = 12 months (1.0 year)
 
     Independent Closed-Form Calculation:
-    - Monthly gross income = $10,000,000 * (0.084 / 12) = $70,000.00
-    - Monthly portfolio expense = $10,000,000 * (0.0024 / 12) = $2,000.00
-    - Monthly management fee = $10,000,000 * (0.0060 / 12) = $5,000.00
-    - Monthly admin fee = $10,000,000 * (0.0012 / 12) = $1,000.00
     - Monthly net cash distribution to investors = $70,000 - $2,000 - $5,000 - $1,000 = $62,000.00
-    - 12-month cumulative investor cash distributions = 12 * $62,000 = $744,000.00 (7.44% net return)
+    - 12-month cumulative investor cash distributions = 12 * $62,000 = $744,000.00
+    - Monthly per-unit return = $62,000 / $10,000,000 = 0.62%; cumulative TWR = 1.0062^12 - 1
+    - Money-weighted IRR = 0.62% per month (constant payouts, capital returned at par), so 1.0062^12 - 1
     - Ending NAV = $10,000,000.00, Ending NAV per token = $1.000000
     - 12-month issuer revenue = 12 * $5,000 = $60,000.00
     - 12-month issuer cost = $180,000 + 12 * $1,000 = $192,000.00
@@ -539,11 +792,14 @@ def run_independent_reference_case_verification() -> Dict[str, Any]:
     econ.run_Fixed_iterations(12)
     summary = econ.summarize_outcomes()
 
+    compounded = (1.0 + 0.0062) ** 12 - 1.0
     expected = {
         "ending_nav_total": 10_000_000.0,
         "ending_nav_per_token": 1.0,
         "investor_distributions_cash_fiat": 744_000.0,
-        "investor_cumulative_return_pct": 0.0744,
+        "investor_cumulative_return_pct": compounded,
+        "investor_annualised_return_pct": compounded,
+        "investor_irr_annualised_pct": compounded,
         "issuer_cumulative_revenue_fiat": 60_000.0,
         "issuer_cumulative_cost_fiat": 192_000.0,
         "issuer_cumulative_profit_fiat": -132_000.0,
@@ -554,7 +810,7 @@ def run_independent_reference_case_verification() -> Dict[str, Any]:
     for key, exp_val in expected.items():
         sim_val = float(summary[key])
         abs_err = abs(sim_val - exp_val)
-        matched = abs_err <= 1e-5
+        matched = abs_err <= 1e-5 * max(1.0, abs(exp_val)) if key == "investor_irr_annualised_pct" else abs_err <= 1e-5
         if not matched:
             all_matched = False
         comparisons[key] = {
@@ -572,15 +828,75 @@ def run_independent_reference_case_verification() -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Full 3-Design x 8-Scenario Comparative Matrix
+# Design x Scenario Comparative Matrix & Across-Scenario Scores
 # ---------------------------------------------------------------------------
+
+SUMMARY_FIELDS: Tuple[str, ...] = (
+    "initial_aum",
+    "ending_underlying_asset_value",
+    "ending_nav_total",
+    "ending_nav_per_token",
+    "min_nav_per_token",
+    "ending_executable_redemption_price",
+    "min_secondary_market_price",
+    "max_exit_discount_vs_nav",
+    "max_total_return_drawdown",
+    "investor_distributions_total_fiat",
+    "investor_net_profit_fiat",
+    "investor_cumulative_return_pct",
+    "investor_annualised_return_pct",
+    "investor_irr_annualised_pct",
+    "forced_exit_return_annualised_pct",
+    "investor_base_dollar_return_annualised_pct",
+    "investor_roi_on_total_contributed_pct",
+    "excess_return_annual",
+    "risk_free_rate_annual",
+    "issuer_cumulative_revenue_fiat",
+    "issuer_cumulative_cost_fiat",
+    "issuer_cumulative_profit_fiat",
+    "issuer_annualised_profit_fiat",
+    "issuer_profitable",
+    "breakeven_aum_fiat",
+    "sponsor_aum_headroom",
+    "cumulative_redemption_requests_net_fiat",
+    "cumulative_redemptions_paid_fiat",
+    "ending_unpaid_redemption_obligations_fiat",
+    "peak_unpaid_redemption_obligations_fiat",
+    "open_queue_censored_fiat",
+    "max_time_to_payment_periods",
+    "weighted_avg_time_to_payment_periods",
+    "payment_sla_met",
+    "peak_facility_drawn_fiat",
+    "cumulative_facility_financing_cost_fiat",
+    "cumulative_realized_liquidation_loss",
+    "cumulative_claims_written_down_fiat",
+    "total_liquidity_and_financing_costs_fiat",
+    "min_liquidity_coverage_ratio",
+    "liquidity_buffer_floor_met",
+    *INVESTOR_PILLAR_KEYS,
+    "investor_score_100",
+    "investor_score_band",
+    "sponsor_viability_score_100",
+    "all_steps_reconciled",
+)
+
+
+def _summary_row(design_id: str, design_meta: Dict[str, Any], scenario_id: str, scen_meta: Dict[str, Any], outcomes: Dict[str, Any]) -> Dict[str, Any]:
+    row = {
+        "design_id": design_id,
+        "design_label": design_meta["short_label"],
+        "scenario_id": scenario_id,
+        "scenario_name": scen_meta["name"],
+    }
+    row.update({key: outcomes[key] for key in SUMMARY_FIELDS})
+    return row
 
 
 def run_design_scenario_matrix(
     config: Optional[Dict[str, Any]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, Dict[str, Any]]:
     """
-    Run all 3 product designs across all 8 scenarios (24 full 36-month runs)
+    Run every product design across every scenario (36-month runs)
     and return `(summary_df, timeseries_df, detailed_dict)`.
     """
     cfg = config or load_case_study_config()
@@ -607,131 +923,123 @@ def run_design_scenario_matrix(
 
             outcomes = econ.summarize_outcomes()
             detailed[design_id][scenario_id] = outcomes
-
-            summary_rows.append(
-                {
-                    "design_id": design_id,
-                    "design_label": design_meta["short_label"],
-                    "scenario_id": scenario_id,
-                    "scenario_name": scen_meta["name"],
-                    "initial_aum": outcomes["initial_aum"],
-                    "ending_underlying_asset_value": outcomes["ending_underlying_asset_value"],
-                    "ending_nav_total": outcomes["ending_nav_total"],
-                    "ending_nav_per_token": outcomes["ending_nav_per_token"],
-                    "min_nav_per_token": outcomes["min_nav_per_token"],
-                    "ending_executable_redemption_price": outcomes["ending_executable_redemption_price"],
-                    "min_secondary_market_price": outcomes["min_secondary_market_price"],
-                    "investor_distributions_total_fiat": outcomes["investor_distributions_total_fiat"],
-                    "investor_net_profit_fiat": outcomes["investor_net_profit_fiat"],
-                    "investor_cumulative_return_pct": outcomes["investor_cumulative_return_pct"],
-                    "investor_annualised_return_pct": outcomes["investor_annualised_return_pct"],
-                    "investor_roi_on_total_contributed_pct": outcomes["investor_roi_on_total_contributed_pct"],
-                    "issuer_cumulative_revenue_fiat": outcomes["issuer_cumulative_revenue_fiat"],
-                    "issuer_cumulative_cost_fiat": outcomes["issuer_cumulative_cost_fiat"],
-                    "issuer_cumulative_profit_fiat": outcomes["issuer_cumulative_profit_fiat"],
-                    "issuer_annualised_profit_fiat": outcomes["issuer_annualised_profit_fiat"],
-                    "issuer_profitable": outcomes["issuer_profitable"],
-                    "breakeven_aum_fiat": outcomes["breakeven_aum_fiat"],
-                    "cumulative_redemption_requests_net_fiat": outcomes["cumulative_redemption_requests_net_fiat"],
-                    "cumulative_redemptions_paid_fiat": outcomes["cumulative_redemptions_paid_fiat"],
-                    "ending_unpaid_redemption_obligations_fiat": outcomes["ending_unpaid_redemption_obligations_fiat"],
-                    "peak_unpaid_redemption_obligations_fiat": outcomes["peak_unpaid_redemption_obligations_fiat"],
-                    "max_time_to_payment_periods": outcomes["max_time_to_payment_periods"],
-                    "weighted_avg_time_to_payment_periods": outcomes["weighted_avg_time_to_payment_periods"],
-                    "payment_sla_met": outcomes["payment_sla_met"],
-                    "peak_facility_drawn_fiat": outcomes["peak_facility_drawn_fiat"],
-                    "cumulative_facility_financing_cost_fiat": outcomes["cumulative_facility_financing_cost_fiat"],
-                    "cumulative_realized_liquidation_loss": outcomes["cumulative_realized_liquidation_loss"],
-                    "total_liquidity_and_financing_costs_fiat": outcomes["total_liquidity_and_financing_costs_fiat"],
-                    "min_cash_plus_facility_to_nav_ratio": outcomes["min_cash_plus_facility_to_nav_ratio"],
-                    "liquidity_buffer_floor_met": outcomes["liquidity_buffer_floor_met"],
-                    "yield_efficiency_score": outcomes["yield_efficiency_score"],
-                    "liquidity_sla_score": outcomes["liquidity_sla_score"],
-                    "price_stability_score": outcomes["price_stability_score"],
-                    "issuer_viability_score": outcomes["issuer_viability_score"],
-                    "stress_resilience_score": outcomes["stress_resilience_score"],
-                    "composite_score_100": outcomes["composite_score_100"],
-                    "rating_grade": outcomes["rating_grade"],
-                    "all_steps_reconciled": outcomes["all_steps_reconciled"],
-                }
-            )
+            summary_rows.append(_summary_row(design_id, design_meta, scenario_id, scen_meta, outcomes))
 
     return pd.DataFrame(summary_rows), pd.concat(ts_frames, ignore_index=True), detailed
 
 
+def scenario_weights(cfg: Dict[str, Any]) -> Dict[str, float]:
+    """Scenario probabilities for across-scenario scores (declared in YAML; equal weights otherwise), normalised."""
+    raw = cfg.get("scenario_weights") or {s: 1.0 for s in cfg["scenarios"]}
+    weights = {s: max(0.0, float(raw.get(s, 0.0))) for s in cfg["scenarios"]}
+    total = sum(weights.values()) or 1.0
+    return {s: w / total for s, w in weights.items()}
+
+
+def compute_through_the_cycle_scores(summary_df: pd.DataFrame, cfg: Dict[str, Any]) -> Dict[str, Any]:
+    """Probability-weighted and worst-case investor scores across scenarios, per design."""
+    weights = scenario_weights(cfg)
+    out: Dict[str, Any] = {}
+    for design_id, group in summary_df.groupby("design_id", sort=False):
+        g = group.set_index("scenario_id")
+        weighted = sum(weights[s] * float(g.loc[s, "investor_score_100"]) for s in weights if s in g.index)
+        worst_scenario = str(g["investor_score_100"].idxmin())
+        pillar_means = {
+            k: sum(weights[s] * float(g.loc[s, k]) for s in weights if s in g.index) for k in INVESTOR_PILLAR_KEYS
+        }
+        out[design_id] = {
+            "design_label": str(g["design_label"].iloc[0]),
+            "weighted_investor_score": round(weighted, 1),
+            "worst_case_investor_score": round(float(g["investor_score_100"].min()), 1),
+            "worst_case_scenario_id": worst_scenario,
+            "weighted_pillars": {k: round(v, 1) for k, v in pillar_means.items()},
+        }
+    leader = max(out, key=lambda d: out[d]["weighted_investor_score"]) if out else None
+    for design_id in out:
+        out[design_id]["excess_return_scale_to_match_leader"] = (
+            None if design_id == leader else excess_return_scale_breakeven(summary_df, cfg, design_id, leader)
+        )
+    return {"scenario_weights": weights, "leader_design_id": leader, "designs": out}
+
+
 # ---------------------------------------------------------------------------
-# One-At-A-Time (OAT) Individual Parameter Sensitivity Sweeps
+# One-At-A-Time (OAT) Sensitivity Sweeps Over Flagged Assumptions
 # ---------------------------------------------------------------------------
+
+_GENERIC_SWEEPS: List[Tuple[str, List[Any]]] = [
+    ("gross_yield_annual", [0.055, 0.066, 0.075, 0.085, 0.095, 0.105]),
+    ("management_fee_annual", [0.0035, 0.0055, 0.0085, 0.0115, 0.0145]),
+    ("initial_aum", [10_000_000.0, 17_500_000.0, 25_000_000.0, 40_000_000.0, 60_000_000.0]),
+    ("settlement_lag_periods", [0, 1, 2, 3, 4]),
+    ("facility_max_capacity", [0.0, 1_000_000.0, 2_500_000.0, 4_000_000.0, 6_000_000.0]),
+    ("month12_institutional_shock", [0.0, 0.10, 0.20, 0.30, 0.40, 0.50]),
+]
+
+SWEEP_SCENARIOS: Tuple[str, ...] = ("baseline", "concentrated_withdrawals")
+
+
+def sweep_plan(cfg: Dict[str, Any], design_id: str) -> List[Tuple[str, List[Any]]]:
+    """
+    Parameters to sweep for a design: every provenance entry with declared sweep values
+    (all flagged assumptions, plus documented values with a what-if range); designs
+    without provenance use generic sweeps.
+    """
+    provenance = cfg["product_designs"][design_id].get("provenance")
+    if not provenance:
+        return list(_GENERIC_SWEEPS)
+    plan = []
+    for key, entry in provenance.items():
+        if entry.get("applicable", True) and entry.get("sweep"):
+            plan.append((key, list(entry["sweep"])))
+    return plan
 
 
 def run_parameter_sensitivity_sweeps(config: Optional[Dict[str, Any]] = None) -> pd.DataFrame:
     """
-    Sweep individual parameters one at a time across all 3 product designs
-    so readers can isolate what each assumption causes vs. whole-design changes.
+    Sweep individual parameters one at a time for every design so readers can
+    isolate what each assumption causes, in the baseline and the 30% run.
     """
     cfg = config or load_case_study_config()
     horizon = int(cfg["time_convention"]["horizon_periods"])
-
-    sweeps: List[Tuple[str, str, str, List[Any]]] = [
-        ("gross_yield_annual", "Gross Asset Yield (% p.a.)", "baseline", [0.055, 0.066, 0.075, 0.085, 0.095, 0.105]),
-        ("management_fee_annual", "Management Fee (% p.a.)", "baseline", [0.0035, 0.0055, 0.0085, 0.0115, 0.0145]),
-        (
-            "initial_aum",
-            "Initial Portfolio AUM ($M)",
-            "baseline",
-            [10_000_000.0, 17_500_000.0, 25_000_000.0, 40_000_000.0, 60_000_000.0],
-        ),
-        (
-            "settlement_lag_periods",
-            "Underlying Settlement Lag (Months)",
-            "concentrated_withdrawals",
-            [0, 1, 2, 3, 4],
-        ),
-        (
-            "facility_max_capacity",
-            "Committed Liquidity Facility ($M)",
-            "concentrated_withdrawals",
-            [0.0, 1_000_000.0, 2_500_000.0, 4_000_000.0, 6_000_000.0],
-        ),
-        (
-            "month12_institutional_shock",
-            "Month-12 Institutional Withdrawal Shock (%)",
-            "baseline",
-            [0.0, 0.10, 0.20, 0.30, 0.40, 0.50],
-        ),
-    ]
-
     rows: List[Dict[str, Any]] = []
-    for param_key, param_label, base_scenario, values in sweeps:
-        for design_id, design_meta in cfg["product_designs"].items():
-            for val in values:
-                econ = build_product_economy_from_config(
-                    cfg,
-                    design_id=design_id,
-                    scenario_id=base_scenario,
-                    custom_overrides={param_key: val},
-                )
-                econ.run_Fixed_iterations(horizon)
-                out = econ.summarize_outcomes()
-                rows.append(
-                    {
-                        "parameter_key": param_key,
-                        "parameter_label": param_label,
-                        "base_scenario": base_scenario,
-                        "parameter_value": float(val),
-                        "design_id": design_id,
-                        "design_label": design_meta["short_label"],
-                        "investor_annualised_return_pct": out["investor_annualised_return_pct"],
-                        "issuer_cumulative_profit_fiat": out["issuer_cumulative_profit_fiat"],
-                        "breakeven_aum_fiat": out["breakeven_aum_fiat"],
-                        "max_time_to_payment_periods": out["max_time_to_payment_periods"],
-                        "payment_sla_met": out["payment_sla_met"],
-                        "min_secondary_market_price": out["min_secondary_market_price"],
-                        "total_liquidity_and_financing_costs_fiat": out["total_liquidity_and_financing_costs_fiat"],
-                        "composite_score_100": out["composite_score_100"],
-                        "rating_grade": out["rating_grade"],
-                    }
-                )
+    for design_id, design_meta in cfg["product_designs"].items():
+        for param_key, values in sweep_plan(cfg, design_id):
+            for scenario_id in SWEEP_SCENARIOS:
+                if scenario_id not in cfg["scenarios"]:
+                    continue
+                for val in values:
+                    econ = build_product_economy_from_config(
+                        cfg,
+                        design_id=design_id,
+                        scenario_id=scenario_id,
+                        custom_overrides={param_key: val},
+                    )
+                    econ.run_Fixed_iterations(horizon)
+                    out = econ.summarize_outcomes()
+                    rows.append(
+                        {
+                            "parameter_key": param_key,
+                            "parameter_label": PARAMETER_LABELS.get(param_key, param_key),
+                            "base_scenario": scenario_id,
+                            "parameter_value": val,
+                            "parameter_value_label": format_parameter_value(param_key, val),
+                            "is_configured_value": val == design_parameter_value(cfg, design_id, param_key)
+                            if param_key in PARAMETER_LOCATIONS
+                            else False,
+                            "design_id": design_id,
+                            "design_label": design_meta["short_label"],
+                            "investor_annualised_return_pct": out["investor_annualised_return_pct"],
+                            "investor_score_100": out["investor_score_100"],
+                            "sponsor_viability_score_100": out["sponsor_viability_score_100"],
+                            "issuer_cumulative_profit_fiat": out["issuer_cumulative_profit_fiat"],
+                            "breakeven_aum_fiat": out["breakeven_aum_fiat"],
+                            "max_time_to_payment_periods": out["max_time_to_payment_periods"],
+                            "weighted_avg_time_to_payment_periods": out["weighted_avg_time_to_payment_periods"],
+                            "payment_sla_met": out["payment_sla_met"],
+                            "max_exit_discount_vs_nav": out["max_exit_discount_vs_nav"],
+                            "total_liquidity_and_financing_costs_fiat": out["total_liquidity_and_financing_costs_fiat"],
+                        }
+                    )
     return pd.DataFrame(rows)
 
 
@@ -742,18 +1050,21 @@ def run_parameter_sensitivity_sweeps(config: Optional[Dict[str, Any]] = None) ->
 
 def run_reverse_stress_tests(config: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
-    Identify exact breaking-point conditions under which stated product objectives fail:
+    Identify breaking-point conditions under which stated product objectives fail:
     - Objective 1: Payment Deadline SLA (`max_time_to_payment_periods <= 3.0` months)
-      under an instantaneous Month-12 institutional withdrawal shock (with T+2 settlement lag).
-    - Objective 2: Minimum Liquidity Buffer (`min_cash_plus_facility_to_nav_ratio >= 3.0%` of NAV)
-      under an instantaneous Month-12 institutional withdrawal shock (with T+2 settlement lag).
+      under a Month-12 institutional withdrawal shock alone (baseline otherwise), with
+      a stressed settlement lag of max(2, base lag) for funds whose assets do not settle same-period.
+    - Objective 2: Minimum same-period liquidity coverage (>= 3.0% of investor equity) under the same shock.
     - Objective 3: Issuer Operating Cost Coverage (`issuer_cumulative_profit_fiat >= $0` over 36 months)
       as a function of Initial AUM scale ($5M to $85M).
     """
     cfg = config or load_case_study_config()
     horizon = int(cfg["time_convention"]["horizon_periods"])
-    shock_grid = [round(x, 2) for x in np.linspace(0.0, 0.60, 25)]
+    shock_grid = [round(x, 3) for x in np.linspace(0.0, 1.0, 41)]
     aum_grid = [float(x) for x in np.linspace(5_000_000.0, 85_000_000.0, 33)]
+    objectives = cfg.get("objectives_tested", {})
+    sla_months = float(objectives.get("payment_sla_max_months", 3.0))
+    buffer_floor = float(objectives.get("min_liquidity_buffer_pct_nav", 0.03))
 
     results_by_design: Dict[str, Any] = {}
     for design_id, design_meta in cfg["product_designs"].items():
@@ -761,16 +1072,8 @@ def run_reverse_stress_tests(config: Optional[Dict[str, Any]] = None) -> Dict[st
         buffer_breach_shock: Optional[float] = None
         shock_curve: List[Dict[str, Any]] = []
 
-        if cfg.get("per_product_portfolio"):
-            base_lag = int(
-                design_meta.get("portfolio", {}).get(
-                    "settlement_lag_periods",
-                    cfg["underlying_portfolio"]["settlement_lag_periods"],
-                )
-            )
-            stress_lag = 0 if base_lag == 0 else max(2, base_lag)
-        else:
-            stress_lag = 2
+        base_lag = int(design_parameter_value(cfg, design_id, "settlement_lag_periods") or 0)
+        stress_lag = 0 if base_lag == 0 else max(2, base_lag)
 
         for shock in shock_grid:
             econ = build_product_economy_from_config(
@@ -794,7 +1097,9 @@ def run_reverse_stress_tests(config: Optional[Dict[str, Any]] = None) -> Dict[st
                 {
                     "shock_fraction": shock,
                     "max_time_to_payment_periods": out["max_time_to_payment_periods"],
-                    "min_cash_plus_facility_to_nav_ratio": out["min_cash_plus_facility_to_nav_ratio"],
+                    "weighted_avg_time_to_payment_periods": out["weighted_avg_time_to_payment_periods"],
+                    "min_liquidity_coverage_ratio": out["min_liquidity_coverage_ratio"],
+                    "max_exit_discount_vs_nav": out["max_exit_discount_vs_nav"],
                     "payment_sla_met": sla_ok,
                     "liquidity_buffer_floor_met": buf_ok,
                 }
@@ -803,183 +1108,290 @@ def run_reverse_stress_tests(config: Optional[Dict[str, Any]] = None) -> Dict[st
         min_profitable_initial_aum_baseline: Optional[float] = None
         min_profitable_initial_aum_low_growth: Optional[float] = None
         for aum_val in aum_grid:
-            econ_base = build_product_economy_from_config(
-                cfg,
-                design_id=design_id,
-                scenario_id="baseline",
-                custom_overrides={"initial_aum": aum_val},
-            )
-            econ_base.run_Fixed_iterations(horizon)
-            if econ_base.summarize_outcomes()["issuer_profitable"] and min_profitable_initial_aum_baseline is None:
-                min_profitable_initial_aum_baseline = aum_val
+            if min_profitable_initial_aum_baseline is None:
+                econ_base = build_product_economy_from_config(
+                    cfg, design_id=design_id, scenario_id="baseline", custom_overrides={"initial_aum": aum_val}
+                )
+                econ_base.run_Fixed_iterations(horizon)
+                if econ_base.summarize_outcomes()["issuer_profitable"]:
+                    min_profitable_initial_aum_baseline = aum_val
+            if min_profitable_initial_aum_low_growth is None and "low_participation" in cfg["scenarios"]:
+                econ_low = build_product_economy_from_config(
+                    cfg, design_id=design_id, scenario_id="low_participation", custom_overrides={"initial_aum": aum_val}
+                )
+                econ_low.run_Fixed_iterations(horizon)
+                if econ_low.summarize_outcomes()["issuer_profitable"]:
+                    min_profitable_initial_aum_low_growth = aum_val
 
-            econ_low = build_product_economy_from_config(
-                cfg,
-                design_id=design_id,
-                scenario_id="low_participation",
-                custom_overrides={"initial_aum": aum_val},
-            )
-            econ_low.run_Fixed_iterations(horizon)
-            if econ_low.summarize_outcomes()["issuer_profitable"] and min_profitable_initial_aum_low_growth is None:
-                min_profitable_initial_aum_low_growth = aum_val
-
-        # Analytical steady-state break-even AUM
         econ_ref = build_product_economy_from_config(cfg, design_id=design_id, scenario_id="baseline")
-        analytical_be = econ_ref.summarize_outcomes()["breakeven_aum_fiat"]
+        analytical_be = econ_ref.compute_breakeven()["breakeven_aum"]
 
         results_by_design[design_id] = {
             "design_id": design_id,
             "design_label": design_meta["short_label"],
-            "objective_1_payment_sla_max_months": 3.0,
+            "stress_settlement_lag_periods": stress_lag,
+            "objective_1_payment_sla_max_months": sla_months,
             "min_institutional_shock_breaching_sla": sla_breach_shock,
-            "objective_2_liquidity_buffer_floor_pct": 0.03,
+            "objective_2_liquidity_coverage_floor_pct": buffer_floor,
             "min_institutional_shock_breaching_buffer": buffer_breach_shock,
             "objective_3_issuer_profit_floor_fiat": 0.0,
             "analytical_steady_state_breakeven_aum_fiat": analytical_be,
             "min_initial_aum_profitable_baseline_fiat": min_profitable_initial_aum_baseline,
             "min_initial_aum_profitable_low_growth_fiat": min_profitable_initial_aum_low_growth,
+            "aum_grid_step_fiat": aum_grid[1] - aum_grid[0],
             "shock_response_curve": shock_curve,
         }
 
     return {
         "objectives_defined": {
-            "objective_1_payment_deadline": "Maximum time to full cash settlement of any redemption request <= 3.0 months",
-            "objective_2_liquidity_buffer": "Minimum (Portfolio Cash + Available Credit Facility) / NAV >= 3.0% at all steps",
+            "objective_1_payment_deadline": f"Maximum time to full cash settlement of any redemption request <= {sla_months:.1f} months",
+            "objective_2_liquidity_buffer": f"Minimum same-period liquidity coverage (cash, undrawn facility, receivables due next month, same-period-settling assets) >= {buffer_floor * 100:.1f}% of investor equity",
             "objective_3_issuer_cost_coverage": "Cumulative 36-month issuer net profit >= $0 (revenue covers fixed + variable costs)",
+            "shock_definition": "Month-12 tender by the institutional cohort (about half of starting AUM) on top of baseline behaviour; no Month-13 wave.",
         },
         "designs": results_by_design,
     }
 
 
 # ---------------------------------------------------------------------------
-# Monte Carlo Uncertainty Bands (P10 / P50 / P90) & Spearman Rank Sensitivity
+# Monte Carlo Across All Scenarios: P10 / P50 / P90 & Rank Probabilities
 # ---------------------------------------------------------------------------
+
+
+def _quantiles(arr: List[float]) -> Dict[str, float]:
+    a = np.asarray([x for x in arr if x is not None], dtype=float)
+    if a.size == 0:
+        return {"p10": float("nan"), "p50": float("nan"), "p90": float("nan"), "mean": float("nan"), "std": 0.0}
+    return {
+        "p10": float(np.percentile(a, 10)),
+        "p50": float(np.percentile(a, 50)),
+        "p90": float(np.percentile(a, 90)),
+        "mean": float(np.mean(a)),
+        "std": float(np.std(a, ddof=1)) if a.size > 1 else 0.0,
+    }
+
+
+def _rank_one_probability(scores: np.ndarray) -> np.ndarray:
+    """scores: (draws, designs). Share of draws in which each design has the highest score (ties split)."""
+    best = scores.max(axis=1, keepdims=True)
+    winners = np.isclose(scores, best)
+    return (winners / winners.sum(axis=1, keepdims=True)).mean(axis=0)
+
+
+_RAW_SCORE_INPUTS: Tuple[str, ...] = (
+    "excess_return_annual",
+    "weighted_avg_time_to_payment_periods",
+    "max_exit_discount_vs_nav",
+    "max_total_return_drawdown",
+    "min_liquidity_coverage_ratio",
+)
+_SCALE_KEYS: Tuple[str, ...] = (
+    "excess_return_full_marks",
+    "wait_decay_periods",
+    "exit_discount_decay",
+    "drawdown_decay",
+    "coverage_decay",
+)
+
+
+def _pillars_from_raw(raw: np.ndarray, scale_mult: np.ndarray) -> np.ndarray:
+    """Vectorised `compute_investor_score` pillars from raw inputs (..., 5) with scale multipliers (5,)."""
+    s = np.array([INVESTOR_SCORE_SCALES[k] for k in _SCALE_KEYS]) * scale_mult
+    excess, wait, disc, dd, cov = (raw[..., i] for i in range(5))
+    yield_score = np.clip(100.0 * excess / s[0], 0.0, 100.0)
+    exit_score = 100.0 * (0.5 * np.exp(-np.maximum(wait, 0.0) / s[1]) + 0.5 * np.exp(-np.maximum(disc, 0.0) / s[2]))
+    stability = 100.0 * np.exp(-np.maximum(dd, 0.0) / s[3])
+    resilience = 100.0 * (1.0 - np.exp(-np.maximum(cov, 0.0) / s[4]))
+    return np.stack([yield_score, exit_score, stability, resilience], axis=-1)
+
+
+def excess_return_scale_breakeven(summary_df: pd.DataFrame, cfg: Dict[str, Any], challenger: str, incumbent: str) -> Optional[float]:
+    """
+    Excess-return scale (the excess return that earns full yield marks) at which `challenger`'s
+    across-scenario investor score equals `incumbent`'s; None if no crossing in [0.25%, 20%].
+    """
+    weights = scenario_weights(cfg)
+
+    def ttc(design_id: str, scale: float) -> float:
+        g = summary_df[summary_df.design_id == design_id].set_index("scenario_id")
+        mult = np.ones(len(_SCALE_KEYS))
+        mult[0] = scale / INVESTOR_SCORE_SCALES["excess_return_full_marks"]
+        raw = g[list(_RAW_SCORE_INPUTS)].astype(float).fillna(0.0).to_numpy()
+        pillars = _pillars_from_raw(raw, mult)
+        w = np.array([INVESTOR_SCORE_WEIGHTS[k] for k in INVESTOR_PILLAR_KEYS])
+        per_scen = pillars @ (w / w.sum())
+        return float(sum(weights[s] * v for s, v in zip(g.index, per_scen)))
+
+    def gap(scale: float) -> float:
+        return ttc(challenger, scale) - ttc(incumbent, scale)
+
+    lo, hi = 0.0025, 0.20
+    if gap(lo) * gap(hi) > 0:
+        return None
+    for _ in range(60):
+        mid = 0.5 * (lo + hi)
+        if gap(lo) * gap(mid) <= 0:
+            hi = mid
+        else:
+            lo = mid
+    return 0.5 * (lo + hi)
 
 
 def run_monte_carlo_product_analysis(
     config: Optional[Dict[str, Any]] = None,
     num_repetitions: Optional[int] = None,
-    scenario_id: str = "concentrated_withdrawals",
+    scenario_ids: Optional[List[str]] = None,
+    weight_draws: int = 20_000,
 ) -> Dict[str, Any]:
     """
-    Execute seeded multi-repetition Monte Carlo simulations across all 3 designs
-    with stochastic yield, asset valuation, and withdrawal noise, reporting
-    P10 / P50 / P90 outcome bands, SLA compliance rates, and Spearman rank
-    correlations.
+    Seeded Monte Carlo over every scenario and design with common random numbers:
+    each repetition draws one yield shock (scaled by each design's declared yield
+    uncertainty), one inflow multiplier and one withdrawal-shock multiplier shared by
+    all designs, plus path noise in yields, marks and redemptions. Reports per-scenario
+    P10/P50/P90, the across-scenario investor score distribution, and the probability
+    that each design ranks first under (a) the published weights, (b) local weight
+    uncertainty and (c) any weights (uniform over the simplex), with scenario
+    weights perturbed in (b) and (c) as well.
     """
     cfg = config or load_case_study_config()
-    mc_cfg = cfg.get("monte_carlo", {})
-    n_reps = int(num_repetitions or mc_cfg.get("default_repetitions", 50))
+    mc_cfg = cfg.get("monte_carlo", {}) or {}
+    n_reps = int(num_repetitions or mc_cfg.get("default_repetitions", 60))
     base_seed = int(mc_cfg.get("random_seed", 20261026))
     horizon = int(cfg["time_convention"]["horizon_periods"])
+    scen_ids = list(scenario_ids or cfg["scenarios"].keys())
+    design_ids = list(cfg["product_designs"].keys())
+    weights_s = scenario_weights(cfg)
+    w_vec = np.array([weights_s[s] for s in scen_ids])
+    w_vec = w_vec / w_vec.sum()
 
-    stoch_ov = {
-        "stochastic_yield_volatility_annual": float(mc_cfg.get("stochastic_yield_volatility_annual", 0.012)),
-        "stochastic_capital_volatility_annual": float(mc_cfg.get("stochastic_capital_volatility_annual", 0.018)),
-        "stochastic_redemption_noise_std": float(mc_cfg.get("stochastic_redemption_noise_std", 0.012)),
-    }
+    rep_rng = np.random.default_rng(base_seed)
+    rep_draws = [
+        {
+            "yield_z": float(rep_rng.normal()),
+            "inflow_mult": float(max(0.2, rep_rng.normal(1.0, 0.20))),
+            "shock_mult": float(max(0.0, rep_rng.normal(1.0, 0.25))),
+        }
+        for _ in range(n_reps)
+    ]
 
-    design_mc_summaries: Dict[str, Any] = {}
-    for d_idx, (design_id, design_meta) in enumerate(cfg["product_designs"].items()):
-        inv_returns: List[float] = []
-        issuer_profits: List[float] = []
-        max_waits: List[float] = []
-        liq_costs: List[float] = []
-        min_navs: List[float] = []
-        comp_scores: List[float] = []
-        sla_passes: List[float] = []
-        profitable_flags: List[float] = []
-
-        # Also sample input drivers for Spearman rank sensitivity
-        sampled_yields: List[float] = []
-        sampled_shocks: List[float] = []
-        sampled_inflows: List[float] = []
-
-        base_yield = float(
-            design_meta.get("portfolio", {}).get(
-                "gross_yield_annual",
-                cfg["underlying_portfolio"]["gross_yield_annual"],
+    pillar_arr = np.zeros((len(design_ids), n_reps, len(scen_ids), len(INVESTOR_PILLAR_KEYS)))
+    raw_arr = np.zeros((len(design_ids), n_reps, len(scen_ids), len(_RAW_SCORE_INPUTS)))
+    score_arr = np.zeros((len(design_ids), n_reps, len(scen_ids)))
+    per_design: Dict[str, Any] = {}
+    for d_idx, design_id in enumerate(design_ids):
+        d_ov = ((mc_cfg.get("design_overrides") or {}).get(design_id) or {})
+        yield_sd = float(d_ov.get("gross_yield_sd", mc_cfg.get("gross_yield_sd", 0.008)))
+        stoch = {
+            key: float(d_ov.get(key, mc_cfg.get(key, default)))
+            for key, default in (
+                ("stochastic_yield_volatility_annual", 0.010),
+                ("stochastic_capital_volatility_annual", 0.015),
+                ("stochastic_redemption_noise_std", 0.012),
             )
-        )
-        param_rng = np.random.default_rng(base_seed + d_idx * 1000)
-        for rep in range(n_reps):
-            rep_seed = base_seed + d_idx * 10_000 + rep
-            rep_yield = float(param_rng.normal(base_yield, 0.008))
-            rep_shock = float(max(0.05, param_rng.normal(0.28, 0.07)))
-            rep_inflow_mult = float(max(0.2, param_rng.normal(0.85, 0.20)))
+        }
+        base_yield = float(design_parameter_value(cfg, design_id, "gross_yield_annual"))
+        per_scen: Dict[str, Dict[str, List[Any]]] = {
+            s: {"twr": [], "irr": [], "score": [], "max_wait": [], "exit_disc": [], "profit": [], "sla": []} for s in scen_ids
+        }
+        for rep, draw in enumerate(rep_draws):
+            rep_yield = max(0.0, base_yield + yield_sd * draw["yield_z"])
+            for s_idx, scenario_id in enumerate(scen_ids):
+                scen_participation = float(
+                    scenario_overrides_for_design(cfg, design_id, scenario_id).get("participation_multiplier", 1.0)
+                )
+                ov = {
+                    **stoch,
+                    "gross_yield_annual": rep_yield,
+                    "participation_multiplier": min(3.0, scen_participation * draw["inflow_mult"]),
+                    "withdrawal_shock_multiplier": draw["shock_mult"],
+                }
+                econ = build_product_economy_from_config(
+                    cfg,
+                    design_id=design_id,
+                    scenario_id=scenario_id,
+                    custom_overrides=ov,
+                    random_seed=base_seed + rep * 100 + s_idx,
+                )
+                econ.run_Fixed_iterations(horizon)
+                out = econ.summarize_outcomes()
+                pillar_arr[d_idx, rep, s_idx, :] = [out[k] for k in INVESTOR_PILLAR_KEYS]
+                raw_arr[d_idx, rep, s_idx, :] = [float(out[k] or 0.0) for k in _RAW_SCORE_INPUTS]
+                score_arr[d_idx, rep, s_idx] = out["investor_score_100"]
+                bucket = per_scen[scenario_id]
+                bucket["twr"].append(out["investor_annualised_return_pct"])
+                bucket["irr"].append(out["investor_irr_annualised_pct"])
+                bucket["score"].append(out["investor_score_100"])
+                bucket["max_wait"].append(out["max_time_to_payment_periods"])
+                bucket["exit_disc"].append(out["max_exit_discount_vs_nav"])
+                bucket["profit"].append(out["issuer_cumulative_profit_fiat"])
+                bucket["sla"].append(1.0 if out["payment_sla_met"] else 0.0)
 
-            sampled_yields.append(rep_yield)
-            sampled_shocks.append(rep_shock)
-            sampled_inflows.append(rep_inflow_mult)
-
-            ov = {
-                **stoch_ov,
-                "gross_yield_annual": rep_yield,
-                "month12_institutional_shock": rep_shock,
-                "participation_multiplier": rep_inflow_mult,
-            }
-            econ = build_product_economy_from_config(
-                cfg,
-                design_id=design_id,
-                scenario_id=scenario_id,
-                custom_overrides=ov,
-                random_seed=rep_seed,
-            )
-            econ.run_Fixed_iterations(horizon)
-            out = econ.summarize_outcomes()
-
-            inv_returns.append(float(out["investor_annualised_return_pct"]))
-            issuer_profits.append(float(out["issuer_cumulative_profit_fiat"]))
-            max_waits.append(float(out["max_time_to_payment_periods"]))
-            liq_costs.append(float(out["total_liquidity_and_financing_costs_fiat"]))
-            min_navs.append(float(out["min_nav_per_token"]))
-            comp_scores.append(float(out["composite_score_100"]))
-            sla_passes.append(1.0 if out["payment_sla_met"] else 0.0)
-            profitable_flags.append(1.0 if out["issuer_profitable"] else 0.0)
-
-        def _quantiles(arr: List[float]) -> Dict[str, float]:
-            a = np.asarray(arr, dtype=float)
-            return {
-                "p10": float(np.percentile(a, 10)),
-                "p50": float(np.percentile(a, 50)),
-                "p90": float(np.percentile(a, 90)),
-                "mean": float(np.mean(a)),
-                "std": float(np.std(a, ddof=1)) if len(a) > 1 else 0.0,
-            }
-
-        def _spearman(x: List[float], y: List[float]) -> float:
-            if np.std(x) < 1e-12 or np.std(y) < 1e-12:
-                return 0.0
-            rho, _ = spearmanr(x, y)
-            return 0.0 if np.isnan(rho) else float(rho)
-
-        design_mc_summaries[design_id] = {
+        ttc = score_arr[d_idx] @ w_vec
+        per_design[design_id] = {
             "design_id": design_id,
-            "design_label": design_meta["short_label"],
+            "design_label": cfg["product_designs"][design_id]["short_label"],
             "repetitions": n_reps,
-            "scenario_id": scenario_id,
-            "investor_annualised_return_pct": _quantiles(inv_returns),
-            "issuer_cumulative_profit_fiat": _quantiles(issuer_profits),
-            "max_time_to_payment_periods": _quantiles(max_waits),
-            "total_liquidity_and_financing_costs_fiat": _quantiles(liq_costs),
-            "min_nav_per_token": _quantiles(min_navs),
-            "composite_score_100": _quantiles(comp_scores),
-            "payment_sla_pass_rate": float(np.mean(sla_passes)),
-            "issuer_profitability_rate": float(np.mean(profitable_flags)),
-            "spearman_rank_correlations": {
-                "gross_yield_vs_investor_return": _spearman(sampled_yields, inv_returns),
-                "withdrawal_shock_vs_max_payment_wait": _spearman(sampled_shocks, max_waits),
-                "inflow_multiplier_vs_issuer_profit": _spearman(sampled_inflows, issuer_profits),
-                "withdrawal_shock_vs_liquidity_cost": _spearman(sampled_shocks, liq_costs),
+            "gross_yield_sd": yield_sd,
+            "stochastic_overrides": stoch,
+            "across_scenario_investor_score": _quantiles(list(ttc)),
+            "worst_scenario_investor_score": _quantiles(list(score_arr[d_idx].min(axis=1))),
+            "scenarios": {
+                s: {
+                    "investor_annualised_return_pct": _quantiles(b["twr"]),
+                    "investor_irr_annualised_pct": _quantiles(b["irr"]),
+                    "investor_score_100": _quantiles(b["score"]),
+                    "max_time_to_payment_periods": _quantiles(b["max_wait"]),
+                    "max_exit_discount_vs_nav": _quantiles(b["exit_disc"]),
+                    "issuer_cumulative_profit_fiat": _quantiles(b["profit"]),
+                    "payment_sla_pass_rate": float(np.mean(b["sla"])),
+                }
+                for s, b in per_scen.items()
             },
         }
+
+    # Rank probabilities: MC repetitions x draws of pillar weights, scenario weights and score scales
+    w_pillar = np.array([INVESTOR_SCORE_WEIGHTS[k] for k in INVESTOR_PILLAR_KEYS])
+    rng_w = np.random.default_rng(base_seed + 7)
+
+    def _scores_for(pillar_w: np.ndarray, scen_w: np.ndarray, scale_mult: Optional[np.ndarray] = None) -> np.ndarray:
+        # Returns (R, D) across-scenario scores; pillars are recomputed from raw inputs when scales move
+        pillars = pillar_arr if scale_mult is None else _pillars_from_raw(raw_arr, scale_mult)
+        per_scen = np.einsum("drsk,k->drs", pillars, pillar_w / pillar_w.sum())
+        return np.einsum("drs,s->dr", per_scen, scen_w / scen_w.sum()).T
+
+    def _log_uniform(spread: float) -> np.ndarray:
+        return np.exp(rng_w.uniform(-math.log(spread), math.log(spread), size=len(_SCALE_KEYS)))
+
+    published = _rank_one_probability(_scores_for(w_pillar, w_vec))
+    draws_per_rep = max(1, weight_draws // max(1, n_reps))
+    local_hits = np.zeros(len(design_ids))
+    any_hits = np.zeros(len(design_ids))
+    for _ in range(draws_per_rep):
+        local_hits += _rank_one_probability(
+            _scores_for(rng_w.dirichlet(w_pillar * 40.0), rng_w.dirichlet(w_vec * 40.0), _log_uniform(2.0))
+        )
+        any_hits += _rank_one_probability(
+            _scores_for(rng_w.dirichlet(np.ones(len(w_pillar))), rng_w.dirichlet(np.ones(len(w_vec))), _log_uniform(4.0))
+        )
+    per_scenario_rank_one = {}
+    for s_idx, scenario_id in enumerate(scen_ids):
+        sc = np.einsum("drk,k->rd", pillar_arr[:, :, s_idx, :], w_pillar / w_pillar.sum())
+        per_scenario_rank_one[scenario_id] = dict(zip(design_ids, map(float, _rank_one_probability(sc))))
 
     return {
         "evidence_status": "synthetic_priors_modeled_outcomes",
         "random_seed": base_seed,
         "repetitions": n_reps,
-        "scenario_id": scenario_id,
-        "designs": design_mc_summaries,
+        "scenario_ids": scen_ids,
+        "scenario_weights": dict(zip(scen_ids, map(float, w_vec))),
+        "weight_draws": draws_per_rep * n_reps,
+        "designs": per_design,
+        "rank_one_probability": {
+            "published_weights": dict(zip(design_ids, map(float, published))),
+            "local_weight_uncertainty": dict(zip(design_ids, map(float, local_hits / draws_per_rep))),
+            "any_weights": dict(zip(design_ids, map(float, any_hits / draws_per_rep))),
+            "per_scenario_published_weights": per_scenario_rank_one,
+        },
     }
 
 
@@ -987,8 +1399,31 @@ def run_monte_carlo_product_analysis(
 # Plot Generation & Self-Contained HTML Case Study Report
 # ---------------------------------------------------------------------------
 
+# Categorical slots 1-3 of the validated reference palette (all-pairs CVD-safe in light mode);
+# aqua sits below 3:1 contrast, so every chart direct-labels its series.
+SERIES_COLORS: Tuple[str, ...] = ("#2a78d6", "#eb6834", "#1baf7a")
+SERIES_MARKERS: Tuple[str, ...] = ("o", "s", "^")
+SERIES_DASHES: Tuple[Any, ...] = ("-", "--", "-.")
+_INK = {"primary": "#0b0b0b", "secondary": "#52514e", "grid": "#e4e3df", "surface": "#fcfcfb"}
+
+
+def _style_axes(ax: Any) -> None:
+    ax.set_facecolor(_INK["surface"])
+    for side in ("top", "right"):
+        ax.spines[side].set_visible(False)
+    for side in ("left", "bottom"):
+        ax.spines[side].set_color(_INK["grid"])
+    ax.tick_params(colors=_INK["secondary"], labelsize=10)
+    ax.grid(True, color=_INK["grid"], linewidth=0.8)
+    ax.set_axisbelow(True)
+
+
+def _short_scenario_label(cfg: Dict[str, Any], scenario_id: str) -> str:
+    return str(cfg["scenarios"][scenario_id].get("short_label") or scenario_id.replace("_", " "))
+
 
 def _generate_case_study_plots(
+    cfg: Dict[str, Any],
     summary_df: pd.DataFrame,
     ts_df: pd.DataFrame,
     sensitivity_df: pd.DataFrame,
@@ -996,225 +1431,249 @@ def _generate_case_study_plots(
     mc_results: Dict[str, Any],
     plots_dir: Path,
 ) -> Dict[str, str]:
-    """Generate dark-themed Matplotlib charts for the HTML report and return file paths."""
+    """Generate light-theme charts (validated colour-blind-safe palette, direct labels) and return file paths."""
     plots_dir.mkdir(parents=True, exist_ok=True)
     plt.rcParams.update(
         {
-            "figure.facecolor": "#0F172A",
-            "axes.facecolor": "#1E293B",
-            "axes.edgecolor": "#334155",
-            "axes.labelcolor": "#E2E8F0",
-            "xtick.color": "#94A3B8",
-            "ytick.color": "#94A3B8",
-            "text.color": "#E2E8F0",
-            "grid.color": "#334155",
-            "grid.alpha": 0.45,
-            "legend.facecolor": "#0F172A",
-            "legend.edgecolor": "#334155",
+            "figure.facecolor": _INK["surface"],
+            "axes.facecolor": _INK["surface"],
+            "axes.labelcolor": _INK["primary"],
+            "axes.titlecolor": _INK["primary"],
+            "axes.titlesize": 12,
+            "axes.labelsize": 11,
+            "text.color": _INK["primary"],
+            "legend.frameon": False,
+            "legend.fontsize": 10,
+            "font.size": 10,
         }
     )
-    colors = {
-        "design_a_liquid_low_fee": "#38BDF8",
-        "design_b_gated_high_fee": "#F59E0B",
-        "design_c_balanced_facility": "#22C55E",
-        "buidl_treasury": "#38BDF8",
-        "maple_syrup_usdc": "#F59E0B",
-        "hamilton_lane_scope": "#22C55E",
-    }
-
+    design_ids = list(cfg["product_designs"].keys())
+    labels = {d: cfg["product_designs"][d]["short_label"] for d in design_ids}
+    color = {d: SERIES_COLORS[i % 3] for i, d in enumerate(design_ids)}
+    marker = {d: SERIES_MARKERS[i % 3] for i, d in enumerate(design_ids)}
+    dash = {d: SERIES_DASHES[i % 3] for i, d in enumerate(design_ids)}
+    scen_order = list(cfg["scenarios"].keys())
     saved: Dict[str, str] = {}
 
-    # Plot 1: Investor Return vs. Issuer Cumulative Profit Trade-Off Across Scenarios
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.2))
-    scen_order = list(summary_df["scenario_id"].unique())
-    x = np.arange(len(scen_order))
-    width = 0.26
-
-    for idx, (d_id, group) in enumerate(summary_df.groupby("design_id", sort=False)):
-        g_indexed = group.set_index("scenario_id").reindex(scen_order)
-        label = g_indexed["design_label"].iloc[0]
-        axes[0].bar(
-            x + (idx - 1) * width,
-            g_indexed["investor_annualised_return_pct"] * 100.0,
-            width=width,
-            color=colors.get(d_id, "#3B82F6"),
-            label=label,
-        )
-        axes[1].bar(
-            x + (idx - 1) * width,
-            g_indexed["issuer_cumulative_profit_fiat"] / 1000.0,
-            width=width,
-            color=colors.get(d_id, "#3B82F6"),
-            label=label,
-        )
-
-    short_scen_labels = [
-        "1.Base",
-        "2.LowGrowth",
-        "3.LowReturn",
-        "4.RunShock",
-        "5.T+3Lag",
-        "6.CutFacility",
-        "7.Combined",
-        "8.RevStress",
-    ]
-    for ax in axes:
-        ax.set_xticks(x)
-        ax.set_xticklabels(short_scen_labels, rotation=28, ha="right", fontsize=8.5)
-        ax.grid(True, axis="y")
-    axes[0].set_title("Investor Net Annualised Return (% p.a.)", fontsize=11, fontweight="bold")
-    axes[0].set_ylabel("Net Return (% p.a.)")
-    axes[0].legend(fontsize=8)
-    axes[1].axhline(0.0, color="#EF4444", linestyle="--", linewidth=1.1)
-    axes[1].set_title("Issuer 36-Month Cumulative Net Profit ($k)", fontsize=11, fontweight="bold")
-    axes[1].set_ylabel("Cumulative Profit / Loss ($k)")
-    axes[1].legend(fontsize=8)
+    # 1. Investor score by scenario (dot plot) and sponsor viability (bars)
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5.6), gridspec_kw={"width_ratios": [2.3, 1]})
+    ax = axes[0]
+    _style_axes(ax)
+    y = np.arange(len(scen_order))
+    for i, d in enumerate(design_ids):
+        g = summary_df[summary_df.design_id == d].set_index("scenario_id").reindex(scen_order)
+        ax.scatter(g["investor_score_100"], y + (i - 1) * 0.22, s=64, color=color[d], marker=marker[d],
+                   edgecolors=_INK["surface"], linewidths=1.5, label=labels[d], zorder=3)
+    ax.set_yticks(y)
+    ax.set_yticklabels([_short_scenario_label(cfg, s) for s in scen_order])
+    ax.invert_yaxis()
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("Investor score (0-100)")
+    ax.set_title("Investor score by scenario")
+    ax.legend(loc="lower left", bbox_to_anchor=(0.0, 1.06), ncol=3)
+    ax = axes[1]
+    _style_axes(ax)
+    sponsor = summary_df[summary_df.scenario_id == "baseline"].set_index("design_id").reindex(design_ids)
+    bars = ax.barh(range(len(design_ids)), sponsor["sponsor_viability_score_100"], color=[color[d] for d in design_ids], height=0.55)
+    for rect, d in zip(bars, design_ids):
+        ax.text(rect.get_width() + 2, rect.get_y() + rect.get_height() / 2, f"{rect.get_width():.0f}",
+                va="center", color=_INK["primary"], fontsize=10)
+    ax.set_yticks(range(len(design_ids)))
+    ax.set_yticklabels([labels[d] for d in design_ids])
+    ax.invert_yaxis()
+    ax.set_xlim(0, 110)
+    ax.set_xlabel("Score at documented AUM (0-100)")
+    ax.set_title("Sponsor viability (separate score)")
     fig.tight_layout()
-    p1 = str(plots_dir / "01_returns_and_issuer_profit_by_scenario.png")
-    fig.savefig(p1, dpi=150)
+    p1 = str(plots_dir / "01_investor_score_by_scenario.png")
+    fig.savefig(p1, dpi=160)
     plt.close(fig)
-    saved["returns_and_profit"] = p1
+    saved["investor_scores"] = p1
 
-    # Plot 2: Concentrated Withdrawals & Combined Adverse Time-Series (Unpaid Queue, NAV vs Secondary Price)
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.0))
-    cw_ts = ts_df[ts_df["scenario_id"] == "concentrated_withdrawals"]
-    for d_id, group in cw_ts.groupby("design_id", sort=False):
-        lbl = group["design_label"].iloc[0]
-        c = colors.get(d_id, "#3B82F6")
-        axes[0].plot(
-            group["iteration"],
-            group["unpaid_redemption_obligations"] / 1e6,
-            label=lbl,
-            color=c,
-            linewidth=2.2,
-        )
-        axes[1].plot(
-            group["iteration"],
-            group["nav_per_token"],
-            label=f"{lbl} — NAV/token",
-            color=c,
-            linewidth=2.0,
-        )
-        axes[1].plot(
-            group["iteration"],
-            group["secondary_market_price"],
-            label=f"{lbl} — Secondary Price",
-            color=c,
-            linestyle=":",
-            linewidth=1.8,
-        )
-    axes[0].set_title("Unpaid Redemption Queue ($M) — Concentrated Withdrawals", fontsize=10.5, fontweight="bold")
-    axes[0].set_xlabel("Month")
-    axes[0].set_ylabel("Unpaid Redemption Backlog ($M)")
-    axes[0].grid(True)
-    axes[0].legend(fontsize=8)
-
-    axes[1].set_title("NAV per Token vs. Secondary Executable Price ($)", fontsize=10.5, fontweight="bold")
-    axes[1].set_xlabel("Month")
-    axes[1].set_ylabel("USD per Token ($)")
-    axes[1].grid(True)
-    axes[1].legend(fontsize=7.2, ncol=1)
+    # 2. 30% institutional run: queue value and immediate-exit discount over time (two panels, one axis each)
+    run_id = "concentrated_withdrawals" if "concentrated_withdrawals" in scen_order else scen_order[0]
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
+    for panel, (col, scale, ylabel, title) in enumerate(
+        [
+            ("unpaid_redemption_obligations", 1e6, "Unpaid redemption queue ($M)", "Redemption queue"),
+            ("exit_discount_vs_nav", 0.01, "Immediate-exit discount to NAV (%)", "Cost of exiting now"),
+        ]
+    ):
+        ax = axes[panel]
+        _style_axes(ax)
+        for d in design_ids:
+            g = ts_df[(ts_df.design_id == d) & (ts_df.scenario_id == run_id)]
+            vals = g[col] / scale
+            ax.plot(g["iteration"], vals, linestyle=dash[d], color=color[d], linewidth=2, label=labels[d])
+        ax.set_xlim(1, ts_df["iteration"].max())
+        ax.set_ylim(bottom=0)
+        ax.set_xlabel("Month")
+        ax.set_ylabel(ylabel)
+        ax.set_title(title)
+    axes[0].legend(loc="upper right")
+    fig.suptitle(cfg["scenarios"][run_id]["name"], fontsize=12, color=_INK["primary"])
     fig.tight_layout()
-    p2 = str(plots_dir / "02_liquidity_queue_and_price_dislocation.png")
-    fig.savefig(p2, dpi=150)
+    p2 = str(plots_dir / "02_run_queue_and_exit_discount.png")
+    fig.savefig(p2, dpi=160)
     plt.close(fig)
-    saved["liquidity_and_prices"] = p2
+    saved["run_dynamics"] = p2
 
-    # Plot 3: OAT Parameter Sensitivities (AUM Scale vs Issuer Profit & Settlement Lag vs Wait Time)
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.0))
-    aum_sub = sensitivity_df[sensitivity_df["parameter_key"] == "initial_aum"]
-    for d_id, group in aum_sub.groupby("design_id", sort=False):
-        axes[0].plot(
-            group["parameter_value"] / 1e6,
-            group["issuer_cumulative_profit_fiat"] / 1e3,
-            marker="o",
-            color=colors.get(d_id, "#3B82F6"),
-            linewidth=2.1,
-            label=group["design_label"].iloc[0],
-        )
-    axes[0].axhline(0.0, color="#EF4444", linestyle="--", linewidth=1.1, label="Break-Even ($0)")
-    axes[0].set_title("Sensitivity: Initial AUM ($M) vs. Issuer 3-Yr Profit ($k)", fontsize=10.5, fontweight="bold")
-    axes[0].set_xlabel("Initial AUM ($M)")
-    axes[0].set_ylabel("Cumulative Issuer Profit ($k)")
-    axes[0].grid(True)
-    axes[0].legend(fontsize=8)
-
-    lag_sub = sensitivity_df[sensitivity_df["parameter_key"] == "settlement_lag_periods"]
-    for d_id, group in lag_sub.groupby("design_id", sort=False):
-        axes[1].plot(
-            group["parameter_value"],
-            group["max_time_to_payment_periods"],
-            marker="s",
-            color=colors.get(d_id, "#3B82F6"),
-            linewidth=2.1,
-            label=group["design_label"].iloc[0],
-        )
-    axes[1].axhline(3.0, color="#EF4444", linestyle="--", linewidth=1.25, label="Payment SLA Ceiling (3 Mo)")
-    axes[1].set_title("Sensitivity: Asset Settlement Lag vs. Max Time to Payment", fontsize=10.5, fontweight="bold")
-    axes[1].set_xlabel("Underlying Asset Settlement Lag (Months)")
-    axes[1].set_ylabel("Max Time to Full Payment (Months)")
-    axes[1].grid(True)
-    axes[1].legend(fontsize=8)
+    # 3. Returns by scenario: per-unit TWR, IRR and forced-exit return (small multiples by measure)
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5.2), sharey=True)
+    for panel, (col, title) in enumerate(
+        [
+            ("investor_annualised_return_pct", "Per-unit TWR (% p.a.)"),
+            ("investor_irr_annualised_pct", "Money-weighted IRR (% p.a.)"),
+            ("forced_exit_return_annualised_pct", "Forced-exit return (% p.a.)"),
+        ]
+    ):
+        ax = axes[panel]
+        _style_axes(ax)
+        for i, d in enumerate(design_ids):
+            g = summary_df[summary_df.design_id == d].set_index("scenario_id").reindex(scen_order)
+            ax.scatter(g[col].astype(float) * 100.0, y + (i - 1) * 0.22, s=54, color=color[d], marker=marker[d],
+                       edgecolors=_INK["surface"], linewidths=1.5, label=labels[d], zorder=3)
+        ax.axvline(0, color=_INK["secondary"], linewidth=1)
+        ax.set_title(title)
+        ax.set_xlabel("% p.a.")
+    axes[0].set_yticks(y)
+    axes[0].set_yticklabels([_short_scenario_label(cfg, s) for s in scen_order])
+    axes[0].invert_yaxis()
+    axes[0].legend(loc="lower left", bbox_to_anchor=(0.0, 1.08), ncol=3)
     fig.tight_layout()
-    p3 = str(plots_dir / "03_parameter_sensitivities_aum_and_lag.png")
-    fig.savefig(p3, dpi=150)
+    p3 = str(plots_dir / "03_returns_twr_irr_forced_exit.png")
+    fig.savefig(p3, dpi=160)
     plt.close(fig)
-    saved["sensitivities"] = p3
+    saved["returns"] = p3
 
-    # Plot 4: Reverse Stress Test Curve & Monte Carlo P10/P50/P90 Outcome Bands
-    fig, axes = plt.subplots(1, 2, figsize=(13, 5.0))
-    for d_id, d_rev in reverse_stress["designs"].items():
-        curve = pd.DataFrame(d_rev["shock_response_curve"])
-        axes[0].plot(
-            curve["shock_fraction"] * 100.0,
-            curve["max_time_to_payment_periods"],
-            marker="o",
-            markersize=4,
-            color=colors.get(d_id, "#3B82F6"),
-            linewidth=2.0,
-            label=d_rev["design_label"],
-        )
-    axes[0].axhline(3.0, color="#EF4444", linestyle="--", linewidth=1.25, label="SLA Failure Boundary (3.0 Mo)")
-    axes[0].set_title("Reverse Stress Test: Institutional Run Shock vs. Payment Delay", fontsize=10.5, fontweight="bold")
-    axes[0].set_xlabel("Month-12 Institutional Withdrawal Shock (% of Cohort)")
-    axes[0].set_ylabel("Max Time to Full Payment (Months)")
-    axes[0].grid(True)
-    axes[0].legend(fontsize=8)
-
-    mc_designs = list(mc_results["designs"].values())
-    y_pos = np.arange(len(mc_designs))
-    p50s = [d["investor_annualised_return_pct"]["p50"] * 100.0 for d in mc_designs]
-    p10s = [d["investor_annualised_return_pct"]["p10"] * 100.0 for d in mc_designs]
-    p90s = [d["investor_annualised_return_pct"]["p90"] * 100.0 for d in mc_designs]
-    err_low = np.maximum(0.0, np.array(p50s) - np.array(p10s))
-    err_high = np.maximum(0.0, np.array(p90s) - np.array(p50s))
-    bar_colors = [colors.get(d["design_id"], "#3B82F6") for d in mc_designs]
-
-    axes[1].barh(
-        y_pos,
-        p50s,
-        xerr=[err_low, err_high],
-        color=bar_colors,
-        alpha=0.88,
-        capsize=5,
-        height=0.45,
-    )
-    axes[1].set_yticks(y_pos)
-    axes[1].set_yticklabels([d["design_label"] for d in mc_designs], fontsize=9)
-    axes[1].set_xlabel("Investor Annualised Net Return (% p.a.) — P10 / P50 / P90")
-    axes[1].set_title(
-        f"Monte Carlo Uncertainty ({mc_results['repetitions']} Seeded Runs — P10/P50/P90)",
-        fontsize=10.5,
-        fontweight="bold",
-    )
-    axes[1].grid(True, axis="x")
+    # 4. Monte Carlo: across-scenario score bands and rank-one probabilities
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.8))
+    ax = axes[0]
+    _style_axes(ax)
+    for i, d in enumerate(design_ids):
+        q = mc_results["designs"][d]["across_scenario_investor_score"]
+        ax.plot([q["p10"], q["p90"]], [i, i], color=color[d], linewidth=6, solid_capstyle="round", alpha=0.45)
+        ax.scatter([q["p50"]], [i], color=color[d], marker=marker[d], s=90, edgecolors=_INK["surface"], linewidths=1.5, zorder=3)
+        ax.annotate(f"P50 {q['p50']:.1f}  (P10 {q['p10']:.1f} – P90 {q['p90']:.1f})", (q["p90"], i), xytext=(8, 0),
+                    textcoords="offset points", va="center", fontsize=9, color=_INK["secondary"])
+    ax.set_yticks(range(len(design_ids)))
+    ax.set_yticklabels([labels[d] for d in design_ids])
+    ax.invert_yaxis()
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("Across-scenario investor score")
+    ax.set_title(f"Monte Carlo ({mc_results['repetitions']} paths per scenario)")
+    ax = axes[1]
+    _style_axes(ax)
+    regimes = [("published_weights", "Published weights"), ("local_weight_uncertainty", "Weights & scales ±"), ("any_weights", "Any weights & scales")]
+    x = np.arange(len(regimes))
+    for i, d in enumerate(design_ids):
+        vals = [mc_results["rank_one_probability"][r][d] * 100.0 for r, _ in regimes]
+        bars = ax.bar(x + (i - 1) * 0.26, vals, width=0.24, color=color[d], label=labels[d])
+        for rect, v in zip(bars, vals):
+            if v >= 5:
+                ax.text(rect.get_x() + rect.get_width() / 2, v + 1.5, f"{v:.0f}", ha="center", fontsize=8, color=_INK["primary"])
+    ax.set_xticks(x)
+    ax.set_xticklabels([lab for _, lab in regimes])
+    ax.set_ylim(0, 110)
+    ax.set_ylabel("Probability of ranking first (%)")
+    ax.set_title("Who ranks first, under uncertainty")
+    ax.legend(loc="upper center", bbox_to_anchor=(0.5, -0.12), ncol=3)
     fig.tight_layout()
-    p4 = str(plots_dir / "04_reverse_stress_and_monte_carlo_bands.png")
-    fig.savefig(p4, dpi=150)
+    p4 = str(plots_dir / "04_monte_carlo_scores_and_rank_probability.png")
+    fig.savefig(p4, dpi=160)
     plt.close(fig)
-    saved["reverse_stress_and_mc"] = p4
+    saved["monte_carlo"] = p4
 
+    # 5. Which assumptions move the run-scenario investor score (range bars per design)
+    sens = sensitivity_df[sensitivity_df.base_scenario == run_id] if not sensitivity_df.empty else sensitivity_df
+    fig, axes = plt.subplots(1, len(design_ids), figsize=(15, 5.2), sharex=True)
+    axes = np.atleast_1d(axes)
+    for ax, d in zip(axes, design_ids):
+        _style_axes(ax)
+        g = sens[sens.design_id == d]
+        spans = (
+            g.groupby("parameter_label")["investor_score_100"].agg(["min", "max"]).assign(span=lambda t: t["max"] - t["min"])
+            .sort_values("span", ascending=True).tail(8)
+        ) if not g.empty else pd.DataFrame(columns=["min", "max", "span"])
+        for j, (label, rowv) in enumerate(spans.iterrows()):
+            ax.plot([rowv["min"], rowv["max"]], [j, j], color=color[d], linewidth=6, solid_capstyle="round")
+        ax.set_yticks(range(len(spans)))
+        ax.set_yticklabels(list(spans.index), fontsize=9)
+        ax.set_xlim(0, 100)
+        ax.set_title(labels[d], fontsize=11)
+        ax.set_xlabel("Investor score range over swept values")
+    fig.suptitle("Flagged assumptions: effect on the investor score in the 30% run", fontsize=12, color=_INK["primary"])
+    fig.tight_layout()
+    p5 = str(plots_dir / "05_assumption_sensitivity.png")
+    fig.savefig(p5, dpi=160)
+    plt.close(fig)
+    saved["sensitivities"] = p5
+
+    # 6. Reverse stress: max wait vs. month-12 shock size
+    fig, ax = plt.subplots(1, 1, figsize=(8.5, 4.8))
+    _style_axes(ax)
+    sla = float((cfg.get("objectives_tested") or {}).get("payment_sla_max_months", 3.0))
+    for d in design_ids:
+        curve = reverse_stress["designs"][d]["shock_response_curve"]
+        xs = [c["shock_fraction"] * 100 for c in curve]
+        ys = [c["max_time_to_payment_periods"] for c in curve]
+        ax.plot(xs, ys, linestyle=dash[d], color=color[d], linewidth=2, label=labels[d])
+    ax.axhline(sla, color=_INK["secondary"], linewidth=1)
+    ax.annotate(f"{sla:.0f}-month payment objective", (2, sla), xytext=(0, 4), textcoords="offset points", fontsize=9, color=_INK["secondary"])
+    ax.set_xlim(0, 100)
+    ax.set_ylim(bottom=0)
+    ax.set_xlabel("Month-12 tender by the institutional cohort (% of cohort)")
+    ax.set_ylabel("Max time to full payment (months)")
+    ax.set_title("Reverse stress: how big a run breaks the payment objective")
+    ax.legend(loc="upper left")
+    fig.tight_layout()
+    p6 = str(plots_dir / "06_reverse_stress_payment_wait.png")
+    fig.savefig(p6, dpi=160)
+    plt.close(fig)
+    saved["reverse_stress"] = p6
     return saved
+
+
+def _pct(value: Any, digits: int = 2) -> str:
+    return "n/a" if value is None or (isinstance(value, float) and math.isnan(value)) else f"{float(value) * 100:.{digits}f}%"
+
+
+def _money(value: Any) -> str:
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return "not achievable"
+    v = float(value)
+    return f"${v / 1e6:,.1f}M" if abs(v) >= 1e6 else f"${v / 1e3:,.0f}k"
+
+
+def provenance_rows(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """One row per design and fund-term parameter: value, source or assumption flag, date and confidence."""
+    rows: List[Dict[str, Any]] = []
+    for design_id, design in cfg["product_designs"].items():
+        provenance = design.get("provenance") or {}
+        for key in PARAMETER_LOCATIONS:
+            entry = provenance.get(key, {}) or {}
+            rows.append(
+                {
+                    "design_id": design_id,
+                    "design_label": design["short_label"],
+                    "parameter_key": key,
+                    "parameter": PARAMETER_LABELS[key],
+                    "value": format_parameter_value(key, design_parameter_value(cfg, design_id, key)),
+                    "status": (
+                        "not applicable" if entry.get("applicable") is False
+                        else "assumption" if entry.get("assumption")
+                        else "documented" if entry.get("source")
+                        else "missing"
+                    ),
+                    "source": entry.get("source", ""),
+                    "url": entry.get("url", ""),
+                    "as_of": str(entry.get("as_of", "")),
+                    "confidence": entry.get("confidence", ""),
+                    "note": entry.get("note", ""),
+                    "sweep": entry.get("sweep", []),
+                }
+            )
+    return rows
 
 
 def build_case_study_html_report(
@@ -1223,526 +1682,398 @@ def build_case_study_html_report(
     sensitivity_df: pd.DataFrame,
     reverse_stress: Dict[str, Any],
     mc_results: Dict[str, Any],
+    ttc: Dict[str, Any],
     reference_verification: Dict[str, Any],
     plot_paths: Dict[str, str],
     output_html_path: Path,
-) -> Path:
-    """Build the self-contained client-facing HTML case study report using `ReportBuilder`."""
-    is_real_rwa = bool(config.get("case_study_id") == "real-rwa-funds-v1" or config.get("per_product_portfolio"))
+) -> str:
+    """Build the self-contained HTML report; every number in the text comes from the inputs."""
+    cfg = config
+    design_ids = list(cfg["product_designs"].keys())
+    scen_order = list(cfg["scenarios"].keys())
     report = ReportBuilder(
-        title=config["title"],
-        subtitle=config["subtitle"],
-        footer_text=(
-            "TokenLab Economic Advisory & Stress-Testing Suite • "
-            + (
-                "Real-World Live RWA Term-Sheet Benchmark with Synthetic Stress Scenarios"
-                if is_real_rwa
-                else "Illustrative Case Study (Synthetic Assumptions — Not an Empirically Calibrated Forecast)"
-            )
-        ),
+        title=cfg["title"],
+        subtitle=cfg.get("subtitle", ""),
+        footer_text="Generated by TokenLab product_case_study.py. Model outputs under stated assumptions; not a forecast, credit rating or investment advice.",
+    )
+    report.add_callout(
+        "<strong>Evidence status:</strong> " + str(cfg["evidence_status"]["statement"]).strip()
+        + (f" Calibration date: <code>{cfg.get('calibration_date')}</code>." if cfg.get("calibration_date") else ""),
+        style="info",
     )
 
-    base_df = summary_df[summary_df["scenario_id"] == "baseline"].set_index("design_id")
-    cw_df = summary_df[summary_df["scenario_id"] == "concentrated_withdrawals"].set_index("design_id")
-
-    if is_real_rwa:
-        report.add_callout(
-            "<strong>Evidence &amp; Provenance Notice (Real-World Live RWA Term-Sheet Benchmark + Synthetic Stress Scenarios):</strong> "
-            + str(config["evidence_status"]["statement"]),
-            style="info",
+    cards = []
+    for d in design_ids:
+        q = mc_results["designs"][d]["across_scenario_investor_score"]
+        cards.append(
+            {
+                "value": f"{q['p50']:.1f}",
+                "label": f"{cfg['product_designs'][d]['short_label']}: across-scenario investor score (P10 {q['p10']:.1f} – P90 {q['p90']:.1f})",
+                "color": SERIES_COLORS[design_ids.index(d) % 3],
+            }
         )
-        buidl_base = base_df.loc["buidl_treasury"]
-        maple_base = base_df.loc["maple_syrup_usdc"]
-        scope_base = base_df.loc["hamilton_lane_scope"]
-        buidl_cw = cw_df.loc["buidl_treasury"]
-        scope_cw = cw_df.loc["hamilton_lane_scope"]
+    report.add_card_row(cards)
 
-        report.add_card_row(
+    rank = mc_results["rank_one_probability"]
+    report.add_table_section(
+        "Probability of ranking first on the across-scenario investor score",
+        headers=["Design", "Published weights", "Weights & scales ±", "Any weights & scales", "Weighted score (deterministic)", "Worst scenario"],
+        rows=[
             [
-                {
-                    "value": f"{buidl_base['investor_annualised_return_pct'] * 100:.2f}% / {buidl_cw['max_time_to_payment_periods']:.1f}m",
-                    "label": "BlackRock BUIDL Net Return & Run Wait",
-                    "color": "#38BDF8",
-                },
-                {
-                    "value": f"{maple_base['investor_annualised_return_pct'] * 100:.2f}% / ${maple_base['breakeven_aum_fiat'] / 1e6:,.1f}M",
-                    "label": "Maple SyrupUSDC Net Return & Break-Even AUM",
-                    "color": "#F59E0B",
-                },
-                {
-                    "value": f"{scope_base['investor_annualised_return_pct'] * 100:.2f}% / ${scope_base['issuer_cumulative_profit_fiat'] / 1e3:,.0f}k",
-                    "label": "Hamilton Lane SCOPE Net Return & 3-Yr Issuer P&L",
-                    "color": "#22C55E",
-                },
-                {
-                    "value": f"{scope_cw['max_time_to_payment_periods']:.1f} mo",
-                    "label": "SCOPE Queue Wait in 30% Institutional Run (5% Gate)",
-                    "color": "#EF4444",
-                },
-                {
-                    "value": "100% Pass",
-                    "label": "Balance Sheet & Cash Conservation Checks (24/24)",
-                    "color": "#16A34A",
-                },
+                cfg["product_designs"][d]["short_label"],
+                _pct(rank["published_weights"][d], 0),
+                _pct(rank["local_weight_uncertainty"][d], 0),
+                _pct(rank["any_weights"][d], 0),
+                f"{ttc['designs'][d]['weighted_investor_score']:.1f}",
+                f"{ttc['designs'][d]['worst_case_investor_score']:.1f} ({_short_scenario_label(cfg, ttc['designs'][d]['worst_case_scenario_id'])})",
             ]
-        )
-
-        report.add_text_section(
-            "1. Executive Summary: Three Live On-Chain RWA Products Compared Side-by-Side",
-            """
-            <p>We apply TokenLab's <code>TokenisedProductEconomy</code> engine to compare <strong>three live institutional RWA products</strong>
-            across the liquidity–yield–fee spectrum, normalised to an apples-to-apples <strong>$25,000,000 starting AUM benchmark</strong> over 36 monthly periods:</p>
-            <ul>
-              <li><strong>BlackRock USD Institutional Digital Liquidity Fund (<code>BUIDL</code> via Securitize &amp; Circle USDC Buffer):</strong>
-                Backed by short-term US Treasury bills and overnight repo (<code>4.85%</code> gross yield, <code>35 bps</code> blended management fee, <code>0%</code> performance/exit fee, <code>15%</code> liquid cash/repo buffer + <code>$5.0M</code> proportional Circle USDC instant liquidity buffer, <code>T+0</code> underlying settlement).</li>
-              <li><strong>Maple Finance Institutional Secured Lending (<code>SyrupUSDC</code> High-Yield Credit Pool):</strong>
-                Backed by overcollateralised institutional digital-asset and corporate loans (<code>9.60%</code> gross yield, <code>50 bps</code> platform fee + <code>10%</code> delegate fee over <code>4.50%</code> hurdle, <code>15 bps</code> pool-retained early withdrawal spread, <code>6%</code> cash buffer, <code>T+1 month</code> loan maturity cycle, plus <code>50 bps</code> p.a. <code>SYRUP</code> reward drip).</li>
-              <li><strong>Hamilton Lane Senior Credit Opportunities Fund (<code>SCOPE</code> On-Chain Feeder via Securitize):</strong>
-                Backed by senior secured middle-market corporate loans (<code>10.40%</code> gross yield, <code>140 bps</code> management fee + <code>12.5%</code> incentive fee over <code>6.00%</code> hurdle, <code>50 bps</code> anti-dilution exit levy, <code>5.0%</code> monthly NAV redemption gate, <code>T+2 month</code> secondary loan settlement lag, and <code>$3.0M</code> committed NAV credit line).</li>
-            </ul>
-            """,
-        )
-
-        prov_rows = [
-            [
-                p["product_name"],
-                p["issuer_and_infra"],
-                p["asset_class"],
-                p["documented_terms"],
-                p["synthetic_assumptions"],
-            ]
-            for p in config.get("real_world_provenance", [])
-        ]
-        report.add_table_section(
-            "Public Term-Sheet Provenance & Calibration vs. Synthetic Benchmark Assumptions",
-            headers=[
-                "Live RWA Product",
-                "Issuer & On-Chain Infrastructure",
-                "Underlying Asset Portfolio",
-                "Documented Fee, Gate & Liquidity Parameters",
-                "Synthetic Benchmark & Stress Assumptions",
-            ],
-            rows=prov_rows,
-        )
-
-        report.add_text_section(
-            "2. Explicit Cost-Bearer Attribution & Distinct Claim Quantities",
-            """
-            <p>At every monthly step, the engine reconciles four distinct valuation and claim quantities across all three live RWA structures:</p>
-            <ol>
-              <li><strong>Underlying Asset Value (<code>underlying_asset_value</code>):</strong> Invested T-bills/loans + liquid cash + net cash receivable from initiated asset liquidations in settlement transit.</li>
-              <li><strong>Net Asset Value per Token (<code>nav_per_token</code>):</strong> <code>(Underlying Asset Value - Drawn Credit Facility Principal - Unpaid Redemption Queue Obligations) / Active Shares</code>.</li>
-              <li><strong>Executable Primary Redemption Price (<code>executable_redemption_price</code>) &amp; Secondary Market Price (<code>secondary_market_price</code>):</strong> Primary exit value net of exit levy vs. immediate secondary market price incorporating queue/gate illiquidity discounts.</li>
-              <li><strong>Realised Investor Cash Flows vs. Token Transfers:</strong> Tendering tokens into the redemption queue transfers shares out of active circulation and books a fixed cash liability, but counts <code>$0</code> of realised cash until settled from available cash.</li>
-            </ol>
-            """,
-        )
-        report.add_table(
-            headers=[
-                "Parameter / Cost Item",
-                "Borne By / Received By",
-                "BlackRock BUIDL (Treasuries)",
-                "Maple SyrupUSDC (Private Credit)",
-                "Hamilton Lane SCOPE (Evergreen Credit)",
-            ],
-            rows=[
-                ["Gross Underlying Asset Yield", "Earned by Portfolio", "4.85% p.a. (US T-Bills & Repo)", "9.60% p.a. (Secured Institutional Loans)", "10.40% p.a. (Senior Secured Corporate Credit)"],
-                ["Underlying Settlement Lag & Haircut", "Portfolio Liquidity Constraint", "T+0 (0 mo lag) / 3 bps bid-ask", "T+1 (1 mo loan cycle) / 45 bps unwind", "T+2 (2 mo loan sale) / 85 bps haircut"],
-                ["Portfolio Custody, Servicing & Admin", "Portfolio -> External Providers", "10 bps custody + 8 bps admin", "20 bps servicing + 10 bps admin", "25 bps custody + 10 bps Securitize admin"],
-                ["Issuer Management / Platform Fee", "Portfolio -> Issuer Revenue", "35 bps p.a. (20–50 bps chain range)", "50 bps p.a. platform fee", "140 bps p.a. management fee"],
-                ["Performance / Delegate Incentive Fee", "Portfolio -> Issuer Revenue", "0%", "10.0% above 4.50% hurdle", "12.5% above 6.00% hurdle"],
-                ["Redemption / Anti-Dilution Exit Fee", "Exiting Investor -> Pool / Issuer", "0 bps (Par $1.00 exit)", "15 bps (100% retained by pool)", "50 bps (60% portfolio / 40% manager)"],
-                ["Liquid Cash Buffer & Credit Facility", "Portfolio Liquidity Defence", "15% cash/repo + $5.0M USDC buffer", "6% cash + $0.5M protocol reserve", "8% cash + $3.0M NAV credit line"],
-                ["Monthly Redemption Gate", "Redemption Queue Rule", "Uncapped (24/7 USDC + T+0 primary)", "25.0% NAV / monthly cycle cap", "Strict 5.0% NAV / month gate"],
-                ["Analytical Steady-State Break-Even AUM", "Issuer Cost Coverage Floor", f"${buidl_base['breakeven_aum_fiat'] / 1e6:,.1f}M", f"${maple_base['breakeven_aum_fiat'] / 1e6:,.1f}M", f"${scope_base['breakeven_aum_fiat'] / 1e6:,.1f}M"],
-            ],
-        )
-    else:
-        report.add_callout(
-            "<strong>Evidence & Interpretation Notice (Synthetic / Illustrative Case Study):</strong> "
-            "This report models a hypothetical <strong>$25,000,000 Tokenised Short-Duration Private Credit & Treasury Income Fund</strong> "
-            "over 36 monthly periods using synthetic, explicitly documented portfolio, fee, and behavioural assumptions. "
-            "All scenario comparisons, reverse stress thresholds, and Monte Carlo P10/P50/P90 intervals represent "
-            "<em>conditional outcomes of the stated assumptions</em> and are not empirically calibrated market predictions.",
-            style="info",
-        )
-        dc_base = base_df.loc["design_c_balanced_facility"]
-        dc_cw = cw_df.loc["design_c_balanced_facility"]
-
-        report.add_card_row(
-            [
-                {
-                    "value": f"{dc_base['investor_annualised_return_pct'] * 100:.2f}%",
-                    "label": "Design C Baseline Net Investor Return (p.a.)",
-                    "color": "#22C55E",
-                },
-                {
-                    "value": f"${dc_base['issuer_cumulative_profit_fiat'] / 1e3:,.0f}k",
-                    "label": "Design C 3-Yr Issuer Net Profit",
-                    "color": "#38BDF8",
-                },
-                {
-                    "value": f"${dc_base['breakeven_aum_fiat'] / 1e6:,.1f}M",
-                    "label": "Design C Analytical Break-Even AUM",
-                    "color": "#A855F7",
-                },
-                {
-                    "value": f"{dc_cw['max_time_to_payment_periods']:.1f} mo",
-                    "label": "Design C Max Wait in Institutional Run (SLA <= 3m)",
-                    "color": "#22C55E",
-                },
-                {
-                    "value": "100% Pass",
-                    "label": "Balance Sheet & Cash Conservation Checks",
-                    "color": "#16A34A",
-                },
-            ]
-        )
-
-        # 1. Business Problem & Designs Compared
-        report.add_text_section(
-            "1. Executive Summary & Product Designs Compared",
-            """
-            <p>Issuers launching tokenised investment funds (private credit, real-world yield, treasury wrappers) face a fundamental
-            <strong>three-way economic design trade-off</strong>:</p>
-            <ul>
-              <li><strong>Investor Net Yield &amp; Price Stability:</strong> Charging high management/performance fees or holding excessive idle cash drags down net investor returns, slowing subscriptions and triggering yield-sensitive redemptions.</li>
-              <li><strong>Issuer Profitability &amp; Break-Even Scale:</strong> Compliance, custody, legal, and smart-contract operations impose fixed annual overhead (<code>$210,000/yr</code> in this case). Ultra-low fee wrappers lose money unless AUM scales above <code>$65M+</code>.</li>
-              <li><strong>Redemption Liquidity &amp; Settlement Resilience:</strong> Token holders expect prompt on-chain or T+1/T+3 redemption settlement, whereas underlying private credit assets settle with a lag (1 to 3 months) and suffer liquidation haircuts (<code>35–90 bps</code>) when sold under stress.</li>
-            </ul>
-            <p>We evaluate <strong>three configurable product designs</strong> on the exact same <strong>$25.0M</strong> synthetic portfolio (<code>8.50%</code> p.a. gross asset yield, <code>20 bps</code> p.a. portfolio custody/audit cost):</p>
-            """,
-        )
-
-        design_rows = [
-            [
-                "Design A: Open-Ended Par Liquidity & Low Fee",
-                "45 bps mgmt / 0% perf",
-                "0 bps",
-                "5.0% cash / $0 facility",
-                "Uncapped",
-                f"${base_df.loc['design_a_liquid_low_fee', 'breakeven_aum_fiat'] / 1e6:,.1f}M",
-                "Maximises headline investor yield in calm markets, but issuer is unprofitable at $25M scale and suffers severe payment delays under run/lag stress.",
-            ],
-            [
-                "Design B: High-Fee & Gated Redemptions",
-                "125 bps mgmt / 15% perf (>5% hurdle)",
-                "100 bps (100% to issuer)",
-                "10.0% cash / $0 facility",
-                "Strict 5.0% NAV / mo gate",
-                f"${base_df.loc['design_b_gated_high_fee', 'breakeven_aum_fiat'] / 1e6:,.1f}M",
-                "Maximises issuer profit margin and shields portfolio from forced asset sales, but depresses investor net yield and traps redeemers for 5–7 months during a run.",
-            ],
-            [
-                "Design C: Balanced Fee, Anti-Dilution Levy & Committed Facility",
-                "85 bps mgmt / 10% perf (>5.5% hurdle)",
-                "50 bps (60% portfolio / 40% issuer)",
-                "8.0% cash / $4.0M credit line",
-                "15.0% NAV / mo soft gate",
-                f"${base_df.loc['design_c_balanced_facility', 'breakeven_aum_fiat'] / 1e6:,.1f}M",
-                "Achieves issuer profitability at $25M scale, protects remaining holders via anti-dilution levy retention, and meets the <=3 month payment SLA via the $4M facility.",
-            ],
-        ]
-        report.add_table(
-            headers=[
-                "Product Design",
-                "Management & Perf Fee",
-                "Exit / Anti-Dilution Fee",
-                "Liquidity Buffer & Facility",
-                "Redemption Gate",
-                "Break-Even AUM",
-                "Strategic Trade-Off Summary",
-            ],
-            rows=design_rows,
-        )
-
-        # 2. Cost Attribution Schedule
-        report.add_text_section(
-            "2. Explicit Cost-Bearer Attribution & Distinct Claim Quantities",
-            """
-            <p>To prevent ambiguity or double-counting, the model enforces strict separation between four distinct valuation and claim quantities at every monthly step:</p>
-            <ol>
-              <li><strong>Underlying Asset Value (<code>underlying_asset_value</code>):</strong> Gross carrying value of invested portfolio assets + liquid portfolio cash + net cash receivable from initiated asset sales in settlement transit.</li>
-              <li><strong>Net Asset Value per Token (<code>nav_per_token</code>):</strong> <code>(Underlying Asset Value - Drawn Facility Principal - Unpaid Redemption Queue Obligations) / Active Shares</code>.</li>
-              <li><strong>Executable Primary Redemption Price (<code>executable_redemption_price</code>) &amp; Secondary Market Price (<code>secondary_market_price</code>):</strong> Net proceeds per token after exit fees and (for immediate secondary exits) queue/gate illiquidity discounts.</li>
-              <li><strong>Realised Investor Cash Flows vs. Token Transfers:</strong> Tendering tokens into the redemption queue transfers shares out of active circulation and records a cash liability, but counts <code>$0</code> of realised cash until the queue settles out of available cash.</li>
-            </ol>
-            """,
-        )
-        report.add_table(
-            headers=["Fee / Expense Item", "Borne By", "Received By", "Design A", "Design B", "Design C"],
-            rows=[
-                ["Portfolio Custody, Audit & SPV Expense", "Portfolio (reduces NAV)", "External Service Providers", "20 bps p.a.", "20 bps p.a.", "20 bps p.a."],
-                ["Platform & Tokenisation Admin Fee", "Portfolio (reduces NAV)", "External Platform Provider", "10 bps p.a.", "10 bps p.a.", "10 bps p.a."],
-                ["Issuer Management Fee", "Portfolio (reduces NAV)", "Issuer Revenue", "45 bps p.a.", "125 bps p.a.", "85 bps p.a."],
-                ["Issuer Performance Fee", "Portfolio (reduces NAV)", "Issuer Revenue", "0%", "15% (>5.0% hurdle)", "10% (>5.5% hurdle)"],
-                ["Redemption / Anti-Dilution Exit Fee", "Exiting Investor", "Split: Issuer / Portfolio", "0 bps", "100 bps (100% Issuer)", "50 bps (40% Issuer / 60% Portfolio)"],
-                ["Credit Facility Interest & Commitment Fee", "Portfolio (reduces NAV)", "Liquidity Facility Provider", "N/A ($0 facility)", "N/A ($0 facility)", "6.25% drawn / 40 bps undrawn"],
-                ["Forced Asset Liquidation Haircut", "Portfolio (offset by retained exit fee)", "Market Counterparty Discount", "35 bps (baseline)", "35 bps (baseline)", "35 bps (offset by 30 bps retained levy)"],
-                ["Issuer Fixed & Variable Operating Costs", "Issuer P&L", "Staff, Compliance, Legal, Ops", "$210k/yr + 12 bps", "$210k/yr + 12 bps", "$210k/yr + 12 bps"],
-            ],
-        )
-
-    # 3. Comparative Results Across All 8 Scenarios
-    report.add_heading("3. Comparative Performance Across All 8 Scenarios", level=2)
-    report.add_plot_grid(
-        [plot_paths["returns_and_profit"], plot_paths["liquidity_and_prices"]],
-        [
-            "Figure 1: Investor Annualised Net Return (% p.a.) and Issuer 36-Month Cumulative Net Profit ($k) across all 8 scenarios.",
-            "Figure 2: Unpaid Redemption Queue ($M) and NAV vs. Secondary Executable Price ($) during Concentrated Institutional Withdrawals.",
+            for d in design_ids
         ],
     )
 
-    def _grade_badge(grade: str) -> str:
-        g_colors = {
-            "AAA": "#16A34A",
-            "AA": "#22C55E",
-            "A": "#38BDF8",
-            "BBB": "#F59E0B",
-            "BB": "#EA580C",
-            "B": "#DC2626",
-        }
-        return ReportBuilder.badge(str(grade), g_colors.get(str(grade), "#64748B"))
-
-    scenario_tabs: Dict[str, str] = {}
-    for scen_id, scen_group in summary_df.groupby("scenario_id", sort=False):
-        scen_title = scen_group["scenario_name"].iloc[0]
-        scen_desc = config["scenarios"][scen_id]["description"]
-        t_rows = []
-        for _, r in scen_group.iterrows():
-            sla_badge = (
-                ReportBuilder.badge("PASS", "#16A34A")
-                if r["payment_sla_met"]
-                else ReportBuilder.badge("BREACH", "#DC2626")
-            )
-            prof_badge = (
-                ReportBuilder.badge("PROFIT", "#16A34A")
-                if r["issuer_profitable"]
-                else ReportBuilder.badge("LOSS", "#DC2626")
-            )
-            g_badge = _grade_badge(str(r["rating_grade"]))
-            t_rows.append(
+    matrix_rows = []
+    for s in scen_order:
+        for d in design_ids:
+            r = summary_df[(summary_df.design_id == d) & (summary_df.scenario_id == s)].iloc[0]
+            matrix_rows.append(
                 [
-                    str(r["design_label"]),
-                    f"{r['composite_score_100']:.1f} ({g_badge})",
-                    f"{r['investor_annualised_return_pct'] * 100:.2f}%",
-                    f"${r['investor_distributions_total_fiat'] / 1e6:,.2f}M",
-                    f"${r['ending_nav_per_token']:.4f}",
-                    f"${r['min_secondary_market_price']:.4f}",
-                    f"${r['issuer_cumulative_profit_fiat'] / 1e3:,.1f}k ({prof_badge})",
-                    f"${r['peak_unpaid_redemption_obligations_fiat'] / 1e6:,.2f}M",
-                    f"{r['max_time_to_payment_periods']:.1f} mo ({sla_badge})",
-                    f"${r['total_liquidity_and_financing_costs_fiat'] / 1e3:,.1f}k",
+                    _short_scenario_label(cfg, s),
+                    r["design_label"],
+                    _pct(r["investor_annualised_return_pct"]),
+                    _pct(r["investor_irr_annualised_pct"]),
+                    _pct(r["forced_exit_return_annualised_pct"]),
+                    f"{r['weighted_avg_time_to_payment_periods']:.2f} / {r['max_time_to_payment_periods']:.0f}",
+                    _pct(r["max_exit_discount_vs_nav"]),
+                    f"{r['risk_adjusted_yield_score']:.0f} · {r['exit_liquidity_score']:.0f} · {r['capital_stability_score']:.0f} · {r['liquidity_resilience_score']:.0f}",
+                    f"<strong>{r['investor_score_100']:.1f}</strong>",
                 ]
             )
-        tab_html = f"<p><strong>Scenario Definition:</strong> {scen_desc}</p>" + ReportBuilder._build_table(
-            headers=[
-                "Design",
-                "Composite Score & Grade",
-                "Investor Net Return (TWR p.a.)",
-                "3-Yr Distributions",
-                "Ending NAV/Token",
-                "Min Secondary Price",
-                "Issuer 3-Yr Net P&L",
-                "Peak Unpaid Queue",
-                "Max Payment Wait (SLA<=3m)",
-                "Liquidity & Haircut Cost",
-            ],
-            rows=t_rows,
-        )
-        scenario_tabs[scen_title.split(".")[0] + ". " + scen_id.replace("_", " ").title()] = tab_html
-
-    report.add_tabbed_section("Scenario-by-Scenario Breakdown (Click Tabs to Inspect All 8 Scenarios)", scenario_tabs)
-
-    # 4. Parameter Sensitivities, Reverse Stress Tests & Monte Carlo
-    report.add_heading("4. Parameter Sensitivities, Reverse Stress Testing & Monte Carlo Uncertainty", level=2)
+    report.add_table_section(
+        "Scenario matrix: investor outcomes and score",
+        headers=["Scenario", "Design", "TWR", "IRR", "Forced exit", "Wait avg / max (mo)", "Max exit discount", "Pillars (yield · exit · stability · resilience)", "Investor score"],
+        rows=matrix_rows,
+    )
     report.add_plot_grid(
-        [plot_paths["sensitivities"], plot_paths["reverse_stress_and_mc"]],
-        [
-            "Figure 3: One-at-a-Time (OAT) sensitivity to Initial AUM scale ($M) and Underlying Asset Settlement Lag (Months).",
-            "Figure 4: Reverse Stress Test (Institutional Run Shock vs. Payment Delay) and Seeded Monte Carlo P10/P50/P90 Net Return Bands.",
+        [plot_paths["investor_scores"], plot_paths["run_dynamics"]],
+        ["Investor score by scenario, and sponsor viability as a separate score.", "The 30% institutional run: queue value and the cost of exiting immediately."],
+    )
+    report.add_plot_grid(
+        [plot_paths["returns"], plot_paths["monte_carlo"]],
+        ["Per-unit TWR, money-weighted IRR and forced-exit return by scenario.", "Monte Carlo bands for the across-scenario score, and who ranks first under weight uncertainty."],
+    )
+    report.add_plot_grid(
+        [plot_paths["sensitivities"], plot_paths["reverse_stress"]],
+        ["How much each flagged assumption moves the investor score in the run.", "Reverse stress: shock size versus time to full payment."],
+    )
+
+    base = summary_df[summary_df.scenario_id == "baseline"].set_index("design_id")
+    report.add_table_section(
+        "Sponsor economics (reported separately from the investor score)",
+        headers=["Design", "Break-even AUM", "Reference AUM", "Headroom", "Sponsor viability", "36-month issuer profit at simulated scale"],
+        rows=[
+            [
+                cfg["product_designs"][d]["short_label"],
+                _money(base.loc[d, "breakeven_aum_fiat"]),
+                _money((cfg["product_designs"][d].get("real_world") or {}).get("aum_fiat") or base.loc[d, "initial_aum"]),
+                "n/a" if base.loc[d, "sponsor_aum_headroom"] is None or pd.isna(base.loc[d, "sponsor_aum_headroom"]) else f"{float(base.loc[d, 'sponsor_aum_headroom']):.1f}x",
+                f"{base.loc[d, 'sponsor_viability_score_100']:.0f}",
+                _money(base.loc[d, "issuer_cumulative_profit_fiat"]),
+            ]
+            for d in design_ids
         ],
     )
 
+    prov = provenance_rows(cfg)
+    if any(r["status"] != "missing" for r in prov):
+        report.add_table_section(
+            "Fund terms used: documented values and flagged assumptions",
+            headers=["Design", "Parameter", "Value", "Status", "Source / note", "As of", "Confidence"],
+            rows=[
+                [
+                    r["design_label"],
+                    r["parameter"],
+                    r["value"],
+                    r["status"],
+                    (f"<a href=\"{r['url']}\">{r['source']}</a>" if r["url"] else r["source"]) + (f" — {r['note']}" if r["note"] else ""),
+                    r["as_of"],
+                    r["confidence"],
+                ]
+                for r in prov
+                if r["status"] != "not applicable"
+            ],
+        )
+
     rev_rows = []
-    for d_id, d_rev in reverse_stress["designs"].items():
-        sla_shock = (
-            f"{d_rev['min_institutional_shock_breaching_sla'] * 100:.0f}% shock"
-            if d_rev["min_institutional_shock_breaching_sla"] is not None
-            else "> 60% (No breach in grid)"
-        )
-        buf_shock = (
-            f"{d_rev['min_institutional_shock_breaching_buffer'] * 100:.0f}% shock"
-            if d_rev["min_institutional_shock_breaching_buffer"] is not None
-            else "> 60% (No breach in grid)"
-        )
-        aum_base = (
-            f"${d_rev['min_initial_aum_profitable_baseline_fiat'] / 1e6:,.1f}M"
-            if d_rev["min_initial_aum_profitable_baseline_fiat"] is not None
-            else "> $85M"
-        )
-        aum_low = (
-            f"${d_rev['min_initial_aum_profitable_low_growth_fiat'] / 1e6:,.1f}M"
-            if d_rev["min_initial_aum_profitable_low_growth_fiat"] is not None
-            else "> $85M"
-        )
+    for d in design_ids:
+        v = reverse_stress["designs"][d]
         rev_rows.append(
             [
-                d_rev["design_label"],
-                sla_shock,
-                buf_shock,
-                f"${d_rev['analytical_steady_state_breakeven_aum_fiat'] / 1e6:,.1f}M",
-                aum_base,
-                aum_low,
+                v["design_label"],
+                "not breached" if v["min_institutional_shock_breaching_sla"] is None else _pct(v["min_institutional_shock_breaching_sla"], 1),
+                "not breached" if v["min_institutional_shock_breaching_buffer"] is None else _pct(v["min_institutional_shock_breaching_buffer"], 1),
+                _money(v["analytical_steady_state_breakeven_aum_fiat"]),
+                "not reached" if v["min_initial_aum_profitable_baseline_fiat"] is None else _money(v["min_initial_aum_profitable_baseline_fiat"]),
             ]
         )
     report.add_table_section(
-        "Reverse Stress Test Summary: Exact Breaking-Point Thresholds",
-        headers=[
-            "Product Design",
-            "Objective 1 Fails: Payment SLA > 3 Mo",
-            "Objective 2 Fails: Liquidity Buffer < 3% NAV",
-            "Analytical Steady-State Break-Even AUM",
-            "Objective 3 Met: Min Initial AUM (Baseline Growth)",
-            "Objective 3 Met: Min Initial AUM (Low Participation)",
-        ],
+        "Reverse stress tests",
+        headers=["Design", "Shock breaching payment objective", "Shock breaching liquidity floor", "Analytical break-even AUM", "Smallest profitable starting AUM (simulated, grid)"],
         rows=rev_rows,
     )
 
-    mc_rows = []
-    for d_id, d_mc in mc_results["designs"].items():
-        ret_q = d_mc["investor_annualised_return_pct"]
-        prof_q = d_mc["issuer_cumulative_profit_fiat"]
-        wait_q = d_mc["max_time_to_payment_periods"]
-        score_q = d_mc.get("composite_score_100", {"p10": 0.0, "p50": 0.0, "p90": 0.0})
-        sp = d_mc["spearman_rank_correlations"]
-        mc_rows.append(
-            [
-                d_mc["design_label"],
-                f"{ret_q['p10'] * 100:.2f}% / {ret_q['p50'] * 100:.2f}% / {ret_q['p90'] * 100:.2f}%",
-                f"${prof_q['p10'] / 1e3:,.0f}k / ${prof_q['p50'] / 1e3:,.0f}k / ${prof_q['p90'] / 1e3:,.0f}k",
-                f"{wait_q['p10']:.1f} / {wait_q['p50']:.1f} / {wait_q['p90']:.1f} mo",
-                f"{score_q['p10']:.1f} / {score_q['p50']:.1f} / {score_q['p90']:.1f}",
-                f"{d_mc['payment_sla_pass_rate'] * 100:.1f}%",
-                f"{d_mc['issuer_profitability_rate'] * 100:.1f}%",
-                f"Yield->Ret: {sp['gross_yield_vs_investor_return']:+.2f} | Shock->Wait: {sp['withdrawal_shock_vs_max_payment_wait']:+.2f}",
-            ]
-        )
-    report.add_table_section(
-        f"Monte Carlo Uncertainty Bands ({mc_results['repetitions']} Seeded Runs under Concentrated Withdrawal Stress)",
-        headers=[
-            "Product Design",
-            "Investor Net Return (P10 / P50 / P90)",
-            "Issuer 3-Yr Profit (P10 / P50 / P90)",
-            "Max Payment Wait (P10 / P50 / P90)",
-            "Composite Score (P10 / P50 / P90)",
-            "Payment SLA Pass Rate",
-            "Issuer Profitability Rate",
-            "Key Spearman Rank Drivers",
-        ],
-        rows=mc_rows,
-    )
-
-    # 5-Pillar Quantitative Product Scorecard Table (Baseline & Concentrated Institutional Run)
-    scorecard_rows = []
-    for scen_key, scen_tag in [("baseline", "1. Baseline"), ("concentrated_withdrawals", "4. Institutional Run (30% Shock)")]:
-        sub_df = summary_df[summary_df["scenario_id"] == scen_key]
-        for _, r in sub_df.iterrows():
-            g_badge = _grade_badge(str(r["rating_grade"]))
-            scorecard_rows.append(
-                [
-                    scen_tag,
-                    str(r["design_label"]),
-                    f"{r['yield_efficiency_score']:.1f}",
-                    f"{r['liquidity_sla_score']:.1f}",
-                    f"{r['price_stability_score']:.1f}",
-                    f"{r['issuer_viability_score']:.1f}",
-                    f"{r['stress_resilience_score']:.1f}",
-                    f"<strong>{r['composite_score_100']:.1f} / 100</strong> ({g_badge})",
-                ]
-            )
-    report.add_table_section(
-        "5-Pillar Quantitative Product Scorecard & Institutional Rating (0–100 Scale)",
-        headers=[
-            "Regime / Scenario",
-            "Product Design",
-            "P1: Yield Efficiency (25%)",
-            "P2: Liquidity & SLA (25%)",
-            "P3: Price Stability (20%)",
-            "P4: Issuer Viability (15%)",
-            "P5: Stress Resilience (15%)",
-            "Composite Score & Grade",
-        ],
-        rows=scorecard_rows,
-    )
-
-    # 5. Decision Matrix: When Does the Preferred Design Change?
-    if is_real_rwa:
-        report.add_text_section(
-            "5. Institutional RWA Advisory Conclusions: BUIDL vs. Maple SyrupUSDC vs. Hamilton Lane SCOPE",
-            """
-            <p>Comparing these three live on-chain RWA architectures on an identical <strong>$25M benchmark</strong> reveals why each structure is engineered for a distinct institutional mandate:</p>
-            <ul>
-              <li><strong>BlackRock BUIDL (Treasuries) — Unmatched Instant Liquidity (<code>100.0/100</code> Liquidity &amp; Stability), High Scale Requirement (<code>$84.0M</code> Break-Even AUM):</strong>
-                Backed by T+0 US Treasury bills (85% invested at <code>4.85%</code> + 15% liquid cash buffer) and Circle's USDC liquidity facility, BUIDL delivers a <strong><code>3.62%</code> p.a. time-weighted net return</strong> with <code>0.0 month</code> redemption wait times and near-zero secondary price dislocation across all stress scenarios (earning the highest Stress Run Composite Score of <strong><code>77.9 / 100 (A)</code></strong>). However, at a <code>35 bps</code> fee (<code>25 bps</code> net contribution margin after <code>10 bps</code> variable costs), an issuer requires <strong><code>$84.0M+</code> in AUM</strong> just to cover <code>$210k/yr</code> of fixed operating overhead—explaining why tokenised money-market wrappers are scale-driven institutional primitives ($500M–$2.5B+ in live production).</li>
-              <li><strong>Maple SyrupUSDC (Private Credit) — Highest On-Chain Cash &amp; Reward Yield (<code>8.14%</code> Cash TWR + <code>50 bps</code> <code>SYRUP</code> = <code>8.64%</code> Total Return) &amp; Mid-Scale Viability (<code>$25.9M</code> Pre-Incentive Break-Even AUM):</strong>
-                Combining a <code>50 bps</code> platform fee with a <code>10%</code> pool delegate fee over a <code>4.50%</code> hurdle on <code>9.60%</code> gross loan yield allows Maple's fee margin to cover <code>$210k/yr</code> fixed operating costs at <strong><code>$25.9M</code> steady-state AUM</strong> (or <strong><code>$42.5M</code> initial AUM</strong> when also absorbing the <code>$125k/yr</code> / <code>$375k</code> 3-year <code>SYRUP</code> reward budget on issuer P&amp;L), earning a Baseline Composite Score of <strong><code>85.6 / 100 (AAA)</code></strong>. Under a 30% institutional withdrawal wave, its <code>25%</code> monthly cycle cap clears the queue in <code>1.0 month</code> (Composite Score <strong><code>70.6 / 100 (A)</code></strong>), though simultaneous credit defaults (<code>-3.5%</code> write-downs) and run shocks compress its thin <code>$0.5M</code> protocol reserve.</li>
-              <li><strong>Hamilton Lane SCOPE (Evergreen Senior Credit) — Highest Baseline Composite Score (<code>93.1 / 100 AAA</code>) &amp; Issuer Margin (<code>$12.8M</code> Break-Even AUM), Subject to Multi-Month Queue Locks in Runs (<code>62.3 / 100 BBB</code>):</strong>
-                Charging <code>140 bps</code> management fee + <code>12.5%</code> incentive fee over a <code>6.00%</code> hurdle on <code>10.40%</code> senior credit yield delivers a <strong><code>7.79%</code> p.a. time-weighted net investor return</strong> while making SCOPE highly profitable even at small feeder scale (<strong><code>$12.8M</code> break-even AUM</strong>). Its <code>5.0%</code> monthly NAV gate, <code>50 bps</code> anti-dilution exit levy, and <code>$3.0M</code> credit line protect continuing holders from forced-sale haircuts on <code>T+2</code> middle-market loans—but during a <code>30%</code> institutional withdrawal wave, redeeming holders face a <strong>4.0–6.0 month FIFO queue wait</strong> and secondary market price discounts (<code>$0.9351</code>), pulling its Liquidity SLA pillar score down to <code>11.4 / 100</code>.</li>
-            </ul>
-            """,
-        )
-    else:
-        report.add_text_section(
-            "5. Advisory Conclusions: Trade-Offs & When the Preferred Design Changes",
-            """
-            <p>Our comparative analysis demonstrates that no single tokenised product design dominates across all commercial and risk regimes;
-            instead, the optimal design depends on three observable client parameters:</p>
-            <ul>
-              <li><strong>When Design C (Balanced Fee + Anti-Dilution Levy + $4M Facility) is Preferred (Default Advisory Recommendation for $20M–$60M RWA Funds):</strong>
-                When initial AUM is between <code>$22M and $60M</code>, underlying assets require <code>T+1 to T+3</code> months to liquidate, and institutional holders represent <code>30%–60%</code> of AUM. Design C is the only structure that simultaneously covers issuer operating costs at <code>~$25M</code> scale, keeps redemption wait times within the <code>&le; 3 month</code> SLA during a <code>30%</code> institutional withdrawal shock, and neutralises forced-sale dilution for remaining holders via the <code>30 bps</code> portfolio-retained anti-dilution levy.</li>
-              <li><strong>When Design A (Open-Ended Par Liquidity &amp; 45 bps Low Fee) Becomes Preferred:</strong>
-                Only when (a) committed starting AUM exceeds <code>$65M–$80M</code> (allowing a <code>33 bps</code> net issuer margin to cover fixed overhead) <strong>and</strong> (b) the underlying assets are daily-liquid T-bills (<code>settlement_lag_periods = 0</code>, <code>liquidation_haircut_bps &le; 5 bps</code>). Applying Design A to illiquid private credit at <code>$25M</code> scale results in both cumulative issuer operating losses (<code>-$262k</code> at baseline) and severe liquidity queues under stress.</li>
-              <li><strong>When Design B (High Fee &amp; Strict 5% Monthly Gate) Becomes Preferred:</strong>
-                When launching a niche, high-yield opportunistic credit vehicle at small initial scale (<code>$12M–$20M</code>) where external credit facilities are unavailable or prohibitively expensive, and investors explicitly accept multi-quarter lockups/gates in exchange for higher gross underlying asset yield (<code>&ge; 10.5%</code> p.a.).</li>
-            </ul>
-            """,
-        )
-
-    # 6. Financial Logic Verification & Metric Definitions
     ref_rows = [
-        [
-            k,
-            f"{v['expected']:,.4f}",
-            f"{v['simulated']:,.4f}",
-            f"{v['abs_error']:.2e}",
-            ReportBuilder.badge("EXACT MATCH", "#16A34A") if v["matched"] else ReportBuilder.badge("FAIL", "#DC2626"),
-        ]
+        [k, f"{v['expected']:,.6f}", f"{v['simulated']:,.6f}", f"{v['abs_error']:.2e}", "match" if v["matched"] else "MISMATCH"]
         for k, v in reference_verification["comparisons"].items()
     ]
     report.add_table_section(
-        "6. Independent Closed-Form Reference Case Verification ($10M Exact Analytical Check)",
-        headers=["Metric Key", "Closed-Form Analytical Value", "Simulated Engine Value", "Absolute Error", "Status"],
+        "Closed-form reference case",
+        headers=["Quantity", "Expected", "Simulated", "Abs. error", "Status"],
         rows=ref_rows,
     )
-
-    def_rows = [
-        [m["metric"], f"<code>{m['key']}</code>", m["unit"], m["annualisation"], m["definition"]]
-        for m in METRIC_DEFINITIONS
-    ]
     report.add_table_section(
-        "7. Metric Definitions, Time Units & Annualisation Conventions",
-        headers=["Metric", "Field Key", "Unit", "Time / Annualisation Convention", "Exact Mathematical Definition"],
-        rows=def_rows,
+        "Metric definitions",
+        headers=["Metric", "Unit", "Annualisation", "Definition"],
+        rows=[[m["metric"], m["unit"], m["annualisation"], m["definition"]] for m in METRIC_DEFINITIONS],
     )
-
+    report.add_table_section(
+        "Limitations",
+        headers=["Limitation"],
+        rows=[[text] for text in CASE_STUDY_LIMITATIONS],
+    )
+    output_html_path.parent.mkdir(parents=True, exist_ok=True)
     report.save(str(output_html_path))
-    return output_html_path
+    return str(output_html_path)
+
+
+CASE_STUDY_LIMITATIONS: List[str] = [
+    "Fund terms follow the dated public sources listed per parameter; every parameter without a public source is flagged as an assumption and swept. Investor behaviour, stress shocks, scenario probabilities and the $25M normalisation are synthetic.",
+    "All three funds share one set of investor-behaviour elasticities; only holder counts and payout form differ. Behaviour is not calibrated to fund-flow data.",
+    "Monthly time steps cannot distinguish same-day from end-of-month payment; intra-month liquidity (for example Circle's BUIDL facility or Maple's sub-24-hour processing) is not resolved.",
+    "Forced-sale haircuts are a constant number of basis points; large sales in thin private-credit markets can have non-linear price impact.",
+    "The secondary price is a model of a buyer's carry and illiquidity premium, not an observed market; required return and premium are assumptions.",
+    "Scores are normalised with stated scale constants and weights; rank probabilities show how conclusions change when weights move.",
+]
 
 
 # ---------------------------------------------------------------------------
-# Full Case Study Bundle Generator & CLI
+# Generated LaTeX Fragments for the Paper
 # ---------------------------------------------------------------------------
+
+_DESIGN_MACRO = {
+    "buidl_treasury": "Buidl",
+    "maple_syrup_usdc": "Maple",
+    "hamilton_lane_scope": "Scope",
+    "design_a_liquid_low_fee": "DesignA",
+    "design_b_gated_high_fee": "DesignB",
+    "design_c_balanced_facility": "DesignC",
+}
+_SCENARIO_MACRO = {
+    "baseline": "Base",
+    "low_participation": "LowInflow",
+    "adverse_asset_return": "Adverse",
+    "concentrated_withdrawals": "Run",
+    "delayed_settlement": "Delayed",
+    "reduced_external_liquidity": "FacilityCut",
+    "combined_adverse": "Combined",
+    "reverse_stress_test": "Severe",
+}
+
+
+def _tex_escape(text: str) -> str:
+    out = str(text)
+    for a, b in (("\\", r"\textbackslash{}"), ("&", r"\&"), ("%", r"\%"), ("$", r"\$"), ("#", r"\#"), ("_", r"\_")):
+        out = out.replace(a, b)
+    return out
+
+
+def _tex_pct(value: Any, digits: int = 2) -> str:
+    return "n/a" if value is None or (isinstance(value, float) and math.isnan(value)) else f"{float(value) * 100:.{digits}f}\\%"
+
+
+def _tex_money(value: Any) -> str:
+    if value is None or (isinstance(value, float) and math.isnan(value)):
+        return "n/a"
+    v = float(value)
+    return f"\\${v / 1e6:,.1f}M" if abs(v) >= 1e6 else f"\\${v / 1e3:,.0f}k"
+
+
+def write_paper_artifacts(
+    out_dir: Path,
+    cfg: Dict[str, Any],
+    summary_df: pd.DataFrame,
+    mc_results: Dict[str, Any],
+    ttc: Dict[str, Any],
+    reverse_stress: Dict[str, Any],
+    sensitivity_df: pd.DataFrame,
+) -> Dict[str, str]:
+    """
+    Write `paper/numbers.tex` (one macro per reported number) and table fragments
+    that the LaTeX paper \\input's, so no number in the paper is typed by hand.
+    """
+    paper_dir = Path(out_dir) / "paper"
+    paper_dir.mkdir(parents=True, exist_ok=True)
+    design_ids = list(cfg["product_designs"].keys())
+    scen_order = list(cfg["scenarios"].keys())
+    macros: Dict[str, str] = {}
+
+    def macro(name: str, value: str) -> None:
+        macros[name] = value
+
+    labels_plain = {d: _tex_escape(cfg["product_designs"][d]["short_label"]) for d in design_ids}
+
+    for d in design_ids:
+        dm = _DESIGN_MACRO.get(d, "".join(ch for ch in d.title() if ch.isalpha()))
+        for s in scen_order:
+            sm = _SCENARIO_MACRO.get(s, "".join(ch for ch in s.title() if ch.isalpha()))
+            r = summary_df[(summary_df.design_id == d) & (summary_df.scenario_id == s)].iloc[0]
+            macro(f"{dm}{sm}TWR", _tex_pct(r["investor_annualised_return_pct"]))
+            macro(f"{dm}{sm}IRR", _tex_pct(r["investor_irr_annualised_pct"]))
+            macro(f"{dm}{sm}ForcedExit", _tex_pct(r["forced_exit_return_annualised_pct"]))
+            macro(f"{dm}{sm}Score", f"{r['investor_score_100']:.1f}")
+            macro(f"{dm}{sm}MaxWait", f"{r['max_time_to_payment_periods']:.0f}")
+            macro(f"{dm}{sm}AvgWait", f"{r['weighted_avg_time_to_payment_periods']:.2f}")
+            macro(f"{dm}{sm}ExitDiscount", _tex_pct(r["max_exit_discount_vs_nav"]))
+            macro(f"{dm}{sm}Drawdown", _tex_pct(r["max_total_return_drawdown"]))
+            macro(f"{dm}{sm}MinNav", f"{r['min_nav_per_token']:.4f}")
+            macro(f"{dm}{sm}MinSecondary", f"{r['min_secondary_market_price']:.4f}")
+            macro(f"{dm}{sm}IssuerProfit", _tex_money(r["issuer_cumulative_profit_fiat"]))
+            macro(f"{dm}{sm}Excess", _tex_pct(r["excess_return_annual"]))
+        base = summary_df[(summary_df.design_id == d) & (summary_df.scenario_id == "baseline")].iloc[0]
+        macro(f"{dm}BreakEven", _tex_money(base["breakeven_aum_fiat"]))
+        macro(f"{dm}SponsorScore", f"{base['sponsor_viability_score_100']:.0f}")
+        headroom = base["sponsor_aum_headroom"]
+        macro(f"{dm}Headroom", "n/a" if headroom is None or pd.isna(headroom) else f"{float(headroom):.1f}")
+        q = mc_results["designs"][d]["across_scenario_investor_score"]
+        macro(f"{dm}TTCLow", f"{q['p10']:.1f}")
+        macro(f"{dm}TTCMedian", f"{q['p50']:.1f}")
+        macro(f"{dm}TTCHigh", f"{q['p90']:.1f}")
+        macro(f"{dm}TTCWeighted", f"{ttc['designs'][d]['weighted_investor_score']:.1f}")
+        macro(f"{dm}TTCWorst", f"{ttc['designs'][d]['worst_case_investor_score']:.1f}")
+        scale_match = ttc["designs"][d].get("excess_return_scale_to_match_leader")
+        macro(f"{dm}ScaleToMatchLeader", "n/a" if scale_match is None else _tex_pct(scale_match, 1))
+        for regime, rm in (("published_weights", "Published"), ("local_weight_uncertainty", "Local"), ("any_weights", "Any")):
+            macro(f"{dm}RankOne{rm}", _tex_pct(mc_results["rank_one_probability"][regime][d], 0))
+        for s in scen_order:
+            sm = _SCENARIO_MACRO.get(s, "".join(ch for ch in s.title() if ch.isalpha()))
+            macro(f"{dm}{sm}RankOne", _tex_pct(mc_results["rank_one_probability"]["per_scenario_published_weights"][s][d], 0))
+        rv = reverse_stress["designs"][d]
+        macro(f"{dm}SlaBreachShock", "none" if rv["min_institutional_shock_breaching_sla"] is None else _tex_pct(rv["min_institutional_shock_breaching_sla"], 0))
+        macro(f"{dm}BufferBreachShock", "none" if rv["min_institutional_shock_breaching_buffer"] is None else _tex_pct(rv["min_institutional_shock_breaching_buffer"], 0))
+        macro(f"{dm}MinProfitableAum", "not reached" if rv["min_initial_aum_profitable_baseline_fiat"] is None else _tex_money(rv["min_initial_aum_profitable_baseline_fiat"]))
+    macro("LeaderLabel", labels_plain.get(ttc.get("leader_design_id"), "n/a"))
+    macro("ExcessFullMarks", _tex_pct(INVESTOR_SCORE_SCALES["excess_return_full_marks"], 0))
+    macro("McRepetitions", str(mc_results["repetitions"]))
+    macro("McWeightDraws", f"{mc_results['weight_draws']:,}")
+    macro("RiskFreeRate", _tex_pct((cfg.get("benchmarks") or {}).get("risk_free_rate_annual", 0.0)))
+    macro("CalibrationDate", _tex_escape(str(cfg.get("calibration_date", ""))))
+
+    numbers = "% Generated by product_case_study.write_paper_artifacts -- do not edit by hand.\n" + "".join(
+        f"\\newcommand{{\\{name}}}{{{value}}}\n" for name, value in sorted(macros.items())
+    )
+    (paper_dir / "numbers.tex").write_text(numbers, encoding="utf-8")
+
+    labels = {d: _tex_escape(cfg["product_designs"][d]["short_label"]) for d in design_ids}
+
+    # Calibration table: per design, documented vs. assumption per parameter
+    prov = provenance_rows(cfg)
+    lines = [
+        r"\begin{tabular}{@{}p{3.6cm}" + "p{3.7cm}" * len(design_ids) + "@{}}",
+        r"\toprule",
+        "\\textbf{Parameter} & " + " & ".join(f"\\textbf{{{labels[d]}}}" for d in design_ids) + r" \\",
+        r"\midrule",
+    ]
+    for key in PARAMETER_LOCATIONS:
+        cells = []
+        for d in design_ids:
+            r = next(p for p in prov if p["design_id"] == d and p["parameter_key"] == key)
+            mark = {"assumption": r"$^{\dagger}$", "documented": "", "not applicable": r" (n/a)", "missing": r"$^{?}$"}[r["status"]]
+            cells.append(_tex_escape(r["value"]) + mark)
+        lines.append(_tex_escape(PARAMETER_LABELS[key]) + " & " + " & ".join(cells) + r" \\")
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    (paper_dir / "table_calibration.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # Matrix table
+    lines = [
+        r"\begin{tabular}{@{}llrrrrrrrrr@{}}",
+        r"\toprule",
+        r"\textbf{Scenario} & \textbf{Fund} & \textbf{TWR} & \textbf{IRR} & \textbf{Forced exit} & \textbf{Wait} & \textbf{Exit disc.} & \textbf{Yield} & \textbf{Exit} & \textbf{Stab./Res.} & \textbf{Score} \\",
+        r" & & \textbf{(\% p.a.)} & \textbf{(\% p.a.)} & \textbf{(\% p.a.)} & \textbf{avg/max (mo)} & \textbf{(max)} & & & & \textbf{(0--100)} \\",
+        r"\midrule",
+    ]
+    for s in scen_order:
+        for i, d in enumerate(design_ids):
+            r = summary_df[(summary_df.design_id == d) & (summary_df.scenario_id == s)].iloc[0]
+            scen_cell = _tex_escape(_short_scenario_label(cfg, s)) if i == 0 else ""
+            lines.append(
+                f"{scen_cell} & {labels[d]} & {_tex_pct(r['investor_annualised_return_pct'])} & {_tex_pct(r['investor_irr_annualised_pct'])} & "
+                f"{_tex_pct(r['forced_exit_return_annualised_pct'])} & {r['weighted_avg_time_to_payment_periods']:.2f}/{r['max_time_to_payment_periods']:.0f} & "
+                f"{_tex_pct(r['max_exit_discount_vs_nav'])} & {r['risk_adjusted_yield_score']:.0f} & {r['exit_liquidity_score']:.0f} & "
+                f"{r['capital_stability_score']:.0f}/{r['liquidity_resilience_score']:.0f} & \\textbf{{{r['investor_score_100']:.1f}}} \\\\"
+            )
+        lines.append(r"\midrule" if s != scen_order[-1] else r"\bottomrule")
+    lines.append(r"\end{tabular}")
+    (paper_dir / "table_matrix.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # Monte Carlo / rank table
+    lines = [
+        r"\begin{tabular}{@{}lccccc@{}}",
+        r"\toprule",
+        r"\textbf{Fund} & \textbf{Across-scenario score} & \textbf{Worst scenario} & \multicolumn{3}{c}{\textbf{P(ranks first)}} \\",
+        r" & \textbf{P10 / P50 / P90} & \textbf{P10 / P50 / P90} & \textbf{Published} & \textbf{Weights \& scales $\pm$} & \textbf{Any} \\",
+        r"\midrule",
+    ]
+    for d in design_ids:
+        q = mc_results["designs"][d]["across_scenario_investor_score"]
+        w = mc_results["designs"][d]["worst_scenario_investor_score"]
+        rk = mc_results["rank_one_probability"]
+        lines.append(
+            f"{labels[d]} & {q['p10']:.1f} / \\textbf{{{q['p50']:.1f}}} / {q['p90']:.1f} & {w['p10']:.1f} / {w['p50']:.1f} / {w['p90']:.1f} & "
+            f"{_tex_pct(rk['published_weights'][d], 0)} & {_tex_pct(rk['local_weight_uncertainty'][d], 0)} & {_tex_pct(rk['any_weights'][d], 0)} \\\\"
+        )
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    (paper_dir / "table_monte_carlo.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # Sponsor table
+    lines = [
+        r"\begin{tabular}{@{}lrrrr@{}}",
+        r"\toprule",
+        r"\textbf{Fund} & \textbf{Break-even AUM} & \textbf{Documented AUM} & \textbf{Headroom} & \textbf{Sponsor viability} \\",
+        r"\midrule",
+    ]
+    for d in design_ids:
+        base = summary_df[(summary_df.design_id == d) & (summary_df.scenario_id == "baseline")].iloc[0]
+        real = (cfg["product_designs"][d].get("real_world") or {}).get("aum_fiat")
+        headroom = base["sponsor_aum_headroom"]
+        headroom_text = "n/a" if headroom is None or pd.isna(headroom) else f"{float(headroom):.1f}" + r"$\times$"
+        lines.append(
+            f"{labels[d]} & {_tex_money(base['breakeven_aum_fiat'])} & {_tex_money(real) if real else 'n/a'} & "
+            f"{headroom_text} & {base['sponsor_viability_score_100']:.0f} \\\\"
+        )
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    (paper_dir / "table_sponsor.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # Sensitivity table: span of the run-scenario investor score per assumption
+    sens = sensitivity_df[sensitivity_df.base_scenario == "concentrated_withdrawals"] if not sensitivity_df.empty else sensitivity_df
+    lines = [
+        r"\begin{tabular}{@{}llrr@{}}",
+        r"\toprule",
+        r"\textbf{Fund} & \textbf{Flagged assumption (swept values)} & \textbf{Score range} & \textbf{Max wait range (mo)} \\",
+        r"\midrule",
+    ]
+    for d in design_ids:
+        g = sens[sens.design_id == d]
+        for label, grp in g.groupby("parameter_label", sort=False):
+            values = ", ".join(_tex_escape(v) for v in grp["parameter_value_label"])
+            lines.append(
+                f"{labels[d]} & {_tex_escape(label)} ({values}) & {grp['investor_score_100'].min():.1f}--{grp['investor_score_100'].max():.1f} & "
+                f"{grp['max_time_to_payment_periods'].min():.0f}--{grp['max_time_to_payment_periods'].max():.0f} \\\\"
+            )
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    (paper_dir / "table_sensitivity.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    return {name: str(paper_dir / name) for name in (
+        "numbers.tex", "table_calibration.tex", "table_matrix.tex", "table_monte_carlo.tex", "table_sponsor.tex", "table_sensitivity.tex"
+    )}
 
 
 def _sha256_file(path: Path) -> str:
@@ -1753,6 +2084,16 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
+def _json_default(obj: Any) -> Any:
+    if isinstance(obj, (np.floating,)):
+        return float(obj)
+    if isinstance(obj, (np.integer,)):
+        return int(obj)
+    if isinstance(obj, (np.bool_,)):
+        return bool(obj)
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+
+
 def generate_case_study_bundle(
     output_dir: Path = Path("outputs/product_case_study"),
     config_path: Optional[Path] = None,
@@ -1760,8 +2101,8 @@ def generate_case_study_bundle(
 ) -> Dict[str, Any]:
     """
     Execute the complete tokenised product case study, write all CSV/JSON/PNG
-    artifacts and the self-contained HTML report to `output_dir`, and return
-    a summary dictionary.
+    artifacts, the self-contained HTML report and the generated LaTeX fragments to
+    `output_dir`, and return a summary dictionary.
     """
     out_dir = Path(output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -1769,6 +2110,7 @@ def generate_case_study_bundle(
 
     cfg = load_case_study_config(config_path)
     summary_df, ts_df, detailed_matrix = run_design_scenario_matrix(cfg)
+    ttc = compute_through_the_cycle_scores(summary_df, cfg)
     sensitivity_df = run_parameter_sensitivity_sweeps(cfg)
     reverse_stress = run_reverse_stress_tests(cfg)
     mc_results = run_monte_carlo_product_analysis(cfg, num_repetitions=mc_repetitions)
@@ -1777,8 +2119,10 @@ def generate_case_study_bundle(
     matrix_csv = out_dir / "design_scenario_matrix.csv"
     ts_csv = out_dir / "timeseries_results.csv"
     sens_csv = out_dir / "sensitivity_sweeps.csv"
+    prov_csv = out_dir / "calibration_provenance.csv"
     rev_json = out_dir / "reverse_stress_results.json"
     mc_json = out_dir / "monte_carlo_summary.json"
+    ttc_json = out_dir / "across_scenario_scores.json"
     ref_json = out_dir / "reference_case_verification.json"
     defs_json = out_dir / "metric_definitions.json"
     report_html = out_dir / "case_study_report.html"
@@ -1786,12 +2130,15 @@ def generate_case_study_bundle(
     summary_df.to_csv(matrix_csv, index=False)
     ts_df.to_csv(ts_csv, index=False)
     sensitivity_df.to_csv(sens_csv, index=False)
-    rev_json.write_text(json.dumps(reverse_stress, indent=2), encoding="utf-8")
-    mc_json.write_text(json.dumps(mc_results, indent=2), encoding="utf-8")
-    ref_json.write_text(json.dumps(ref_check, indent=2), encoding="utf-8")
+    pd.DataFrame(provenance_rows(cfg)).to_csv(prov_csv, index=False)
+    rev_json.write_text(json.dumps(reverse_stress, indent=2, default=_json_default), encoding="utf-8")
+    mc_json.write_text(json.dumps(mc_results, indent=2, default=_json_default), encoding="utf-8")
+    ttc_json.write_text(json.dumps(ttc, indent=2, default=_json_default), encoding="utf-8")
+    ref_json.write_text(json.dumps(ref_check, indent=2, default=_json_default), encoding="utf-8")
     defs_json.write_text(json.dumps(METRIC_DEFINITIONS, indent=2), encoding="utf-8")
 
     plot_paths = _generate_case_study_plots(
+        cfg=cfg,
         summary_df=summary_df,
         ts_df=ts_df,
         sensitivity_df=sensitivity_df,
@@ -1805,29 +2152,36 @@ def generate_case_study_bundle(
         sensitivity_df=sensitivity_df,
         reverse_stress=reverse_stress,
         mc_results=mc_results,
+        ttc=ttc,
         reference_verification=ref_check,
         plot_paths=plot_paths,
         output_html_path=report_html,
     )
+    paper_files = write_paper_artifacts(out_dir, cfg, summary_df, mc_results, ttc, reverse_stress, sensitivity_df)
 
     tracked_files = [
         matrix_csv,
         ts_csv,
         sens_csv,
+        prov_csv,
         rev_json,
         mc_json,
+        ttc_json,
         ref_json,
         defs_json,
         report_html,
         *[Path(p) for p in plot_paths.values()],
+        *[Path(p) for p in paper_files.values()],
     ]
     manifest = {
-        "schema_version": "product_study_bundle.v1",
+        "schema_version": "product_study_bundle.v2",
         "case_study_id": cfg["case_study_id"],
         "title": cfg["title"],
+        "calibration_date": cfg.get("calibration_date"),
         "evidence_status": cfg["evidence_status"],
         "reference_case_all_matched": ref_check["all_matched"],
         "all_matrix_runs_reconciled": bool(summary_df["all_steps_reconciled"].all()),
+        "monte_carlo_repetitions": mc_results["repetitions"],
         "files": {
             str(p.relative_to(out_dir)): {
                 "sha256": _sha256_file(p),
@@ -1855,22 +2209,42 @@ def generate_case_study_bundle(
 # ---------------------------------------------------------------------------
 
 
+def _provenance_display(cfg: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Identity fields from YAML plus documented-terms and assumption text generated from structured provenance."""
+    prov = provenance_rows(cfg)
+    out = []
+    for entry in cfg.get("real_world_provenance", []) or []:
+        d = entry.get("design_id")
+        rows = [r for r in prov if r["design_id"] == d]
+        documented = [f"{r['parameter']}: {r['value']} ({r['source']}, {r['as_of']})" for r in rows if r["status"] == "documented"]
+        assumed = [f"{r['parameter']}: {r['value']}" + (f" ({r['note']})" if r["note"] else "") for r in rows if r["status"] == "assumption"]
+        out.append(
+            {
+                **entry,
+                "documented_terms": "; ".join(documented),
+                "synthetic_assumptions": "; ".join(assumed),
+                "parameters": rows,
+            }
+        )
+    return out
+
+
 def _build_single_studio_catalog(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """Build studio catalog metadata for a single loaded case-study configuration."""
-    base_port = cfg["underlying_portfolio"]
     designs = []
     for d_id, d in cfg["product_designs"].items():
-        d_port = d.get("portfolio", {}) or {}
         designs.append(
             {
                 "design_id": d_id,
                 "name": d["name"],
                 "short_label": d["short_label"],
                 "positioning": d["positioning"],
+                "real_world": d.get("real_world", {}) or {},
                 "defaults": {
-                    "initial_aum": float(d_port.get("initial_aum", base_port["initial_aum"])),
-                    "gross_yield_annual": float(d_port.get("gross_yield_annual", base_port["gross_yield_annual"])),
+                    "initial_aum": float((d.get("portfolio", {}) or {}).get("initial_aum", cfg["underlying_portfolio"]["initial_aum"])),
+                    "gross_yield_annual": float(design_parameter_value(cfg, d_id, "gross_yield_annual")),
                     "management_fee_annual": float(d["issuer"]["management_fee_annual"]),
+                    "income_share_fee_rate": float(d["issuer"].get("income_share_fee_rate", 0.0)),
                     "performance_fee_rate": float(d["issuer"]["performance_fee_rate"]),
                     "redemption_fee_rate": float(d["issuer"]["redemption_fee_rate"]),
                     "gate_max_pct_nav_per_period": (
@@ -1879,12 +2253,8 @@ def _build_single_studio_catalog(cfg: Dict[str, Any]) -> Dict[str, Any]:
                         else float(d["redemption_rules"]["gate_max_pct_nav_per_period"])
                     ),
                     "facility_max_capacity": float(d["liquidity_facility"]["max_capacity"]),
-                    "settlement_lag_periods": int(
-                        d_port.get("settlement_lag_periods", base_port["settlement_lag_periods"])
-                    ),
-                    "liquidation_haircut_bps": float(
-                        d_port.get("liquidation_haircut_bps", base_port["liquidation_haircut_bps"])
-                    ),
+                    "settlement_lag_periods": int(design_parameter_value(cfg, d_id, "settlement_lag_periods")),
+                    "liquidation_haircut_bps": float(design_parameter_value(cfg, d_id, "liquidation_haircut_bps")),
                     "participation_multiplier": 1.0,
                     "month12_institutional_shock": 0.0,
                 },
@@ -1893,73 +2263,66 @@ def _build_single_studio_catalog(cfg: Dict[str, Any]) -> Dict[str, Any]:
     scenarios = []
     for s_id, s in cfg["scenarios"].items():
         s_ov = s.get("overrides", {}) or {}
-        c_shocks = s_ov.get("cohort_withdrawal_shocks", {}) or {}
-        m12_dict = c_shocks.get(12, c_shocks.get("12", {})) or {}
         control_defaults_by_design: Dict[str, Dict[str, Any]] = {}
-        design_ov_map = s_ov.get("design_overrides", {}) or {}
-        for d_id, d in cfg["product_designs"].items():
-            d_port = d.get("portfolio", {}) or {}
-            eff_s_ov = dict(s_ov)
-            if isinstance(design_ov_map.get(d_id), dict):
-                eff_s_ov.update(design_ov_map[d_id])
-            d_lag = int(
-                eff_s_ov.get(
-                    "settlement_lag_override",
-                    d_port.get("settlement_lag_periods", base_port["settlement_lag_periods"]),
-                )
-            )
-            d_hc = float(
-                eff_s_ov.get(
-                    "liquidation_haircut_bps_override",
-                    d_port.get("liquidation_haircut_bps", base_port["liquidation_haircut_bps"]),
-                )
-            )
+        for d_id in cfg["product_designs"]:
+            eff_s_ov = scenario_overrides_for_design(cfg, d_id, s_id)
+            c_shocks = eff_s_ov.get("cohort_withdrawal_shocks", {}) or {}
+            m12_dict = c_shocks.get(12, c_shocks.get("12", {})) or {}
             control_defaults_by_design[d_id] = {
-                "settlement_lag_periods": d_lag,
-                "liquidation_haircut_bps": d_hc,
+                "settlement_lag_periods": int(
+                    eff_s_ov.get("settlement_lag_override", design_parameter_value(cfg, d_id, "settlement_lag_periods"))
+                ),
+                "liquidation_haircut_bps": float(
+                    eff_s_ov.get("liquidation_haircut_bps_override", design_parameter_value(cfg, d_id, "liquidation_haircut_bps"))
+                ),
                 "participation_multiplier": float(eff_s_ov.get("participation_multiplier", 1.0)),
                 "month12_institutional_shock": float(m12_dict.get("institutional", 0.0)),
             }
-
+        c_shocks = s_ov.get("cohort_withdrawal_shocks", {}) or {}
+        m12_dict = c_shocks.get(12, c_shocks.get("12", {})) or {}
+        base_port = cfg["underlying_portfolio"]
         scenarios.append(
             {
                 "scenario_id": s_id,
                 "name": s["name"],
+                "short_label": s.get("short_label", s["name"]),
                 "description": s["description"],
                 "overrides": s_ov,
+                "is_stress": s_id != "baseline",
+                "has_withdrawal_shock": bool(c_shocks) or bool(s_ov.get("uniform_withdrawal_shocks")),
                 "control_defaults": {
-                    "settlement_lag_periods": int(
-                        s_ov.get("settlement_lag_override", base_port["settlement_lag_periods"])
-                    ),
-                    "liquidation_haircut_bps": float(
-                        s_ov.get("liquidation_haircut_bps_override", base_port["liquidation_haircut_bps"])
-                    ),
+                    "settlement_lag_periods": int(s_ov.get("settlement_lag_override", base_port["settlement_lag_periods"])),
+                    "liquidation_haircut_bps": float(s_ov.get("liquidation_haircut_bps_override", base_port["liquidation_haircut_bps"])),
                     "participation_multiplier": float(s_ov.get("participation_multiplier", 1.0)),
                     "month12_institutional_shock": float(m12_dict.get("institutional", 0.0)),
                 },
                 "control_defaults_by_design": control_defaults_by_design,
             }
         )
+    per_product = bool(cfg.get("per_product_portfolio", False))
+    fixed_costs = sorted({float(d["issuer"]["fixed_operating_cost_annual"]) for d in cfg["product_designs"].values()})
     return {
         "case_study_id": cfg["case_study_id"],
         "title": cfg["title"],
         "subtitle": cfg["subtitle"],
+        "calibration_date": cfg.get("calibration_date"),
         "disclaimer": str(cfg.get("evidence_status", {}).get("statement", "")).strip(),
-        "per_product_portfolio": bool(cfg.get("per_product_portfolio", False)),
+        "per_product_portfolio": per_product,
         "evidence_status": cfg["evidence_status"],
-        "real_world_provenance": cfg.get("real_world_provenance", []),
+        "real_world_provenance": _provenance_display(cfg),
         "time_convention": cfg["time_convention"],
         "objectives_tested": cfg["objectives_tested"],
+        "benchmarks": cfg.get("benchmarks", {}) or {},
+        "scenario_weights": scenario_weights(cfg),
+        "sponsor_fixed_costs_annual": fixed_costs,
+        "shared_override_keys": list(SHARED_OVERRIDE_KEYS_PER_PRODUCT if per_product else SHARED_OVERRIDE_KEYS_SINGLE_PORTFOLIO),
+        "investor_score_weights": INVESTOR_SCORE_WEIGHTS,
+        "investor_score_scales": INVESTOR_SCORE_SCALES,
         "designs": designs,
         "scenarios": scenarios,
         "controls": INTERACTIVE_ASSUMPTION_CONTROLS,
         "metric_definitions": METRIC_DEFINITIONS,
-        "limitations": [
-            "Term-sheet benchmark & synthetic stress assumptions: Product fee rates, gates, and liquidity facilities follow public disclosures, while $25M AUM normalisation, cohort elasticities, and stress shocks are synthetic.",
-            "Monthly discrete time-stepping: Intra-month flash redemptions and intraday gas/AMM slippage are aggregated into monthly settlement periods.",
-            "Linear liquidation haircut model: Very large forced sales in thin secondary private-credit markets can exhibit convex/non-linear price impact beyond a constant bps haircut.",
-            "Fixed cohort sensitivity coefficients: Investor subscription and redemption elasticities are deterministic functions of yield shortfall, NAV drawdown, and queue ratio unless calibrated to historical fund-flow data.",
-        ],
+        "limitations": CASE_STUDY_LIMITATIONS,
     }
 
 
@@ -2014,6 +2377,17 @@ def _resolve_config_for_query(
     return load_case_study_config()
 
 
+def _comparison_row(d_id: str, d_meta: Dict[str, Any], is_selected: bool, d_out: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "design_id": d_id,
+        "design_label": d_meta["short_label"],
+        "is_selected": is_selected,
+        **{key: d_out[key] for key in SUMMARY_FIELDS},
+        "investor_scorecard": d_out["investor_scorecard"],
+        "sponsor_viability": d_out["sponsor_viability"],
+    }
+
+
 def run_interactive_product_studio_query(
     payload: Dict[str, Any],
     export_dir: Optional[Path] = None,
@@ -2021,8 +2395,9 @@ def run_interactive_product_studio_query(
 ) -> Dict[str, Any]:
     """
     Execute an interactive simulation run for the selected design, scenario, and
-    custom assumption overrides, plus a side-by-side comparison of all 3 designs
-    under the same scenario and portfolio/market assumptions.
+    validated assumption overrides, plus a side-by-side comparison of all designs
+    under the same scenario. With `include_scenario_grid`, also return every design's
+    investor score in every scenario (with the shared overrides applied).
     """
     cfg = _resolve_config_for_query(payload, config=config)
     default_design = (
@@ -2040,7 +2415,7 @@ def run_interactive_product_studio_query(
     ov_raw = payload.get("overrides")
     if ov_raw is not None and not isinstance(ov_raw, dict):
         raise ValueError("overrides must be a JSON object")
-    raw_overrides = dict(ov_raw or {})
+    raw_overrides = validate_overrides(dict(ov_raw or {}))
     horizon = int(cfg["time_convention"]["horizon_periods"])
 
     # Run selected design with full user overrides
@@ -2053,26 +2428,12 @@ def run_interactive_product_studio_query(
     df = econ.run_Fixed_iterations(horizon)
     selected_outcomes = econ.summarize_outcomes()
 
-    # Compare all 3 product designs side-by-side:
-    # - In per_product_portfolio mode (Real-World RWA Benchmark), each non-selected product retains
-    #   its own authentic asset yield, settlement lag, and liquidation haircut while sharing
-    #   the benchmark AUM scale and macro/flow shock overrides.
-    # - In single-portfolio mode (Synthetic Design A/B/C study), all 3 designs share the portfolio overrides.
-    if cfg.get("per_product_portfolio"):
-        shared_keys = {
-            "initial_aum",
-            "participation_multiplier",
-            "month12_institutional_shock",
-        }
-    else:
-        shared_keys = {
-            "initial_aum",
-            "gross_yield_annual",
-            "settlement_lag_periods",
-            "liquidation_haircut_bps",
-            "participation_multiplier",
-            "month12_institutional_shock",
-        }
+    # Compare all product designs side-by-side. In per_product_portfolio mode each other fund keeps its
+    # own documented terms and shares only scale and investor-flow shocks; in single-portfolio mode the
+    # designs also share the portfolio assumptions.
+    shared_keys = set(
+        SHARED_OVERRIDE_KEYS_PER_PRODUCT if cfg.get("per_product_portfolio") else SHARED_OVERRIDE_KEYS_SINGLE_PORTFOLIO
+    )
     shared_overrides = {k: v for k, v in raw_overrides.items() if k in shared_keys}
     comparison_rows: List[Dict[str, Any]] = []
     comparison_series: Dict[str, Any] = {}
@@ -2091,193 +2452,115 @@ def run_interactive_product_studio_query(
             d_df = d_econ.run_Fixed_iterations(horizon)
             d_out = d_econ.summarize_outcomes()
 
-        comparison_rows.append(
-            {
-                "design_id": d_id,
-                "design_label": d_meta["short_label"],
-                "is_selected": d_id == design_id,
-                "investor_annualised_return_pct": d_out["investor_annualised_return_pct"],
-                "investor_roi_on_total_contributed_pct": d_out["investor_roi_on_total_contributed_pct"],
-                "investor_distributions_total_fiat": d_out["investor_distributions_total_fiat"],
-                "ending_nav_per_token": d_out["ending_nav_per_token"],
-                "ending_executable_redemption_price": d_out["ending_executable_redemption_price"],
-                "min_secondary_market_price": d_out["min_secondary_market_price"],
-                "issuer_cumulative_revenue_fiat": d_out["issuer_cumulative_revenue_fiat"],
-                "issuer_cumulative_cost_fiat": d_out["issuer_cumulative_cost_fiat"],
-                "issuer_cumulative_profit_fiat": d_out["issuer_cumulative_profit_fiat"],
-                "issuer_profitable": d_out["issuer_profitable"],
-                "breakeven_aum_fiat": d_out["breakeven_aum_fiat"],
-                "peak_unpaid_redemption_obligations_fiat": d_out["peak_unpaid_redemption_obligations_fiat"],
-                "max_time_to_payment_periods": d_out["max_time_to_payment_periods"],
-                "payment_sla_met": d_out["payment_sla_met"],
-                "total_liquidity_and_financing_costs_fiat": d_out["total_liquidity_and_financing_costs_fiat"],
-                "min_cash_plus_facility_to_nav_ratio": d_out["min_cash_plus_facility_to_nav_ratio"],
-                "liquidity_buffer_floor_met": d_out["liquidity_buffer_floor_met"],
-                "yield_efficiency_score": d_out["yield_efficiency_score"],
-                "liquidity_sla_score": d_out["liquidity_sla_score"],
-                "price_stability_score": d_out["price_stability_score"],
-                "issuer_viability_score": d_out["issuer_viability_score"],
-                "stress_resilience_score": d_out["stress_resilience_score"],
-                "composite_score_100": d_out["composite_score_100"],
-                "rating_grade": d_out["rating_grade"],
-                "scorecard": d_out["scorecard"],
-                "all_steps_reconciled": d_out["all_steps_reconciled"],
-            }
-        )
+        comparison_rows.append(_comparison_row(d_id, d_meta, d_id == design_id, d_out))
         comparison_series[d_id] = {
             "design_label": d_meta["short_label"],
             "iteration": d_df["iteration"].tolist(),
             "nav_per_token": d_df["nav_per_token"].round(6).tolist(),
             "secondary_market_price": d_df["secondary_market_price"].round(6).tolist(),
+            "exit_discount_vs_nav": d_df["exit_discount_vs_nav"].round(6).tolist(),
             "unpaid_redemption_obligations": d_df["unpaid_redemption_obligations"].round(2).tolist(),
             "cumulative_issuer_profit": d_df["cumulative_issuer_profit"].round(2).tolist(),
             "available_cash": d_df["available_cash"].round(2).tolist(),
             "facility_drawn_balance": d_df["facility_drawn_balance"].round(2).tolist(),
         }
 
+    scenario_grid: Optional[List[Dict[str, Any]]] = None
+    if payload.get("include_scenario_grid"):
+        scenario_grid = []
+        for d_id in cfg["product_designs"]:
+            for s_id in cfg["scenarios"]:
+                g_econ = build_product_economy_from_config(
+                    cfg, design_id=d_id, scenario_id=s_id,
+                    custom_overrides=raw_overrides if d_id == design_id else shared_overrides,
+                )
+                g_econ.run_Fixed_iterations(horizon)
+                g_out = g_econ.summarize_outcomes()
+                scenario_grid.append(
+                    {
+                        "design_id": d_id,
+                        "scenario_id": s_id,
+                        "investor_score_100": g_out["investor_score_100"],
+                        "investor_annualised_return_pct": g_out["investor_annualised_return_pct"],
+                        "max_time_to_payment_periods": g_out["max_time_to_payment_periods"],
+                        "max_exit_discount_vs_nav": g_out["max_exit_discount_vs_nav"],
+                    }
+                )
+
     # Optional export of interactive run artifacts
     exported_files: Dict[str, str] = {}
     if export_dir is not None:
         exp_path = Path(export_dir)
         exp_path.mkdir(parents=True, exist_ok=True)
-        ts_path = exp_path / "interactive_timeseries.csv"
-        comp_path = exp_path / "interactive_design_comparison.csv"
-        summary_path = exp_path / "interactive_summary.json"
-        html_path = exp_path / "interactive_case_study_report.html"
+        stem = f"{design_id}__{scenario_id}"
+        ts_path = exp_path / f"{stem}__timeseries_all_designs.csv"
+        comp_path = exp_path / f"{stem}__design_comparison.csv"
+        summary_path = exp_path / f"{stem}__summary.json"
+        html_path = exp_path / f"{stem}__report.html"
 
-        df.to_csv(ts_path, index=False)
-        pd.DataFrame(comparison_rows).to_csv(comp_path, index=False)
+        all_ts = []
+        for d_id, series in comparison_series.items():
+            frame = pd.DataFrame({k: v for k, v in series.items() if k != "design_label"})
+            frame.insert(0, "design_id", d_id)
+            all_ts.append(frame)
+        pd.concat(all_ts, ignore_index=True).to_csv(ts_path, index=False)
+        pd.DataFrame(
+            [{k: v for k, v in r.items() if k not in ("investor_scorecard", "sponsor_viability")} for r in comparison_rows]
+        ).to_csv(comp_path, index=False)
         summary_path.write_text(
             json.dumps(
                 {
                     "case_study_id": cfg["case_study_id"],
+                    "calibration_date": cfg.get("calibration_date"),
                     "design_id": design_id,
                     "scenario_id": scenario_id,
                     "overrides": raw_overrides,
+                    "shared_override_keys": sorted(shared_keys),
                     "selected_outcomes": selected_outcomes,
                     "comparison": comparison_rows,
+                    "scenario_grid": scenario_grid,
                 },
                 indent=2,
+                default=_json_default,
             ),
             encoding="utf-8",
         )
 
-        # Build concise client-suitable HTML report for this interactive run
         rep = ReportBuilder(
             title=f"Interactive Product Advisory Run: {cfg['product_designs'][design_id]['short_label']}",
             subtitle=f"{cfg['title']} • Scenario: {cfg['scenarios'][scenario_id]['name']}",
-            footer_text="Generated from TokenLab Interactive Product Advisory Studio",
+            footer_text="Generated from the TokenLab product studio. Model outputs under stated assumptions; not a forecast, credit rating or investment advice.",
         )
         rep.add_callout(
-            "<strong>Evidence &amp; Assumption Notice:</strong> "
-            + str(cfg["evidence_status"]["statement"]),
+            "<strong>Evidence &amp; Assumption Notice:</strong> " + str(cfg["evidence_status"]["statement"]),
             style="info",
         )
         rep.add_card_row(
             [
-                {
-                    "value": f"{selected_outcomes['investor_annualised_return_pct'] * 100:.2f}%",
-                    "label": "Investor Annualised Net Return (TWR)",
-                    "color": "#22C55E",
-                },
-                {
-                    "value": f"${selected_outcomes['issuer_cumulative_profit_fiat'] / 1e3:,.1f}k",
-                    "label": "Issuer 36-Mo Net Profit",
-                    "color": "#38BDF8" if selected_outcomes["issuer_profitable"] else "#DC2626",
-                },
-                {
-                    "value": f"${selected_outcomes['breakeven_aum_fiat'] / 1e6:,.1f}M",
-                    "label": "Analytical Break-Even AUM",
-                    "color": "#A855F7",
-                },
-                {
-                    "value": f"{selected_outcomes['max_time_to_payment_periods']:.1f} mo",
-                    "label": "Max Time to Full Payment",
-                    "color": "#22C55E" if selected_outcomes["payment_sla_met"] else "#DC2626",
-                },
-                {
-                    "value": f"{selected_outcomes['composite_score_100']:.1f} ({selected_outcomes['rating_grade']})",
-                    "label": "5-Pillar Rating & Score",
-                    "color": "#22C55E" if selected_outcomes["composite_score_100"] >= 70.0 else "#F59E0B",
-                },
+                {"value": f"{selected_outcomes['investor_score_100']:.1f}", "label": "Investor score (0-100, not a credit rating)", "color": "#2a78d6"},
+                {"value": _pct(selected_outcomes["investor_annualised_return_pct"]), "label": "Per-unit TWR (p.a.)", "color": "#2a78d6"},
+                {"value": f"{selected_outcomes['max_time_to_payment_periods']:.0f} mo", "label": "Max time to full payment", "color": "#2a78d6"},
+                {"value": _money(selected_outcomes["breakeven_aum_fiat"]), "label": "Sponsor break-even AUM", "color": "#2a78d6"},
             ]
         )
-        comp_table_rows = [
-            [
-                r["design_label"] + (" (Selected)" if r["is_selected"] else ""),
-                f"{r['composite_score_100']:.1f} ({r['rating_grade']})",
-                f"{r['investor_annualised_return_pct'] * 100:.2f}%",
-                f"${r['ending_nav_per_token']:.4f}",
-                f"${r['min_secondary_market_price']:.4f}",
-                f"${r['issuer_cumulative_profit_fiat'] / 1e3:,.1f}k",
-                f"${r['breakeven_aum_fiat'] / 1e6:,.1f}M",
-                f"{r['max_time_to_payment_periods']:.1f} mo",
-                f"${r['total_liquidity_and_financing_costs_fiat'] / 1e3:,.1f}k",
-            ]
-            for r in comparison_rows
-        ]
         rep.add_table_section(
-            "Side-by-Side Product Design Comparison (Under Selected Scenario & Portfolio Assumptions)",
-            headers=[
-                "Design",
-                "Composite Score & Grade",
-                "Investor Net Return (TWR p.a.)",
-                "Ending NAV/Token",
-                "Min Secondary Price",
-                "Issuer 3-Yr Profit",
-                "Break-Even AUM",
-                "Max Payment Wait",
-                "Liquidity & Haircut Cost",
-            ],
-            rows=comp_table_rows,
-        )
-        sc_rows = [
-            [
-                r["design_label"] + (" (Selected)" if r["is_selected"] else ""),
-                f"{r['yield_efficiency_score']:.1f}",
-                f"{r['liquidity_sla_score']:.1f}",
-                f"{r['price_stability_score']:.1f}",
-                f"{r['issuer_viability_score']:.1f}",
-                f"{r['stress_resilience_score']:.1f}",
-                f"<strong>{r['composite_score_100']:.1f} / 100 ({r['rating_grade']})</strong>",
-            ]
-            for r in comparison_rows
-        ]
-        rep.add_table_section(
-            "5-Pillar Quantitative Product Scorecard (0–100 Scale)",
-            headers=[
-                "Product Design",
-                "P1: Yield Efficiency (25%)",
-                "P2: Liquidity & SLA (25%)",
-                "P3: Price Stability (20%)",
-                "P4: Issuer Viability (15%)",
-                "P5: Stress Resilience (15%)",
-                "Composite Score & Grade",
-            ],
-            rows=sc_rows,
-        )
-        if cfg.get("real_world_provenance"):
-            prov_rows = [
+            "Side-by-side comparison (same scenario; shared overrides: " + ", ".join(sorted(shared_keys)) + ")",
+            headers=["Design", "Investor score", "TWR", "IRR", "Forced exit", "Max wait", "Max exit discount", "Sponsor viability", "Break-even AUM"],
+            rows=[
                 [
-                    p["product_name"],
-                    p["issuer_and_infra"],
-                    p["asset_class"],
-                    p["documented_terms"],
-                    p["synthetic_assumptions"],
+                    r["design_label"] + (" (selected)" if r["is_selected"] else ""),
+                    f"{r['investor_score_100']:.1f}",
+                    _pct(r["investor_annualised_return_pct"]),
+                    _pct(r["investor_irr_annualised_pct"]),
+                    _pct(r["forced_exit_return_annualised_pct"]),
+                    f"{r['max_time_to_payment_periods']:.0f} mo",
+                    _pct(r["max_exit_discount_vs_nav"]),
+                    f"{r['sponsor_viability_score_100']:.0f}",
+                    _money(r["breakeven_aum_fiat"]),
                 ]
-                for p in cfg["real_world_provenance"]
-            ]
-            rep.add_table_section(
-                "Real-World RWA Term-Sheet Provenance & Calibration Notes",
-                headers=[
-                    "Live RWA Product",
-                    "Issuer & Infrastructure",
-                    "Underlying Asset Class",
-                    "Documented Term-Sheet Parameters",
-                    "Synthetic Benchmark Assumptions",
-                ],
-                rows=prov_rows,
-            )
+                for r in comparison_rows
+            ],
+        )
         rep.save(str(html_path))
 
         exported_files = {
@@ -2290,8 +2573,10 @@ def run_interactive_product_studio_query(
     return {
         "case_study_id": cfg["case_study_id"],
         "case_study_title": cfg["title"],
+        "calibration_date": cfg.get("calibration_date"),
         "per_product_portfolio": bool(cfg.get("per_product_portfolio", False)),
-        "real_world_provenance": cfg.get("real_world_provenance", []),
+        "shared_override_keys": sorted(shared_keys),
+        "real_world_provenance": _provenance_display(cfg),
         "design_id": design_id,
         "design_label": cfg["product_designs"][design_id]["short_label"],
         "scenario_id": scenario_id,
@@ -2301,19 +2586,20 @@ def run_interactive_product_studio_query(
         "design_comparison": comparison_rows,
         "timeseries_by_design": comparison_series,
         "selected_timeseries": df.to_dict(orient="records"),
+        "scenario_grid": scenario_grid,
         "exported_files": exported_files,
     }
 
 
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Run the TokenLab flagship tokenised investment product case study and generate the HTML report bundle."
+        description="Run the TokenLab tokenised investment product case study and generate the HTML report bundle."
     )
     parser.add_argument(
         "--output-dir",
         type=Path,
         default=Path("outputs/product_case_study"),
-        help="Output directory for CSV/JSON artifacts, PNG plots, and case_study_report.html.",
+        help="Output directory for CSV/JSON artifacts, PNG plots, LaTeX fragments and case_study_report.html.",
     )
     parser.add_argument(
         "--config",
@@ -2325,7 +2611,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--mc-repetitions",
         type=int,
         default=None,
-        help="Number of seeded Monte Carlo repetitions per design (default from YAML config = 60).",
+        help="Number of seeded Monte Carlo repetitions per design and scenario (default from YAML config).",
     )
     args = parser.parse_args(argv)
     result = generate_case_study_bundle(
