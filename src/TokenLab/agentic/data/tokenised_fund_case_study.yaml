@@ -1,0 +1,271 @@
+schema_version: "product_study.v1"
+case_study_id: "tokenised-income-fund-v1"
+title: "Designing a viable tokenised investment product: returns, fees and liquidity."
+subtitle: "Comparative economic design, valuation analysis, and liquidity stress testing for a synthetic $25M tokenised private-credit & treasury income fund over 36 monthly periods."
+evidence_status:
+  classification: "synthetic_illustrative_case_study"
+  statement: >
+    All portfolio yields, investor behavioural sensitivities, fee schedules, and stress
+    scenarios in this configuration are synthetic and illustrative. Conditional scenario
+    outputs and Monte Carlo percentile bands represent implications of these explicit
+    assumptions and must not be interpreted as empirically calibrated market forecasts.
+
+time_convention:
+  unit: "month"
+  periods_per_year: 12
+  horizon_periods: 36
+  annualisation_convention: "compound_geometric_for_returns_linear_for_fee_rates"
+
+objectives_tested:
+  payment_sla_max_months: 3.0
+  min_liquidity_buffer_pct_nav: 0.03
+  issuer_operating_profit_floor_fiat: 0.0
+
+underlying_portfolio:
+  name: "Synthetic Short-Duration Private Credit & Treasury Portfolio"
+  initial_aum: 25000000.0
+  initial_nav_per_token: 1.0
+  gross_yield_annual: 0.085
+  capital_appreciation_annual: 0.000
+  portfolio_expense_annual: 0.0020
+  settlement_lag_periods: 1
+  liquidation_haircut_bps: 35.0
+  valuation_method: "stated_asset_valuation"
+
+investor_cohorts:
+  - cohort_id: "institutional"
+    name: "Institutional Income Allocators"
+    initial_capital_share: 0.50
+    num_holders: 4
+    base_subscription_rate_period: 0.012
+    distribution_reinvestment_rate: 0.30
+    base_redemption_rate_period: 0.008
+    target_net_yield_annual: 0.064
+    return_shortfall_sensitivity: 1.10
+    nav_drawdown_sensitivity: 2.00
+    queue_delay_sensitivity: 0.45
+  - cohort_id: "hnw"
+    name: "HNW & Family Offices"
+    initial_capital_share: 0.30
+    num_holders: 20
+    base_subscription_rate_period: 0.015
+    distribution_reinvestment_rate: 0.25
+    base_redemption_rate_period: 0.010
+    target_net_yield_annual: 0.064
+    return_shortfall_sensitivity: 0.85
+    nav_drawdown_sensitivity: 1.50
+    queue_delay_sensitivity: 0.35
+  - cohort_id: "retail"
+    name: "On-Chain Treasury & Retail Holders"
+    initial_capital_share: 0.20
+    num_holders: 200
+    base_subscription_rate_period: 0.018
+    distribution_reinvestment_rate: 0.15
+    base_redemption_rate_period: 0.015
+    target_net_yield_annual: 0.060
+    return_shortfall_sensitivity: 0.60
+    nav_drawdown_sensitivity: 1.15
+    queue_delay_sensitivity: 0.25
+
+product_designs:
+  design_a_liquid_low_fee:
+    design_id: "design_a_liquid_low_fee"
+    name: "Design A: Open-Ended Par Liquidity & Low Fee"
+    short_label: "Design A (Low Fee / Uncapped)"
+    positioning: "Growth-first institutional/retail wrapper with minimal fees, uncapped redemptions, small cash buffer, and no credit facility."
+    target_cash_buffer_pct: 0.05
+    distribution_policy: "full_net_income"
+    issuer:
+      management_fee_annual: 0.0045
+      performance_fee_rate: 0.00
+      hurdle_rate_annual: 0.050
+      redemption_fee_rate: 0.0000
+      redemption_fee_to_issuer_pct: 0.00
+      platform_admin_fee_annual: 0.0010
+      platform_admin_cost_bearer: "portfolio"
+      fixed_operating_cost_annual: 210000.0
+      variable_operating_cost_bps: 12.0
+    redemption_rules:
+      gate_max_pct_nav_per_period: null
+      payment_sla_periods: 3
+    liquidity_facility:
+      max_capacity: 0.0
+      interest_rate_annual: 0.0625
+      commitment_fee_annual: 0.0040
+      cost_bearer: "portfolio"
+
+  design_b_gated_high_fee:
+    design_id: "design_b_gated_high_fee"
+    name: "Design B: High-Fee & Gated Redemptions"
+    short_label: "Design B (High Fee / 5% Gate)"
+    positioning: "Issuer-margin-first structure with 125 bps management fee, 15% performance fee, 100 bps exit fee to issuer, and a strict 5% monthly redemption gate."
+    target_cash_buffer_pct: 0.10
+    distribution_policy: "full_net_income"
+    issuer:
+      management_fee_annual: 0.0125
+      performance_fee_rate: 0.15
+      hurdle_rate_annual: 0.050
+      redemption_fee_rate: 0.0100
+      redemption_fee_to_issuer_pct: 1.00
+      platform_admin_fee_annual: 0.0010
+      platform_admin_cost_bearer: "portfolio"
+      fixed_operating_cost_annual: 210000.0
+      variable_operating_cost_bps: 12.0
+    redemption_rules:
+      gate_max_pct_nav_per_period: 0.05
+      payment_sla_periods: 3
+    liquidity_facility:
+      max_capacity: 0.0
+      interest_rate_annual: 0.0625
+      commitment_fee_annual: 0.0040
+      cost_bearer: "portfolio"
+
+  design_c_balanced_facility:
+    design_id: "design_c_balanced_facility"
+    name: "Design C: Balanced Fee, Anti-Dilution Levy & Committed Liquidity Facility"
+    short_label: "Design C (Balanced / $4M Facility)"
+    positioning: "Balanced institutional design with 85 bps management fee, 10% performance fee above 5.5% hurdle, 50 bps anti-dilution exit levy (60% retained by portfolio, 40% to issuer), 15% soft gate, and a $4M committed liquidity facility."
+    target_cash_buffer_pct: 0.08
+    distribution_policy: "full_net_income"
+    issuer:
+      management_fee_annual: 0.0085
+      performance_fee_rate: 0.10
+      hurdle_rate_annual: 0.055
+      redemption_fee_rate: 0.0050
+      redemption_fee_to_issuer_pct: 0.40
+      platform_admin_fee_annual: 0.0010
+      platform_admin_cost_bearer: "portfolio"
+      fixed_operating_cost_annual: 210000.0
+      variable_operating_cost_bps: 12.0
+    redemption_rules:
+      gate_max_pct_nav_per_period: 0.15
+      payment_sla_periods: 3
+    liquidity_facility:
+      max_capacity: 4000000.0
+      interest_rate_annual: 0.0625
+      commitment_fee_annual: 0.0040
+      cost_bearer: "portfolio"
+
+scenarios:
+  baseline:
+    scenario_id: "baseline"
+    name: "1. Baseline (Steady Income & Normal Turnover)"
+    description: "8.50% gross portfolio yield, normal subscription inflows (1.0x), normal redemption turnover (1.0x), 1-month asset settlement lag, and full facility availability."
+    overrides:
+      participation_multiplier: 1.0
+      redemption_multiplier: 1.0
+      yield_delta_annual: 0.0
+      capital_return_delta_annual: 0.0
+      facility_capacity_multiplier: 1.0
+
+  low_participation:
+    scenario_id: "low_participation"
+    name: "2. Lower Participation / Slower Growth"
+    description: "Subscription inflows fall by 75% (0.25x multiplier) and routine redemptions increase by 35% (1.35x), testing issuer operating cost coverage under stagnant/shrinking AUM."
+    overrides:
+      participation_multiplier: 0.25
+      redemption_multiplier: 1.35
+      yield_delta_annual: 0.0
+      capital_return_delta_annual: 0.0
+      facility_capacity_multiplier: 1.0
+
+  adverse_asset_return:
+    scenario_id: "adverse_asset_return"
+    name: "3. Lower Asset Returns & Credit Write-Down"
+    description: "Gross portfolio yield drops by 250 bps (to 6.00% p.a.) alongside discrete -3.5% mark-to-market credit write-downs in Months 12 and 18, triggering endogenous investor redemptions."
+    overrides:
+      participation_multiplier: 0.70
+      redemption_multiplier: 1.15
+      yield_delta_annual: -0.025
+      capital_return_delta_annual: 0.0
+      capital_shock_schedule:
+        12: -0.035
+        18: -0.035
+      facility_capacity_multiplier: 1.0
+
+  concentrated_withdrawals:
+    scenario_id: "concentrated_withdrawals"
+    name: "4. Concentrated Institutional Withdrawals"
+    description: "Two large institutional allocators redeem 30% of the institutional cohort in Month 12, followed by a 15% HNW redemption wave in Month 13."
+    overrides:
+      participation_multiplier: 0.80
+      redemption_multiplier: 1.0
+      cohort_withdrawal_shocks:
+        12:
+          institutional: 0.30
+        13:
+          hnw: 0.15
+          retail: 0.08
+      facility_capacity_multiplier: 1.0
+
+  delayed_settlement:
+    scenario_id: "delayed_settlement"
+    name: "5. Delayed Underlying Asset Settlement (T+3 Months)"
+    description: "Underlying private-credit asset liquidations require 3 months to settle into cash (up from 1 month) with a 75 bps liquidation haircut during a moderate Month 12 withdrawal wave."
+    overrides:
+      participation_multiplier: 0.85
+      redemption_multiplier: 1.15
+      settlement_lag_override: 3
+      liquidation_haircut_bps_override: 75.0
+      cohort_withdrawal_shocks:
+        12:
+          institutional: 0.18
+          hnw: 0.10
+      facility_capacity_multiplier: 1.0
+
+  reduced_external_liquidity:
+    scenario_id: "reduced_external_liquidity"
+    name: "6. Reduced External Liquidity Facility (75% Haircut on Credit Line)"
+    description: "External credit facility capacity is cut by 75% (to $1.0M in Design C) while a 22% institutional + 12% HNW redemption shock hits in Months 12-13."
+    overrides:
+      participation_multiplier: 0.80
+      redemption_multiplier: 1.10
+      facility_capacity_multiplier: 0.25
+      cohort_withdrawal_shocks:
+        12:
+          institutional: 0.22
+        13:
+          hnw: 0.12
+
+  combined_adverse:
+    scenario_id: "combined_adverse"
+    name: "7. Combined Adverse Stress (Yield Drop + Write-Down + Run + T+3 Lag + Facility Cut)"
+    description: "Simultaneous -200 bps yield compression, -3.0% credit write-down in Month 12, 25% institutional + 15% HNW withdrawal shock, 3-month underlying settlement lag, 90 bps forced-sale haircut, and 50% facility reduction."
+    overrides:
+      participation_multiplier: 0.35
+      redemption_multiplier: 1.25
+      yield_delta_annual: -0.020
+      capital_shock_schedule:
+        12: -0.030
+      settlement_lag_override: 3
+      liquidation_haircut_bps_override: 90.0
+      facility_capacity_multiplier: 0.50
+      cohort_withdrawal_shocks:
+        12:
+          institutional: 0.25
+          hnw: 0.10
+        13:
+          institutional: 0.10
+          hnw: 0.15
+          retail: 0.10
+
+  reverse_stress_test:
+    scenario_id: "reverse_stress_test"
+    name: "8. Reverse Stress Test (Objective Breaking-Point Search)"
+    description: "Systematic search identifying the minimum shock magnitude at which (a) the 3-month Payment Deadline SLA fails, (b) the 3% Liquidity Buffer floor fails, and (c) Issuer Operating Cost Coverage fails."
+    overrides:
+      participation_multiplier: 0.60
+      redemption_multiplier: 1.15
+      settlement_lag_override: 2
+      liquidation_haircut_bps_override: 60.0
+      cohort_withdrawal_shocks:
+        12:
+          institutional: 0.35
+          hnw: 0.20
+
+monte_carlo:
+  default_repetitions: 60
+  random_seed: 20261026
+  stochastic_yield_volatility_annual: 0.012
+  stochastic_capital_volatility_annual: 0.018
+  stochastic_redemption_noise_std: 0.012

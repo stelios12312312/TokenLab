@@ -24,7 +24,7 @@ import sys
 import tempfile
 import threading
 from typing import Any, Dict, Mapping, Sequence, Tuple
-from urllib.parse import quote, unquote, urlsplit
+from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 
 DASHBOARD_VERSION = 1
@@ -69,8 +69,51 @@ class GalleryApplication:
     gallery: Any
     catalog: Dict[str, Any]
     runs: Dict[str, DashboardApplication] = field(default_factory=dict)
+    product_runs: Dict[str, Dict[str, Tuple[str, bytes]]] = field(default_factory=dict)
     run_lock: threading.Lock = field(default_factory=lambda: _GALLERY_RUN_LOCK)
+    product_lock: threading.Lock = field(default_factory=threading.Lock)
     jobs: Any = None
+
+    def execute_product_studio(self, request: Mapping[str, Any]) -> Dict[str, Any]:
+        from .agentic.product_case_study import run_interactive_product_studio_query
+
+        if not isinstance(request, Mapping):
+            raise DashboardError("product studio request must be an object")
+        if not self.product_lock.acquire(timeout=10.0):
+            raise GalleryBusyError("another product studio simulation is already running")
+        try:
+            if len(self.product_runs) >= MAX_GALLERY_RUNS:
+                raise GalleryCapacityError("product studio run limit reached")
+            run_index = len(self.product_runs) + 1
+            product_run_id = f"product-run-{run_index:04d}"
+            base_out = getattr(self.gallery, "output_dir", Path("outputs/demo-gallery"))
+            export_dir = Path(base_out) / "product_studio_runs" / product_run_id
+            result = run_interactive_product_studio_query(
+                dict(request), export_dir=export_dir
+            )
+            downloads_map: Dict[str, Tuple[str, bytes]] = {}
+            download_links: List[Dict[str, str]] = []
+            for artifact_key, filename in result.get("exported_files", {}).items():
+                fpath = export_dir / filename
+                if fpath.is_file():
+                    downloads_map[artifact_key] = (filename, fpath.read_bytes())
+                    download_links.append(
+                        {
+                            "id": artifact_key,
+                            "filename": filename,
+                            "url": (
+                                f"/api/product-studio/runs/{quote(product_run_id, safe='')}"
+                                f"/download/{quote(artifact_key, safe='')}"
+                            ),
+                        }
+                    )
+            self.product_runs[product_run_id] = downloads_map
+            result["status"] = "success"
+            result["product_run_id"] = product_run_id
+            result["downloads"] = download_links
+            return result
+        finally:
+            self.product_lock.release()
 
     def execute(self, request: Any) -> Dict[str, Any]:
         if not self.run_lock.acquire(blocking=False):
@@ -712,12 +755,78 @@ def _make_gallery_handler(application: GalleryApplication, html: bytes):
                 return
             path = unquote(urlsplit(self.path).path)
             if path == "/":
+                try:
+                    raw_html = gallery_html()
+                    live_html = (
+                        raw_html.encode("utf-8")
+                        if isinstance(raw_html, str)
+                        else bytes(raw_html)
+                    )
+                except Exception:
+                    live_html = html
                 self._send_bytes(
-                    200, html, "text/html; charset=utf-8", head_only=head_only
+                    200, live_html, "text/html; charset=utf-8", head_only=head_only
                 )
                 return
             if path == "/api/gallery":
                 self._send_json(200, application.catalog, head_only=head_only)
+                return
+            if path == "/api/product-studio":
+                from .agentic.product_case_study import get_product_studio_catalog
+
+                query_params = parse_qs(urlsplit(self.path).query)
+                cs_id_list = query_params.get("case_study_id", [])
+                cs_id = cs_id_list[0] if cs_id_list else None
+                try:
+                    cat_payload = get_product_studio_catalog(case_study_id=cs_id)
+                except ValueError as exc:
+                    self._send_json(
+                        400,
+                        {"status": "error", "state": "invalid", "error": str(exc)},
+                        head_only=head_only,
+                    )
+                    return
+                self._send_json(
+                    200, cat_payload, head_only=head_only
+                )
+                return
+            prod_dl_match = re.fullmatch(
+                r"/api/product-studio/runs/([A-Za-z0-9][A-Za-z0-9._-]{0,127})"
+                r"/download/([A-Za-z0-9][A-Za-z0-9._-]{0,127})",
+                path,
+            )
+            if prod_dl_match is not None:
+                p_run_id, p_art_id = prod_dl_match.groups()
+                p_run = application.product_runs.get(p_run_id)
+                p_artifact = p_run.get(p_art_id) if p_run is not None else None
+                if p_artifact is not None:
+                    filename, body = p_artifact
+                    suffix = Path(filename).suffix.lower()
+                    if suffix == ".csv":
+                        media_type = "text/csv; charset=utf-8"
+                    elif suffix == ".json":
+                        media_type = "application/json; charset=utf-8"
+                    elif suffix == ".html":
+                        media_type = "text/html; charset=utf-8"
+                    else:
+                        media_type = "application/octet-stream"
+                    self._send_bytes(
+                        200,
+                        body,
+                        media_type,
+                        head_only=head_only,
+                        extra_headers={
+                            "Content-Disposition": (
+                                f'attachment; filename="{_safe_download_name(filename)}"'
+                            )
+                        },
+                    )
+                    return
+                self._send_json(
+                    404,
+                    {"status": "error", "state": "invalid", "error": "not found"},
+                    head_only=head_only,
+                )
                 return
             if path == "/api/health":
                 self._send_json(
@@ -933,6 +1042,42 @@ def _make_gallery_handler(application: GalleryApplication, html: bytes):
             path = unquote(urlsplit(self.path).path)
             if path == "/api/stochastic/runs":
                 self._post_stochastic_run()
+                return
+            if path == "/api/product-studio/run":
+                request = self._read_json_body()
+                if request is None:
+                    return
+                try:
+                    result = application.execute_product_studio(request)
+                except (ValueError, DashboardError) as exc:
+                    self._send_json(
+                        400,
+                        {"status": "error", "state": "invalid", "error": str(exc)},
+                    )
+                    return
+                except GalleryBusyError as exc:
+                    self._send_json(
+                        409,
+                        {"status": "error", "state": "running", "error": str(exc)},
+                    )
+                    return
+                except GalleryCapacityError as exc:
+                    self._send_json(
+                        429,
+                        {"status": "error", "state": "invalid", "error": str(exc)},
+                    )
+                    return
+                except Exception as exc:
+                    self._send_json(
+                        422,
+                        {
+                            "status": "error",
+                            "state": "invalid",
+                            "error": f"product studio run failed: {exc}",
+                        },
+                    )
+                    return
+                self._send_json(200, result)
                 return
             cancel_match = re.fullmatch(
                 r"/api/stochastic/runs/([A-Za-z0-9][A-Za-z0-9._-]{0,63})/cancel",

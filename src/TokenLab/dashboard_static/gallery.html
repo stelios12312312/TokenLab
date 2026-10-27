@@ -289,13 +289,539 @@
       .metric-cards { grid-template-columns: 1fr; }
       .fact { grid-template-columns: 1fr; gap: 4px; }
     }
+    .mode-switcher {
+      display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+      gap: 10px; margin-bottom: 18px; padding: 12px 16px; border-radius: 14px;
+      border: 1px solid rgba(95, 225, 210, .35); background: rgba(14, 21, 36, .88);
+    }
+    .mode-switcher-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+    .mode-tab-btn {
+      appearance: none; border: 1px solid var(--line); border-radius: 999px;
+      background: #0e1524; color: var(--text); padding: 8px 14px; font-size: .82rem;
+      font-weight: 650; cursor: pointer; transition: border-color .15s, background .15s;
+    }
+    .mode-tab-btn:hover { border-color: var(--aqua); }
+    .mode-tab-btn[aria-pressed="true"] {
+      background: rgba(95, 225, 210, .16); border-color: var(--aqua); color: var(--lime);
+    }
+    .product-studio-body {
+      padding: 16px 22px 22px;
+      display: grid;
+      gap: 14px;
+    }
+    .product-studio-grid {
+      display: grid;
+      grid-template-columns: minmax(320px, 368px) minmax(0, 1fr);
+      gap: 18px;
+      align-items: start;
+    }
+    .product-studio-main {
+      display: grid;
+      gap: 14px;
+      min-width: 0;
+    }
+    .field { margin-bottom: 13px; }
+    .field label {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--muted);
+      font-size: .72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+    }
+    #product-controls .control-inputs {
+      grid-template-columns: minmax(0, 1fr) 114px;
+      gap: 10px;
+    }
+    #product-controls input[type="number"] {
+      padding: 7px 9px;
+      font-size: .8rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .product-summary-banner {
+      padding: 14px 18px;
+      border: 1px solid rgba(95, 225, 210, .38);
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(95, 225, 210, .09), rgba(184, 245, 106, .05));
+      display: grid;
+      gap: 6px;
+    }
+    .product-summary-header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .product-summary-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: .69rem;
+      font-weight: 800;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      background: rgba(95, 225, 210, .16);
+      color: var(--aqua);
+      border: 1px solid rgba(95, 225, 210, .35);
+    }
+    .product-summary-banner p {
+      margin: 0;
+      font-size: .84rem;
+      line-height: 1.55;
+      color: var(--text);
+    }
+    .product-summary-banner p.sub-takeaway {
+      color: var(--muted);
+      font-size: .8rem;
+    }
+    #product-kpi-cards {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 0;
+    }
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-top: 0;
+    }
+    #product-kpi-cards .metric-card,
+    #product-kpi-cards .card,
+    .cards .card {
+      min-height: 108px;
+      display: grid;
+      align-content: space-between;
+      gap: 6px;
+      padding: 14px 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #0e1524;
+    }
+    #product-kpi-cards .metric-card span,
+    #product-kpi-cards .card span,
+    .cards .card span {
+      display: block;
+      color: var(--muted);
+      font-size: .7rem;
+      font-weight: 760;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      line-height: 1.3;
+    }
+    #product-kpi-cards .metric-card strong,
+    #product-kpi-cards .card strong,
+    .cards .card strong {
+      display: block;
+      margin-top: 2px;
+      font-size: clamp(1.02rem, 1.55vw, 1.32rem);
+      letter-spacing: -.03em;
+      font-variant-numeric: tabular-nums;
+      color: var(--text);
+    }
+    #product-kpi-cards .metric-card small,
+    #product-kpi-cards .card small,
+    .cards .card small {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: .71rem;
+      line-height: 1.35;
+    }
+    .product-charts-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .product-chart-card {
+      padding: 12px 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #0e1524;
+      min-width: 0;
+    }
+    .product-chart-card h4 {
+      margin: 0 0 8px;
+      font-size: .84rem;
+      font-weight: 760;
+      color: var(--text);
+    }
+    .product-chart-card svg {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .table-scroll-wrap {
+      overflow-x: auto;
+      max-inline-size: 100%;
+      container-type: inline-size;
+      border: 1px solid rgba(42, 53, 74, .65);
+      border-radius: 12px;
+      background: #0e1524;
+    }
+    .quantiles-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: .77rem;
+      line-height: 1.45;
+    }
+    .quantiles-table thead {
+      position: sticky;
+      inset-block-start: 0;
+      z-index: 1;
+      background: #131c2e;
+    }
+    .quantiles-table th,
+    .quantiles-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(42, 53, 74, .72);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      vertical-align: top;
+    }
+    .quantiles-table tbody tr:last-child td {
+      border-bottom: 0;
+    }
+    .quantiles-table th:first-child,
+    .quantiles-table td:first-child {
+      text-align: left;
+      font-weight: 700;
+      position: sticky;
+      inset-inline-start: 0;
+      background: #0e1524;
+    }
+    .quantiles-table thead th:first-child {
+      background: #131c2e;
+    }
+    .quantiles-table th {
+      color: var(--muted);
+      font-size: .67rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+    }
+    .quantiles-table tbody tr.is-selected td {
+      background: rgba(184, 245, 106, .08);
+    }
+    .quantiles-table tbody tr.is-selected td:first-child {
+      background: #172624;
+      color: var(--lime);
+    }
+    .rating-badge {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 2px 7px;
+      border-radius: 999px;
+      font-size: .68rem;
+      font-weight: 800;
+      letter-spacing: .04em;
+      margin-left: 5px;
+      border: 1px solid rgba(255, 255, 255, .18);
+    }
+    .rating-badge.grade-AAA,
+    .rating-badge.grade-AA {
+      background: rgba(34, 197, 94, .18);
+      color: #86efac;
+      border-color: rgba(34, 197, 94, .45);
+    }
+    .rating-badge.grade-A {
+      background: rgba(56, 189, 248, .18);
+      color: #7dd3fc;
+      border-color: rgba(56, 189, 248, .45);
+    }
+    .rating-badge.grade-BBB {
+      background: rgba(245, 158, 11, .18);
+      color: #fcd34d;
+      border-color: rgba(245, 158, 11, .45);
+    }
+    .rating-badge.grade-BB,
+    .rating-badge.grade-B {
+      background: rgba(239, 68, 68, .18);
+      color: #fca5a5;
+      border-color: rgba(239, 68, 68, .45);
+    }
+    .score-cell-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 4px;
+    }
+    .score-bar-track {
+      width: 78px;
+      height: 5px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, .18);
+      overflow: hidden;
+    }
+    .score-bar-fill {
+      height: 100%;
+      border-radius: 999px;
+    }
+    #product-provenance-table th,
+    #product-provenance-table td {
+      text-align: left;
+      font-variant-numeric: normal;
+      min-width: 130px;
+    }
+    #product-downloads {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+      gap: 10px;
+    }
+    #product-downloads .download small {
+      color: var(--aqua);
+      font-weight: 700;
+      font-size: .7rem;
+    }
+    .studio-details summary {
+      cursor: pointer;
+      color: var(--aqua);
+      font-size: .85rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      list-style: none;
+    }
+    .studio-details summary::-webkit-details-marker { display: none; }
+    .studio-details summary::after {
+      content: "Expand ▾";
+      font-size: .73rem;
+      color: var(--muted);
+      padding: 3px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #0e1524;
+    }
+    .studio-details[open] summary::after {
+      content: "Collapse ▴";
+      color: var(--lime);
+      border-color: rgba(184, 245, 106, .4);
+    }
+    .scenario-pills-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 7px;
+      padding: 11px 14px;
+      border-radius: 13px;
+      border: 1px solid var(--line);
+      background: #0e1524;
+    }
+    .scenario-pills-label {
+      font-size: .72rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+      color: var(--aqua);
+      margin-right: 4px;
+    }
+    .scenario-pill-btn {
+      appearance: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #131c2e;
+      color: var(--muted);
+      padding: 6px 12px;
+      font-size: .76rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: border-color .15s, background .15s, color .15s, transform .12s;
+    }
+    .scenario-pill-btn:hover {
+      border-color: var(--aqua);
+      color: var(--text);
+      transform: translateY(-1px);
+    }
+    .scenario-pill-btn[aria-pressed="true"] {
+      background: rgba(184, 245, 106, .14);
+      border-color: var(--lime);
+      color: var(--lime);
+    }
+    .podium-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .podium-card {
+      position: relative;
+      display: grid;
+      gap: 10px;
+      padding: 15px 16px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #0e1524;
+      cursor: pointer;
+      text-align: left;
+      transition: border-color .16s, background .16s, transform .14s;
+    }
+    .podium-card:hover {
+      border-color: var(--aqua);
+      transform: translateY(-2px);
+    }
+    .podium-card.is-selected {
+      border: 2px solid var(--lime);
+      background: linear-gradient(155deg, rgba(184, 245, 106, .08), rgba(14, 21, 36, .96));
+    }
+    .podium-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .podium-rank-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: .67rem;
+      font-weight: 850;
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      background: rgba(148, 163, 184, .14);
+      color: var(--muted);
+    }
+    .podium-rank-badge.rank-1 {
+      background: rgba(184, 245, 106, .18);
+      color: var(--lime);
+      border: 1px solid rgba(184, 245, 106, .4);
+    }
+    .podium-title {
+      font-size: .92rem;
+      font-weight: 800;
+      color: var(--text);
+      margin: 4px 0 0;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+    .podium-swatch {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .podium-score-box {
+      text-align: right;
+      flex-shrink: 0;
+    }
+    .podium-score-num {
+      font-size: 1.2rem;
+      font-weight: 900;
+      font-variant-numeric: tabular-nums;
+      letter-spacing: -.03em;
+    }
+    .podium-stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding: 9px 10px;
+      border-radius: 10px;
+      background: rgba(17, 24, 39, .78);
+      border: 1px solid rgba(42, 53, 74, .65);
+    }
+    .podium-stat small {
+      display: block;
+      font-size: .63rem;
+      font-weight: 760;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: var(--muted);
+    }
+    .podium-stat strong {
+      display: block;
+      margin-top: 3px;
+      font-size: .85rem;
+      font-variant-numeric: tabular-nums;
+    }
+    .podium-verdict {
+      margin: 0;
+      font-size: .74rem;
+      line-height: 1.42;
+      color: var(--muted);
+    }
+    .studio-view-tabs {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 10px 14px;
+      border-radius: 13px;
+      background: #0e1524;
+      border: 1px solid var(--line);
+    }
+    .studio-view-buttons {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .studio-view-btn {
+      appearance: none;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #131c2e;
+      color: var(--muted);
+      padding: 6px 12px;
+      font-size: .75rem;
+      font-weight: 760;
+      cursor: pointer;
+    }
+    .studio-view-btn[aria-pressed="true"] {
+      background: rgba(95, 225, 210, .16);
+      border-color: var(--aqua);
+      color: var(--aqua);
+    }
+    .chart-caption {
+      margin: 0 0 8px;
+      font-size: .71rem;
+      line-height: 1.38;
+      color: var(--muted);
+    }
+    .reset-sliders-btn {
+      appearance: none;
+      width: 100%;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      border: 1px solid rgba(95, 225, 210, .4);
+      border-radius: 10px;
+      background: rgba(95, 225, 210, .09);
+      color: var(--aqua);
+      font-size: .76rem;
+      font-weight: 780;
+      cursor: pointer;
+    }
+    .reset-sliders-btn:hover {
+      background: rgba(95, 225, 210, .17);
+    }
+    @media (max-width: 1180px) {
+      #product-kpi-cards, .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .product-charts-grid, .podium-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 960px) {
+      .product-studio-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 560px) {
+      #product-kpi-cards, .cards { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 <body>
   <div class="shell">
     <header>
-      <div class="brand"><div class="mark" aria-hidden="true">TL</div><div><strong>TokenLab</strong><span>Reviewed scenario workspace</span></div></div>
-      <div id="status-pill" class="status-pill" data-state="loading" aria-live="polite">Loading gallery</div>
+      <div class="brand"><div class="mark" aria-hidden="true">TL</div><div><strong>TokenLab</strong><span>Reviewed scenario workspace &amp; Tokenised Product Advisory Studio</span></div></div>
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+        <a href="#product-advisory-studio" id="jump-product-studio-link" class="mode-tab-btn" style="text-decoration:none;">Open Product Advisory Studio ↓</a>
+        <div id="status-pill" class="status-pill" data-state="loading" aria-live="polite">Loading gallery</div>
+      </div>
     </header>
 
     <section class="hero" aria-labelledby="page-title">
@@ -306,6 +832,18 @@
       </div>
       <div id="gallery-boundary" class="boundary">Illustrative simulation only; not investment, launch, legal, financial, forecast, or decision-grade advice.</div>
     </section>
+
+    <nav class="mode-switcher" aria-label="Workspace selector" id="workspace-mode-bar">
+      <div>
+        <strong style="font-size:.88rem;color:var(--lime);">Workspace View:</strong>
+        <span style="font-size:.82rem;color:var(--muted);margin-left:6px;">Switch between the Tokenised Investment Product Advisory Studio (Case Study) and the Tokenomics Scenario Gallery.</span>
+      </div>
+      <div class="mode-switcher-buttons">
+        <button type="button" class="mode-tab-btn" id="mode-btn-both" aria-pressed="true">Show Both Workspaces</button>
+        <button type="button" class="mode-tab-btn" id="mode-btn-product" aria-pressed="false">Tokenised Product Advisory Studio Only</button>
+        <button type="button" class="mode-tab-btn" id="mode-btn-tokenomics" aria-pressed="false">Tokenomics Gallery Only</button>
+      </div>
+    </nav>
 
     <div id="message" class="message" aria-live="polite"></div>
 
@@ -493,6 +1031,194 @@
         <div><h2 id="topology-title">Scenario topology</h2><p id="topology-copy">Declarative component wiring of the selected demo.</p></div>
       </div>
       <div id="topology-wrap" class="detail-body topology-wrap"><div class="chart-empty">Loading topology…</div></div>
+    </section>
+
+    <section class="panel chart-panel" id="product-advisory-studio" aria-labelledby="product-studio-title" style="margin-top:16px;">
+      <div class="chart-toolbar">
+        <div>
+          <span class="eyebrow">Consulting &amp; Advisory Demonstration</span>
+          <h2 id="product-studio-title">Tokenised Investment Product Studio: Returns, Fees &amp; Liquidity</h2>
+          <p id="product-studio-subtitle">Interactive simulation backed by TokenLab's <code>TokenisedProductEconomy</code> engine. Compare product designs, stress scenarios, investor returns, issuer break-even scale, and redemption settlement queues.</p>
+        </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <span id="product-studio-status" class="run-id" aria-live="polite">Ready</span>
+          <button class="run-button" id="product-run-button" type="button" style="width:auto;margin-top:0;min-height:42px;padding:9px 18px;">Run Product Advisory Simulation</button>
+        </div>
+      </div>
+      <div class="product-studio-body">
+        <div class="scenario-pills-bar" role="group" aria-label="Quick market scenario selector">
+          <span class="scenario-pills-label">⚡ 1-Click Stress Regime:</span>
+          <div id="product-scenario-pills" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+        </div>
+        <div class="product-studio-grid">
+          <div class="panel" style="padding:16px;">
+            <div class="field">
+              <label for="product-case-study-select">1. Case study / dataset</label>
+              <select id="product-case-study-select"></select>
+            </div>
+            <div class="field">
+              <label for="product-design-select">2. Product design (focus)</label>
+              <select id="product-design-select"></select>
+            </div>
+            <div class="field">
+              <label for="product-scenario-select">3. Stress scenario</label>
+              <select id="product-scenario-select"></select>
+            </div>
+            <p id="product-scenario-desc" style="color:var(--muted);font-size:.78rem;line-height:1.45;margin:4px 0 12px;padding:9px 11px;border-radius:10px;background:#0e1524;border:1px solid var(--line);"></p>
+            <button type="button" class="reset-sliders-btn" id="product-reset-sliders-btn">↺ Reset Sliders to Published Filing Defaults</button>
+            <span class="field-label" style="margin-bottom:10px;">4. Key Assumption Levers</span>
+            <div id="product-controls" class="controls" style="padding-right:4px;"></div>
+          </div>
+          <div class="product-studio-main">
+            <div class="product-summary-banner" id="product-plain-english-summary" aria-live="polite">
+              <div class="product-summary-header">
+                <span class="product-summary-badge" id="product-summary-badge">Real-World RWA Benchmark · What You Are Seeing</span>
+                <span style="font-size:.73rem;color:var(--muted);">Click any Fund Card below or Stress Pill above to compare live results</span>
+              </div>
+              <p id="product-summary-lead">
+                <strong>Yes — this is a real-world benchmark case study:</strong> You are comparing three live institutional tokenised funds (<strong>BlackRock BUIDL</strong>, <strong>Maple SyrupUSDC</strong>, and <strong>Hamilton Lane SCOPE</strong>) whose yields, fee schedules, liquidity buffers, and redemption gates come from published SEC filings and offering docs, tested on a standardised <strong>$25M AUM</strong> portfolio.
+              </p>
+              <p class="sub-takeaway" id="product-summary-takeaway">
+                Select any product or stress scenario on the left to see how investor net return, secondary token price, unpaid redemption queues, and issuer profitability evolve over 36 months.
+              </p>
+            </div>
+
+            <div>
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+                <span class="field-label" style="margin:0;color:var(--lime);">🏆 Side-by-Side Fund Rankings &amp; Plain-English Verdict (Click Any Fund Card to Inspect)</span>
+                <span style="font-size:.72rem;color:var(--muted);">Ranked by 5-Pillar Quantitative Score (0–100)</span>
+              </div>
+              <div class="podium-grid" id="product-podium-cards"></div>
+            </div>
+
+            <div class="studio-view-tabs" id="product-view-tabs">
+              <span style="font-size:.74rem;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.07em;">Dashboard View:</span>
+              <div class="studio-view-buttons">
+                <button type="button" class="studio-view-btn" data-studio-view="guided" aria-pressed="true">✨ Guided Overview (Clean)</button>
+                <button type="button" class="studio-view-btn" data-studio-view="charts" aria-pressed="false">📈 Charts &amp; Trajectories</button>
+                <button type="button" class="studio-view-btn" data-studio-view="tables" aria-pressed="false">🏆 5-Pillar Scorecard &amp; Full Table</button>
+                <button type="button" class="studio-view-btn" data-studio-view="filings" aria-pressed="false">📚 SEC Filings &amp; Downloads</button>
+              </div>
+            </div>
+
+            <div class="metric-cards cards" id="product-kpi-cards"></div>
+
+            <div class="panel" id="product-charts-panel" style="padding:14px 16px;">
+              <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+                <h3 style="margin:0;font-size:.95rem;">36-Month Trajectory Comparison Across All 3 Products</h3>
+                <div class="legend" id="product-chart-legend" style="padding:0;">
+                  <span class="legend-item"><i style="background:#38bdf8"></i><span>BlackRock BUIDL (Treasury)</span></span>
+                  <span class="legend-item"><i style="background:#ffbd59"></i><span>Maple SyrupUSDC (Credit Pool)</span></span>
+                  <span class="legend-item"><i style="background:#b8f56a"></i><span>Hamilton Lane SCOPE (Senior Credit)</span></span>
+                  <span style="color:var(--muted);font-size:.73rem;margin-left:4px;">(Chart 1: Solid = Executable Price, Dashed = NAV/Token)</span>
+                </div>
+              </div>
+              <div class="product-charts-grid">
+                <div class="product-chart-card">
+                  <h4>1. Token Price vs. $1.00 NAV ($)</h4>
+                  <p class="chart-caption">Solid line = Secondary market exit price. Drop below $1.00 = liquidity discount during stress.</p>
+                  <div id="product-chart-nav"></div>
+                </div>
+                <div class="product-chart-card">
+                  <h4>2. Unpaid Redemption Queue ($M)</h4>
+                  <p class="chart-caption">Redemptions stuck waiting behind a gate or liquidity shortfall ($0M = instant settlement).</p>
+                  <div id="product-chart-queue"></div>
+                </div>
+                <div class="product-chart-card">
+                  <h4>3. Cumulative Issuer Net Profit ($k)</h4>
+                  <p class="chart-caption">Fee revenue minus fixed compliance/oracle overhead ($269k/yr). Upward slope = profitable scale.</p>
+                  <div id="product-chart-profit"></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="panel" id="product-comparison-panel" style="padding:14px 16px;">
+              <details class="studio-details" id="product-comparison-details" open>
+                <summary id="product-comparison-heading" style="font-size:.93rem;">Full 10-Metric Financial &amp; Liquidity Comparison Table (Selected Scenario)</summary>
+                <div tabindex="0" role="region" aria-labelledby="product-comparison-heading" class="table-scroll-wrap" style="margin-top:10px;">
+                  <table class="quantiles-table" id="product-comparison-table">
+                    <thead>
+                      <tr>
+                        <th>Product / Design</th>
+                        <th>Composite Score &amp; Grade</th>
+                        <th>Investor Net Return (TWR p.a.)</th>
+                        <th>Ending NAV/Token</th>
+                        <th>Executable Exit Price</th>
+                        <th>Min Secondary Price</th>
+                        <th>Issuer 3-Yr Profit</th>
+                        <th>Break-Even AUM</th>
+                        <th>Max Payment Wait</th>
+                        <th>Liquidity &amp; Haircut Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </details>
+            </div>
+
+            <div class="panel" id="product-scorecard-panel" style="padding:14px 16px;">
+              <div style="display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px;margin-bottom:8px;">
+                <h3 id="product-scorecard-heading" style="margin:0;font-size:.95rem;">5-Pillar Quantitative Product Scorecard &amp; Institutional Rating (Paper-Ready Evaluation)</h3>
+                <span style="font-size:.73rem;color:var(--muted);">0–100 Scale · P1 Yield (25%) · P2 Exit SLA (25%) · P3 Peg Stability (20%) · P4 Issuer Scale (15%) · P5 Stress Survival (15%)</span>
+              </div>
+              <div tabindex="0" role="region" aria-labelledby="product-scorecard-heading" class="table-scroll-wrap">
+                <table class="quantiles-table" id="product-scorecard-table">
+                  <thead>
+                    <tr>
+                      <th>Product / Design</th>
+                      <th>P1: Investor Yield (25%)</th>
+                      <th>P2: Exit Speed / SLA (25%)</th>
+                      <th>P3: $1.00 Peg Stability (20%)</th>
+                      <th>P4: Issuer Profit Scale (15%)</th>
+                      <th>P5: Crisis Survival (15%)</th>
+                      <th>Composite Score &amp; Grade</th>
+                    </tr>
+                  </thead>
+                  <tbody></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="panel" id="product-provenance-panel" style="padding:14px 16px;" hidden>
+              <details class="studio-details" id="product-provenance-details">
+                <summary>Real-World RWA Term-Sheet Provenance &amp; Calibration Reference (SEC Filings, Fee Schedules &amp; Gate Mechanics)</summary>
+                <p style="margin:8px 0 10px;color:var(--muted);font-size:.78rem;line-height:1.45;">
+                  Exact separation of <strong>published real-world fund parameters</strong> (underlying assets, management/performance fees, liquidity facilities, and redemption gates) vs. <strong>standardised benchmark assumptions</strong> ($25M starting AUM and stress-flow shocks).
+                </p>
+                <div tabindex="0" role="region" aria-label="Real-World RWA Term-Sheet Provenance Table" class="table-scroll-wrap">
+                  <table class="quantiles-table" id="product-provenance-table">
+                    <thead>
+                      <tr>
+                        <th>Product &amp; Ticker</th>
+                        <th>Issuer / Manager</th>
+                        <th>Underlying Asset Class &amp; Gross Yield</th>
+                        <th>Published Fee &amp; Hurdle Schedule</th>
+                        <th>Liquidity Buffer, Facility &amp; Gate</th>
+                        <th>Settlement Lag &amp; Haircut</th>
+                        <th>Primary Public Filing / Source &amp; Synthetic Calibration</th>
+                      </tr>
+                    </thead>
+                    <tbody></tbody>
+                  </table>
+                </div>
+              </details>
+            </div>
+
+            <div class="panel" style="padding:14px 16px;">
+              <h4 style="margin:0 0 10px;font-size:.9rem;">Export Run Data, CSV Tables &amp; Self-Contained Client HTML Report</h4>
+              <div class="downloads" id="product-downloads"></div>
+              <details class="studio-details" style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line);">
+                <summary>View Methodology Scope, Cost-Bearer Attribution &amp; Model Limitations</summary>
+                <div class="boundary" id="product-studio-boundary" style="margin:10px 0 8px;padding:12px 14px;font-size:.78rem;">
+                  Illustrative / Synthetic Case Study Notice: All portfolio yields, fee schedules, and investor withdrawal sensitivities in this demonstration are synthetic. Outputs represent conditional implications of the selected assumptions and are not empirically calibrated forecasts.
+                </div>
+                <div id="product-assumptions-limitations" style="margin-top:8px;color:var(--muted);font-size:.78rem;line-height:1.5;display:grid;gap:6px;"></div>
+              </details>
+            </div>
+          </div>
+        </div>
+      </div>
     </section>
 
     <footer>TokenLab gallery runs on loopback only. Outputs demonstrate software behavior and assumption propagation; live token decisions require qualified review and external evidence.</footer>
@@ -2222,7 +2948,917 @@
       cancelAnimationFrame(topologyResizeFrame);
       topologyResizeFrame = requestAnimationFrame(renderTopology);
     });
+    // --- Tokenised Product Advisory Studio (Case Study Demonstration) ------
+    const productStudio = { catalog: null, allCatalogs: {}, running: false };
+    const productDesignColors = {
+      design_a_liquid_low_fee: "#38bdf8",
+      design_b_gated_high_fee: "#ffbd59",
+      design_c_balanced_facility: "#b8f56a",
+      buidl_treasury: "#38bdf8",
+      maple_syrup_usdc: "#ffbd59",
+      hamilton_lane_scope: "#b8f56a"
+    };
+
+    function setWorkspaceMode(mode) {
+      const heroEl = document.querySelector(".hero");
+      const mainEl = document.querySelector("main");
+      const topoEl = $("topology-panel");
+      const prodEl = $("product-advisory-studio");
+      const btnBoth = $("mode-btn-both");
+      const btnProd = $("mode-btn-product");
+      const btnTok = $("mode-btn-tokenomics");
+      if (btnBoth) btnBoth.setAttribute("aria-pressed", String(mode === "both"));
+      if (btnProd) btnProd.setAttribute("aria-pressed", String(mode === "product"));
+      if (btnTok) btnTok.setAttribute("aria-pressed", String(mode === "tokenomics"));
+      if (mode === "product") {
+        if (heroEl) heroEl.hidden = true;
+        if (mainEl) mainEl.hidden = true;
+        if (topoEl) topoEl.hidden = true;
+        if (prodEl) prodEl.hidden = false;
+      } else if (mode === "tokenomics") {
+        if (heroEl) heroEl.hidden = false;
+        if (mainEl) mainEl.hidden = false;
+        if (topoEl && state.demo && state.demo.topology) topoEl.hidden = false;
+        if (prodEl) prodEl.hidden = true;
+      } else {
+        if (heroEl) heroEl.hidden = false;
+        if (mainEl) mainEl.hidden = false;
+        if (topoEl && state.demo && state.demo.topology) topoEl.hidden = false;
+        if (prodEl) prodEl.hidden = false;
+      }
+    }
+
+    if ($("mode-btn-both")) $("mode-btn-both").addEventListener("click", () => setWorkspaceMode("both"));
+    if ($("mode-btn-product")) $("mode-btn-product").addEventListener("click", () => setWorkspaceMode("product"));
+    if ($("mode-btn-tokenomics")) $("mode-btn-tokenomics").addEventListener("click", () => setWorkspaceMode("tokenomics"));
+    if ($("jump-product-studio-link")) {
+      $("jump-product-studio-link").addEventListener("click", () => {
+        setWorkspaceMode("product");
+      });
+    }
+    if (window.location.hash === "#product-advisory-studio") {
+      setWorkspaceMode("product");
+    }
+
+    function setStudioViewMode(viewMode) {
+      const kpiEl = $("product-kpi-cards");
+      const chartsEl = $("product-charts-panel");
+      const compPanel = $("product-comparison-panel");
+      const compDetails = $("product-comparison-details");
+      const scorePanel = $("product-scorecard-panel");
+      const provPanel = $("product-provenance-panel");
+      const provDetails = $("product-provenance-details");
+      document.querySelectorAll("#product-view-tabs .studio-view-btn").forEach((btn) => {
+        btn.setAttribute("aria-pressed", String(btn.dataset.studioView === viewMode));
+      });
+      if (viewMode === "charts") {
+        if (kpiEl) kpiEl.hidden = false;
+        if (chartsEl) chartsEl.hidden = false;
+        if (compPanel) compPanel.hidden = true;
+        if (scorePanel) scorePanel.hidden = true;
+      } else if (viewMode === "tables") {
+        if (kpiEl) kpiEl.hidden = true;
+        if (chartsEl) chartsEl.hidden = true;
+        if (compPanel) compPanel.hidden = false;
+        if (compDetails) compDetails.open = true;
+        if (scorePanel) scorePanel.hidden = false;
+      } else if (viewMode === "filings") {
+        if (kpiEl) kpiEl.hidden = true;
+        if (chartsEl) chartsEl.hidden = true;
+        if (compPanel) compPanel.hidden = true;
+        if (scorePanel) scorePanel.hidden = false;
+        if (provPanel && (productStudio.catalog && (productStudio.catalog.real_world_provenance || []).length)) {
+          provPanel.hidden = false;
+        }
+        if (provDetails) provDetails.open = true;
+      } else {
+        // Guided overview: Podium + KPIs + Charts + 5-Pillar Scorecard visible; 10-column raw table collapsed
+        if (kpiEl) kpiEl.hidden = false;
+        if (chartsEl) chartsEl.hidden = false;
+        if (compPanel) compPanel.hidden = false;
+        if (compDetails) compDetails.open = false;
+        if (scorePanel) scorePanel.hidden = false;
+      }
+    }
+
+    document.querySelectorAll("#product-view-tabs .studio-view-btn").forEach((btn) => {
+      btn.addEventListener("click", () => setStudioViewMode(btn.dataset.studioView || "guided"));
+    });
+
+    const scenarioPillLabels = {
+      baseline: "🟢 1. Calm Baseline",
+      rate_cut: "📉 2. Rate Cut (-150 bps)",
+      rate_spike: "📈 3. Rate Spike (+150 bps)",
+      concentrated_withdrawals: "🔴 4. 30% Institutional Run",
+      slow_settlement: "⏳ 5. Slow Settlement (2m Lag)",
+      credit_loss: "⚠️ 6. Credit Default Shock",
+      combined_adverse: "🔥 7. Combined Crisis",
+      fee_compression: "💸 8. Fee Compression"
+    };
+
+    function renderScenarioPills(cat, activeScenarioId) {
+      const wrap = $("product-scenario-pills");
+      if (!wrap || !cat) return;
+      wrap.replaceChildren();
+      (cat.scenarios || []).forEach((s) => {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "scenario-pill-btn";
+        btn.setAttribute("aria-pressed", String(s.scenario_id === activeScenarioId));
+        btn.textContent = scenarioPillLabels[s.scenario_id] || s.name;
+        btn.addEventListener("click", () => {
+          const sSel = $("product-scenario-select");
+          if (sSel) {
+            sSel.value = s.scenario_id;
+            const dSel = $("product-design-select");
+            $("product-scenario-desc").textContent = s.description || "";
+            renderScenarioPills(cat, s.scenario_id);
+            renderProductControls(dSel ? dSel.value : "", s.scenario_id);
+            runProductStudio();
+          }
+        });
+        wrap.append(btn);
+      });
+    }
+
+    function renderProductLegend(cat) {
+      const leg = $("product-chart-legend");
+      if (!leg || !cat) return;
+      leg.replaceChildren();
+      (cat.designs || []).forEach((d) => {
+        const span = document.createElement("span");
+        span.className = "legend-item";
+        const swatch = document.createElement("i");
+        swatch.style.background = productDesignColors[d.design_id] || "#7aa8ff";
+        const lbl = document.createElement("span");
+        lbl.textContent = d.name;
+        span.append(swatch, lbl);
+        leg.append(span);
+      });
+      const note = document.createElement("span");
+      note.style.cssText = "color:var(--muted);font-size:.76rem;margin-left:8px;";
+      note.textContent = "(Chart 1: Solid = Secondary Executable Price, Dashed = Accounting NAV/Token)";
+      leg.append(note);
+    }
+
+    function renderProductProvenance(cat) {
+      const panel = $("product-provenance-panel");
+      const tbody = document.querySelector("#product-provenance-table tbody");
+      if (!panel || !tbody) return;
+      tbody.replaceChildren();
+      const rows = (cat && cat.real_world_provenance) || [];
+      if (!rows.length) {
+        panel.hidden = true;
+        return;
+      }
+      panel.hidden = false;
+      rows.forEach((p) => {
+        const tr = document.createElement("tr");
+        const prodCell = p.ticker
+          ? `${p.product_name || p.design_id} (${p.ticker})`
+          : (p.product_name || p.design_id || "—");
+        const issuerCell = (p.issuer && p.network_rail)
+          ? `${p.issuer} · ${p.network_rail}`
+          : (p.issuer_and_infra || p.issuer || p.network_rail || "—");
+        const assetCell = p.gross_yield_benchmark
+          ? `${p.asset_class || ""} (${p.gross_yield_benchmark})`
+          : (p.asset_class || "—");
+        const feeBase = p.published_fees || p.documented_terms || "—";
+        const feeCell = (p.reward_token_mechanics && p.reward_token_mechanics !== "None")
+          ? `${feeBase} | ${p.reward_token_mechanics}`
+          : feeBase;
+        const liqParts = [p.liquidity_buffer_and_facility, p.redemption_gate].filter(Boolean);
+        const liqCell = liqParts.length ? liqParts.join(" | ") : (p.documented_terms || "—");
+        const lagParts = [p.settlement_lag, p.stress_haircut].filter(Boolean);
+        const lagCell = lagParts.length ? lagParts.join(" | ") : (p.synthetic_assumptions || "—");
+        const srcParts = [
+          p.primary_source ? `Source: ${p.primary_source}` : "",
+          p.synthetic_assumptions ? `Synthetic calibration: ${p.synthetic_assumptions}` : ""
+        ].filter(Boolean);
+        const srcCell = srcParts.length ? srcParts.join(" — ") : "—";
+        const cells = [prodCell, issuerCell, assetCell, feeCell, liqCell, lagCell, srcCell];
+        cells.forEach((c) => {
+          const td = document.createElement("td");
+          td.textContent = c;
+          tr.append(td);
+        });
+        tbody.append(tr);
+      });
+    }
+
+    const keyLeverKeys = new Set([
+      "initial_aum",
+      "month12_institutional_shock",
+      "management_fee_annual",
+      "redemption_gate_rate_per_period"
+    ]);
+
+    function renderProductControls(designId, scenarioId) {
+      if (!productStudio.catalog) return;
+      const design = productStudio.catalog.designs.find((d) => d.design_id === designId) || productStudio.catalog.designs[0];
+      const scenario = productStudio.catalog.scenarios.find((s) => s.scenario_id === scenarioId) || productStudio.catalog.scenarios[0];
+      const byDesignMap = (scenario && scenario.control_defaults_by_design) || {};
+      const scenCtrlDefaults = (design && byDesignMap[design.design_id]) || (scenario && scenario.control_defaults) || {};
+      const designDefaults = (design && design.defaults) || {};
+      const container = $("product-controls");
+      container.replaceChildren();
+      const advDetails = document.createElement("details");
+      advDetails.className = "studio-details";
+      advDetails.style.cssText = "padding-top:10px;border-top:1px solid var(--line);";
+      const advSummary = document.createElement("summary");
+      advSummary.textContent = "⚙️ 6 Advanced Sliders (Yield, Defaults, Lag)";
+      const advGrid = document.createElement("div");
+      advGrid.className = "controls";
+      advGrid.style.marginTop = "12px";
+      advDetails.append(advSummary, advGrid);
+
+      productStudio.catalog.controls.forEach((ctrl) => {
+        let defVal = ctrl.default;
+        if (scenCtrlDefaults[ctrl.key] !== undefined) {
+          defVal = scenCtrlDefaults[ctrl.key];
+        } else if (designDefaults[ctrl.key] !== undefined) {
+          defVal = designDefaults[ctrl.key];
+        }
+        const wrap = document.createElement("div");
+        wrap.className = "control";
+        wrap.dataset.pcontrol = ctrl.key;
+        const head = document.createElement("div");
+        head.className = "control-head";
+        const lbl = document.createElement("label");
+        lbl.textContent = ctrl.label;
+        const out = document.createElement("output");
+        head.append(lbl, out);
+        const copy = document.createElement("p");
+        copy.className = "control-copy";
+        copy.textContent = ctrl.description;
+        const inputs = document.createElement("div");
+        inputs.className = "control-inputs";
+        const range = document.createElement("input");
+        range.type = "range";
+        const num = document.createElement("input");
+        num.type = "number";
+        [range, num].forEach((inp) => {
+          inp.min = String(ctrl.min);
+          inp.max = String(ctrl.max);
+          inp.step = String(ctrl.step);
+          inp.value = String(defVal);
+        });
+        const fmt = (v) => {
+          const n = Number(v);
+          if (ctrl.unit === "decimal_rate" || ctrl.unit === "decimal_share") return `${(n * 100).toFixed(2)}%`;
+          if (ctrl.unit === "USD") return `$${(n / 1e6).toFixed(2)}M`;
+          return `${n} ${ctrl.unit}`;
+        };
+        out.textContent = fmt(defVal);
+        range.addEventListener("input", () => { num.value = range.value; out.textContent = fmt(range.value); });
+        num.addEventListener("input", () => { range.value = num.value; out.textContent = fmt(num.value); });
+        range.addEventListener("change", () => runProductStudio());
+        num.addEventListener("change", () => runProductStudio());
+        inputs.append(range, num);
+        wrap.append(head, copy, inputs);
+        if (keyLeverKeys.has(ctrl.key)) {
+          container.append(wrap);
+        } else {
+          advGrid.append(wrap);
+        }
+      });
+      if (advGrid.childElementCount > 0) {
+        container.append(advDetails);
+      }
+    }
+
+    if ($("product-reset-sliders-btn")) {
+      $("product-reset-sliders-btn").addEventListener("click", () => {
+        const dSel = $("product-design-select");
+        const sSel = $("product-scenario-select");
+        if (dSel && sSel) {
+          renderProductControls(dSel.value, sSel.value);
+          runProductStudio();
+        }
+      });
+    }
+
+    function collectProductOverrides() {
+      const ov = {};
+      if (!productStudio.catalog) return ov;
+      productStudio.catalog.controls.forEach((ctrl) => {
+        const num = document.querySelector(`#product-controls .control[data-pcontrol="${ctrl.key}"] input[type="number"]`);
+        if (num) {
+          ov[ctrl.key] = ctrl.unit === "months" ? Number.parseInt(num.value, 10) : Number.parseFloat(num.value);
+        }
+      });
+      return ov;
+    }
+
+    function drawProductMultiLineSvg(containerId, seriesByDesign, valueKey, scaleFactor, yUnitLabel, dashedSecondaryKey, selectedDesignId) {
+      const container = $(containerId);
+      container.replaceChildren();
+      const rawEntries = Object.entries(seriesByDesign || {});
+      if (!rawEntries.length) return;
+      // Draw non-selected lines first, then selected line on top
+      const entries = rawEntries.slice().sort(([a], [b]) => (a === selectedDesignId ? 1 : b === selectedDesignId ? -1 : 0));
+      const xs = entries[0][1].iteration || [];
+      if (!xs.length) return;
+      let yMin = Infinity, yMax = -Infinity;
+      entries.forEach(([, s]) => {
+        (s[valueKey] || []).forEach((v) => {
+          const sv = v * scaleFactor;
+          if (sv < yMin) yMin = sv;
+          if (sv > yMax) yMax = sv;
+        });
+        if (dashedSecondaryKey) {
+          (s[dashedSecondaryKey] || []).forEach((v) => {
+            const sv = v * scaleFactor;
+            if (sv < yMin) yMin = sv;
+            if (sv > yMax) yMax = sv;
+          });
+        }
+      });
+      if (!Number.isFinite(yMin)) { yMin = 0; yMax = 1; }
+      const span = Math.max(yMax - yMin, 1e-6);
+      const yPad = Math.max(span * 0.14, 0.01);
+      const width = 410, height = 215, pad = { left: 56, right: 16, top: 14, bottom: 28 };
+      const xMin = Math.min(...xs), xMax = Math.max(...xs);
+      const x = (v) => pad.left + ((v - xMin) / Math.max(1, xMax - xMin)) * (width - pad.left - pad.right);
+      const y = (v) => pad.top + (1 - (v - (yMin - yPad)) / Math.max(1e-9, (yMax - yMin + 2 * yPad))) * (height - pad.top - pad.bottom);
+
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      for (let i = 0; i <= 3; i += 1) {
+        const yPos = pad.top + i * (height - pad.top - pad.bottom) / 3;
+        const line = document.createElementNS(svg.namespaceURI, "line");
+        line.setAttribute("x1", pad.left); line.setAttribute("x2", width - pad.right);
+        line.setAttribute("y1", yPos); line.setAttribute("y2", yPos);
+        line.setAttribute("stroke", "#243044");
+        svg.append(line);
+        const lbl = document.createElementNS(svg.namespaceURI, "text");
+        lbl.setAttribute("x", pad.left - 6); lbl.setAttribute("y", yPos + 3);
+        lbl.setAttribute("text-anchor", "end"); lbl.setAttribute("fill", "#aeb8c8");
+        lbl.setAttribute("font-size", "10");
+        const val = (yMax + yPad) - i * (yMax - yMin + 2 * yPad) / 3;
+        lbl.textContent = `${val.toFixed(2)}${yUnitLabel || ""}`;
+        svg.append(lbl);
+      }
+      // Subtle Month 12 shock guide line
+      if (12 >= xMin && 12 <= xMax) {
+        const m12x = x(12);
+        const mLine = document.createElementNS(svg.namespaceURI, "line");
+        mLine.setAttribute("x1", m12x); mLine.setAttribute("x2", m12x);
+        mLine.setAttribute("y1", pad.top); mLine.setAttribute("y2", height - pad.bottom);
+        mLine.setAttribute("stroke", "rgba(255, 189, 89, 0.28)");
+        mLine.setAttribute("stroke-dasharray", "3 3");
+        svg.append(mLine);
+      }
+      [0, 12, 24, 36].filter((m) => m >= xMin && m <= xMax).forEach((m) => {
+        const xPos = x(m);
+        const tick = document.createElementNS(svg.namespaceURI, "text");
+        tick.setAttribute("x", xPos);
+        tick.setAttribute("y", height - 7);
+        tick.setAttribute("text-anchor", m === xMin ? "start" : m === xMax ? "end" : "middle");
+        tick.setAttribute("fill", m === 12 ? "#ffbd59" : "#8b98ad");
+        tick.setAttribute("font-size", "9.5");
+        tick.textContent = m === 12 ? "M12 (Shock)" : `M${m}`;
+        svg.append(tick);
+      });
+      entries.forEach(([dId, s]) => {
+        const isSel = !selectedDesignId || dId === selectedDesignId;
+        if (dashedSecondaryKey && Array.isArray(s[dashedSecondaryKey])) {
+          const dashedPts = s[dashedSecondaryKey].map((v, i) => `${x(xs[i])},${y(v * scaleFactor)}`).join(" ");
+          const dashedPoly = document.createElementNS(svg.namespaceURI, "polyline");
+          dashedPoly.setAttribute("points", dashedPts);
+          dashedPoly.setAttribute("fill", "none");
+          dashedPoly.setAttribute("stroke", productDesignColors[dId] || "#7aa8ff");
+          dashedPoly.setAttribute("stroke-width", isSel ? "1.8" : "1.35");
+          dashedPoly.setAttribute("stroke-dasharray", "4 3");
+          dashedPoly.setAttribute("opacity", isSel ? "0.85" : "0.55");
+          svg.append(dashedPoly);
+        }
+        const pts = (s[valueKey] || []).map((v, i) => `${x(xs[i])},${y(v * scaleFactor)}`).join(" ");
+        const poly = document.createElementNS(svg.namespaceURI, "polyline");
+        poly.setAttribute("points", pts);
+        poly.setAttribute("fill", "none");
+        poly.setAttribute("stroke", productDesignColors[dId] || "#7aa8ff");
+        poly.setAttribute("stroke-width", isSel ? "2.9" : "1.85");
+        poly.setAttribute("opacity", isSel ? "1" : "0.78");
+        svg.append(poly);
+      });
+      container.append(svg);
+    }
+
+    function buildPodiumVerdict(row, rankIndex) {
+      const waitMo = Number(row.max_time_to_payment_periods || 0);
+      const minPx = Number(row.min_secondary_market_price || 1);
+      const profitK = Number(row.issuer_cumulative_profit_fiat || 0) / 1e3;
+      const beStr = formatBreakevenAum(row.breakeven_aum_fiat);
+      if (!row.payment_sla_met || waitMo > 3.0) {
+        return `⚠️ Redemption gate locks exits for ${waitMo.toFixed(1)} mo (SLA Breach) and secondary price drops to $${minPx.toFixed(4)} (${((1 - minPx) * 100).toFixed(1)}% discount).`;
+      }
+      if (waitMo === 0 && profitK < 0) {
+        return `✅ Instant 0.0 mo liquidity & $1.00 peg under stress, but low fee margin requires ${beStr} AUM for issuer break-even (${profitK.toFixed(0)}k at current scale).`;
+      }
+      if (waitMo > 0) {
+        return `⚖️ Clears withdrawals in ${waitMo.toFixed(1)} mo (within 3m SLA) with $${minPx.toFixed(4)} min price and ${profitK >= 0 ? "+" : ""}$${profitK.toFixed(0)}k issuer profit.`;
+      }
+      return `${rankIndex === 0 ? "🏆 Top-ranked balance: " : "✅ Strong all-weather profile: "}${(row.investor_annualised_return_pct * 100).toFixed(2)}% p.a. net yield, 0.0 mo wait, and +$${profitK.toFixed(0)}k issuer profit.`;
+    }
+
+    function renderPodiumCards(res) {
+      const wrap = $("product-podium-cards");
+      if (!wrap || !res || !Array.isArray(res.design_comparison)) return;
+      wrap.replaceChildren();
+      const rows = res.design_comparison.slice();
+      const sortedIds = rows
+        .slice()
+        .sort((a, b) => Number(b.composite_score_100 || 0) - Number(a.composite_score_100 || 0))
+        .map((r) => r.design_id);
+
+      rows.forEach((row) => {
+        const rankIdx = sortedIds.indexOf(row.design_id);
+        const card = document.createElement("button");
+        card.type = "button";
+        card.className = "podium-card" + (row.is_selected ? " is-selected" : "");
+        card.addEventListener("click", () => {
+          const dSel = $("product-design-select");
+          const sSel = $("product-scenario-select");
+          if (dSel && dSel.value !== row.design_id) {
+            dSel.value = row.design_id;
+            renderProductControls(dSel.value, sSel ? sSel.value : "");
+            runProductStudio();
+          }
+        });
+
+        const top = document.createElement("div");
+        top.className = "podium-card-top";
+        const leftBox = document.createElement("div");
+        const rankBadge = document.createElement("span");
+        rankBadge.className = "podium-rank-badge" + (rankIdx === 0 ? " rank-1" : "");
+        rankBadge.textContent = rankIdx === 0
+          ? "🏆 #1 Best in This Scenario"
+          : `#${rankIdx + 1} Ranked` + (row.is_selected ? " · Focused" : "");
+        const title = document.createElement("div");
+        title.className = "podium-title";
+        const sw = document.createElement("span");
+        sw.className = "podium-swatch";
+        sw.style.background = productDesignColors[row.design_id] || "#7aa8ff";
+        const tText = document.createElement("span");
+        tText.textContent = row.design_label;
+        title.append(sw, tText);
+        leftBox.append(rankBadge, title);
+
+        const scoreBox = document.createElement("div");
+        scoreBox.className = "podium-score-box";
+        const scoreNum = document.createElement("div");
+        scoreNum.className = "podium-score-num";
+        const scVal = Number(row.composite_score_100 || 0);
+        scoreNum.style.color = scoreBarColor(scVal);
+        scoreNum.textContent = `${scVal.toFixed(1)}`;
+        const gradeBadge = document.createElement("span");
+        const gradeStr = row.rating_grade || "—";
+        gradeBadge.className = `rating-badge grade-${gradeStr}`;
+        gradeBadge.textContent = `${gradeStr} / 100`;
+        scoreBox.append(scoreNum, gradeBadge);
+        top.append(leftBox, scoreBox);
+
+        const statsRow = document.createElement("div");
+        statsRow.className = "podium-stats-row";
+        const statItems = [
+          ["Net Yield (TWR)", `${(row.investor_annualised_return_pct * 100).toFixed(2)}% p.a.`, "var(--lime)"],
+          ["Exit Wait / SLA", `${row.max_time_to_payment_periods.toFixed(1)} mo (${row.payment_sla_met ? "PASS" : "GATE"})`, row.payment_sla_met ? "var(--aqua)" : "var(--red)"],
+          ["3-Yr Issuer Profit", `${row.issuer_cumulative_profit_fiat >= 0 ? "+" : ""}$${(row.issuer_cumulative_profit_fiat / 1e3).toFixed(0)}k`, row.issuer_profitable ? "var(--text)" : "var(--gold)"]
+        ];
+        statItems.forEach(([lbl, val, col]) => {
+          const st = document.createElement("div");
+          st.className = "podium-stat";
+          const sm = document.createElement("small");
+          sm.textContent = lbl;
+          const str = document.createElement("strong");
+          str.textContent = val;
+          str.style.color = col;
+          st.append(sm, str);
+          statsRow.append(st);
+        });
+
+        const verdict = document.createElement("p");
+        verdict.className = "podium-verdict";
+        verdict.textContent = buildPodiumVerdict(row, rankIdx);
+
+        card.append(top, statsRow, verdict);
+        wrap.append(card);
+      });
+    }
+
+    function setRichCopy(el, parts) {
+      el.replaceChildren();
+      parts.forEach((part) => {
+        if (part && typeof part === "object" && part.b !== undefined) {
+          const st = document.createElement("strong");
+          st.textContent = String(part.b);
+          el.append(st);
+        } else {
+          el.append(document.createTextNode(String(part)));
+        }
+      });
+    }
+
+    function renderPlainEnglishSummary(res) {
+      const badgeEl = $("product-summary-badge");
+      const leadEl = $("product-summary-lead");
+      const takeEl = $("product-summary-takeaway");
+      if (!leadEl || !takeEl || !res || !res.selected_outcomes) return;
+      const out = res.selected_outcomes;
+      const isRealRwa = Boolean(res.per_product_portfolio || res.case_study_id === "real-rwa-funds-v1");
+      const aumVal = (res.overrides_applied && Number.isFinite(res.overrides_applied.initial_aum))
+        ? res.overrides_applied.initial_aum
+        : 25000000;
+      const aumStr = `$${(aumVal / 1e6).toFixed(1)}M`;
+      if (badgeEl) {
+        badgeEl.textContent = isRealRwa
+          ? "Real-World RWA Benchmark · What You Are Seeing"
+          : "Controlled Synthetic Case Study · What You Are Seeing";
+      }
+      if (isRealRwa) {
+        setRichCopy(leadEl, [
+          { b: "Yes — Real-World RWA Benchmark: " },
+          "You are comparing three live institutional tokenised funds (",
+          { b: "BlackRock BUIDL" },
+          " on US Treasuries, ",
+          { b: "Maple SyrupUSDC" },
+          " on overcollateralised digital-asset credit, and ",
+          { b: "Hamilton Lane SCOPE" },
+          " on senior private credit) calibrated to their published SEC/offering fee schedules, liquidity buffers, and redemption gates on a standardised ",
+          { b: `${aumStr} starting AUM` },
+          " over 36 months."
+        ]);
+      } else {
+        setRichCopy(leadEl, [
+          { b: "Controlled Synthetic Reference Study: " },
+          "You are comparing three archetype product structures (",
+          { b: "Design A: Liquid Low-Fee" },
+          ", ",
+          { b: "Design B: Gated High-Fee" },
+          ", and ",
+          { b: "Design C: Balanced + Facility" },
+          ") on an identical ",
+          { b: aumStr },
+          " private-credit portfolio to isolate the pure causal impact of fees, gates, and credit lines."
+        ]);
+      }
+      const scoreVal = typeof out.composite_score_100 === "number" ? out.composite_score_100 : 0;
+      const gradeStr = out.rating_grade || "—";
+      const takeParts = [
+        { b: `Active Run (${res.design_label || res.design_id} under ${res.scenario_name || res.scenario_id} · Score ${scoreVal.toFixed(1)}/100 [${gradeStr}]): ` },
+        "Delivers ",
+        { b: `${(out.investor_annualised_return_pct * 100).toFixed(2)}% p.a.` },
+        " time-weighted net investor return, "
+      ];
+      if (out.issuer_profitable) {
+        takeParts.push(
+          "earns ",
+          { b: `$${(out.issuer_cumulative_profit_fiat / 1e3).toFixed(1)}k` },
+          " 3-yr net profit (Chart 3, above its ",
+          { b: formatBreakevenAum(out.breakeven_aum_fiat) },
+          " break-even AUM), and "
+        );
+      } else {
+        takeParts.push(
+          "posts a 3-yr net loss of ",
+          { b: `$${(out.issuer_cumulative_profit_fiat / 1e3).toFixed(1)}k` },
+          " (Chart 3, below its ",
+          { b: formatBreakevenAum(out.breakeven_aum_fiat) },
+          " break-even AUM), and "
+        );
+      }
+      if (out.payment_sla_met) {
+        takeParts.push(
+          "clears all redemptions within ",
+          { b: `${out.max_time_to_payment_periods.toFixed(1)} mo` },
+          " (",
+          { b: "SLA PASS" },
+          ", peak unpaid queue ",
+          { b: `$${(out.peak_unpaid_redemption_obligations_fiat / 1e6).toFixed(2)}M` },
+          ")."
+        );
+      } else {
+        takeParts.push(
+          "hits its redemption gate/liquidity constraint — creating a ",
+          { b: `$${(out.peak_unpaid_redemption_obligations_fiat / 1e6).toFixed(2)}M` },
+          " unpaid queue (Chart 2) that takes ",
+          { b: `${out.max_time_to_payment_periods.toFixed(1)} mo` },
+          " to clear (",
+          { b: "SLA BREACH" },
+          " vs. 3m target) and pushes secondary price down to ",
+          { b: `$${out.min_secondary_market_price.toFixed(4)}` },
+          " (Chart 1)."
+        );
+      }
+      setRichCopy(takeEl, takeParts);
+    }
+
+    function formatBreakevenAum(val) {
+      const n = Number(val);
+      if (!Number.isFinite(n) || n >= 500e6) return "N/A (Margin ≤ 0)";
+      return `$${(n / 1e6).toFixed(1)}M`;
+    }
+
+    function scoreBarColor(score) {
+      if (score >= 80) return "#22c55e";
+      if (score >= 65) return "#38bdf8";
+      if (score >= 50) return "#f59e0b";
+      return "#ef4444";
+    }
+
+    function createScoreCell(scoreVal, extraBadgeText) {
+      const td = document.createElement("td");
+      const wrap = document.createElement("div");
+      wrap.className = "score-cell-wrap";
+      const topRow = document.createElement("div");
+      const numSpan = document.createElement("span");
+      numSpan.textContent = `${Number(scoreVal || 0).toFixed(1)}${extraBadgeText ? " / 100" : ""}`;
+      topRow.append(numSpan);
+      if (extraBadgeText) {
+        const badge = document.createElement("span");
+        badge.className = `rating-badge grade-${extraBadgeText}`;
+        badge.textContent = extraBadgeText;
+        topRow.append(badge);
+      }
+      const track = document.createElement("div");
+      track.className = "score-bar-track";
+      const fill = document.createElement("div");
+      fill.className = "score-bar-fill";
+      const pct = Math.max(0, Math.min(100, Number(scoreVal || 0)));
+      fill.style.width = `${pct}%`;
+      fill.style.background = scoreBarColor(pct);
+      track.append(fill);
+      wrap.append(topRow, track);
+      td.append(wrap);
+      return td;
+    }
+
+    function renderProductStudioResult(res) {
+      const out = res.selected_outcomes;
+      const statusEl = $("product-studio-status");
+      if (statusEl) {
+        statusEl.textContent = `${res.product_run_id || "Updated"} · ${res.scenario_name || res.scenario_id}`;
+      }
+      renderPlainEnglishSummary(res);
+      renderPodiumCards(res);
+      const kpi = $("product-kpi-cards");
+      kpi.replaceChildren();
+      const compScore = typeof out.composite_score_100 === "number" ? out.composite_score_100 : 0;
+      const grade = out.rating_grade || "—";
+      const kpiItems = [
+        [
+          "5-Pillar Rating & Score",
+          `${compScore.toFixed(1)} / 100 (${grade})`,
+          `Yld ${Number(out.yield_efficiency_score || 0).toFixed(0)} · Liq ${Number(out.liquidity_sla_score || 0).toFixed(0)} · Stab ${Number(out.price_stability_score || 0).toFixed(0)} · Iss ${Number(out.issuer_viability_score || 0).toFixed(0)} · Str ${Number(out.stress_resilience_score || 0).toFixed(0)}`,
+          compScore >= 78 ? "var(--lime)" : compScore >= 65 ? "var(--aqua)" : "var(--gold)"
+        ],
+        [
+          "Investor Net Return (TWR p.a.)",
+          `${(out.investor_annualised_return_pct * 100).toFixed(2)}%`,
+          `3-Yr Cash + Reinvested Dist: $${(out.investor_distributions_total_fiat / 1e6).toFixed(2)}M`,
+          "var(--lime)"
+        ],
+        [
+          "Ending NAV / Executable Price",
+          `$${out.ending_nav_per_token.toFixed(4)} / $${out.ending_executable_redemption_price.toFixed(4)}`,
+          `Min Secondary Market Price: $${out.min_secondary_market_price.toFixed(4)}`,
+          out.min_secondary_market_price < 0.95 ? "var(--gold)" : "var(--text)"
+        ],
+        [
+          "Issuer 3-Yr Net Profit",
+          `$${(out.issuer_cumulative_profit_fiat / 1e3).toFixed(1)}k`,
+          `Analytical Break-Even AUM: ${formatBreakevenAum(out.breakeven_aum_fiat)}`,
+          out.issuer_profitable ? "var(--aqua)" : "var(--red)"
+        ],
+        [
+          "Redemption Wait & SLA",
+          `${out.max_time_to_payment_periods.toFixed(1)} mo (${out.payment_sla_met ? "SLA PASS" : "SLA BREACH"})`,
+          `Peak Unpaid Queue: $${(out.peak_unpaid_redemption_obligations_fiat / 1e6).toFixed(2)}M`,
+          out.payment_sla_met ? "var(--lime)" : "var(--red)"
+        ]
+      ];
+      kpiItems.forEach(([label, val, sub, accentColor]) => {
+        const card = document.createElement("div");
+        card.className = "metric-card card";
+        const sp = document.createElement("span"); sp.textContent = label;
+        const st = document.createElement("strong");
+        st.textContent = val;
+        if (accentColor) st.style.color = accentColor;
+        const sm = document.createElement("small"); sm.textContent = sub;
+        card.append(sp, st, sm);
+        kpi.append(card);
+      });
+
+      const tbody = document.querySelector("#product-comparison-table tbody");
+      tbody.replaceChildren();
+      (res.design_comparison || []).forEach((row) => {
+        const tr = document.createElement("tr");
+        if (row.is_selected) tr.className = "is-selected";
+        const tdName = document.createElement("td");
+        tdName.textContent = row.design_label + (row.is_selected ? " ★" : "");
+        tr.append(tdName);
+        tr.append(createScoreCell(row.composite_score_100, row.rating_grade || ""));
+        const cells = [
+          `${(row.investor_annualised_return_pct * 100).toFixed(2)}%`,
+          `$${row.ending_nav_per_token.toFixed(4)}`,
+          `$${row.ending_executable_redemption_price.toFixed(4)}`,
+          `$${row.min_secondary_market_price.toFixed(4)}`,
+          `$${(row.issuer_cumulative_profit_fiat / 1e3).toFixed(1)}k`,
+          formatBreakevenAum(row.breakeven_aum_fiat),
+          `${row.max_time_to_payment_periods.toFixed(1)} mo (${row.payment_sla_met ? "PASS" : "BREACH"})`,
+          `$${(row.total_liquidity_and_financing_costs_fiat / 1e3).toFixed(1)}k`
+        ];
+        cells.forEach((c) => {
+          const td = document.createElement("td");
+          td.textContent = c;
+          tr.append(td);
+        });
+        tbody.append(tr);
+      });
+
+      const scBody = document.querySelector("#product-scorecard-table tbody");
+      if (scBody) {
+        scBody.replaceChildren();
+        (res.design_comparison || []).forEach((row) => {
+          const tr = document.createElement("tr");
+          if (row.is_selected) tr.className = "is-selected";
+          const tdName = document.createElement("td");
+          tdName.textContent = row.design_label + (row.is_selected ? " ★" : "");
+          tr.append(tdName);
+          tr.append(createScoreCell(row.yield_efficiency_score));
+          tr.append(createScoreCell(row.liquidity_sla_score));
+          tr.append(createScoreCell(row.price_stability_score));
+          tr.append(createScoreCell(row.issuer_viability_score));
+          tr.append(createScoreCell(row.stress_resilience_score));
+          tr.append(createScoreCell(row.composite_score_100, row.rating_grade || ""));
+          scBody.append(tr);
+        });
+      }
+
+      drawProductMultiLineSvg("product-chart-nav", res.timeseries_by_design, "secondary_market_price", 1.0, "", "nav_per_token", res.design_id);
+      drawProductMultiLineSvg("product-chart-queue", res.timeseries_by_design, "unpaid_redemption_obligations", 1e-6, "M", null, res.design_id);
+      drawProductMultiLineSvg("product-chart-profit", res.timeseries_by_design, "cumulative_issuer_profit", 1e-3, "k", null, res.design_id);
+
+      const dlWrap = $("product-downloads");
+      dlWrap.replaceChildren();
+      (res.downloads || []).forEach((item) => {
+        const a = document.createElement("a");
+        a.className = "download";
+        a.href = item.url;
+        const st = document.createElement("strong");
+        st.textContent = item.filename;
+        const sm = document.createElement("small");
+        sm.textContent = `Export ${item.id.replace("_", " ").toUpperCase()}`;
+        a.append(st, sm);
+        dlWrap.append(a);
+      });
+    }
+
+    async function runProductStudio() {
+      if (productStudio.running || !productStudio.catalog) return;
+      productStudio.running = true;
+      $("product-run-button").disabled = true;
+      const statusEl = $("product-studio-status");
+      if (statusEl) statusEl.textContent = "Running simulation…";
+      try {
+        const csSel = $("product-case-study-select");
+        const resp = await fetch("/api/product-studio/run", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            case_study_id: csSel && csSel.value ? csSel.value : (productStudio.catalog.case_study_id || ""),
+            design_id: $("product-design-select").value,
+            scenario_id: $("product-scenario-select").value,
+            overrides: collectProductOverrides()
+          })
+        });
+        const data = await resp.json();
+        if (resp.ok) {
+          renderProductStudioResult(data);
+        } else if (statusEl) {
+          statusEl.textContent = `Error: ${data.error || resp.statusText}`;
+        }
+      } catch (_err) {
+        if (statusEl) statusEl.textContent = "Simulation error";
+      } finally {
+        productStudio.running = false;
+        $("product-run-button").disabled = false;
+      }
+    }
+
+    function applyProductCaseStudyCatalog(csId) {
+      const cat = (productStudio.allCatalogs && productStudio.allCatalogs[csId]) || productStudio.catalog;
+      if (!cat) return;
+      productStudio.catalog = cat;
+      const titleEl = $("product-studio-title");
+      const subEl = $("product-studio-subtitle");
+      const boundEl = $("product-studio-boundary");
+      const compHeadEl = $("product-comparison-heading");
+      if (titleEl && cat.title) titleEl.textContent = cat.title;
+      if (subEl && cat.subtitle) subEl.textContent = cat.subtitle;
+      const disclaimerText = cat.disclaimer || (cat.evidence_status && cat.evidence_status.statement) || "";
+      if (boundEl && disclaimerText) boundEl.textContent = disclaimerText;
+      if (compHeadEl) {
+        compHeadEl.textContent = cat.per_product_portfolio
+          ? "Side-by-Side Real-World RWA Product Comparison (Each Product with Authentic Asset Class, Fee & Liquidity Mechanics)"
+          : "Side-by-Side Product Design Comparison (Same Portfolio & Scenario)";
+      }
+      const dSel = $("product-design-select");
+      dSel.replaceChildren();
+      cat.designs.forEach((d) => {
+        const opt = document.createElement("option");
+        opt.value = d.design_id;
+        opt.textContent = d.name;
+        dSel.append(opt);
+      });
+      if (cat.designs.some((d) => d.design_id === "hamilton_lane_scope")) {
+        dSel.value = "hamilton_lane_scope";
+      } else if (cat.designs.some((d) => d.design_id === "design_c_balanced_facility")) {
+        dSel.value = "design_c_balanced_facility";
+      } else if (cat.designs.length) {
+        dSel.value = cat.designs[0].design_id;
+      }
+      const sSel = $("product-scenario-select");
+      const prevScenario = sSel.value;
+      sSel.replaceChildren();
+      cat.scenarios.forEach((s) => {
+        const opt = document.createElement("option");
+        opt.value = s.scenario_id;
+        opt.textContent = s.name;
+        sSel.append(opt);
+      });
+      if (prevScenario && cat.scenarios.some((s) => s.scenario_id === prevScenario)) {
+        sSel.value = prevScenario;
+      } else if (cat.scenarios.some((s) => s.scenario_id === "concentrated_withdrawals")) {
+        sSel.value = "concentrated_withdrawals";
+      } else if (cat.scenarios.length) {
+        sSel.value = cat.scenarios[0].scenario_id;
+      }
+      const sObj = cat.scenarios.find((x) => x.scenario_id === sSel.value);
+      $("product-scenario-desc").textContent = sObj ? sObj.description : "";
+
+      renderScenarioPills(cat, sSel.value);
+      renderProductLegend(cat);
+      renderProductProvenance(cat);
+      renderProductControls(dSel.value, sSel.value);
+      setStudioViewMode("guided");
+
+      const limBox = $("product-assumptions-limitations");
+      limBox.replaceChildren();
+      (cat.limitations || []).forEach((line) => {
+        const p = document.createElement("p");
+        p.textContent = `• ${line}`;
+        limBox.append(p);
+      });
+    }
+
+    async function loadProductStudio() {
+      try {
+        const resp = await fetch("/api/product-studio", { headers: { "Accept": "application/json" } });
+        if (!resp.ok) return;
+        const rootCat = await resp.json();
+        productStudio.allCatalogs = rootCat.case_studies || { [rootCat.case_study_id]: rootCat };
+        const csSel = $("product-case-study-select");
+        const avail = rootCat.available_case_studies || [
+          { case_study_id: rootCat.case_study_id, title: rootCat.title || rootCat.case_study_id }
+        ];
+        if (csSel) {
+          csSel.replaceChildren();
+          avail.forEach((item) => {
+            const opt = document.createElement("option");
+            opt.value = item.case_study_id;
+            opt.textContent = item.label || item.title;
+            csSel.append(opt);
+          });
+          const defaultCsId = rootCat.default_ui_case_study_id || avail[0].case_study_id;
+          csSel.value = defaultCsId;
+          applyProductCaseStudyCatalog(defaultCsId);
+          csSel.addEventListener("change", () => {
+            applyProductCaseStudyCatalog(csSel.value);
+            runProductStudio();
+          });
+        } else {
+          productStudio.catalog = rootCat;
+          applyProductCaseStudyCatalog(rootCat.case_study_id);
+        }
+        const dSel = $("product-design-select");
+        const sSel = $("product-scenario-select");
+        const updateScenDesc = () => {
+          const s = (productStudio.catalog.scenarios || []).find((x) => x.scenario_id === sSel.value);
+          $("product-scenario-desc").textContent = s ? s.description : "";
+        };
+        dSel.addEventListener("change", () => { renderProductControls(dSel.value, sSel.value); runProductStudio(); });
+        sSel.addEventListener("change", () => { updateScenDesc(); renderScenarioPills(productStudio.catalog, sSel.value); renderProductControls(dSel.value, sSel.value); runProductStudio(); });
+        $("product-run-button").addEventListener("click", runProductStudio);
+        runProductStudio();
+      } catch (_e) {
+        // Ignore if endpoint is not mounted in legacy single-bundle mode
+      }
+    }
+
     loadGallery();
+    loadProductStudio();
   </script>
 </body>
 </html>
