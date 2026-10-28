@@ -1977,7 +1977,7 @@ def write_paper_artifacts(
     # Calibration table: per design, documented vs. assumption per parameter
     prov = provenance_rows(cfg)
     lines = [
-        r"\begin{tabular}{@{}p{3.6cm}" + "p{3.7cm}" * len(design_ids) + "@{}}",
+        r"\begin{tabular}{@{}>{\raggedright\arraybackslash}p{4.2cm}" + r">{\raggedright\arraybackslash}p{3.4cm}" * len(design_ids) + "@{}}",
         r"\toprule",
         "\\textbf{Parameter} & " + " & ".join(f"\\textbf{{{labels[d]}}}" for d in design_ids) + r" \\",
         r"\midrule",
@@ -1986,7 +1986,10 @@ def write_paper_artifacts(
         cells = []
         for d in design_ids:
             r = next(p for p in prov if p["design_id"] == d and p["parameter_key"] == key)
-            mark = {"assumption": r"$^{\dagger}$", "documented": "", "not applicable": r" (n/a)", "missing": r"$^{?}$"}[r["status"]]
+            if r["status"] == "not applicable":
+                cells.append("n/a")
+                continue
+            mark = {"assumption": r"$^{\dagger}$", "documented": "", "missing": r"$^{?}$"}[r["status"]]
             cells.append(_tex_escape(r["value"]) + mark)
         lines.append(_tex_escape(PARAMETER_LABELS[key]) + " & " + " & ".join(cells) + r" \\")
     lines += [r"\bottomrule", r"\end{tabular}"]
@@ -2055,17 +2058,19 @@ def write_paper_artifacts(
     # Sensitivity table: span of the run-scenario investor score per assumption
     sens = sensitivity_df[sensitivity_df.base_scenario == "concentrated_withdrawals"] if not sensitivity_df.empty else sensitivity_df
     lines = [
-        r"\begin{tabular}{@{}llrr@{}}",
+        r"\begin{tabular}{@{}>{\raggedright\arraybackslash}p{2.6cm}>{\raggedright\arraybackslash}p{7.4cm}rr@{}}",
         r"\toprule",
-        r"\textbf{Fund} & \textbf{Flagged assumption (swept values)} & \textbf{Score range} & \textbf{Max wait range (mo)} \\",
+        r"\textbf{Fund} & \textbf{Assumption (values swept)} & \textbf{Score} & \textbf{Max wait (mo)} \\",
         r"\midrule",
     ]
-    for d in design_ids:
+    for i, d in enumerate(design_ids):
         g = sens[sens.design_id == d]
-        for label, grp in g.groupby("parameter_label", sort=False):
-            values = ", ".join(_tex_escape(v) for v in grp["parameter_value_label"])
+        if i:
+            lines.append(r"\midrule")
+        for j, (label, grp) in enumerate(g.groupby("parameter_label", sort=False)):
+            values = ", ".join(dict.fromkeys(_tex_escape(v) for v in grp["parameter_value_label"]))
             lines.append(
-                f"{labels[d]} & {_tex_escape(label)} ({values}) & {grp['investor_score_100'].min():.1f}--{grp['investor_score_100'].max():.1f} & "
+                f"{labels[d] if j == 0 else ''} & {_tex_escape(label)} ({values}) & {grp['investor_score_100'].min():.1f}--{grp['investor_score_100'].max():.1f} & "
                 f"{grp['max_time_to_payment_periods'].min():.0f}--{grp['max_time_to_payment_periods'].max():.0f} \\\\"
             )
     lines += [r"\bottomrule", r"\end{tabular}"]
