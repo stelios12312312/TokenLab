@@ -2419,7 +2419,10 @@ class TokenisedProductEconomy(TokenEconomy, AuditableConfig):
 
         # Forced-exit return: hold from inception and sell at the worst secondary price relative to NAV
         forced_exit_return = None
-        if not df.empty:
+        if not df.empty and max_exit_discount <= 1e-12:
+            # Never below NAV: exiting at any time earns the ordinary return
+            forced_exit_return = float(last.get("investor_annualised_return_pct", 0.0))
+        elif not df.empty:
             worst = int(df["exit_discount_vs_nav"].idxmax())
             worst_row = df.iloc[worst]
             worst_years = float(worst_row["iteration"]) / float(periods_per_year)

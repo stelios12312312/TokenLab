@@ -519,7 +519,7 @@ scenarios:
           liquidation_haircut_bps_override: 110.0
 
 monte_carlo:
-  default_repetitions: 60
+  default_repetitions: 100
   random_seed: 20261026
   gross_yield_sd: 0.008
   stochastic_yield_volatility_annual: 0.010

@@ -1237,6 +1237,55 @@ def excess_return_scale_breakeven(summary_df: pd.DataFrame, cfg: Dict[str, Any],
     return 0.5 * (lo + hi)
 
 
+# Risk-compensation assumptions: chance an investor must exit at the worst moment, and the
+# extra return demanded per unit of return dispersion (a Sharpe-style price of risk)
+RISK_EXIT_PROBABILITIES: Tuple[float, ...] = (0.10, 0.25, 0.50)
+RISK_PRICES: Tuple[float, ...] = (0.2, 0.3, 0.5)
+RISK_CENTRAL: Tuple[float, float] = (0.25, 0.3)
+
+
+def compute_risk_compensation(
+    excess: np.ndarray, exit_cost: np.ndarray, credit_loss: np.ndarray, weights: np.ndarray
+) -> Dict[str, Any]:
+    """
+    Is the extra yield enough? From per-path annual figures and path probabilities:
+    - `spread_paid`: expected return over the Treasury-bill rate, already net of credit losses;
+    - `expected_credit_loss`: expected return lost to the scenarios' credit write-downs;
+    - `forced_exit_cost`: expected loss from one sale at the worst discount to NAV, per year of holding;
+    - `spread_volatility` and `worst_decile_spread` (weighted CVaR at 10%).
+    Required spread = exit probability x forced-exit cost + price of risk x volatility;
+    `margin` = spread paid - required (positive = paid enough).
+    """
+    w = weights.ravel() / weights.sum()
+    x = excess.ravel()
+    mean = float(np.sum(w * x))
+    vol = float(np.sqrt(np.sum(w * (x - mean) ** 2)))
+    order = np.argsort(x)
+    cum = np.cumsum(w[order])
+    tail = order[cum <= 0.10] if np.any(cum <= 0.10) else order[:1]
+    worst = float(np.sum(w[tail] * x[tail]) / np.sum(w[tail]))
+    exit_cost = float(np.sum(w * exit_cost.ravel()))
+    grid = {
+        f"{p:.2f}|{lam:.1f}": {
+            "required_spread": p * exit_cost + lam * vol,
+            "margin": mean - (p * exit_cost + lam * vol),
+        }
+        for p in RISK_EXIT_PROBABILITIES
+        for lam in RISK_PRICES
+    }
+    central = grid[f"{RISK_CENTRAL[0]:.2f}|{RISK_CENTRAL[1]:.1f}"]
+    return {
+        "spread_paid": mean,
+        "expected_credit_loss": float(np.sum(w * credit_loss.ravel())),
+        "forced_exit_cost": exit_cost,
+        "spread_volatility": vol,
+        "worst_decile_spread": worst,
+        "required_spread_central": central["required_spread"],
+        "margin_central": central["margin"],
+        "grid": grid,
+    }
+
+
 def run_monte_carlo_product_analysis(
     config: Optional[Dict[str, Any]] = None,
     num_repetitions: Optional[int] = None,
@@ -1252,6 +1301,12 @@ def run_monte_carlo_product_analysis(
     that each design ranks first under (a) the published weights, (b) local weight
     uncertainty and (c) any weights (uniform over the simplex), with scenario
     weights perturbed in (b) and (c) as well.
+
+    Each path is also re-run without the scenario's credit write-downs (same seed), so
+    the same paths yield the risk-compensation analysis (`risk_compensation`): the
+    extra return paid over each scenario's own Treasury-bill rate, the expected credit
+    loss, the cost of a forced exit, return dispersion, and the required spread under
+    assumed exit probabilities and prices of risk.
     """
     cfg = config or load_case_study_config()
     mc_cfg = cfg.get("monte_carlo", {}) or {}
@@ -1277,6 +1332,9 @@ def run_monte_carlo_product_analysis(
     pillar_arr = np.zeros((len(design_ids), n_reps, len(scen_ids), len(INVESTOR_PILLAR_KEYS)))
     raw_arr = np.zeros((len(design_ids), n_reps, len(scen_ids), len(_RAW_SCORE_INPUTS)))
     score_arr = np.zeros((len(design_ids), n_reps, len(scen_ids)))
+    excess_arr = np.zeros((len(design_ids), n_reps, len(scen_ids)))
+    exit_cost_arr = np.zeros((len(design_ids), n_reps, len(scen_ids)))
+    credit_loss_arr = np.zeros((len(design_ids), n_reps, len(scen_ids)))
     per_design: Dict[str, Any] = {}
     for d_idx, design_id in enumerate(design_ids):
         d_ov = ((mc_cfg.get("design_overrides") or {}).get(design_id) or {})
@@ -1317,6 +1375,19 @@ def run_monte_carlo_product_analysis(
                 pillar_arr[d_idx, rep, s_idx, :] = [out[k] for k in INVESTOR_PILLAR_KEYS]
                 raw_arr[d_idx, rep, s_idx, :] = [float(out[k] or 0.0) for k in _RAW_SCORE_INPUTS]
                 score_arr[d_idx, rep, s_idx] = out["investor_score_100"]
+                twr = out["investor_annualised_return_pct"]
+                excess_arr[d_idx, rep, s_idx] = twr - out["risk_free_rate_annual"]
+                # One forced sale at the worst discount to NAV, spread over the holding period
+                exit_cost_arr[d_idx, rep, s_idx] = float(out["max_exit_discount_vs_nav"]) / (horizon / 12.0)
+                if econ.scenario_overrides.get("capital_shock_schedule"):
+                    # Same path without the scenario's credit write-downs: the difference is the credit loss
+                    no_loss = build_product_economy_from_config(
+                        cfg, design_id=design_id, scenario_id=scenario_id, custom_overrides=ov,
+                        random_seed=base_seed + rep * 100 + s_idx,
+                    )
+                    no_loss.scenario_overrides["capital_shock_schedule"] = {}
+                    no_loss.run_Fixed_iterations(horizon)
+                    credit_loss_arr[d_idx, rep, s_idx] = no_loss.summarize_outcomes()["investor_annualised_return_pct"] - twr
                 bucket = per_scen[scenario_id]
                 bucket["twr"].append(out["investor_annualised_return_pct"])
                 bucket["irr"].append(out["investor_irr_annualised_pct"])
@@ -1378,9 +1449,23 @@ def run_monte_carlo_product_analysis(
         sc = np.einsum("drk,k->rd", pillar_arr[:, :, s_idx, :], w_pillar / w_pillar.sum())
         per_scenario_rank_one[scenario_id] = dict(zip(design_ids, map(float, _rank_one_probability(sc))))
 
+    path_w = np.tile(w_vec / n_reps, (n_reps, 1))
+    risk_compensation = {
+        "exit_probabilities": list(RISK_EXIT_PROBABILITIES),
+        "prices_of_risk": list(RISK_PRICES),
+        "central_case": {"exit_probability": RISK_CENTRAL[0], "price_of_risk": RISK_CENTRAL[1]},
+        "designs": {
+            design_id: compute_risk_compensation(
+                excess_arr[d_idx], exit_cost_arr[d_idx], credit_loss_arr[d_idx], path_w
+            )
+            for d_idx, design_id in enumerate(design_ids)
+        },
+    }
+
     return {
         "evidence_status": "synthetic_priors_modeled_outcomes",
         "random_seed": base_seed,
+        "risk_compensation": risk_compensation,
         "repetitions": n_reps,
         "scenario_ids": scen_ids,
         "scenario_weights": dict(zip(scen_ids, map(float, w_vec))),
@@ -1631,6 +1716,37 @@ def _generate_case_study_plots(
     fig.savefig(p6, dpi=160)
     plt.close(fig)
     saved["reverse_stress"] = p6
+
+    # 7. Is the extra yield enough? Spread paid vs. required spread (central assumptions)
+    rc = mc_results.get("risk_compensation")
+    if rc:
+        fig, ax = plt.subplots(1, 1, figsize=(10, 4.6))
+        _style_axes(ax)
+        p_exit, lam = rc["central_case"]["exit_probability"], rc["central_case"]["price_of_risk"]
+        y_pos = np.arange(len(design_ids))
+        for i, d in enumerate(design_ids):
+            r = rc["designs"][d]
+            exit_part = p_exit * r["forced_exit_cost"] * 100.0
+            risk_part = lam * r["spread_volatility"] * 100.0
+            ax.barh(i + 0.18, r["spread_paid"] * 100.0, height=0.32, color=color[d])
+            ax.barh(i - 0.18, exit_part, height=0.32, color=_INK["secondary"], alpha=0.55)
+            ax.barh(i - 0.18, risk_part, left=exit_part, height=0.32, color=_INK["secondary"], alpha=0.30)
+            ax.text(max(r["spread_paid"] * 100.0, 0) + 0.03, i + 0.18, f"paid {r['spread_paid'] * 100:.2f}%", va="center", fontsize=9)
+            ax.text(exit_part + risk_part + 0.03, i - 0.18, f"required {r['required_spread_central'] * 100:.2f}%", va="center", fontsize=9, color=_INK["secondary"])
+        ax.axvline(0, color=_INK["secondary"], linewidth=1)
+        ax.set_yticks(y_pos)
+        ax.set_yticklabels([labels[d] for d in design_ids])
+        ax.invert_yaxis()
+        ax.set_xlabel("% per year over the Treasury-bill rate")
+        ax.set_title(
+            f"Extra yield paid vs. required (exit chance {p_exit:.0%}, price of risk {lam:.1f}; "
+            "dark = exit cost, light = risk premium)", fontsize=11
+        )
+        fig.tight_layout()
+        p7 = str(plots_dir / "07_risk_compensation.png")
+        fig.savefig(p7, dpi=160)
+        plt.close(fig)
+        saved["risk_compensation"] = p7
     return saved
 
 
@@ -1765,6 +1881,29 @@ def build_case_study_html_report(
         [plot_paths["sensitivities"], plot_paths["reverse_stress"]],
         ["How much each flagged assumption moves the investor score in the run.", "Reverse stress: shock size versus time to full payment."],
     )
+
+    rc = mc_results.get("risk_compensation")
+    if rc:
+        report.add_table_section(
+            "Is the extra yield enough? (per year, probability-weighted over scenarios and Monte Carlo paths)",
+            headers=["Design", "Extra yield paid over T-bills (net of losses)", "Expected credit loss", "Forced-exit cost",
+                     "Return volatility", "Worst-10% average", "Required (central)", "Margin (central)"],
+            rows=[
+                [
+                    cfg["product_designs"][d]["short_label"],
+                    _pct(rc["designs"][d]["spread_paid"]),
+                    _pct(rc["designs"][d]["expected_credit_loss"]),
+                    _pct(rc["designs"][d]["forced_exit_cost"]),
+                    _pct(rc["designs"][d]["spread_volatility"]),
+                    _pct(rc["designs"][d]["worst_decile_spread"]),
+                    _pct(rc["designs"][d]["required_spread_central"]),
+                    _pct(rc["designs"][d]["margin_central"]),
+                ]
+                for d in design_ids
+            ],
+        )
+        if "risk_compensation" in plot_paths:
+            report.add_plot(plot_paths["risk_compensation"], "Extra yield paid versus the spread its risks require (central assumptions).")
 
     base = summary_df[summary_df.scenario_id == "baseline"].set_index("design_id")
     report.add_table_section(
@@ -1960,6 +2099,22 @@ def write_paper_artifacts(
         macro(f"{dm}SlaBreachShock", "none" if rv["min_institutional_shock_breaching_sla"] is None else _tex_pct(rv["min_institutional_shock_breaching_sla"], 0))
         macro(f"{dm}BufferBreachShock", "none" if rv["min_institutional_shock_breaching_buffer"] is None else _tex_pct(rv["min_institutional_shock_breaching_buffer"], 0))
         macro(f"{dm}MinProfitableAum", "not reached" if rv["min_initial_aum_profitable_baseline_fiat"] is None else _tex_money(rv["min_initial_aum_profitable_baseline_fiat"]))
+    rc = mc_results.get("risk_compensation")
+    if rc:
+        macro("RiskExitProbability", _tex_pct(rc["central_case"]["exit_probability"], 0))
+        macro("RiskPrice", f"{rc['central_case']['price_of_risk']:.1f}")
+        for d in design_ids:
+            dm = _DESIGN_MACRO.get(d, "".join(ch for ch in d.title() if ch.isalpha()))
+            r = rc["designs"][d]
+            macro(f"{dm}SpreadPaid", _tex_pct(r["spread_paid"]))
+            macro(f"{dm}CreditLoss", _tex_pct(r["expected_credit_loss"]))
+            macro(f"{dm}ExitCost", _tex_pct(r["forced_exit_cost"]))
+            macro(f"{dm}SpreadVol", _tex_pct(r["spread_volatility"]))
+            macro(f"{dm}WorstDecile", _tex_pct(r["worst_decile_spread"]))
+            macro(f"{dm}RequiredSpread", _tex_pct(r["required_spread_central"]))
+            macro(f"{dm}SpreadMargin", _tex_pct(r["margin_central"]))
+            paid_enough = sum(1 for g in r["grid"].values() if g["margin"] >= 0)
+            macro(f"{dm}PaidEnoughCount", f"{paid_enough} of {len(r['grid'])}")
     macro("LeaderLabel", labels_plain.get(ttc.get("leader_design_id"), "n/a"))
     macro("ExcessFullMarks", _tex_pct(INVESTOR_SCORE_SCALES["excess_return_full_marks"], 0))
     macro("McRepetitions", str(mc_results["repetitions"]))
@@ -2036,6 +2191,39 @@ def write_paper_artifacts(
     lines += [r"\bottomrule", r"\end{tabular}"]
     (paper_dir / "table_monte_carlo.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    # Risk-compensation tables: components (central case) and margin over the assumption grid
+    rc = mc_results.get("risk_compensation")
+    if rc:
+        lines = [
+            r"\begin{tabular}{@{}lrrrrrrr@{}}",
+            r"\toprule",
+            r"\textbf{Fund} & \textbf{Paid} & \textbf{Credit loss} & \textbf{Exit cost} & \textbf{Volatility} & \textbf{Worst 10\%} & \textbf{Required} & \textbf{Margin} \\",
+            r"\midrule",
+        ]
+        for d in design_ids:
+            r = rc["designs"][d]
+            lines.append(
+                f"{labels[d]} & {_tex_pct(r['spread_paid'])} & {_tex_pct(r['expected_credit_loss'])} & {_tex_pct(r['forced_exit_cost'])} & "
+                f"{_tex_pct(r['spread_volatility'])} & {_tex_pct(r['worst_decile_spread'])} & {_tex_pct(r['required_spread_central'])} & "
+                f"\\textbf{{{_tex_pct(r['margin_central'])}}} \\\\"
+            )
+        lines += [r"\bottomrule", r"\end{tabular}"]
+        (paper_dir / "table_risk.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+        probs, prices = rc["exit_probabilities"], rc["prices_of_risk"]
+        lines = [
+            r"\begin{tabular}{@{}l" + "r" * (len(probs) * len(prices)) + "@{}}",
+            r"\toprule",
+            r"\textbf{Exit chance} & " + " & ".join(f"\\multicolumn{{{len(prices)}}}{{c}}{{\\textbf{{{_tex_pct(p, 0)}}}}}" for p in probs) + r" \\",
+            r"\textbf{Price of risk} & " + " & ".join(f"{lam:.1f}" for _ in probs for lam in prices) + r" \\",
+            r"\midrule",
+        ]
+        for d in design_ids:
+            cells = [_tex_pct(rc["designs"][d]["grid"][f"{p:.2f}|{lam:.1f}"]["margin"]) for p in probs for lam in prices]
+            lines.append(f"{labels[d]} & " + " & ".join(cells) + r" \\")
+        lines += [r"\bottomrule", r"\end{tabular}"]
+        (paper_dir / "table_risk_grid.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
     # Sponsor table
     lines = [
         r"\begin{tabular}{@{}lrrrr@{}}",
@@ -2077,8 +2265,9 @@ def write_paper_artifacts(
     (paper_dir / "table_sensitivity.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     return {name: str(paper_dir / name) for name in (
-        "numbers.tex", "table_calibration.tex", "table_matrix.tex", "table_monte_carlo.tex", "table_sponsor.tex", "table_sensitivity.tex"
-    )}
+        "numbers.tex", "table_calibration.tex", "table_matrix.tex", "table_monte_carlo.tex", "table_sponsor.tex", "table_sensitivity.tex",
+        "table_risk.tex", "table_risk_grid.tex",
+    ) if (paper_dir / name).exists()}
 
 
 def _sha256_file(path: Path) -> str:

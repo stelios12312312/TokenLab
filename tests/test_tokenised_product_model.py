@@ -298,6 +298,20 @@ def test_across_scenario_scores_and_rank_probabilities(real_cfg, real_matrix) ->
     q = mc["designs"]["hamilton_lane_scope"]["across_scenario_investor_score"]
     assert q["p10"] <= q["p50"] <= q["p90"]
 
+    # Risk compensation: required = exit chance x exit cost + price of risk x volatility; margin = paid - required
+    rc = mc["risk_compensation"]
+    p_exit, lam = rc["central_case"]["exit_probability"], rc["central_case"]["price_of_risk"]
+    for d in REAL_DESIGNS:
+        r = rc["designs"][d]
+        assert len(r["grid"]) == len(rc["exit_probabilities"]) * len(rc["prices_of_risk"])
+        assert r["required_spread_central"] == pytest.approx(p_exit * r["forced_exit_cost"] + lam * r["spread_volatility"])
+        assert r["margin_central"] == pytest.approx(r["spread_paid"] - r["required_spread_central"])
+        assert r["worst_decile_spread"] <= r["spread_paid"]
+    assert rc["designs"]["buidl_treasury"]["expected_credit_loss"] == 0.0
+    assert rc["designs"]["buidl_treasury"]["forced_exit_cost"] == 0.0
+    assert rc["designs"]["maple_syrup_usdc"]["expected_credit_loss"] > 0.0
+    assert rc["designs"]["hamilton_lane_scope"]["expected_credit_loss"] > 0.0
+
 
 # ---------------------------------------------------------------------------
 # Calibration provenance
