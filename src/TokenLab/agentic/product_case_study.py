@@ -2498,6 +2498,9 @@ def write_paper_artifacts(
         # The universe tables replace numbers.tex's macros for rankings: append them
         order = sorted(design_ids, key=lambda d: -mc_results["designs"][d]["across_scenario_investor_score"]["p50"])
         extra = {"NumFunds": str(len(design_ids)), "NumScenarios": str(len(scen_order))}
+        for d in design_ids:
+            dm = _DESIGN_MACRO.get(d, "".join(ch for ch in d.title() if ch.isalpha()))
+            extra[f"{dm}LoopedShare"] = _tex_pct(cfg["product_designs"][d].get("looped_share") or 0.0, 0)
         for i, d in enumerate(order[:5], start=1):
             word = ["One", "Two", "Three", "Four", "Five"][i - 1]
             extra[f"Rank{word}Label"] = labels[d]
