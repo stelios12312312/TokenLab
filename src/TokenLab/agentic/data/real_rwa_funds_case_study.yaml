@@ -175,6 +175,7 @@ product_designs:
       reward_token_annual_budget_fiat: {source: "Securitize launch release: no token incentive programme", url: "https://investors.securitize.io/news/news-details/2024/BlackRock-Launches-Its-First-Tokenized-Fund-BUIDL-on-the-Ethereum-Network-03-20-2024/default.aspx", as_of: "2024-03-20", confidence: "medium"}
       target_cash_buffer_pct: {source: "Holdings are 100% cash, T-bills and repo, all income-earning; no idle buffer modelled", url: "https://investors.securitize.io/news/news-details/2024/BlackRock-Launches-Its-First-Tokenized-Fund-BUIDL-on-the-Ethereum-Network-03-20-2024/default.aspx", as_of: "2024-03-20", confidence: "high"}
       distribution_policy: {source: "Markets Media: distributions paid daily since January 2025", url: "https://www.marketsmedia.com/securitize-adds-features-for-blackrock-tokenized-treasury-fund/", as_of: "2025-01-23", confidence: "high"}
+      looped_share: {applicable: false, note: "looped holders are modelled only in the 17-fund universe study"}
       distribution_reinvestment_rate: {assumption: true, note: "paid as new tokens at launch (2024); the form of daily payouts since 2025 is not restated", sweep: [0.0, 0.5, 1.0]}
       management_fee_annual: {source: "Securitize BUIDL share classes: 50 bps on Ethereum, Arbitrum, Optimism; 20 bps on Aptos, Avalanche, Polygon, Solana; 18 bps on BNB Smart Chain; blended by current supply per chain (rwa.xyz)", url: "https://securitize.io/blackrock/buidl", as_of: "2026-07-14", confidence: "high", note: "Tempo fee not published; a second table on the same page lists BNB Chain at 20 bps; on the 20 bp classes chain foundations pay BlackRock a quarterly fee"}
       income_share_fee_rate: {source: "Fee is a percentage of NAV, not of income", url: "https://securitize.io/blackrock/buidl", as_of: "2026-07-14", confidence: "high"}
@@ -251,6 +252,7 @@ product_designs:
       reward_token_annual_budget_fiat: {source: "Drips programme phased out; final claim window closed 2026-02-18; replaced by partner rewards via Merkl", url: "https://docs.maple.finance/syrupusdc-usdt-usdg-for-lenders/drips-rewards.md", as_of: "2026-10-27", confidence: "verified", note: "what-if: 0, 25 and 50 bps of the $25M benchmark", sweep: [0.0, 62500.0, 125000.0]}
       target_cash_buffer_pct: {source: "About $58k idle cash on a $975M pool (Maple API)", url: "https://api.maple.finance/v2/graphql", as_of: "2026-10-27", confidence: "high"}
       distribution_policy: {source: "Yield accrues to the vault share price (ERC-4626)", url: "https://docs.maple.finance/syrupusdc-for-lenders/introduction", as_of: "2026-10-27", confidence: "high"}
+      looped_share: {applicable: false, note: "looped holders are modelled only in the 17-fund universe study"}
       distribution_reinvestment_rate: {applicable: false, note: "accumulating vault; no payouts"}
       management_fee_annual: {source: "No NAV-based fee; the management fee is a portion of gross interest", url: "https://docs.maple.finance/technical-resources/protocol-overview/fees.md", as_of: "2026-10-27", confidence: "verified"}
       income_share_fee_rate: {source: "On-chain MapleGlobals platformManagementFeeRate = 150000 (15%) for the syrupUSDC pool manager; delegateManagementFeeRate = 0; formula: fee = gross interest x rate (Maple docs)", url: "https://docs.maple.finance/technical-resources/protocol-overview/fees.md", as_of: "2026-10-28", confidence: "verified", note: "what-if range shown", sweep: [0.10, 0.15, 0.20]}
@@ -327,6 +329,7 @@ product_designs:
       reward_token_annual_budget_fiat: {source: "No token incentives", url: "https://app.rwa.xyz/assets/HLSCOPE", as_of: "2026-10-27", confidence: "medium"}
       target_cash_buffer_pct: {assumption: true, note: "feeder cash holdings not disclosed", sweep: [0.02, 0.05, 0.08, 0.12]}
       distribution_policy: {source: "rwa.xyz HLSCOPE: income accumulates", url: "https://app.rwa.xyz/assets/HLSCOPE", as_of: "2026-10-27", confidence: "medium"}
+      looped_share: {applicable: false, note: "looped holders are modelled only in the 17-fund universe study"}
       distribution_reinvestment_rate: {applicable: false, note: "accumulating; no payouts"}
       management_fee_annual: {source: "rwa.xyz HLSCOPE: 0.50% management fee; no issuer document publishes the fee (Form D lists no sales commissions); Canadian SCOPE series 1.25%; an earlier 1.75% snapshot has no issuer support", url: "https://app.rwa.xyz/assets/HLSCOPE", as_of: "2026-10-27", confidence: "low", sweep: [0.005, 0.0125, 0.0175]}
       income_share_fee_rate: {source: "Fee is NAV-based", url: "https://app.rwa.xyz/assets/HLSCOPE", as_of: "2026-10-27", confidence: "medium"}

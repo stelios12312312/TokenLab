@@ -464,3 +464,43 @@ def test_runs_are_reproducible_from_config_and_seed(real_cfg) -> None:
     b = build_product_economy_from_config(real_cfg, "maple_syrup_usdc", "combined_adverse",
                                           {"stochastic_capital_volatility_annual": 0.02}, random_seed=7)
     pd.testing.assert_frame_equal(a.run_Fixed_iterations(36), b.run_Fixed_iterations(36))
+
+
+# ---------------------------------------------------------------------------
+# 17-fund universe (Kamino / Loopscale listings plus benchmarks)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def universe_cfg():
+    return load_case_study_config(case_study_id="rwa-universe-v1")
+
+
+def test_universe_is_sourced_or_flagged_and_reconciles(universe_cfg) -> None:
+    assert len(universe_cfg["product_designs"]) == 17
+    for row in provenance_rows(universe_cfg):
+        assert row["status"] != "missing", (row["design_id"], row["parameter_key"])
+        entry = universe_cfg["product_designs"][row["design_id"]]["provenance"][row["parameter_key"]]
+        if row["status"] == "assumption":
+            assert entry.get("sweep"), (row["design_id"], row["parameter_key"])
+    summary, _, _ = run_design_scenario_matrix(universe_cfg)
+    assert bool(summary["all_steps_reconciled"].all())
+
+
+def test_looped_holders_take_their_documented_share_and_only_they_unwind(universe_cfg) -> None:
+    """The looping unwind isolates looped holders: funds with no looped share are unaffected."""
+    econ = build_product_economy_from_config(universe_cfg, "auto", "baseline")
+    capital = {c.cohort_id: c.initial_capital for c in econ.cohorts}
+    assert capital["looped"] / sum(capital.values()) == pytest.approx(universe_cfg["product_designs"]["auto"]["looped_share"])
+    assert sum(capital.values()) == pytest.approx(econ.portfolio.initial_aum)
+    for design_id, design in universe_cfg["product_designs"].items():
+        base = _run(universe_cfg, design_id, "baseline")[2]["investor_score_100"]
+        unwind = _run(universe_cfg, design_id, "loop_unwind")[2]["investor_score_100"]
+        if not design.get("looped_share"):
+            assert unwind == pytest.approx(base), design_id
+    assert _run(universe_cfg, "onyc", "loop_unwind")[2]["investor_score_100"] < _run(universe_cfg, "onyc", "baseline")[2]["investor_score_100"]
+
+
+def test_universe_is_kept_out_of_the_studio() -> None:
+    cat = get_product_studio_catalog()
+    assert "rwa-universe-v1" not in cat["case_studies"]

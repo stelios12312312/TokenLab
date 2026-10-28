@@ -62,6 +62,14 @@ CASE_STUDY_REGISTRY: Dict[str, Dict[str, Any]] = {
         "short_label": "Tokenised RWA fund structures (BUIDL / syrupUSDC / HLSCOPE)",
         "path": REAL_RWA_CONFIG_PATH,
     },
+    "rwa-universe-v1": {
+        "case_study_id": "rwa-universe-v1",
+        "label": "Tokenised RWA universe: 17 funds listed on Kamino / Loopscale plus benchmarks (public terms, Oct 2026)",
+        "short_label": "Tokenised RWA universe (17 funds)",
+        "path": Path(__file__).resolve().parent / "data" / "rwa_universe_case_study.yaml",
+        # The studio's podium and grid are designed for a handful of funds
+        "in_studio": False,
+    },
     "tokenised-income-fund-v1": {
         "case_study_id": "tokenised-income-fund-v1",
         "label": "Synthetic design study: Designing a viable tokenised fund (Designs A / B / C)",
@@ -82,6 +90,7 @@ PARAMETER_LOCATIONS: Dict[str, Tuple[Optional[str], str]] = {
     "target_cash_buffer_pct": (None, "target_cash_buffer_pct"),
     "distribution_policy": (None, "distribution_policy"),
     "distribution_reinvestment_rate": (None, "distribution_reinvestment_rate"),
+    "looped_share": (None, "looped_share"),
     "management_fee_annual": ("issuer", "management_fee_annual"),
     "income_share_fee_rate": ("issuer", "income_share_fee_rate"),
     "performance_fee_rate": ("issuer", "performance_fee_rate"),
@@ -110,6 +119,7 @@ PARAMETER_LABELS: Dict[str, str] = {
     "target_cash_buffer_pct": "Cash buffer (non-earning)",
     "distribution_policy": "Distribution policy",
     "distribution_reinvestment_rate": "Distributions paid in kind",
+    "looped_share": "Share of AUM looped as collateral",
     "management_fee_annual": "Management fee (NAV-based)",
     "income_share_fee_rate": "Fee as share of gross income",
     "performance_fee_rate": "Performance / incentive fee",
@@ -138,6 +148,7 @@ OVERRIDE_RANGES: Dict[str, Any] = {
     "liquidation_haircut_bps": (0.0, 1000.0),
     "target_cash_buffer_pct": (0.0, 0.50),
     "distribution_reinvestment_rate": (0.0, 1.0),
+    "looped_share": (0.0, 1.0),
     "management_fee_annual": (0.0, 0.03),
     "income_share_fee_rate": (0.0, 0.50),
     "performance_fee_rate": (0.0, 0.50),
@@ -497,7 +508,7 @@ def format_parameter_value(key: str, value: Any) -> str:
         return f"{int(num)} month" + ("" if int(num) == 1 else "s")
     if key in ("fixed_operating_cost_annual", "facility_max_capacity", "reward_token_annual_budget_fiat", "initial_aum"):
         return f"${num / 1e6:,.2f}M" if num >= 1e6 else f"${num / 1e3:,.0f}k"
-    if key in ("income_share_fee_rate", "performance_fee_rate", "redemption_fee_to_issuer_pct", "distribution_reinvestment_rate"):
+    if key in ("income_share_fee_rate", "performance_fee_rate", "redemption_fee_to_issuer_pct", "distribution_reinvestment_rate", "looped_share"):
         return f"{num * 100:.1f}%"
     return f"{num * 100:.2f}%"
 
@@ -649,6 +660,16 @@ def build_product_economy_from_config(
     )
 
     cohort_overrides = design_cfg.get("cohort_overrides", {}) or {}
+    # Holders who post the token as collateral and borrow against it ("looped" holders): the design's
+    # documented share of AUM goes to the `looped` cohort and the other cohorts are scaled to fill the rest
+    looped_share = float(user_ov.get("looped_share", design_cfg.get("looped_share", 0.0)) or 0.0)
+    cohort_shares = {c["cohort_id"]: float(c["initial_capital_share"]) for c in cfg["investor_cohorts"]}
+    if "looped" in cohort_shares:
+        others = sum(v for k, v in cohort_shares.items() if k != "looped")
+        cohort_shares = {
+            k: (looped_share if k == "looped" else v * (1.0 - looped_share) / max(1e-12, others))
+            for k, v in cohort_shares.items()
+        }
     design_reinvestment = user_ov.get("distribution_reinvestment_rate", design_cfg.get("distribution_reinvestment_rate"))
     cohorts: List[InvestorCohort] = []
     for c_spec in cfg["investor_cohorts"]:
@@ -664,7 +685,7 @@ def build_product_economy_from_config(
             InvestorCohort(
                 cohort_id=spec["cohort_id"],
                 name=spec["name"],
-                initial_capital=initial_aum * float(spec["initial_capital_share"]),
+                initial_capital=initial_aum * cohort_shares.get(spec["cohort_id"], float(spec["initial_capital_share"])),
                 num_holders=int(spec["num_holders"]),
                 base_subscription_rate_period=float(spec["base_subscription_rate_period"]),
                 distribution_reinvestment_rate=reinvestment,
@@ -1750,6 +1771,212 @@ def _generate_case_study_plots(
     return saved
 
 
+def _generate_universe_plots(
+    cfg: Dict[str, Any],
+    summary_df: pd.DataFrame,
+    ts_df: pd.DataFrame,
+    sensitivity_df: pd.DataFrame,
+    reverse_stress: Dict[str, Any],
+    mc_results: Dict[str, Any],
+    plots_dir: Path,
+) -> Dict[str, str]:
+    """
+    Charts for studies with many funds: a single-hue fund x scenario heatmap and sorted
+    single-series bar / interval charts (categorical colour does not scale past three
+    series), with every value labelled.
+    """
+    plots_dir.mkdir(parents=True, exist_ok=True)
+    plt.rcParams.update({"figure.facecolor": _INK["surface"], "axes.facecolor": _INK["surface"], "font.size": 9,
+                         "axes.titlesize": 11, "axes.labelsize": 10, "legend.frameon": False})
+    blue, grey = SERIES_COLORS[0], _INK["secondary"]
+    labels = {d: cfg["product_designs"][d]["short_label"] for d in cfg["product_designs"]}
+    scen_order = list(cfg["scenarios"].keys())
+    ttc = mc_results["designs"]
+    order = sorted(labels, key=lambda d: ttc[d]["across_scenario_investor_score"]["p50"], reverse=True)
+    saved: Dict[str, str] = {}
+
+    def _barh(ax, values, fmt, xlabel, title, highlight=None):
+        _style_axes(ax)
+        y = np.arange(len(values))
+        cols = [blue if (highlight is None or highlight(k)) else grey for k, _ in values]
+        ax.barh(y, [v for _, v in values], color=cols, height=0.62)
+        for i, (_, v) in enumerate(values):
+            ax.text(v, i, " " + fmt(v), va="center", fontsize=8, color=_INK["primary"])
+        ax.set_yticks(y)
+        ax.set_yticklabels([labels[k] for k, _ in values])
+        ax.invert_yaxis()
+        ax.set_xlabel(xlabel)
+        ax.set_title(title)
+
+    # 1. Investor score heatmap (funds sorted by across-scenario median)
+    grid = summary_df.pivot(index="design_id", columns="scenario_id", values="investor_score_100").reindex(index=order, columns=scen_order)
+    fig, ax = plt.subplots(figsize=(12, 0.42 * len(order) + 1.8))
+    im = ax.imshow(grid.values, cmap="Blues", vmin=0, vmax=100, aspect="auto")
+    for i in range(grid.shape[0]):
+        for j in range(grid.shape[1]):
+            v = grid.values[i, j]
+            ax.text(j, i, f"{v:.0f}", ha="center", va="center", fontsize=8, color="white" if v >= 60 else _INK["primary"])
+    ax.set_xticks(range(len(scen_order)))
+    ax.set_xticklabels([_short_scenario_label(cfg, s) for s in scen_order], rotation=30, ha="right")
+    ax.set_yticks(range(len(order)))
+    ax.set_yticklabels([labels[d] for d in order])
+    ax.set_title("Investor score by fund and scenario (darker = higher; funds sorted by across-scenario median)")
+    fig.colorbar(im, ax=ax, fraction=0.025, pad=0.01)
+    fig.tight_layout()
+    saved["investor_scores"] = str(plots_dir / "01_investor_score_heatmap.png")
+    fig.savefig(saved["investor_scores"], dpi=160)
+    plt.close(fig)
+
+    # 2. The 30% run: longest wait and worst exit discount per fund
+    run_id = "concentrated_withdrawals"
+    run = summary_df[summary_df.scenario_id == run_id].set_index("design_id")
+    fig, axes = plt.subplots(1, 2, figsize=(13, 0.36 * len(order) + 1.6))
+    w = sorted(((d, float(run.loc[d, "max_time_to_payment_periods"])) for d in order), key=lambda t: -t[1])
+    _barh(axes[0], w, lambda v: f"{v:.0f} mo", "Months", "Longest wait to full payment")
+    x = sorted(((d, float(run.loc[d, "max_exit_discount_vs_nav"]) * 100) for d in order), key=lambda t: -t[1])
+    _barh(axes[1], x, lambda v: f"{v:.2f}%", "% below NAV", "Worst immediate-exit discount")
+    fig.suptitle(cfg["scenarios"][run_id]["name"], fontsize=11)
+    fig.tight_layout()
+    saved["run_dynamics"] = str(plots_dir / "02_run_wait_and_exit_discount.png")
+    fig.savefig(saved["run_dynamics"], dpi=160)
+    plt.close(fig)
+
+    # 3. Returns: baseline TWR vs. combined-crisis TWR vs. forced exit in the run
+    base = summary_df[summary_df.scenario_id == "baseline"].set_index("design_id")
+    crisis = summary_df[summary_df.scenario_id == "combined_adverse"].set_index("design_id")
+    fig, ax = plt.subplots(figsize=(10, 0.36 * len(order) + 1.6))
+    _style_axes(ax)
+    by_base = sorted(order, key=lambda d: -float(base.loc[d, "investor_annualised_return_pct"]))
+    y = np.arange(len(by_base))
+    for (frame, col, mk, lab, c) in (
+        (base, "investor_annualised_return_pct", "o", "Calm baseline (per-unit TWR)", SERIES_COLORS[0]),
+        (crisis, "investor_annualised_return_pct", "s", "Combined crisis (per-unit TWR)", SERIES_COLORS[1]),
+        (run, "forced_exit_return_annualised_pct", "^", "Forced exit in the 30% run", SERIES_COLORS[2]),
+    ):
+        ax.scatter([float(frame.loc[d, col]) * 100 for d in by_base], y, marker=mk, s=46, color=c, label=lab,
+                   edgecolors=_INK["surface"], linewidths=1.2, zorder=3)
+    rf = (cfg.get("benchmarks") or {}).get("risk_free_rate_annual", 0.0) * 100
+    ax.axvline(rf, color=grey, linewidth=1)
+    ax.annotate(f"T-bill rate {rf:.2f}%", (rf, -0.8), fontsize=8, color=grey)
+    ax.set_yticks(y)
+    ax.set_yticklabels([labels[d] for d in by_base])
+    ax.invert_yaxis()
+    ax.set_xlabel("% per year")
+    ax.legend(loc="lower right")
+    ax.set_title("Returns in calm markets, in a crisis, and for an investor forced to sell")
+    fig.tight_layout()
+    saved["returns"] = str(plots_dir / "03_returns_by_fund.png")
+    fig.savefig(saved["returns"], dpi=160)
+    plt.close(fig)
+
+    # 4. Monte Carlo: across-scenario score intervals and probability of ranking first
+    fig, axes = plt.subplots(1, 2, figsize=(13, 0.36 * len(order) + 1.6), gridspec_kw={"width_ratios": [1.6, 1]})
+    ax = axes[0]
+    _style_axes(ax)
+    for i, d in enumerate(order):
+        q = ttc[d]["across_scenario_investor_score"]
+        ax.plot([q["p10"], q["p90"]], [i, i], color=blue, linewidth=5, alpha=0.35, solid_capstyle="round")
+        ax.scatter([q["p50"]], [i], color=blue, s=36, zorder=3)
+        ax.text(q["p90"] + 1, i, f"{q['p50']:.1f}", va="center", fontsize=8)
+    ax.set_yticks(range(len(order)))
+    ax.set_yticklabels([labels[d] for d in order])
+    ax.invert_yaxis()
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("Across-scenario investor score (P10-P90, dot = P50)")
+    ax.set_title(f"Monte Carlo ({mc_results['repetitions']} paths per scenario)")
+    rk = mc_results["rank_one_probability"]["local_weight_uncertainty"]
+    _barh(axes[1], sorted(((d, rk[d] * 100) for d in order), key=lambda t: -t[1]), lambda v: f"{v:.0f}%",
+          "% of draws", "Ranks first (weights & scales varied)")
+    fig.tight_layout()
+    saved["monte_carlo"] = str(plots_dir / "04_monte_carlo_scores_and_rank_probability.png")
+    fig.savefig(saved["monte_carlo"], dpi=160)
+    plt.close(fig)
+
+    # 5. Most influential flagged assumption per fund (run scenario)
+    sens = sensitivity_df[sensitivity_df.base_scenario == run_id]
+    spans = []
+    for d in order:
+        g = sens[sens.design_id == d]
+        if g.empty:
+            continue
+        agg = g.groupby("parameter_label")["investor_score_100"].agg(lambda v: v.max() - v.min())
+        spans.append((d, float(agg.max()), str(agg.idxmax())))
+    spans.sort(key=lambda t: -t[1])
+    fig, ax = plt.subplots(figsize=(11, 0.36 * len(spans) + 1.6))
+    _barh(ax, [(d, v) for d, v, _ in spans], lambda v: f"{v:.1f}", "Investor-score range (points)",
+          "Most influential assumption per fund in the 30% run")
+    for i, (_, v, lab) in enumerate(spans):
+        ax.text(v + 4, i, lab, va="center", fontsize=8, color=grey)
+    ax.set_xlim(0, max([v for _, v, _ in spans] + [1]) * 2.2)
+    fig.tight_layout()
+    saved["sensitivities"] = str(plots_dir / "05_assumption_sensitivity.png")
+    fig.savefig(saved["sensitivities"], dpi=160)
+    plt.close(fig)
+
+    # 6. Reverse stress: smallest institutional tender breaching the payment objective
+    vals = []
+    for d in order:
+        b = reverse_stress["designs"][d]["min_institutional_shock_breaching_sla"]
+        vals.append((d, 100.0 if b is None else b * 100))
+    vals.sort(key=lambda t: t[1])
+    fig, ax = plt.subplots(figsize=(10, 0.36 * len(vals) + 1.6))
+    _barh(ax, vals, lambda v: "never breached" if v >= 100 else f"{v:.0f}%", "Month-12 institutional tender (% of cohort)",
+          "Smallest run that breaks the 3-month payment objective", highlight=lambda k: dict(vals)[k] < 100)
+    ax.set_xlim(0, 135)
+    fig.tight_layout()
+    saved["reverse_stress"] = str(plots_dir / "06_reverse_stress_breaking_point.png")
+    fig.savefig(saved["reverse_stress"], dpi=160)
+    plt.close(fig)
+
+    # 7. Is the extra yield enough? Paid vs. required (central case)
+    rc = mc_results.get("risk_compensation")
+    if rc:
+        items = sorted(order, key=lambda d: -rc["designs"][d]["margin_central"])
+        fig, ax = plt.subplots(figsize=(11, 0.42 * len(items) + 1.8))
+        _style_axes(ax)
+        y = np.arange(len(items))
+        paid = [rc["designs"][d]["spread_paid"] * 100 for d in items]
+        req = [rc["designs"][d]["required_spread_central"] * 100 for d in items]
+        ax.barh(y - 0.18, paid, height=0.34, color=blue, label="Extra yield paid (net of credit losses)")
+        ax.barh(y + 0.18, req, height=0.34, color=grey, alpha=0.5, label="Required for its risks")
+        for i, d in enumerate(items):
+            m = rc["designs"][d]["margin_central"] * 100
+            ax.text(max(paid[i], req[i], 0) + 0.1, i, f"margin {m:+.2f}%", va="center", fontsize=8)
+        ax.axvline(0, color=grey, linewidth=1)
+        ax.set_yticks(y)
+        ax.set_yticklabels([labels[d] for d in items])
+        ax.invert_yaxis()
+        ax.set_xlabel("% per year over the Treasury-bill rate")
+        p_exit, lam = rc["central_case"]["exit_probability"], rc["central_case"]["price_of_risk"]
+        ax.set_title(f"Extra yield paid vs. required (exit chance {p_exit:.0%}, price of risk {lam:.1f})")
+        ax.legend(loc="lower right")
+        fig.tight_layout()
+        saved["risk_compensation"] = str(plots_dir / "07_risk_compensation.png")
+        fig.savefig(saved["risk_compensation"], dpi=160)
+        plt.close(fig)
+
+    # 8. Looping: looped share of AUM vs. score change in the looping unwind
+    if "loop_unwind" in scen_order:
+        unwind = summary_df[summary_df.scenario_id == "loop_unwind"].set_index("design_id")
+        pts = [(d, float(cfg["product_designs"][d].get("looped_share") or 0.0) * 100,
+                float(unwind.loc[d, "investor_score_100"] - base.loc[d, "investor_score_100"])) for d in order]
+        fig, ax = plt.subplots(figsize=(9, 5))
+        _style_axes(ax)
+        ax.scatter([p[1] for p in pts], [p[2] for p in pts], color=blue, s=40, zorder=3)
+        for d, xv, yv in pts:
+            if xv > 0 or yv < -1:
+                ax.annotate(labels[d].split(" (")[0], (xv, yv), xytext=(4, 3), textcoords="offset points", fontsize=8)
+        ax.axhline(0, color=grey, linewidth=1)
+        ax.set_xlabel("Share of AUM posted as collateral on Kamino (%, on-chain)")
+        ax.set_ylabel("Investor-score change, looping unwind vs. baseline")
+        ax.set_title("Looping exposure and what an unwind costs investors")
+        fig.tight_layout()
+        saved["looping"] = str(plots_dir / "08_looping_exposure.png")
+        fig.savefig(saved["looping"], dpi=160)
+        plt.close(fig)
+    return saved
+
+
 def _pct(value: Any, digits: int = 2) -> str:
     return "n/a" if value is None or (isinstance(value, float) and math.isnan(value)) else f"{float(value) * 100:.{digits}f}%"
 
@@ -1902,6 +2129,8 @@ def build_case_study_html_report(
                 for d in design_ids
             ],
         )
+        if "looping" in plot_paths:
+            report.add_plot(plot_paths["looping"], "Looped share of AUM (on-chain) against the investor-score change in the looping unwind.")
         if "risk_compensation" in plot_paths:
             report.add_plot(plot_paths["risk_compensation"], "Extra yield paid versus the spread its risks require (central assumptions).")
 
@@ -2264,10 +2493,107 @@ def write_paper_artifacts(
     lines += [r"\bottomrule", r"\end{tabular}"]
     (paper_dir / "table_sensitivity.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
+    if len(design_ids) > 3:
+        _write_universe_tables(paper_dir, cfg, summary_df, mc_results, sensitivity_df, labels)
+        # The universe tables replace numbers.tex's macros for rankings: append them
+        order = sorted(design_ids, key=lambda d: -mc_results["designs"][d]["across_scenario_investor_score"]["p50"])
+        extra = {"NumFunds": str(len(design_ids)), "NumScenarios": str(len(scen_order))}
+        for i, d in enumerate(order[:5], start=1):
+            word = ["One", "Two", "Three", "Four", "Five"][i - 1]
+            extra[f"Rank{word}Label"] = labels[d]
+            extra[f"Rank{word}Score"] = f"{mc_results['designs'][d]['across_scenario_investor_score']['p50']:.1f}"
+        rc = mc_results.get("risk_compensation") or {"designs": {}}
+        paid_enough = [d for d in design_ids if d in rc["designs"] and rc["designs"][d]["margin_central"] >= 0]
+        extra["NumPaidEnough"] = str(len(paid_enough))
+        extra["NumRisky"] = str(sum(1 for d in design_ids if d in rc["designs"] and rc["designs"][d]["spread_paid"] > 0.005))
+        local = mc_results["rank_one_probability"]["local_weight_uncertainty"]
+        top_local = max(local, key=local.get)
+        extra["TopLocalLabel"], extra["TopLocalProb"] = labels[top_local], _tex_pct(local[top_local], 0)
+        with open(paper_dir / "numbers.tex", "a", encoding="utf-8") as fh:
+            fh.write("".join(f"\\newcommand{{\\{k}}}{{{v}}}\n" for k, v in sorted(extra.items())))
+
     return {name: str(paper_dir / name) for name in (
         "numbers.tex", "table_calibration.tex", "table_matrix.tex", "table_monte_carlo.tex", "table_sponsor.tex", "table_sensitivity.tex",
         "table_risk.tex", "table_risk_grid.tex",
     ) if (paper_dir / name).exists()}
+
+
+def _write_universe_tables(
+    paper_dir: Path,
+    cfg: Dict[str, Any],
+    summary_df: pd.DataFrame,
+    mc_results: Dict[str, Any],
+    sensitivity_df: pd.DataFrame,
+    labels: Dict[str, str],
+) -> None:
+    """Compact tables for many funds: one row per fund instead of one column, and a score grid."""
+    design_ids = list(cfg["product_designs"].keys())
+    scen_order = list(cfg["scenarios"].keys())
+    order = sorted(design_ids, key=lambda d: -mc_results["designs"][d]["across_scenario_investor_score"]["p50"])
+    prov = pd.DataFrame(provenance_rows(cfg))
+    asset = {e["design_id"]: e.get("asset_class", "") for e in cfg.get("real_world_provenance", [])}
+
+    def exit_terms(d: str) -> str:
+        gate = design_parameter_value(cfg, d, "gate_max_pct_nav_per_period")
+        lag = int(design_parameter_value(cfg, d, "settlement_lag_periods") or 0)
+        gate_txt = "no gate" if gate is None or float(gate) >= 0.999 else f"gate {float(gate) * 100:.1f}\\%/mo"
+        return f"{gate_txt}; lag {lag} mo"
+
+    lines = [
+        r"\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}p{3.6cm}rrlrrr@{}}",
+        r"\toprule",
+        r"\textbf{Fund} & \textbf{Assets} & \textbf{Gross yield} & \textbf{Fee} & \textbf{Exit terms} & \textbf{Looped} & \textbf{AUM} & \textbf{Assumed} \\",
+        r"\midrule",
+    ]
+    for d in design_ids:
+        n_assumed = int(((prov.design_id == d) & (prov.status == "assumption")).sum())
+        n_total = int(((prov.design_id == d) & (prov.status != "not applicable")).sum())
+        aum = (cfg["product_designs"][d].get("real_world") or {}).get("aum_fiat")
+        fee_key = "income_share_fee_rate" if float(design_parameter_value(cfg, d, "income_share_fee_rate") or 0) > 0 else "management_fee_annual"
+        fee = format_parameter_value(fee_key, design_parameter_value(cfg, d, fee_key)) + (" of income" if fee_key == "income_share_fee_rate" else "")
+        lines.append(
+            f"{labels[d]} & {_tex_escape(asset.get(d, ''))} & {_tex_pct(design_parameter_value(cfg, d, 'gross_yield_annual'))} & "
+            f"{_tex_escape(fee)} & {exit_terms(d)} & {_tex_pct(cfg['product_designs'][d].get('looped_share') or 0.0, 0)} & "
+            f"{_tex_money(aum) if aum else 'n/a'} & {n_assumed}/{n_total} \\\\"
+        )
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    (paper_dir / "table_calibration.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    lines = [
+        r"\begin{tabular}{@{}l" + "r" * len(scen_order) + "r@{}}",
+        r"\toprule",
+        r"\textbf{Fund} & " + " & ".join(f"\\rotatebox{{70}}{{{_tex_escape(_short_scenario_label(cfg, s))}}}" for s in scen_order)
+        + r" & \rotatebox{70}{\textbf{Across (P50)}} \\",
+        r"\midrule",
+    ]
+    for d in order:
+        g = summary_df[summary_df.design_id == d].set_index("scenario_id")
+        cells = " & ".join(f"{g.loc[s, 'investor_score_100']:.0f}" for s in scen_order)
+        lines.append(f"{labels[d]} & {cells} & \\textbf{{{mc_results['designs'][d]['across_scenario_investor_score']['p50']:.1f}}} \\\\")
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    (paper_dir / "table_matrix.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    sens = sensitivity_df[sensitivity_df.base_scenario == "concentrated_withdrawals"]
+    lines = [
+        r"\begin{tabular}{@{}l>{\raggedright\arraybackslash}p{6.4cm}rr@{}}",
+        r"\toprule",
+        r"\textbf{Fund} & \textbf{Most influential assumption (values swept)} & \textbf{Score} & \textbf{Max wait (mo)} \\",
+        r"\midrule",
+    ]
+    for d in order:
+        g = sens[sens.design_id == d]
+        if g.empty:
+            continue
+        spans = g.groupby("parameter_label")["investor_score_100"].agg(lambda v: v.max() - v.min())
+        lab = spans.idxmax()
+        grp = g[g.parameter_label == lab]
+        values = ", ".join(dict.fromkeys(_tex_escape(v) for v in grp["parameter_value_label"]))
+        lines.append(
+            f"{labels[d]} & {_tex_escape(lab)} ({values}) & {grp['investor_score_100'].min():.1f}--{grp['investor_score_100'].max():.1f} & "
+            f"{grp['max_time_to_payment_periods'].min():.0f}--{grp['max_time_to_payment_periods'].max():.0f} \\\\"
+        )
+    lines += [r"\bottomrule", r"\end{tabular}"]
+    (paper_dir / "table_sensitivity.tex").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def _sha256_file(path: Path) -> str:
@@ -2331,7 +2657,8 @@ def generate_case_study_bundle(
     ref_json.write_text(json.dumps(ref_check, indent=2, default=_json_default), encoding="utf-8")
     defs_json.write_text(json.dumps(METRIC_DEFINITIONS, indent=2), encoding="utf-8")
 
-    plot_paths = _generate_case_study_plots(
+    plot_fn = _generate_universe_plots if len(cfg["product_designs"]) > 3 else _generate_case_study_plots
+    plot_paths = plot_fn(
         cfg=cfg,
         summary_df=summary_df,
         ts_df=ts_df,
@@ -2531,6 +2858,8 @@ def get_product_studio_catalog(
     all_catalogs: Dict[str, Dict[str, Any]] = {}
     available_list: List[Dict[str, str]] = []
     for cs_id, meta in CASE_STUDY_REGISTRY.items():
+        if not meta.get("in_studio", True):
+            continue
         cs_cfg = load_case_study_config(path=Path(meta["path"]))
         all_catalogs[cs_id] = _build_single_studio_catalog(cs_cfg)
         available_list.append(
