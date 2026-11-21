@@ -1,7 +1,10 @@
 # src/TokenLab/utils/docx_verifier.py
 # @planner:module = docx_verifier
 # @planner:story = US-Z1-M3-03
-import docx
+try:
+    import docx
+except ImportError:  # pragma: no cover - optional reporting/legacy extra
+    docx = None
 import math
 import os
 import re
@@ -43,6 +46,10 @@ class DocxVerifier:
 
     def extract_parameters(self) -> None:
         """Traverses docx tables to locate and extract parameter value mappings."""
+        if docx is None:
+            raise ImportError(
+                "python-docx is required for DocxVerifier; install with `pip install 'TokenLab[reporting]'`."
+            )
         if not os.path.exists(self.docx_path):
             raise FileNotFoundError(f"DOCX file not found at: {self.docx_path}")
             

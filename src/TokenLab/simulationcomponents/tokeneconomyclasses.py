@@ -19,9 +19,13 @@ import copy
 
 # import seaborn as sns
 from tqdm import tqdm
-from matplotlib import pyplot as plt
+try:
+    import matplotlib
+    from matplotlib import pyplot as plt
+except ImportError:  # pragma: no cover - optional plotting extra
+    matplotlib = None
+    plt = None
 from .pricingclasses import *
-import matplotlib
 import random
 from .supplyclasses import *
 from .treasuryclasses import *
@@ -710,19 +714,19 @@ class TokenMetaSimulator:
         """
         #
         if segment == None:
-            averages = self.data.groupby("repetition_run").mean()
+            averages = self.data.groupby("repetition_run").mean(numeric_only=True)
         elif isinstance(segment, list) or isinstance(segment, tuple):
             averages = self.data.loc[
                 (self.data["iteration_time"] > segment[0])
                 & (self.data["iteration_time"] < segment[1]),
                 :,
             ]
-            averages = averages.groupby("repetition_run").mean()
+            averages = averages.groupby("repetition_run").mean(numeric_only=True)
         elif segment == "last":
             averages = (
                 self.data[self.data["repetition_run"] == self.repetitions]
                 .groupby("repetition_run")
-                .mean()
+                .mean(numeric_only=True)
             )
 
         df_list = []
@@ -750,7 +754,7 @@ class TokenMetaSimulator:
         multiple: float = 1,
         plot: bool = True,
         show: bool = False,
-    ) -> Union[matplotlib.collections.PolyCollection, pd.DataFrame]:
+    ) -> Union["matplotlib.collections.PolyCollection", pd.DataFrame]:
         """
         Calculates an average for a certain feature in the report, (e.g. price) and then computes
         a lineplot over time, plus 95% confidence interval. Returns both the plot and the transformed data.
@@ -786,6 +790,10 @@ class TokenMetaSimulator:
             toplot = timeseries_median
 
         if plot:
+            if plt is None:
+                raise ImportError(
+                    "matplotlib is required for plotting; install with `pip install 'TokenLab[reporting]'`."
+                )
             plt.plot(final[self.unit_of_time].values, toplot)
             plt.xlabel(self.unit_of_time)
             plt.ylabel(feature)

@@ -13,7 +13,10 @@ import copy
 import scipy
 import warnings
 import time
-from matplotlib import pyplot as plt
+try:
+    from matplotlib import pyplot as plt
+except ImportError:  # pragma: no cover - optional plotting extra
+    plt = None
 
 
 class UserGrowth(Controller):
@@ -189,7 +192,10 @@ class UserGrowth_Spaced(UserGrowth):
         return self.get_users_store()
 
     def plot_users(self):
-
+        if plt is None:
+            raise ImportError(
+                "matplotlib is required for plotting; install with `pip install 'TokenLab[reporting]'`."
+            )
         plt.plot(self.get_users_store())
         plt.xlabel("unit of time")
         plt.ylabel("users")

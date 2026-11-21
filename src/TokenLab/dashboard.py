@@ -23,7 +23,7 @@ import socket
 import sys
 import tempfile
 import threading
-from typing import Any, Dict, Mapping, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Sequence, Tuple
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
 

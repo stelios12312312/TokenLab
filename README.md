@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10" /></a>
+  <a href="https://python.org"><img src="https://img.shields.io/badge/Python-3.10--3.13-3776AB.svg?style=flat-square&logo=python&logoColor=white" alt="Python 3.10-3.13" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square" alt="License: Apache 2.0" /></a>
   <a href="pyproject.toml"><img src="https://img.shields.io/badge/Version-0.2.0-orange.svg?style=flat-square" alt="Version 0.2.0" /></a>
   <a href="#-why-agentic-tokenomics"><img src="https://img.shields.io/badge/Paradigm-Agentic_Tokenomics-purple.svg?style=flat-square" alt="Agentic Tokenomics" /></a>
@@ -73,7 +73,9 @@ tokenlab-dashboard --gallery --output-dir outputs/demo-gallery
 
 ### 3. Run a One-Line CLI Simulation
 ```bash
+tokenlab-demo --output-dir outputs/demo
 tokenlab-demo public-growth-uncertainty-v2 --run-tier fast --output-dir outputs/demo
+tokenlab-dashboard outputs/demo/public-demo
 ```
 
 ---

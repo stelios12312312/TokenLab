@@ -14,7 +14,10 @@ import numpy as np
 from TokenLab.utils.helpers import log_saturated_space, logistic_saturated_space
 import copy
 import time
-from matplotlib import pyplot as plt
+try:
+    from matplotlib import pyplot as plt
+except ImportError:  # pragma: no cover - optional plotting extra
+    plt = None
 
 
 class TransactionManagement(Controller):
@@ -73,7 +76,10 @@ class TransactionManagement(Controller):
         return self.num_transactions
 
     def plot(self):
-
+        if plt is None:
+            raise ImportError(
+                "matplotlib is required for plotting; install with `pip install 'TokenLab[reporting]'`."
+            )
         plt.plot(self._transactions_value_store)
 
 
@@ -456,7 +462,10 @@ class TransactionManagement_Trend(TransactionManagement):
         return True
 
     def plot(self):
-
+        if plt is None:
+            raise ImportError(
+                "matplotlib is required for plotting; install with `pip install 'TokenLab[reporting]'`."
+            )
         plt.plot(self._transactions_means_store)
         plt.xlabel("iterations")
         plt.ylabel("transactions")
