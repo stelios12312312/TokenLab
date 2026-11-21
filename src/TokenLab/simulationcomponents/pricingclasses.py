@@ -14,7 +14,6 @@ from typing import List, Dict, Union, Tuple
 from .baseclasses import Controller, TokenEconomy, AddOn
 import pandas as pd
 from tqdm import tqdm
-from matplotlib import pyplot as plt
 import time
 from .addons import AddOn_RandomNoise, AddOn_RandomNoiseProportional
 

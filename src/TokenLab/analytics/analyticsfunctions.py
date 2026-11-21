@@ -8,7 +8,10 @@ Created on Mon Dec  5 19:52:42 2022
 
 import pandas as pd
 import numpy as np
-import statsmodels.api as sm
+try:
+    import statsmodels.api as sm
+except ImportError:  # pragma: no cover - optional reporting/legacy extra
+    sm = None
 from typing import List
 
 
@@ -37,6 +40,10 @@ def stepwise_selection(X:[List], y:[List],
     
     See https://en.wikipedia.org/wiki/Stepwise_regression for the details
     """
+    if sm is None:
+        raise ImportError(
+            "statsmodels is required for stepwise_selection; install with `pip install 'TokenLab[reporting]'`."
+        )
     included = list(initial_list)
     
     if square:
@@ -48,7 +55,7 @@ def stepwise_selection(X:[List], y:[List],
         changed=False
         # forward step
         excluded = list(set(X.columns)-set(included))
-        new_pval = pd.Series(index=excluded)
+        new_pval = pd.Series(index=excluded, dtype=float)
         for new_column in excluded:
             model = sm.OLS(y, sm.add_constant(pd.DataFrame(X[included+[new_column]]))).fit()
             new_pval[new_column] = model.pvalues[new_column]

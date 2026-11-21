@@ -26,9 +26,13 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt
+try:
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+except ImportError:  # pragma: no cover - optional reporting extra
+    matplotlib = None
+    plt = None
 import numpy as np
 import pandas as pd
 import yaml
@@ -1538,6 +1542,10 @@ def _generate_case_study_plots(
     plots_dir: Path,
 ) -> Dict[str, str]:
     """Generate light-theme charts (validated colour-blind-safe palette, direct labels) and return file paths."""
+    if plt is None:
+        raise ImportError(
+            "matplotlib is required for chart generation; install with `pip install 'TokenLab[reporting]'`."
+        )
     plots_dir.mkdir(parents=True, exist_ok=True)
     plt.rcParams.update(
         {
@@ -1785,6 +1793,10 @@ def _generate_universe_plots(
     single-series bar / interval charts (categorical colour does not scale past three
     series), with every value labelled.
     """
+    if plt is None:
+        raise ImportError(
+            "matplotlib is required for chart generation; install with `pip install 'TokenLab[reporting]'`."
+        )
     plots_dir.mkdir(parents=True, exist_ok=True)
     plt.rcParams.update({"figure.facecolor": _INK["surface"], "axes.facecolor": _INK["surface"], "font.size": 9,
                          "axes.titlesize": 11, "axes.labelsize": 10, "legend.frameon": False})
@@ -2096,18 +2108,21 @@ def build_case_study_html_report(
         headers=["Scenario", "Design", "TWR", "IRR", "Forced exit", "Wait avg / max (mo)", "Max exit discount", "Pillars (yield · exit · stability · resilience)", "Investor score"],
         rows=matrix_rows,
     )
-    report.add_plot_grid(
-        [plot_paths["investor_scores"], plot_paths["run_dynamics"]],
-        ["Investor score by scenario, and sponsor viability as a separate score.", "The 30% institutional run: queue value and the cost of exiting immediately."],
-    )
-    report.add_plot_grid(
-        [plot_paths["returns"], plot_paths["monte_carlo"]],
-        ["Per-unit TWR, money-weighted IRR and forced-exit return by scenario.", "Monte Carlo bands for the across-scenario score, and who ranks first under weight uncertainty."],
-    )
-    report.add_plot_grid(
-        [plot_paths["sensitivities"], plot_paths["reverse_stress"]],
-        ["How much each flagged assumption moves the investor score in the run.", "Reverse stress: shock size versus time to full payment."],
-    )
+    if "investor_scores" in plot_paths and "run_dynamics" in plot_paths:
+        report.add_plot_grid(
+            [plot_paths["investor_scores"], plot_paths["run_dynamics"]],
+            ["Investor score by scenario, and sponsor viability as a separate score.", "The 30% institutional run: queue value and the cost of exiting immediately."],
+        )
+    if "returns" in plot_paths and "monte_carlo" in plot_paths:
+        report.add_plot_grid(
+            [plot_paths["returns"], plot_paths["monte_carlo"]],
+            ["Per-unit TWR, money-weighted IRR and forced-exit return by scenario.", "Monte Carlo bands for the across-scenario score, and who ranks first under weight uncertainty."],
+        )
+    if "sensitivities" in plot_paths and "reverse_stress" in plot_paths:
+        report.add_plot_grid(
+            [plot_paths["sensitivities"], plot_paths["reverse_stress"]],
+            ["How much each flagged assumption moves the investor score in the run.", "Reverse stress: shock size versus time to full payment."],
+        )
 
     rc = mc_results.get("risk_compensation")
     if rc:
@@ -2660,16 +2675,19 @@ def generate_case_study_bundle(
     ref_json.write_text(json.dumps(ref_check, indent=2, default=_json_default), encoding="utf-8")
     defs_json.write_text(json.dumps(METRIC_DEFINITIONS, indent=2), encoding="utf-8")
 
-    plot_fn = _generate_universe_plots if len(cfg["product_designs"]) > 3 else _generate_case_study_plots
-    plot_paths = plot_fn(
-        cfg=cfg,
-        summary_df=summary_df,
-        ts_df=ts_df,
-        sensitivity_df=sensitivity_df,
-        reverse_stress=reverse_stress,
-        mc_results=mc_results,
-        plots_dir=plots_dir,
-    )
+    if plt is not None:
+        plot_fn = _generate_universe_plots if len(cfg["product_designs"]) > 3 else _generate_case_study_plots
+        plot_paths = plot_fn(
+            cfg=cfg,
+            summary_df=summary_df,
+            ts_df=ts_df,
+            sensitivity_df=sensitivity_df,
+            reverse_stress=reverse_stress,
+            mc_results=mc_results,
+            plots_dir=plots_dir,
+        )
+    else:
+        plot_paths = {}
     build_case_study_html_report(
         config=cfg,
         summary_df=summary_df,

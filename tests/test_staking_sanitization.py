@@ -277,11 +277,32 @@ def _legacy_blob():
     )
 
 
+# Narrow, file-scoped allowlist for generic numeric literals in public RWA files
+# that coincidentally match constants in the legacy staking/curve scripts:
+# - 0.065: documented 6.5% gross yield for Hastra PRIME / ACRED sweep in rwa_universe_case_study.yaml
+# - 1.2: matplotlib marker border `linewidths=1.2` in product_case_study.py
+RWA_COINCIDENTAL_NUMERIC_ALLOWLIST = {
+    Path("src/TokenLab/agentic/data/rwa_universe_case_study.yaml"): {
+        "client table value 0.065",
+    },
+    Path("src/TokenLab/agentic/product_case_study.py"): {
+        "client table value 1.2",
+    },
+}
+
+
 def _scan(paths, patterns):
     hits = []
     for path in paths:
+        try:
+            rel_path = path.relative_to(ROOT)
+        except ValueError:
+            rel_path = None
+        allowed_labels = RWA_COINCIDENTAL_NUMERIC_ALLOWLIST.get(rel_path, set())
         text = path.read_text(encoding="utf-8", errors="replace")
         for label, pattern in patterns:
+            if label in allowed_labels:
+                continue
             for match in pattern.finditer(text):
                 line = text.count("\n", 0, match.start()) + 1
                 hits.append(f"{path.relative_to(ROOT)}:{line}: {label}")
